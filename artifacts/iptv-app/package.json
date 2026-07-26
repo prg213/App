@@ -56,7 +56,9 @@
     "zod-validation-error": "^3.4.0"
   },
   "dependencies": {
+    "expo-application": "~57.0.2",
     "expo-clipboard": "^57.0.1",
+    "expo-secure-store": "~57.0.1",
     "expo-video": "^57.0.2"
   }
 }

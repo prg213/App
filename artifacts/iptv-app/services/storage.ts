@@ -1,8 +1,14 @@
+import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Credentials, FavoriteChannel, WatchHistoryEntry } from '@/types';
 
+// Credentials live in SecureStore (Android Keystore / iOS Keychain).
+// This survives Expo Go bundle reloads and Metro restarts — unlike AsyncStorage
+// which can be wiped when Expo Go establishes a new development connection.
+const SECURE_CREDS_KEY = 'sv_credentials';
+
+// Everything else (favourites, history, cache) stays in AsyncStorage.
 const KEYS = {
-  CREDENTIALS: 'sv_credentials',
   FAVORITES: 'sv_favorites',
   HISTORY: 'sv_history',
   CHANNELS_CACHE: 'sv_channels_cache',
@@ -10,21 +16,28 @@ const KEYS = {
 };
 
 export const StorageService = {
-  // Credentials
+  // ── Credentials (SecureStore) ──────────────────────────────────────────────
+
   async saveCredentials(creds: Credentials): Promise<void> {
-    await AsyncStorage.setItem(KEYS.CREDENTIALS, JSON.stringify(creds));
+    await SecureStore.setItemAsync(SECURE_CREDS_KEY, JSON.stringify(creds));
   },
+
   async getCredentials(): Promise<Credentials | null> {
     try {
-      const data = await AsyncStorage.getItem(KEYS.CREDENTIALS);
+      const data = await SecureStore.getItemAsync(SECURE_CREDS_KEY);
       return data ? (JSON.parse(data) as Credentials) : null;
     } catch {
       return null;
     }
   },
+
   async clearCredentials(): Promise<void> {
+    try {
+      await SecureStore.deleteItemAsync(SECURE_CREDS_KEY);
+    } catch {
+      // ignore if key doesn't exist
+    }
     await AsyncStorage.multiRemove([
-      KEYS.CREDENTIALS,
       KEYS.FAVORITES,
       KEYS.HISTORY,
       KEYS.CHANNELS_CACHE,
@@ -32,7 +45,8 @@ export const StorageService = {
     ]);
   },
 
-  // Favorites
+  // ── Favourites (AsyncStorage) ──────────────────────────────────────────────
+
   async getFavorites(): Promise<FavoriteChannel[]> {
     try {
       const data = await AsyncStorage.getItem(KEYS.FAVORITES);
@@ -54,7 +68,8 @@ export const StorageService = {
     return updated;
   },
 
-  // Watch history
+  // ── Watch history (AsyncStorage) ──────────────────────────────────────────
+
   async getWatchHistory(): Promise<WatchHistoryEntry[]> {
     try {
       const data = await AsyncStorage.getItem(KEYS.HISTORY);
