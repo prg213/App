@@ -3,7 +3,7 @@
     "name": "StreamVault",
     "slug": "iptv-app",
     "version": "1.0.0",
-    "orientation": "portrait",
+    "orientation": "landscape",
     "icon": "./assets/images/icon.png",
     "scheme": "iptv-app",
     "userInterfaceStyle": "dark",

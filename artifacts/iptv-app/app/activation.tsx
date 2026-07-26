@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   Animated,
   Platform,
   ScrollView,
@@ -8,6 +7,7 @@ import {
   Text,
   TouchableOpacity,
   View,
+  ActivityIndicator,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
@@ -39,17 +39,15 @@ export default function ActivationScreen() {
   const [isPolling, setIsPolling] = useState(false);
   const pulse = useRef(new Animated.Value(1)).current;
 
-  // Pulse animation for MAC address
   useEffect(() => {
     Animated.loop(
       Animated.sequence([
-        Animated.timing(pulse, { toValue: 1.03, duration: 1500, useNativeDriver: true }),
-        Animated.timing(pulse, { toValue: 1, duration: 1500, useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 1.02, duration: 1600, useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 1, duration: 1600, useNativeDriver: true }),
       ]),
     ).start();
   }, [pulse]);
 
-  // Poll activation endpoint
   const { data, isFetching, refetch } = useQuery({
     queryKey: ['activation', deviceMac],
     queryFn: () => checkActivation(deviceMac),
@@ -58,7 +56,6 @@ export default function ActivationScreen() {
     retry: false,
   });
 
-  // Handle successful activation
   useEffect(() => {
     if (data?.status === 'active') {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -88,85 +85,70 @@ export default function ActivationScreen() {
   }, [isPolling, refetch]);
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top + (Platform.OS === 'web' ? 67 : 0), paddingBottom: insets.bottom + (Platform.OS === 'web' ? 34 : 0) }]}>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Logo */}
-        <View style={styles.logoWrap}>
+    <View style={[styles.container, { paddingLeft: insets.left, paddingRight: insets.right }]}>
+      {/* Left: Branding */}
+      <View style={[styles.left, { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 20 }]}>
+        <View style={styles.logo}>
           <View style={styles.logoCircle}>
             <Text style={styles.logoIcon}>▶</Text>
           </View>
           <Text style={styles.logoName}>StreamVault</Text>
-          <Text style={styles.logoTagline}>IPTV Player</Text>
+          <Text style={styles.logoTagline}>IPTV PLAYER</Text>
         </View>
 
-        {/* MAC Address */}
+        {/* MAC address */}
         <Animated.View style={[styles.macCard, { transform: [{ scale: pulse }] }]}>
-          <Text style={styles.macLabel}>YOUR DEVICE MAC ADDRESS</Text>
+          <Text style={styles.macLabel}>YOUR DEVICE MAC</Text>
           <Text style={styles.macAddress} selectable>
             {deviceMac || '——:——:——:——:——:——'}
           </Text>
           <TouchableOpacity style={styles.copyBtn} onPress={copyMac} activeOpacity={0.7}>
-            <Text style={styles.copyBtnText}>{copied ? '✓ Copied!' : 'Copy MAC Address'}</Text>
+            <Text style={styles.copyText}>{copied ? '✓ Copied!' : 'Copy'}</Text>
           </TouchableOpacity>
         </Animated.View>
 
-        {/* Instructions */}
-        <View style={styles.instructionCard}>
-          <Text style={styles.instructionTitle}>How to activate</Text>
-          <View style={styles.step}>
-            <View style={styles.stepNum}><Text style={styles.stepNumText}>1</Text></View>
-            <Text style={styles.stepText}>
-              Go to your provider's website or admin panel
-            </Text>
-          </View>
-          <View style={styles.step}>
-            <View style={styles.stepNum}><Text style={styles.stepNumText}>2</Text></View>
-            <Text style={styles.stepText}>
-              Enter the MAC address shown above
-            </Text>
-          </View>
-          <View style={styles.step}>
-            <View style={styles.stepNum}><Text style={styles.stepNumText}>3</Text></View>
-            <Text style={styles.stepText}>
-              Enter your M3U URL or Xtream Codes credentials
-            </Text>
-          </View>
-          <View style={styles.step}>
-            <View style={styles.stepNum}><Text style={styles.stepNumText}>4</Text></View>
-            <Text style={styles.stepText}>
-              Tap "Check Activation" below — the app will connect automatically
-            </Text>
-          </View>
-        </View>
-
-        {/* Status */}
         {isPolling && (
           <View style={styles.statusRow}>
-            {isFetching ? (
-              <ActivityIndicator size="small" color="#3B82F6" />
-            ) : (
-              <View style={styles.waitDot} />
-            )}
+            {isFetching
+              ? <ActivityIndicator size="small" color="#3B82F6" />
+              : <View style={styles.statusDot} />
+            }
             <Text style={styles.statusText}>
-              {isFetching ? 'Checking...' : 'Waiting for activation...'}
+              {isFetching ? 'Checking...' : 'Waiting — polls every 8s'}
             </Text>
           </View>
         )}
+      </View>
 
-        {/* Check Button */}
+      {/* Right: Instructions + button */}
+      <ScrollView
+        style={styles.right}
+        contentContainerStyle={[styles.rightContent, { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 20 }]}
+        showsVerticalScrollIndicator={false}
+      >
+        <Text style={styles.instrTitle}>How to activate</Text>
+        {[
+          'Go to your provider's website or admin panel',
+          'Enter the MAC address shown on the left',
+          'Enter your M3U URL or Xtream Codes credentials',
+          'Tap "Check Activation" — app will connect automatically',
+        ].map((step, i) => (
+          <View key={i} style={styles.step}>
+            <View style={styles.stepNum}><Text style={styles.stepNumText}>{i + 1}</Text></View>
+            <Text style={styles.stepText}>{step}</Text>
+          </View>
+        ))}
+
         <TouchableOpacity
           style={[styles.checkBtn, isFetching && styles.checkBtnDisabled]}
           onPress={handleCheck}
           activeOpacity={0.8}
           disabled={isFetching}
         >
-          {isFetching ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.checkBtnText}>
-              {isPolling ? '↻ Refresh Activation' : 'Check Activation'}
-            </Text>
-          )}
+          {isFetching
+            ? <ActivityIndicator color="#fff" />
+            : <Text style={styles.checkBtnText}>{isPolling ? '↻ Refresh' : 'Check Activation'}</Text>
+          }
         </TouchableOpacity>
 
         {isPolling && (
@@ -181,65 +163,45 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#0A0A0F',
+    flexDirection: 'row',
   },
-  content: {
-    paddingHorizontal: 24,
-    paddingBottom: 40,
+  left: {
+    width: '45%',
+    paddingHorizontal: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
     gap: 20,
-    alignItems: 'center',
+    borderRightWidth: 1,
+    borderRightColor: '#1E1E30',
   },
-  logoWrap: {
-    alignItems: 'center',
-    paddingTop: 32,
-    gap: 6,
-  },
+  logo: { alignItems: 'center', gap: 6 },
   logoCircle: {
-    width: 72,
-    height: 72,
-    borderRadius: 20,
+    width: 64,
+    height: 64,
+    borderRadius: 18,
     backgroundColor: '#1A1A28',
     borderWidth: 1,
     borderColor: '#252538',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 6,
   },
-  logoIcon: {
-    fontSize: 28,
-    color: '#3B82F6',
-  },
-  logoName: {
-    fontSize: 24,
-    fontFamily: 'Inter_700Bold',
-    color: '#F2F2F2',
-    letterSpacing: -0.5,
-  },
-  logoTagline: {
-    fontSize: 13,
-    fontFamily: 'Inter_400Regular',
-    color: '#6B7280',
-    letterSpacing: 1.5,
-    textTransform: 'uppercase',
-  },
+  logoIcon: { fontSize: 26, color: '#3B82F6' },
+  logoName: { fontSize: 22, fontFamily: 'Inter_700Bold', color: '#F2F2F2', letterSpacing: -0.5 },
+  logoTagline: { fontSize: 10, fontFamily: 'Inter_600SemiBold', color: '#6B7280', letterSpacing: 2 },
   macCard: {
     width: '100%',
     backgroundColor: '#13131E',
     borderWidth: 1,
     borderColor: '#3B82F6',
-    borderRadius: 16,
-    padding: 24,
+    borderRadius: 14,
+    padding: 20,
     alignItems: 'center',
-    gap: 12,
+    gap: 10,
   },
-  macLabel: {
-    fontSize: 10,
-    fontFamily: 'Inter_600SemiBold',
-    color: '#6B7280',
-    letterSpacing: 1.5,
-    textTransform: 'uppercase',
-  },
+  macLabel: { fontSize: 9, fontFamily: 'Inter_600SemiBold', color: '#6B7280', letterSpacing: 1.5 },
   macAddress: {
-    fontSize: 26,
+    fontSize: Platform.OS === 'web' ? 20 : 22,
     fontFamily: Platform.select({ ios: 'Courier New', android: 'monospace', default: 'Inter_700Bold' }),
     color: '#F2F2F2',
     letterSpacing: 2,
@@ -250,94 +212,33 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#252538',
     borderRadius: 99,
-    paddingHorizontal: 20,
-    paddingVertical: 8,
-    marginTop: 4,
+    paddingHorizontal: 16,
+    paddingVertical: 6,
   },
-  copyBtnText: {
-    fontSize: 13,
-    fontFamily: 'Inter_500Medium',
-    color: '#3B82F6',
-  },
-  instructionCard: {
-    width: '100%',
-    backgroundColor: '#13131E',
-    borderWidth: 1,
-    borderColor: '#252538',
-    borderRadius: 16,
-    padding: 20,
-    gap: 14,
-  },
-  instructionTitle: {
-    fontSize: 15,
-    fontFamily: 'Inter_600SemiBold',
-    color: '#F2F2F2',
-  },
-  step: {
-    flexDirection: 'row',
-    gap: 12,
-    alignItems: 'flex-start',
-  },
+  copyText: { fontSize: 12, fontFamily: 'Inter_500Medium', color: '#3B82F6' },
+  statusRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  statusDot: { width: 7, height: 7, borderRadius: 99, backgroundColor: '#3B82F6' },
+  statusText: { fontSize: 12, fontFamily: 'Inter_400Regular', color: '#6B7280' },
+  right: { flex: 1 },
+  rightContent: { paddingHorizontal: 32, gap: 14 },
+  instrTitle: { fontSize: 18, fontFamily: 'Inter_600SemiBold', color: '#F2F2F2', marginBottom: 4 },
+  step: { flexDirection: 'row', gap: 12, alignItems: 'flex-start' },
   stepNum: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: '#1A1A28',
-    borderWidth: 1,
-    borderColor: '#3B82F6',
-    justifyContent: 'center',
-    alignItems: 'center',
-    flexShrink: 0,
-    marginTop: 1,
+    width: 22, height: 22, borderRadius: 11,
+    backgroundColor: '#1A1A28', borderWidth: 1, borderColor: '#3B82F6',
+    justifyContent: 'center', alignItems: 'center', flexShrink: 0, marginTop: 1,
   },
-  stepNumText: {
-    fontSize: 11,
-    fontFamily: 'Inter_700Bold',
-    color: '#3B82F6',
-  },
-  stepText: {
-    flex: 1,
-    fontSize: 14,
-    fontFamily: 'Inter_400Regular',
-    color: '#C8C8C8',
-    lineHeight: 20,
-  },
-  statusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  waitDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#3B82F6',
-  },
-  statusText: {
-    fontSize: 13,
-    fontFamily: 'Inter_400Regular',
-    color: '#6B7280',
-  },
+  stepNumText: { fontSize: 11, fontFamily: 'Inter_700Bold', color: '#3B82F6' },
+  stepText: { flex: 1, fontSize: 13, fontFamily: 'Inter_400Regular', color: '#C8C8C8', lineHeight: 20 },
   checkBtn: {
-    width: '100%',
     backgroundColor: '#3B82F6',
-    borderRadius: 14,
-    paddingVertical: 15,
+    borderRadius: 12,
+    paddingVertical: 14,
     alignItems: 'center',
     justifyContent: 'center',
+    marginTop: 8,
   },
-  checkBtnDisabled: {
-    opacity: 0.6,
-  },
-  checkBtnText: {
-    fontSize: 16,
-    fontFamily: 'Inter_600SemiBold',
-    color: '#FFFFFF',
-  },
-  autoHint: {
-    fontSize: 12,
-    fontFamily: 'Inter_400Regular',
-    color: '#6B7280',
-    textAlign: 'center',
-  },
+  checkBtnDisabled: { opacity: 0.6 },
+  checkBtnText: { fontSize: 15, fontFamily: 'Inter_600SemiBold', color: '#FFFFFF' },
+  autoHint: { fontSize: 11, fontFamily: 'Inter_400Regular', color: '#6B7280', textAlign: 'center' },
 });
