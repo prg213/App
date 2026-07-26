@@ -12,9 +12,25 @@ import {
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useQuery } from '@tanstack/react-query';
 import { useAppContext } from '@/context/AppContext';
-import { useCheckActivation } from '@workspace/api-client-react';
 import type { Credentials } from '@/types';
+
+async function checkActivation(mac: string) {
+  const base = process.env.EXPO_PUBLIC_DOMAIN
+    ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
+    : '';
+  const res = await fetch(`${base}/api/activate?mac=${encodeURIComponent(mac)}`);
+  if (!res.ok) throw new Error('Not activated');
+  return res.json() as Promise<{
+    status: 'active' | 'pending';
+    type?: string;
+    host?: string;
+    username?: string;
+    password?: string;
+    m3u_url?: string;
+  }>;
+}
 
 export default function ActivationScreen() {
   const insets = useSafeAreaInsets();
@@ -34,16 +50,13 @@ export default function ActivationScreen() {
   }, [pulse]);
 
   // Poll activation endpoint
-  const { data, isFetching, refetch } = useCheckActivation(
-    { mac: deviceMac },
-    {
-      query: {
-        enabled: !!deviceMac && !isActivated && isPolling,
-        refetchInterval: isPolling ? 8000 : false,
-        retry: false,
-      },
-    },
-  );
+  const { data, isFetching, refetch } = useQuery({
+    queryKey: ['activation', deviceMac],
+    queryFn: () => checkActivation(deviceMac),
+    enabled: !!deviceMac && !isActivated && isPolling,
+    refetchInterval: isPolling ? 8000 : false,
+    retry: false,
+  });
 
   // Handle successful activation
   useEffect(() => {
