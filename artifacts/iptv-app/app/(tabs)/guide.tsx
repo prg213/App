@@ -680,11 +680,7 @@ export default function GuideScreen() {
     for (const ch of channels) {
       if (ch.groupTitle) seen.add(ch.groupTitle);
     }
-    return Array.from(seen).sort((a, b) => {
-      const na = categoryNameMap[a] ?? a;
-      const nb = categoryNameMap[b] ?? b;
-      return na.localeCompare(nb);
-    });
+    return Array.from(seen);
   }, [channels, categoryNameMap]);
 
   const channelCountByCategory = useMemo(() => {
