@@ -54,6 +54,63 @@ jobs:
               r'# ===.*?# ===+\n+minimumReleaseAge:\s*\d+\n+minimumReleaseAgeExclude:.*?(?=\n\S)',
               '',
               content,
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: 'Build profile'
+        required: true
+        default: 'preview'
+        type: choice
+        options:
+          - preview
+          - production
+
+jobs:
+  build:
+    name: Build APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Patch configs for EAS
+        run: |
+          python3 - <<'EOF'
+          import json, re
+
+          with open("package.json", "r") as f:
+              pkg = json.load(f)
+          pkg["packageManager"] = "pnpm@9.0.0"
+          with open("package.json", "w") as f:
+              json.dump(pkg, f, indent=2)
+
+          with open("artifacts/iptv-app/app.json", "r") as f:
+              app = json.load(f)
+          app["expo"].setdefault("android", {})["package"] = "com.prg213.streamvault"
+          app["expo"]["newArchEnabled"] = False
+          with open("artifacts/iptv-app/app.json", "w") as f:
+              json.dump(app, f, indent=2)
+
+          with open("pnpm-workspace.yaml", "r") as f:
+              content = f.read()
+          content = re.sub(
+              r'# ===.*?# ===+\n+minimumReleaseAge:\s*\d+\n+minimumReleaseAgeExclude:.*?(?=\n\S)',
+              '',
+              content,
               flags=re.DOTALL
           )
           with open("pnpm-workspace.yaml", "w") as f:
@@ -94,26 +151,3 @@ jobs:
           name: StreamVault-${{ github.event.inputs.profile }}-${{ github.run_number }}
           path: artifacts/iptv-app/streamvault.apk
           retention-days: 30
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-
-      - name: Build APK
-        working-directory: artifacts/iptv-app
-        run: eas build --platform android --profile ${{ github.event.inputs.profile }} --non-interactive
-        env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-
-      - name: Download APK
-        working-directory: artifacts/iptv-app
-        run: |
-          APK_URL=$(eas build:list --platform android --limit 1 --json --non-interactive | python3 -c "import sys,json; builds=json.load(sys.stdin); print(builds[0]['artifacts']['buildUrl'])")
-          curl -L "$APK_URL" -o streamvault.apk
-        env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-
-      - name: Upload APK artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: StreamVault-${{ github.event.inputs.profile }}-${{ github.run_number }}
-          path: artifacts/iptv-app/streamvault.apk
-          retention-days: 30
-          
