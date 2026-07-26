@@ -149,7 +149,7 @@ export function getXtreamCatchupUrl(
   const base = baseUrl(creds.host);
   const u = encodeURIComponent(creds.username);
   const p = encodeURIComponent(creds.password);
-  return `${base}/${u}/${p}/timeshift/${streamId}/${durationMinutes}/${start}.ts`;
+  return `${base}/${u}/${p}/timeshift/${streamId}/${durationMinutes}/${start}.m3u8`;
 }
 
 // ─── VOD / Movies ────────────────────────────────────────────────────────────
