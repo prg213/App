@@ -51,7 +51,9 @@ jobs:
 
       - name: Build APK
         run: eas build --platform android --profile ${{ github.event.inputs.profile || 'preview' }} --non-interactive
-
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+     
       - name: Download APK
         run: |
           APK_URL=$(eas build:list --platform android --limit 1 --json --non-interactive | python3 -c "import sys,json; builds=json.load(sys.stdin); print(builds[0]['artifacts']['buildUrl'])")
