@@ -334,7 +334,7 @@ function CategoryGrid({
       {/* Header */}
       <View style={[styles.topBar, { borderBottomColor: colors.border, paddingTop: insets.top + 4 }]}>
         <Text style={[styles.screenTitle, { color: colors.foreground }]}>TV Guide</Text>
-        <Text style={[styles.screenSub, { color: colors.mutedForeground }]}>Select a category to view the 7-day schedule</Text>
+        <Text style={[styles.screenSub, { color: colors.mutedForeground }]}>Select a category to view the 3-day schedule</Text>
         {epgLoading && (
           <View style={styles.loadingBadge}>
             <ActivityIndicator size="small" color={colors.primary} />
