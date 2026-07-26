@@ -210,6 +210,7 @@ export default function MoviesScreen() {
                 rating={item.rating}
                 genre={item.genre}
                 isFav={favSet.has(item.id)}
+                compact={isFavsSelected}
                 onFavPress={() => handleToggleFav(item)}
                 onPress={() => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);

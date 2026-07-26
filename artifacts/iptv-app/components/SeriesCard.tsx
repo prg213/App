@@ -15,15 +15,16 @@ interface SeriesCardProps {
   rating?: string;
   genre?: string;
   isFav?: boolean;
+  compact?: boolean;
   onPress: () => void;
   onFavPress?: () => void;
 }
 
-function SeriesCardComponent({ name, cover, rating, genre, isFav, onPress, onFavPress }: SeriesCardProps) {
+function SeriesCardComponent({ name, cover, rating, genre, isFav, compact, onPress, onFavPress }: SeriesCardProps) {
   const colors = useColors();
 
   return (
-    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.75}>
+    <TouchableOpacity style={[styles.card, compact && styles.cardCompact]} onPress={onPress} activeOpacity={0.75}>
       <View style={[styles.poster, { backgroundColor: colors.secondary }]}>
         {cover ? (
           <Image source={{ uri: cover }} style={StyleSheet.absoluteFill} resizeMode="cover" />
@@ -59,11 +60,11 @@ function SeriesCardComponent({ name, cover, rating, genre, isFav, onPress, onFav
         )}
       </View>
 
-      <View style={styles.info}>
-        <Text style={[styles.title, { color: colors.foreground }]} numberOfLines={2}>
+      <View style={[styles.info, compact && styles.infoCompact]}>
+        <Text style={[styles.title, { color: colors.foreground }, compact && styles.titleCompact]} numberOfLines={2}>
           {name}
         </Text>
-        {genre ? (
+        {!compact && genre ? (
           <Text style={[styles.genre, { color: colors.mutedForeground }]} numberOfLines={1}>
             {genre.split(',')[0]}
           </Text>
@@ -79,6 +80,9 @@ const styles = StyleSheet.create({
   card: {
     flex: 1,
     padding: 5,
+  },
+  cardCompact: {
+    padding: 3,
   },
   poster: {
     width: '100%',
@@ -141,10 +145,17 @@ const styles = StyleSheet.create({
     gap: 3,
     paddingHorizontal: 2,
   },
+  infoCompact: {
+    marginTop: 4,
+  },
   title: {
     fontSize: 13,
     fontFamily: 'Inter_500Medium',
     lineHeight: 18,
+  },
+  titleCompact: {
+    fontSize: 10,
+    lineHeight: 13,
   },
   genre: {
     fontSize: 11,
