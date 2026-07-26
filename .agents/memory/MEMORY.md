@@ -1,0 +1,1 @@
+- [StreamVault IPTV Architecture](streamvault-architecture.md) — Expo + Express monorepo IPTV app; credentials in AsyncStorage, pseudo-MAC generation, polling activation flow, Xtream Codes + M3U support.

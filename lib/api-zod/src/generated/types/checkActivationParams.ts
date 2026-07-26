@@ -6,6 +6,9 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface HealthStatus {
-  status: string;
-}
+export type CheckActivationParams = {
+/**
+ * Device MAC address (e.g. AA:BB:CC:DD:EE:FF)
+ */
+mac: string;
+};

@@ -6,6 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface HealthStatus {
-  status: string;
-}
+export type DeviceInputType = typeof DeviceInputType[keyof typeof DeviceInputType];
+
+
+export const DeviceInputType = {
+  xtream: 'xtream',
+  m3u: 'm3u',
+} as const;

@@ -3,13 +3,17 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: StreamVault IPTV API — activation and device management
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: activation
+    description: Device activation
+  - name: devices
+    description: Device management
 paths:
   /healthz:
     get:
@@ -24,6 +28,110 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /activate:
+    get:
+      operationId: checkActivation
+      tags: [activation]
+      summary: Check device activation status
+      description: Returns activation credentials if the device MAC has been linked
+      parameters:
+        - name: mac
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Device MAC address (e.g. AA:BB:CC:DD:EE:FF)
+      responses:
+        "200":
+          description: Activation status and optional credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActivationResponse"
+
+  /devices:
+    get:
+      operationId: listDevices
+      tags: [devices]
+      summary: List all registered devices
+      responses:
+        "200":
+          description: List of devices
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Device"
+    post:
+      operationId: createDevice
+      tags: [devices]
+      summary: Register a new device with IPTV credentials
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeviceInput"
+      responses:
+        "201":
+          description: Created device
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Device"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /devices/{id}:
+    put:
+      operationId: updateDevice
+      tags: [devices]
+      summary: Update device credentials
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeviceUpdate"
+      responses:
+        "200":
+          description: Updated device
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Device"
+        "404":
+          description: Device not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteDevice
+      tags: [devices]
+      summary: Remove a device and its credentials
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +142,88 @@ components:
       required:
         - status
 
+    ActivationResponse:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [active, pending]
+        type:
+          type: ["string", "null"]
+          description: "xtream or m3u"
+        host:
+          type: ["string", "null"]
+        username:
+          type: ["string", "null"]
+        password:
+          type: ["string", "null"]
+        m3u_url:
+          type: ["string", "null"]
+
+    Device:
+      type: object
+      required: [id, mac_address, created_at]
+      properties:
+        id:
+          type: integer
+        mac_address:
+          type: string
+        name:
+          type: ["string", "null"]
+        type:
+          type: ["string", "null"]
+        host:
+          type: ["string", "null"]
+        username:
+          type: ["string", "null"]
+        password:
+          type: ["string", "null"]
+        m3u_url:
+          type: ["string", "null"]
+        created_at:
+          type: string
+
+    DeviceInput:
+      type: object
+      required: [mac_address, type]
+      properties:
+        mac_address:
+          type: string
+        name:
+          type: string
+        type:
+          type: string
+          enum: [xtream, m3u]
+        host:
+          type: string
+        username:
+          type: string
+        password:
+          type: string
+        m3u_url:
+          type: string
+
+    DeviceUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+          enum: [xtream, m3u]
+        host:
+          type: string
+        username:
+          type: string
+        password:
+          type: string
+        m3u_url:
+          type: string
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
