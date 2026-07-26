@@ -102,6 +102,35 @@ export interface FavoriteChannel {
   logo?: string;
   groupTitle: string;
   streamUrl: string;
+  epgId?: string;
+}
+
+export interface FavoriteMovie {
+  id: string;
+  name: string;
+  cover?: string;
+  rating?: string;
+  genre?: string;
+  streamId: string;
+  containerExtension: string;
+  categoryId: string;
+  plot?: string;
+  cast?: string;
+  director?: string;
+  releaseDate?: string;
+  duration?: string;
+}
+
+export interface FavoriteSeries {
+  id: string;
+  name: string;
+  cover?: string;
+  rating?: string;
+  genre?: string;
+  categoryId: string;
+  plot?: string;
+  cast?: string;
+  director?: string;
 }
 
 export interface EpgProgram {

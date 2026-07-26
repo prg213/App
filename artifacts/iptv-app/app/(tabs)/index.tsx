@@ -33,6 +33,9 @@ import { fetchAndParseM3U } from '@/services/m3uParser';
 import { fetchAndParseXmltv } from '@/services/epgService';
 import type { Channel, Category, EpgProgram, FavoriteChannel } from '@/types';
 
+const FAVS_CAT_ID = '__favs';
+const ALL_CAT_ID = '__all';
+
 function buildCreds(c: ReturnType<typeof useAppContext>['credentials']) {
   return { host: c!.host!, username: c!.username!, password: c!.password! };
 }
@@ -86,7 +89,7 @@ const ChannelRow = React.memo(function ChannelRow({
   nowPlaying,
   colors,
   onPress,
-  onLongPress,
+  onHeartPress,
 }: {
   channel: Channel;
   isSelected: boolean;
@@ -94,7 +97,7 @@ const ChannelRow = React.memo(function ChannelRow({
   nowPlaying?: string;
   colors: ReturnType<typeof useColors>;
   onPress: () => void;
-  onLongPress: () => void;
+  onHeartPress: () => void;
 }) {
   return (
     <TouchableOpacity
@@ -104,7 +107,6 @@ const ChannelRow = React.memo(function ChannelRow({
         { borderBottomColor: colors.border },
       ]}
       onPress={onPress}
-      onLongPress={onLongPress}
       activeOpacity={0.7}
     >
       {isSelected && <View style={styles.selectedPip} />}
@@ -138,7 +140,16 @@ const ChannelRow = React.memo(function ChannelRow({
           </Text>
         ) : null}
       </View>
-      {isFav && <Text style={{ color: '#3B82F6', fontSize: 10, flexShrink: 0 }}>★</Text>}
+      <TouchableOpacity
+        onPress={onHeartPress}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        activeOpacity={0.7}
+        style={styles.heartBtn}
+      >
+        <Text style={[styles.heartIcon, { color: isFav ? '#EF4444' : colors.mutedForeground }]}>
+          {isFav ? '♥' : '♡'}
+        </Text>
+      </TouchableOpacity>
     </TouchableOpacity>
   );
 });
@@ -156,11 +167,8 @@ export default function LiveTVScreen() {
   const creds = isXtream ? buildCreds(credentials) : null;
   const xmltvUrl = creds ? getXtreamXmltvUrl(creds) : null;
 
-  const [selectedCatId, setSelectedCatId] = useState<string>('__all');
+  const [selectedCatId, setSelectedCatId] = useState<string>(FAVS_CAT_ID);
   const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null);
-  // Tracks the last channel that was actually loaded — never cleared when
-  // browsing categories, so the preview box stays visible while the user
-  // navigates the list. Only cleared when leaving the Live TV tab entirely.
   const [playingChannel, setPlayingChannel] = useState<Channel | null>(null);
   const [favorites, setFavorites] = useState<FavoriteChannel[]>([]);
   const [isBuffering, setIsBuffering] = useState(false);
@@ -174,9 +182,6 @@ export default function LiveTVScreen() {
   }, []);
 
   // ── Video player ─────────────────────────────────────────────────────────
-  // Always pass null as the initial source so the player instance is stable
-  // and never reinitialises when selectedChannel changes (e.g. back to categories).
-  // All stream loading is done via replaceAsync in the effect below.
   const player = useVideoPlayer(null, (p) => {
     p.loop = false;
   });
@@ -187,7 +192,6 @@ export default function LiveTVScreen() {
     setHasError(false);
     const load = async () => {
       try {
-        // replaceAsync is on the prototype — avoids blocking the main thread (iOS warning fix)
         await (player as any).replaceAsync(selectedChannel.streamUrl);
         player.play();
       } catch {
@@ -209,18 +213,14 @@ export default function LiveTVScreen() {
     return () => subs.forEach((s) => s.remove());
   }, [player]);
 
-  // True while navigating to the fullscreen /player route so useFocusEffect
-  // knows NOT to stop the channel — we're just overlaying the player on top.
   const goingToPlayerRef = useRef(false);
 
-  // Stop + reset only when the user picks a different tab from the sidebar.
-  // Going to the fullscreen player sets goingToPlayerRef so we skip the stop.
   useFocusEffect(
     useCallback(() => {
       return () => {
         if (goingToPlayerRef.current) {
           goingToPlayerRef.current = false;
-          return; // coming from/going to fullscreen — keep channel alive
+          return;
         }
         if (!isWeb && player) {
           try { player.pause(); } catch {}
@@ -246,7 +246,11 @@ export default function LiveTVScreen() {
   });
 
   const allCategories: Category[] = useMemo(
-    () => [{ id: '__all', name: 'All Channels' }, ...rawCategories],
+    () => [
+      { id: FAVS_CAT_ID, name: '♥ Favourites' },
+      { id: ALL_CAT_ID, name: 'All Channels' },
+      ...rawCategories,
+    ],
     [rawCategories],
   );
 
@@ -255,23 +259,40 @@ export default function LiveTVScreen() {
     [allCategories, selectedCatId],
   );
 
-  const { data: channels = [], isLoading: channelsLoading } = useQuery<Channel[]>({
+  const isFavsSelected = selectedCatId === FAVS_CAT_ID;
+
+  const { data: fetchedChannels = [], isLoading: channelsLoading } = useQuery<Channel[]>({
     queryKey: ['live-channels', selectedCatId, credentials],
     queryFn: async () => {
       if (!credentials) return [];
       if (credentials.type === 'xtream') {
-        const catId = selectedCatId === '__all' ? undefined : selectedCatId;
+        const catId = selectedCatId === ALL_CAT_ID ? undefined : selectedCatId;
         return getXtreamLiveStreams(buildCreds(credentials), catId);
       }
       if (credentials.m3uUrl) {
         const { channels: all } = await fetchAndParseM3U(credentials.m3uUrl);
-        return selectedCatId === '__all' ? all : all.filter((c) => c.groupTitle === selectedCatId);
+        return selectedCatId === ALL_CAT_ID ? all : all.filter((c) => c.groupTitle === selectedCatId);
       }
       return [];
     },
-    enabled: !!credentials,
+    enabled: !!credentials && !isFavsSelected,
     staleTime: 5 * 60_000,
   });
+
+  // When Favourites is selected, use stored favourites as the channel list
+  const channels: Channel[] = useMemo(() => {
+    if (isFavsSelected) {
+      return favorites.map((f) => ({
+        id: f.id,
+        name: f.name,
+        logo: f.logo,
+        groupTitle: f.groupTitle,
+        streamUrl: f.streamUrl,
+        epgId: f.epgId,
+      }));
+    }
+    return fetchedChannels;
+  }, [isFavsSelected, favorites, fetchedChannels]);
 
   const { data: epgMap } = useQuery<Map<string, EpgProgram[]>>({
     queryKey: ['xmltv-epg', credentials],
@@ -296,11 +317,9 @@ export default function LiveTVScreen() {
     return map;
   }, [epgMap, nowTs]);
 
-  // All programmes for the selected channel (current + upcoming)
   const channelEpg = useMemo(() => {
     if (!selectedChannel || !epgMap) return [];
     const progs = epgMap.get(selectedChannel.epgId ?? selectedChannel.id) ?? [];
-    // Return current onwards (up to 12 entries)
     const nowIdx = progs.findIndex((p) => p.end.getTime() > nowTs);
     return nowIdx >= 0 ? progs.slice(nowIdx, nowIdx + 12) : progs.slice(0, 12);
   }, [selectedChannel, epgMap, nowTs]);
@@ -324,17 +343,22 @@ export default function LiveTVScreen() {
     setPlayingChannel(ch);
   }, []);
 
-  const handleLongPress = useCallback(async (ch: Channel) => {
+  const handleToggleFav = useCallback(async (ch: Channel) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     const updated = await StorageService.toggleFavorite({
-      id: ch.id, name: ch.name, logo: ch.logo, groupTitle: ch.groupTitle, streamUrl: ch.streamUrl,
+      id: ch.id,
+      name: ch.name,
+      logo: ch.logo,
+      groupTitle: ch.groupTitle,
+      streamUrl: ch.streamUrl,
+      epgId: ch.epgId,
     });
     setFavorites(updated);
   }, []);
 
   const handleWatch = useCallback(() => {
     if (!selectedChannel) return;
-    goingToPlayerRef.current = true; // tell useFocusEffect not to stop the channel
+    goingToPlayerRef.current = true;
     router.push({
       pathname: '/player',
       params: {
@@ -364,9 +388,9 @@ export default function LiveTVScreen() {
       nowPlaying={nowPlayingMap.get(item.epgId ?? item.id)}
       colors={colors}
       onPress={() => handleSelectChannel(item)}
-      onLongPress={() => handleLongPress(item)}
+      onHeartPress={() => handleToggleFav(item)}
     />
-  ), [selectedChannel?.id, favSet, nowPlayingMap, colors, handleSelectChannel, handleLongPress]);
+  ), [selectedChannel?.id, favSet, nowPlayingMap, colors, handleSelectChannel, handleToggleFav]);
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -393,8 +417,16 @@ export default function LiveTVScreen() {
         <Text style={[styles.panelHeader, { color: colors.mutedForeground, borderBottomColor: colors.border }]}>
           {currentCat?.name?.toUpperCase() ?? 'CHANNELS'}
         </Text>
-        {channelsLoading ? (
+        {channelsLoading && !isFavsSelected ? (
           <ActivityIndicator color={colors.primary} style={{ marginTop: 32 }} />
+        ) : channels.length === 0 && isFavsSelected ? (
+          <View style={styles.noSel}>
+            <Text style={{ fontSize: 32, marginBottom: 8 }}>♡</Text>
+            <Text style={[styles.noSelTitle, { color: colors.foreground }]}>No favourites yet</Text>
+            <Text style={[styles.noSelSub, { color: colors.mutedForeground }]}>
+              Tap ♡ next to any channel to add it here.
+            </Text>
+          </View>
         ) : (
           <FlatList
             data={channels}
@@ -412,8 +444,6 @@ export default function LiveTVScreen() {
       {/* ══ RIGHT: preview + EPG ══ */}
       <View style={[styles.previewPanel, { paddingTop: insets.top + 4, paddingRight: insets.right + 8 }]}>
 
-        {/* VideoView is ALWAYS mounted so unmounting never pauses the player.
-            It is simply hidden (display:none) when no channel is selected. */}
         {!isWeb && (
           <TouchableOpacity
             style={[styles.videoWrap, !playingChannel && { display: 'none' }]}
@@ -448,7 +478,6 @@ export default function LiveTVScreen() {
 
         {selectedChannel ? (
           <>
-            {/* EPG / TV Guide for this channel */}
             <Text style={[styles.epgHeader, { color: colors.mutedForeground }]}>TV GUIDE</Text>
             {channelEpg.length > 0 ? (
               <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: insets.bottom + 8 }}>
@@ -503,7 +532,6 @@ export default function LiveTVScreen() {
             )}
           </>
         ) : (
-          /* No channel selected */
           <View style={styles.noSel}>
             <Text style={{ fontSize: 36, marginBottom: 10 }}>📺</Text>
             <Text style={[styles.noSelTitle, { color: colors.foreground }]}>Select a channel</Text>
@@ -569,6 +597,8 @@ const styles = StyleSheet.create({
   chInitials: { fontSize: 10, fontFamily: 'Inter_700Bold' },
   chName: { fontSize: 12, fontFamily: 'Inter_500Medium' },
   chSub: { fontSize: 10, fontFamily: 'Inter_400Regular' },
+  heartBtn: { flexShrink: 0, paddingHorizontal: 4 },
+  heartIcon: { fontSize: 16 },
 
   // ── Preview / right panel ──
   previewPanel: {

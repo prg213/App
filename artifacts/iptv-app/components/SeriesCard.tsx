@@ -14,10 +14,12 @@ interface SeriesCardProps {
   cover?: string;
   rating?: string;
   genre?: string;
+  isFav?: boolean;
   onPress: () => void;
+  onFavPress?: () => void;
 }
 
-function SeriesCardComponent({ name, cover, rating, genre, onPress }: SeriesCardProps) {
+function SeriesCardComponent({ name, cover, rating, genre, isFav, onPress, onFavPress }: SeriesCardProps) {
   const colors = useColors();
 
   return (
@@ -40,6 +42,20 @@ function SeriesCardComponent({ name, cover, rating, genre, onPress }: SeriesCard
           <View style={[styles.ratingBadge, { backgroundColor: 'rgba(0,0,0,0.75)' }]}>
             <Text style={styles.ratingText}>★ {parseFloat(rating).toFixed(1)}</Text>
           </View>
+        )}
+
+        {/* Heart favourite button */}
+        {onFavPress && (
+          <TouchableOpacity
+            style={styles.heartBtn}
+            onPress={(e) => { e.stopPropagation(); onFavPress(); }}
+            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.heartIcon, { color: isFav ? '#EF4444' : 'rgba(255,255,255,0.7)' }]}>
+              {isFav ? '♥' : '♡'}
+            </Text>
+          </TouchableOpacity>
         )}
       </View>
 
@@ -104,6 +120,21 @@ const styles = StyleSheet.create({
     color: '#F59E0B',
     fontSize: 11,
     fontFamily: 'Inter_600SemiBold',
+  },
+  heartBtn: {
+    position: 'absolute',
+    top: 6,
+    left: 6,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderRadius: 99,
+    width: 26,
+    height: 26,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  heartIcon: {
+    fontSize: 14,
+    lineHeight: 16,
   },
   info: {
     marginTop: 7,

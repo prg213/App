@@ -1,6 +1,6 @@
 import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { Credentials, FavoriteChannel, WatchHistoryEntry } from '@/types';
+import type { Credentials, FavoriteChannel, FavoriteMovie, FavoriteSeries, WatchHistoryEntry } from '@/types';
 
 // Credentials live in SecureStore (Android Keystore / iOS Keychain).
 // This survives Expo Go bundle reloads and Metro restarts — unlike AsyncStorage
@@ -10,6 +10,8 @@ const SECURE_CREDS_KEY = 'sv_credentials';
 // Everything else (favourites, history, cache) stays in AsyncStorage.
 const KEYS = {
   FAVORITES: 'sv_favorites',
+  MOVIE_FAVORITES: 'sv_movie_favorites',
+  SERIES_FAVORITES: 'sv_series_favorites',
   HISTORY: 'sv_history',
   CHANNELS_CACHE: 'sv_channels_cache',
   MOVIES_CACHE: 'sv_movies_cache',
@@ -39,13 +41,15 @@ export const StorageService = {
     }
     await AsyncStorage.multiRemove([
       KEYS.FAVORITES,
+      KEYS.MOVIE_FAVORITES,
+      KEYS.SERIES_FAVORITES,
       KEYS.HISTORY,
       KEYS.CHANNELS_CACHE,
       KEYS.MOVIES_CACHE,
     ]);
   },
 
-  // ── Favourites (AsyncStorage) ──────────────────────────────────────────────
+  // ── Channel Favourites (AsyncStorage) ─────────────────────────────────────
 
   async getFavorites(): Promise<FavoriteChannel[]> {
     try {
@@ -65,6 +69,42 @@ export const StorageService = {
       ? current.filter((f) => f.id !== channel.id)
       : [channel, ...current];
     await StorageService.saveFavorites(updated);
+    return updated;
+  },
+
+  // ── Movie Favourites (AsyncStorage) ───────────────────────────────────────
+
+  async getMovieFavorites(): Promise<FavoriteMovie[]> {
+    try {
+      const data = await AsyncStorage.getItem(KEYS.MOVIE_FAVORITES);
+      return data ? (JSON.parse(data) as FavoriteMovie[]) : [];
+    } catch {
+      return [];
+    }
+  },
+  async toggleMovieFavorite(movie: FavoriteMovie): Promise<FavoriteMovie[]> {
+    const current = await StorageService.getMovieFavorites();
+    const exists = current.find((f) => f.id === movie.id);
+    const updated = exists ? current.filter((f) => f.id !== movie.id) : [movie, ...current];
+    await AsyncStorage.setItem(KEYS.MOVIE_FAVORITES, JSON.stringify(updated));
+    return updated;
+  },
+
+  // ── Series Favourites (AsyncStorage) ──────────────────────────────────────
+
+  async getSeriesFavorites(): Promise<FavoriteSeries[]> {
+    try {
+      const data = await AsyncStorage.getItem(KEYS.SERIES_FAVORITES);
+      return data ? (JSON.parse(data) as FavoriteSeries[]) : [];
+    } catch {
+      return [];
+    }
+  },
+  async toggleSeriesFavorite(series: FavoriteSeries): Promise<FavoriteSeries[]> {
+    const current = await StorageService.getSeriesFavorites();
+    const exists = current.find((f) => f.id === series.id);
+    const updated = exists ? current.filter((f) => f.id !== series.id) : [series, ...current];
+    await AsyncStorage.setItem(KEYS.SERIES_FAVORITES, JSON.stringify(updated));
     return updated;
   },
 

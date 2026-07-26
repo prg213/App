@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   FlatList,
   RefreshControl,
@@ -17,7 +17,10 @@ import { useAppContext } from '@/context/AppContext';
 import { MovieCard } from '@/components/MovieCard';
 import { MovieCardSkeleton } from '@/components/SkeletonCard';
 import { getXtreamVodCategories, getXtreamVodStreams } from '@/services/xtreamApi';
-import type { Movie, Category } from '@/types';
+import { StorageService } from '@/services/storage';
+import type { Movie, Category, FavoriteMovie } from '@/types';
+
+const FAVS_CAT_ID = '__favs';
 
 function buildCreds(c: ReturnType<typeof useAppContext>['credentials']) {
   return { host: c!.host!, username: c!.username!, password: c!.password! };
@@ -29,28 +32,83 @@ export default function MoviesScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { credentials } = useAppContext();
-  const [selectedCat, setSelectedCat] = useState<string | null>(null);
+  const [selectedCat, setSelectedCat] = useState<string | null>(FAVS_CAT_ID);
   const [search, setSearch] = useState('');
+  const [favMovies, setFavMovies] = useState<FavoriteMovie[]>([]);
   const isXtream = credentials?.type === 'xtream';
 
-  const { data: categories = [] } = useQuery<Category[]>({
+  useEffect(() => {
+    StorageService.getMovieFavorites().then(setFavMovies);
+  }, []);
+
+  const favSet = useMemo(() => new Set(favMovies.map((f) => f.id)), [favMovies]);
+  const isFavsSelected = selectedCat === FAVS_CAT_ID;
+
+  const { data: rawCategories = [] } = useQuery<Category[]>({
     queryKey: ['vod-categories', credentials],
     queryFn: () => getXtreamVodCategories(buildCreds(credentials)),
     enabled: !!credentials && isXtream,
     staleTime: 10 * 60_000,
   });
 
-  const { data: movies = [], isLoading, refetch, isRefetching } = useQuery<Movie[]>({
+  const categories: Category[] = useMemo(
+    () => [{ id: FAVS_CAT_ID, name: '♥ Favourites' }, ...rawCategories],
+    [rawCategories],
+  );
+
+  const { data: fetchedMovies = [], isLoading, refetch, isRefetching } = useQuery<Movie[]>({
     queryKey: ['vod-streams', selectedCat, credentials],
     queryFn: () => getXtreamVodStreams(buildCreds(credentials), selectedCat ?? undefined),
-    enabled: !!credentials && isXtream,
+    enabled: !!credentials && isXtream && !isFavsSelected,
     staleTime: 5 * 60_000,
   });
+
+  // When Favourites is selected, map stored favs back to Movie objects
+  const movies: Movie[] = useMemo(() => {
+    if (isFavsSelected) {
+      return favMovies.map((f) => ({
+        id: f.id,
+        name: f.name,
+        categoryId: f.categoryId,
+        streamId: f.streamId,
+        containerExtension: f.containerExtension,
+        cover: f.cover,
+        rating: f.rating,
+        genre: f.genre,
+        plot: f.plot,
+        cast: f.cast,
+        director: f.director,
+        releaseDate: f.releaseDate,
+        duration: f.duration,
+      }));
+    }
+    return fetchedMovies;
+  }, [isFavsSelected, favMovies, fetchedMovies]);
 
   const filtered = useMemo(() => {
     if (!search.trim()) return movies;
     return movies.filter((m) => m.name.toLowerCase().includes(search.toLowerCase()));
   }, [movies, search]);
+
+  const handleToggleFav = useCallback(async (item: Movie) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const updated = await StorageService.toggleMovieFavorite({
+      id: item.id,
+      name: item.name,
+      cover: item.cover,
+      rating: item.rating,
+      genre: item.genre,
+      streamId: item.streamId,
+      containerExtension: item.containerExtension,
+      categoryId: item.categoryId,
+      plot: item.plot,
+      cast: item.cast,
+      director: item.director,
+      releaseDate: item.releaseDate,
+      duration: item.duration,
+    });
+    setFavMovies(updated);
+  }, []);
 
   const handleRefresh = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -76,7 +134,7 @@ export default function MoviesScreen() {
       <View style={[styles.catPanel, { backgroundColor: '#0E0E1A', borderRightColor: colors.border, paddingTop: insets.top + 8 }]}>
         <Text style={[styles.catTitle, { color: colors.mutedForeground }]}>CATEGORIES</Text>
         <FlatList
-          data={[{ id: null, name: 'All' } as any, ...categories]}
+          data={categories}
           keyExtractor={(item) => String(item.id)}
           showsVerticalScrollIndicator={false}
           renderItem={({ item }) => {
@@ -118,7 +176,7 @@ export default function MoviesScreen() {
           </TouchableOpacity>
         </View>
 
-        {isLoading ? (
+        {isLoading && !isFavsSelected ? (
           <FlatList
             data={Array.from({ length: 16 })}
             numColumns={4}
@@ -129,8 +187,15 @@ export default function MoviesScreen() {
           />
         ) : filtered.length === 0 ? (
           <View style={styles.empty}>
-            <Text style={{ fontSize: 36, color: colors.mutedForeground }}>🎬</Text>
-            <Text style={[styles.emptyTitle, { color: colors.foreground }]}>No movies found</Text>
+            <Text style={{ fontSize: 36, color: colors.mutedForeground }}>{isFavsSelected ? '♡' : '🎬'}</Text>
+            <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
+              {isFavsSelected ? 'No favourite movies yet' : 'No movies found'}
+            </Text>
+            {isFavsSelected && (
+              <Text style={[styles.emptySub, { color: colors.mutedForeground }]}>
+                Tap ♡ on any movie poster to save it here.
+              </Text>
+            )}
           </View>
         ) : (
           <FlatList
@@ -144,6 +209,8 @@ export default function MoviesScreen() {
                 cover={item.cover}
                 rating={item.rating}
                 genre={item.genre}
+                isFav={favSet.has(item.id)}
+                onFavPress={() => handleToggleFav(item)}
                 onPress={() => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                   router.push({ pathname: '/movie/[id]', params: { id: item.id, title: item.name, cover: item.cover ?? '', genre: item.genre ?? '', rating: item.rating ?? '', plot: item.plot ?? '', cast: item.cast ?? '', director: item.director ?? '', releaseDate: item.releaseDate ?? '', duration: item.duration ?? '', ext: item.containerExtension } });
@@ -151,7 +218,7 @@ export default function MoviesScreen() {
               />
             )}
             contentContainerStyle={[styles.grid, { paddingBottom: insets.bottom + 8 }]}
-            refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={colors.primary} />}
+            refreshControl={!isFavsSelected ? <RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={colors.primary} /> : undefined}
             showsVerticalScrollIndicator={false}
             initialNumToRender={16}
             maxToRenderPerBatch={16}
@@ -178,5 +245,5 @@ const styles = StyleSheet.create({
   grid: { paddingHorizontal: 8, paddingTop: 8 },
   empty: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 8 },
   emptyTitle: { fontSize: 15, fontFamily: 'Inter_500Medium' },
-  emptySub: { fontSize: 13, fontFamily: 'Inter_400Regular' },
+  emptySub: { fontSize: 13, fontFamily: 'Inter_400Regular', textAlign: 'center', paddingHorizontal: 24 },
 });

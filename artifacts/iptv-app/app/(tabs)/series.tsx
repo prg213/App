@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   FlatList,
   RefreshControl,
@@ -17,7 +17,10 @@ import { useAppContext } from '@/context/AppContext';
 import { SeriesCard } from '@/components/SeriesCard';
 import { MovieCardSkeleton } from '@/components/SkeletonCard';
 import { getXtreamSeriesCategories, getXtreamSeries } from '@/services/xtreamApi';
-import type { Series, Category } from '@/types';
+import { StorageService } from '@/services/storage';
+import type { Series, Category, FavoriteSeries } from '@/types';
+
+const FAVS_CAT_ID = '__favs';
 
 function buildCreds(c: ReturnType<typeof useAppContext>['credentials']) {
   return { host: c!.host!, username: c!.username!, password: c!.password! };
@@ -29,28 +32,75 @@ export default function SeriesScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { credentials } = useAppContext();
-  const [selectedCat, setSelectedCat] = useState<string | null>(null);
+  const [selectedCat, setSelectedCat] = useState<string | null>(FAVS_CAT_ID);
   const [search, setSearch] = useState('');
+  const [favSeries, setFavSeries] = useState<FavoriteSeries[]>([]);
   const isXtream = credentials?.type === 'xtream';
 
-  const { data: categories = [] } = useQuery<Category[]>({
+  useEffect(() => {
+    StorageService.getSeriesFavorites().then(setFavSeries);
+  }, []);
+
+  const favSet = useMemo(() => new Set(favSeries.map((f) => f.id)), [favSeries]);
+  const isFavsSelected = selectedCat === FAVS_CAT_ID;
+
+  const { data: rawCategories = [] } = useQuery<Category[]>({
     queryKey: ['series-categories', credentials],
     queryFn: () => getXtreamSeriesCategories(buildCreds(credentials)),
     enabled: !!credentials && isXtream,
     staleTime: 10 * 60_000,
   });
 
-  const { data: series = [], isLoading, refetch, isRefetching } = useQuery<Series[]>({
+  const categories: Category[] = useMemo(
+    () => [{ id: FAVS_CAT_ID, name: '♥ Favourites' }, ...rawCategories],
+    [rawCategories],
+  );
+
+  const { data: fetchedSeries = [], isLoading, refetch, isRefetching } = useQuery<Series[]>({
     queryKey: ['series-list', selectedCat, credentials],
     queryFn: () => getXtreamSeries(buildCreds(credentials), selectedCat ?? undefined),
-    enabled: !!credentials && isXtream,
+    enabled: !!credentials && isXtream && !isFavsSelected,
     staleTime: 5 * 60_000,
   });
 
+  // When Favourites is selected, map stored favs back to Series objects
+  const seriesList: Series[] = useMemo(() => {
+    if (isFavsSelected) {
+      return favSeries.map((f) => ({
+        id: f.id,
+        name: f.name,
+        cover: f.cover,
+        rating: f.rating,
+        genre: f.genre,
+        categoryId: f.categoryId,
+        plot: f.plot,
+        cast: f.cast,
+        director: f.director,
+      }));
+    }
+    return fetchedSeries;
+  }, [isFavsSelected, favSeries, fetchedSeries]);
+
   const filtered = useMemo(() => {
-    if (!search.trim()) return series;
-    return series.filter((s) => s.name.toLowerCase().includes(search.toLowerCase()));
-  }, [series, search]);
+    if (!search.trim()) return seriesList;
+    return seriesList.filter((s) => s.name.toLowerCase().includes(search.toLowerCase()));
+  }, [seriesList, search]);
+
+  const handleToggleFav = useCallback(async (item: Series) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const updated = await StorageService.toggleSeriesFavorite({
+      id: item.id,
+      name: item.name,
+      cover: item.cover,
+      rating: item.rating,
+      genre: item.genre,
+      categoryId: item.categoryId,
+      plot: item.plot,
+      cast: item.cast,
+      director: item.director,
+    });
+    setFavSeries(updated);
+  }, []);
 
   const handleRefresh = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -75,7 +125,7 @@ export default function SeriesScreen() {
       <View style={[styles.catPanel, { backgroundColor: '#0E0E1A', borderRightColor: colors.border, paddingTop: insets.top + 8 }]}>
         <Text style={[styles.catTitle, { color: colors.mutedForeground }]}>CATEGORIES</Text>
         <FlatList
-          data={[{ id: null, name: 'All' } as any, ...categories]}
+          data={categories}
           keyExtractor={(item) => String(item.id)}
           showsVerticalScrollIndicator={false}
           renderItem={({ item }) => {
@@ -116,7 +166,7 @@ export default function SeriesScreen() {
           </TouchableOpacity>
         </View>
 
-        {isLoading ? (
+        {isLoading && !isFavsSelected ? (
           <FlatList
             data={Array.from({ length: 16 })}
             numColumns={4}
@@ -127,8 +177,15 @@ export default function SeriesScreen() {
           />
         ) : filtered.length === 0 ? (
           <View style={styles.empty}>
-            <Text style={{ fontSize: 36, color: colors.mutedForeground }}>📺</Text>
-            <Text style={[styles.emptyTitle, { color: colors.foreground }]}>No series found</Text>
+            <Text style={{ fontSize: 36, color: colors.mutedForeground }}>{isFavsSelected ? '♡' : '📺'}</Text>
+            <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
+              {isFavsSelected ? 'No favourite series yet' : 'No series found'}
+            </Text>
+            {isFavsSelected && (
+              <Text style={[styles.emptySub, { color: colors.mutedForeground }]}>
+                Tap ♡ on any series poster to save it here.
+              </Text>
+            )}
           </View>
         ) : (
           <FlatList
@@ -142,6 +199,8 @@ export default function SeriesScreen() {
                 cover={item.cover}
                 rating={item.rating}
                 genre={item.genre}
+                isFav={favSet.has(item.id)}
+                onFavPress={() => handleToggleFav(item)}
                 onPress={() => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                   router.push({ pathname: '/series/[id]', params: { id: item.id, title: item.name, cover: item.cover ?? '', rating: item.rating ?? '', genre: item.genre ?? '', plot: item.plot ?? '', cast: item.cast ?? '', director: item.director ?? '' } });
@@ -149,7 +208,7 @@ export default function SeriesScreen() {
               />
             )}
             contentContainerStyle={[styles.grid, { paddingBottom: insets.bottom + 8 }]}
-            refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={colors.primary} />}
+            refreshControl={!isFavsSelected ? <RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={colors.primary} /> : undefined}
             showsVerticalScrollIndicator={false}
             initialNumToRender={16}
             maxToRenderPerBatch={16}
@@ -176,4 +235,5 @@ const styles = StyleSheet.create({
   grid: { paddingHorizontal: 8, paddingTop: 8 },
   empty: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 8 },
   emptyTitle: { fontSize: 15, fontFamily: 'Inter_500Medium' },
+  emptySub: { fontSize: 13, fontFamily: 'Inter_400Regular', textAlign: 'center', paddingHorizontal: 24 },
 });
