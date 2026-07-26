@@ -16,11 +16,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { useAppContext } from '@/context/AppContext';
 import {
+  getXtreamLiveCategories,
   getXtreamLiveStreams,
   getXtreamCatchupEpg,
   getXtreamCatchupUrl,
 } from '@/services/xtreamApi';
-import type { CatchupProgram, Channel } from '@/types';
+import type { CatchupProgram, Category, Channel } from '@/types';
 
 function buildCreds(c: ReturnType<typeof useAppContext>['credentials']) {
   return { host: c?.host ?? '', username: c?.username ?? '', password: c?.password ?? '' };
@@ -50,7 +51,38 @@ function initialsOf(name: string) {
   return name.split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase() ?? '').join('');
 }
 
-// ─── Channel row ──────────────────────────────────────────────────────────────
+const ALL_CAT_ID = '__all__';
+
+// ─── Category Row ─────────────────────────────────────────────────────────────
+
+const CategoryRow = React.memo(function CategoryRow({
+  cat, isSelected, colors, onPress,
+}: {
+  cat: Category;
+  isSelected: boolean;
+  colors: ReturnType<typeof useColors>;
+  onPress: () => void;
+}) {
+  return (
+    <TouchableOpacity
+      style={[
+        styles.catRow,
+        isSelected ? { backgroundColor: '#3B82F6' } : { borderBottomColor: colors.border },
+      ]}
+      onPress={onPress}
+      activeOpacity={0.7}
+    >
+      <Text
+        style={[styles.catRowText, { color: isSelected ? '#fff' : colors.foreground }]}
+        numberOfLines={2}
+      >
+        {cat.name}
+      </Text>
+    </TouchableOpacity>
+  );
+});
+
+// ─── Channel Row ──────────────────────────────────────────────────────────────
 
 const ChannelRow = React.memo(function ChannelRow({
   ch, isSelected, colors, onPress,
@@ -86,7 +118,7 @@ const ChannelRow = React.memo(function ChannelRow({
         </Text>
         {(ch.tvArchiveDuration ?? 0) > 0 && (
           <Text style={[styles.chSub, { color: isSelected ? '#93C5FD' : colors.mutedForeground }]}>
-            {ch.tvArchiveDuration} day{(ch.tvArchiveDuration ?? 0) > 1 ? 's' : ''} archive
+            {ch.tvArchiveDuration}d archive
           </Text>
         )}
       </View>
@@ -105,38 +137,55 @@ export default function CatchupScreen() {
   const isXtream = credentials?.type === 'xtream';
   const creds = isXtream ? buildCreds(credentials) : null;
 
+  const [selectedCatId, setSelectedCatId] = useState<string>(ALL_CAT_ID);
   const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
 
-  // All live channels → only those with archive enabled.
-  // Query key matches guide.tsx so the full playlist is fetched once and shared.
-  const { data: allChannels = [], isLoading: chLoading } = useQuery<Channel[]>({
-    queryKey: ['live-channels', null, credentials],
-    queryFn: async () => {
-      if (!creds) return [];
-      return getXtreamLiveStreams(creds);
-    },
+  // ── Categories ──
+  const { data: rawCategories = [], isLoading: catLoading } = useQuery<Category[]>({
+    queryKey: ['live-categories', credentials],
+    queryFn: () => getXtreamLiveCategories(creds!),
     enabled: !!creds,
     staleTime: 5 * 60_000,
   });
 
+  // ── All live channels (shared cache key with guide.tsx) ──
+  const { data: allChannels = [], isLoading: chLoading } = useQuery<Channel[]>({
+    queryKey: ['live-channels', null, credentials],
+    queryFn: () => getXtreamLiveStreams(creds!),
+    enabled: !!creds,
+    staleTime: 5 * 60_000,
+  });
+
+  // Only catchup-enabled channels
   const catchupChannels = useMemo(
     () => allChannels.filter((c) => (c.tvArchive ?? 0) === 1 && (c.tvArchiveDuration ?? 0) > 0),
     [allChannels],
   );
 
-  // Archive EPG for the selected channel
+  // Categories that actually have at least one catchup channel
+  const categories = useMemo(() => {
+    const withCatchup = new Set(catchupChannels.map((c) => c.groupTitle));
+    const filtered = rawCategories.filter((c) => withCatchup.has(c.id));
+    const all: Category = { id: ALL_CAT_ID, name: 'All' };
+    return [all, ...filtered];
+  }, [rawCategories, catchupChannels]);
+
+  // Channels for the selected category
+  const visibleChannels = useMemo(() => {
+    if (selectedCatId === ALL_CAT_ID) return catchupChannels;
+    return catchupChannels.filter((c) => c.groupTitle === selectedCatId);
+  }, [catchupChannels, selectedCatId]);
+
+  // ── Archive EPG for selected channel ──
   const { data: programs = [], isLoading: epgLoading } = useQuery<CatchupProgram[]>({
     queryKey: ['catchup-epg', selectedChannel?.id, credentials],
-    queryFn: async () => {
-      if (!creds || !selectedChannel) return [];
-      return getXtreamCatchupEpg(creds, selectedChannel.id);
-    },
+    queryFn: () => getXtreamCatchupEpg(creds!, selectedChannel!.id),
     enabled: !!creds && !!selectedChannel,
     staleTime: 10 * 60_000,
   });
 
-  // Only ended programmes with archive available, newest day first
+  // Only ended programmes with archive, grouped by day (newest first)
   const { days, byDay } = useMemo(() => {
     const now = Date.now();
     const playable = programs.filter((p) => p.hasArchive && p.end.getTime() <= now);
@@ -157,6 +206,13 @@ export default function CatchupScreen() {
 
   const activeDay = selectedDay && byDay.has(selectedDay) ? selectedDay : days[0] ?? null;
   const dayPrograms = activeDay ? byDay.get(activeDay) ?? [] : [];
+
+  const handleSelectCat = useCallback((id: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setSelectedCatId(id);
+    setSelectedChannel(null);
+    setSelectedDay(null);
+  }, []);
 
   const handleSelectChannel = useCallback((ch: Channel) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -180,6 +236,15 @@ export default function CatchupScreen() {
     });
   }, [creds, selectedChannel, router]);
 
+  const renderCategory = useCallback(({ item }: { item: Category }) => (
+    <CategoryRow
+      cat={item}
+      isSelected={item.id === selectedCatId}
+      colors={colors}
+      onPress={() => handleSelectCat(item.id)}
+    />
+  ), [selectedCatId, colors, handleSelectCat]);
+
   const renderChannel = useCallback(({ item }: { item: Channel }) => (
     <ChannelRow
       ch={item}
@@ -202,23 +267,41 @@ export default function CatchupScreen() {
     );
   }
 
+  const loading = catLoading || chLoading;
+
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
 
-      {/* ══ LEFT: catch-up channels ══ */}
-      <View style={[styles.chCol, { borderRightColor: colors.border, paddingTop: insets.top + 4 }]}>
-        <Text style={[styles.colHeader, { color: colors.mutedForeground }]}>CATCH UP</Text>
-        {chLoading ? (
+      {/* ══ COL 1: Categories ══ */}
+      <View style={[styles.catCol, { borderRightColor: colors.border, paddingTop: insets.top + 4 }]}>
+        <Text style={[styles.colHeader, { color: colors.mutedForeground }]}>CATEGORIES</Text>
+        {loading ? (
           <View style={styles.centerFill}><ActivityIndicator color={colors.primary} /></View>
-        ) : catchupChannels.length === 0 ? (
+        ) : (
+          <FlatList
+            data={categories}
+            keyExtractor={(c) => c.id}
+            renderItem={renderCategory}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ paddingBottom: insets.bottom + 8 }}
+          />
+        )}
+      </View>
+
+      {/* ══ COL 2: Channels ══ */}
+      <View style={[styles.chCol, { borderRightColor: colors.border, paddingTop: insets.top + 4 }]}>
+        <Text style={[styles.colHeader, { color: colors.mutedForeground }]}>CHANNELS</Text>
+        {loading ? (
+          <View style={styles.centerFill}><ActivityIndicator color={colors.primary} /></View>
+        ) : visibleChannels.length === 0 ? (
           <View style={styles.centerFill}>
             <Text style={{ color: colors.mutedForeground, fontSize: 12, textAlign: 'center', paddingHorizontal: 16 }}>
-              No catch-up channels{'\n'}on this playlist
+              No catch-up channels{'\n'}in this category
             </Text>
           </View>
         ) : (
           <FlatList
-            data={catchupChannels}
+            data={visibleChannels}
             keyExtractor={(c) => c.id}
             renderItem={renderChannel}
             showsVerticalScrollIndicator={false}
@@ -227,14 +310,14 @@ export default function CatchupScreen() {
         )}
       </View>
 
-      {/* ══ RIGHT: archive programmes ══ */}
+      {/* ══ COL 3: Archive programmes ══ */}
       <View style={[styles.progPanel, { paddingTop: insets.top + 4, paddingRight: insets.right + 8 }]}>
         {!selectedChannel ? (
           <View style={styles.noSel}>
             <Text style={{ fontSize: 36, marginBottom: 10 }}>⏪</Text>
             <Text style={[styles.noSelTitle, { color: colors.foreground }]}>Select a channel</Text>
             <Text style={[styles.noSelSub, { color: colors.mutedForeground }]}>
-              Pick a channel on the left to browse its archived programmes.
+              Pick a channel to browse its archived programmes.
             </Text>
           </View>
         ) : epgLoading ? (
@@ -328,11 +411,21 @@ const styles = StyleSheet.create({
   root: { flex: 1, flexDirection: 'row' },
   centerFill: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 
-  chCol: { width: 290, borderRightWidth: StyleSheet.hairlineWidth },
   colHeader: {
     fontSize: 10, fontFamily: 'Inter_600SemiBold', letterSpacing: 1.5,
     paddingHorizontal: 14, paddingTop: 10, paddingBottom: 8,
   },
+
+  // Col 1 — categories
+  catCol: { width: 180, borderRightWidth: StyleSheet.hairlineWidth },
+  catRow: {
+    paddingHorizontal: 14, paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  catRowText: { fontSize: 12.5, fontFamily: 'Inter_500Medium' },
+
+  // Col 2 — channels
+  chCol: { width: 220, borderRightWidth: StyleSheet.hairlineWidth },
   chRow: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
     paddingHorizontal: 12, paddingVertical: 10,
@@ -346,6 +439,7 @@ const styles = StyleSheet.create({
   chName: { fontSize: 12.5, fontFamily: 'Inter_500Medium' },
   chSub: { fontSize: 10.5, fontFamily: 'Inter_400Regular', marginTop: 1 },
 
+  // Col 3 — programmes
   progPanel: { flex: 1, paddingLeft: 14 },
   dayTabs: { flexDirection: 'row', gap: 8, paddingVertical: 8 },
   dayTab: {
