@@ -128,8 +128,10 @@ export async function getXtreamCatchupEpg(
 }
 
 /**
- * Timeshift playback URL.
- * Classic Xtream format: {base}/streaming/timeshift.php?username=..&password=..&stream=ID&start=YYYY-MM-DD:HH-MM&duration=minutes
+ * Timeshift playback URL — modern Xtream Codes path format.
+ *
+ * Format: {host}/{username}/{password}/timeshift/{streamId}/{duration}/{YYYY-MM-DD}:{HH}-{MM}.ts
+ * This is the path used by virtually all current Xtream panels (XC Panel, Stalker, etc.).
  *
  * IMPORTANT: `serverStart` is the raw server-local "YYYY-MM-DD HH:MM:SS" string
  * from get_simple_data_table. It is reformatted with pure string ops — never
@@ -143,9 +145,11 @@ export function getXtreamCatchupUrl(
 ): string {
   const [d, t] = serverStart.split(' ');
   const [hh, mm] = (t ?? '').split(':');
-  const s = `${d}:${hh}-${mm}`; // "2026-07-26:14-00"
+  const start = `${d}:${hh}-${mm}`; // "2026-07-26:14-00"
   const base = baseUrl(creds.host);
-  return `${base}/streaming/timeshift.php?username=${encodeURIComponent(creds.username)}&password=${encodeURIComponent(creds.password)}&stream=${streamId}&start=${s}&duration=${durationMinutes}`;
+  const u = encodeURIComponent(creds.username);
+  const p = encodeURIComponent(creds.password);
+  return `${base}/${u}/${p}/timeshift/${streamId}/${durationMinutes}/${start}.ts`;
 }
 
 // ─── VOD / Movies ────────────────────────────────────────────────────────────
