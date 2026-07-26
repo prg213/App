@@ -384,6 +384,31 @@ function FullGuide({
       return { ...fmtDayLabel(d, i), date: d };
     }), []);
 
+  // Find the latest programme end time across all channels so we can grey
+  // out day tabs that fall entirely beyond the provider's EPG window.
+  const latestEpgMs = useMemo(() => {
+    if (!epgMap || epgMap.size === 0) return 0;
+    let max = 0;
+    for (const progs of epgMap.values()) {
+      if (progs.length > 0) {
+        const last = progs[progs.length - 1];
+        if (last.end.getTime() > max) max = last.end.getTime();
+      }
+    }
+    return max;
+  }, [epgMap]);
+
+  // True when the selected day has no programmes at all for any channel
+  const selectedDayEmpty = useMemo(() => {
+    if (!epgMap || epgMap.size === 0) return false;
+    const ds = dayStart(selectedDay).getTime();
+    const de = ds + DAY_MINS * 60_000;
+    for (const progs of epgMap.values()) {
+      if (progs.some((p) => p.end.getTime() > ds && p.start.getTime() < de)) return false;
+    }
+    return true;
+  }, [epgMap, selectedDay]);
+
   const dayStartMs = useMemo(() => dayStart(selectedDay).getTime(), [selectedDay]);
   const nowX = ((now - dayStartMs) / 60_000) * PX_PER_MIN;
   // Height of the full programme column — used for the "Now" indicator line
@@ -466,31 +491,53 @@ function FullGuide({
         style={[styles.dayBar, { borderBottomColor: colors.border, backgroundColor: colors.card }]}
         contentContainerStyle={styles.dayBarContent}
       >
-        {days.map((d, i) => (
-          <TouchableOpacity
-            key={i}
-            style={[
-              styles.dayTab,
-              i === selectedDay
-                ? { backgroundColor: colors.primary, borderColor: colors.primary }
-                : { backgroundColor: 'transparent', borderColor: colors.border },
-            ]}
-            onPress={() => setSelectedDay(i)}
-            activeOpacity={0.7}
-          >
-            <Text style={[styles.dayTabText, { color: i === selectedDay ? '#fff' : colors.mutedForeground }]}>
-              {d.short}
-            </Text>
-          </TouchableOpacity>
-        ))}
+        {days.map((d, i) => {
+          const dayMs = dayStart(i).getTime();
+          const noData = latestEpgMs > 0 && dayMs >= latestEpgMs;
+          const isSelected = i === selectedDay;
+          return (
+            <TouchableOpacity
+              key={i}
+              style={[
+                styles.dayTab,
+                isSelected
+                  ? { backgroundColor: colors.primary, borderColor: colors.primary }
+                  : noData
+                  ? { backgroundColor: 'transparent', borderColor: colors.border, opacity: 0.35 }
+                  : { backgroundColor: 'transparent', borderColor: colors.border },
+              ]}
+              onPress={() => setSelectedDay(i)}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.dayTabText, { color: isSelected ? '#fff' : colors.mutedForeground }]}>
+                {d.short}
+              </Text>
+              {noData && !isSelected && (
+                <View style={styles.noDataDot} />
+              )}
+            </TouchableOpacity>
+          );
+        })}
       </ScrollView>
+
+      {/* ── Full-screen empty state when provider has no EPG for this day ── */}
+      {selectedDayEmpty && !epgLoading && (
+        <View style={styles.dayEmpty}>
+          <Text style={styles.dayEmptyIcon}>📅</Text>
+          <Text style={[styles.dayEmptyTitle, { color: colors.foreground }]}>No guide data for this day</Text>
+          <Text style={[styles.dayEmptySub, { color: colors.mutedForeground }]}>
+            Your provider hasn't published EPG data for {days[selectedDay]?.long ?? 'this day'}.{'\n'}
+            Most providers supply 3–7 days ahead.
+          </Text>
+        </View>
+      )}
 
       {/* ── EPG grid ──────────────────────────────────────────────────────────
           Layout uses a SINGLE outer vertical ScrollView so the left channel
           column and right programme area always scroll together — no JS-based
           sync needed, no de-sync possible.
           ──────────────────────────────────────────────────────────────────── */}
-      <View style={[styles.grid, { paddingRight: insets.right }]}>
+      {!selectedDayEmpty && <View style={[styles.grid, { paddingRight: insets.right }]}>
 
         {/* Fixed header row: corner cell + time labels */}
         <View style={styles.headerRow}>
@@ -556,7 +603,7 @@ function FullGuide({
 
           </View>
         </ScrollView>
-      </View>
+      </View>}
 
       {selected && (
         <ProgramModal
@@ -971,4 +1018,18 @@ const styles = StyleSheet.create({
   empty: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 12, paddingHorizontal: 60 },
   emptyTitle: { fontSize: 17, fontFamily: 'Inter_600SemiBold', textAlign: 'center' },
   emptySub: { fontSize: 13, fontFamily: 'Inter_400Regular', textAlign: 'center', lineHeight: 20 },
+
+  // ── No-data day empty state ──
+  dayEmpty: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 10, paddingHorizontal: 60 },
+  dayEmptyIcon: { fontSize: 44, marginBottom: 4 },
+  dayEmptyTitle: { fontSize: 16, fontFamily: 'Inter_600SemiBold', textAlign: 'center' },
+  dayEmptySub: { fontSize: 13, fontFamily: 'Inter_400Regular', textAlign: 'center', lineHeight: 20, opacity: 0.7 },
+
+  // ── Day tab no-data indicator ──
+  noDataDot: {
+    position: 'absolute',
+    top: 4, right: 4,
+    width: 5, height: 5, borderRadius: 99,
+    backgroundColor: '#6B7280',
+  },
 });
