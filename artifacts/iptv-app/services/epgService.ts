@@ -4,30 +4,26 @@ import type { EpgProgram } from '@/types';
 
 /**
  * Parse an XMLTV date string into a UTC Date.
- * Formats accepted:
- *   "20240726190000 +0100"   (with tz offset)
- *   "20240726190000"          (assumed UTC)
+ * Accepts: "20240726190000 +0100"  or  "20240726190000"
  */
 function parseXmltvDate(raw: string): Date {
   const s = raw.trim();
-  const datePart = s.slice(0, 14);
-  const tzPart = s.slice(14).trim();
+  const dp = s.slice(0, 14);
+  const tz = s.slice(14).trim();
 
-  const y = +datePart.slice(0, 4);
-  const mo = +datePart.slice(4, 6) - 1;
-  const d = +datePart.slice(6, 8);
-  const h = +datePart.slice(8, 10);
-  const m = +datePart.slice(10, 12);
-  const sec = +datePart.slice(12, 14) || 0;
+  const date = new Date(Date.UTC(
+    +dp.slice(0, 4),
+    +dp.slice(4, 6) - 1,
+    +dp.slice(6, 8),
+    +dp.slice(8, 10),
+    +dp.slice(10, 12),
+    +dp.slice(12, 14) || 0,
+  ));
 
-  // Build as UTC first
-  const date = new Date(Date.UTC(y, mo, d, h, m, sec));
-
-  // Apply timezone shift to convert local → UTC
-  if (tzPart.length >= 5) {
-    const sign = tzPart[0] === '+' ? 1 : -1;
-    const tzH = +tzPart.slice(1, 3);
-    const tzM = +tzPart.slice(3, 5);
+  if (tz.length >= 5) {
+    const sign = tz[0] === '+' ? 1 : -1;
+    const tzH = +tz.slice(1, 3);
+    const tzM = +tz.slice(3, 5);
     date.setTime(date.getTime() - sign * (tzH * 60 + tzM) * 60_000);
   }
 
@@ -48,60 +44,100 @@ function decodeXml(str: string): string {
     .trim();
 }
 
-// ─── XMLTV Parser ──────────────────────────────────────────────────────────
+// Yield to the UI / event loop
+function yieldToUI(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+// ─── Async Chunked XMLTV Parser ────────────────────────────────────────────
 
 /**
- * Parse XMLTV XML string into a Map keyed by channel ID.
- * Deliberately written without DOM/SAX to work in any JS environment.
+ * Parse an XMLTV XML string into a Map keyed by channel ID.
+ *
+ * Runs asynchronously in batches of BATCH_SIZE programmes, yielding
+ * to the UI event loop between each batch so the app stays responsive.
+ * Also filters to a ±2h / +26h time window to skip most of the file.
  */
-export function parseXmltv(xml: string): Map<string, EpgProgram[]> {
+const BATCH_SIZE = 200;
+
+export async function parseXmltvAsync(
+  xml: string,
+  signal?: AbortSignal,
+): Promise<Map<string, EpgProgram[]>> {
   const map = new Map<string, EpgProgram[]>();
 
-  const progRe =
-    /<programme\b([^>]*)>([\s\S]*?)<\/programme>/g;
+  // Only keep programmes that overlap with [now - 2h, now + 26h]
+  const nowMs = Date.now();
+  const windowStart = nowMs - 2 * 60 * 60_000;
+  const windowEnd   = nowMs + 26 * 60 * 60_000;
 
-  let m: RegExpExecArray | null;
-  while ((m = progRe.exec(xml)) !== null) {
-    const attrs = m[1];
-    const body = m[2];
+  // Split on the opening tag — avoids a single giant [\s\S]*? regex over
+  // the whole document, which is what caused the main-thread freeze.
+  const segments = xml.split('<programme');
+  // segment[0] is everything before the first <programme — skip it
 
-    const startRaw = attrs.match(/\bstart="([^"]*)"/)?.[1];
-    const stopRaw = attrs.match(/\bstop="([^"]*)"/)?.[1];
-    const channelId = attrs.match(/\bchannel="([^"]*)"/)?.[1];
+  for (let i = 1; i < segments.length; i++) {
+    // Yield every BATCH_SIZE items so the JS thread isn't blocked
+    if (i % BATCH_SIZE === 0) {
+      if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+      await yieldToUI();
+    }
+
+    const seg = segments[i];
+
+    // Find where the opening tag ends and the body begins
+    const tagClose = seg.indexOf('>');
+    if (tagClose === -1) continue;
+
+    // Find the closing tag
+    const bodyEnd = seg.indexOf('</programme>');
+    if (bodyEnd === -1) continue;
+
+    const attrs = seg.slice(0, tagClose);
+    const body  = seg.slice(tagClose + 1, bodyEnd);
+
+    // Extract required attributes
+    const startRaw  = /\bstart="([^"]*)"/.exec(attrs)?.[1];
+    const stopRaw   = /\bstop="([^"]*)"/.exec(attrs)?.[1];
+    const channelId = /\bchannel="([^"]*)"/.exec(attrs)?.[1];
 
     if (!startRaw || !stopRaw || !channelId) continue;
 
+    // Quick date parse — skip if outside the window (avoids body parsing too)
     let start: Date, end: Date;
     try {
       start = parseXmltvDate(startRaw);
-      end = parseXmltvDate(stopRaw);
+      end   = parseXmltvDate(stopRaw);
     } catch {
       continue;
     }
     if (isNaN(start.getTime()) || isNaN(end.getTime())) continue;
+    if (end.getTime() < windowStart || start.getTime() > windowEnd) continue;
 
-    const titleMatch = body.match(/<title(?:\s[^>]*)?>([^<]*(?:<!\[CDATA\[[\s\S]*?\]\]>[^<]*)*)<\/title>/);
-    const descMatch = body.match(/<desc(?:\s[^>]*)?>([^<]*(?:<!\[CDATA\[[\s\S]*?\]\]>[^<]*)*)<\/desc>/);
-    const catMatch = body.match(/<category(?:\s[^>]*)?>([^<]*)<\/category>/);
-    const iconMatch = body.match(/<icon\s+src="([^"]*)"/);
+    // Parse body fields
+    const titleMatch = /<title[^>]*>([^<]*(?:<!\[CDATA\[[\s\S]*?\]\]>[^<]*)*)<\/title>/.exec(body);
+    const descMatch  = /<desc[^>]*>([^<]*(?:<!\[CDATA\[[\s\S]*?\]\]>[^<]*)*)<\/desc>/.exec(body);
+    const catMatch   = /<category[^>]*>([^<]*)<\/category>/.exec(body);
+    const iconMatch  = /<icon\s+src="([^"]*)"/.exec(body);
 
     const program: EpgProgram = {
       channelId,
-      title: titleMatch ? decodeXml(titleMatch[1]) || 'Unknown' : 'Unknown',
-      description: descMatch ? decodeXml(descMatch[1]) || undefined : undefined,
-      category: catMatch ? decodeXml(catMatch[1]) || undefined : undefined,
+      title:       titleMatch ? decodeXml(titleMatch[1]) || 'Unknown' : 'Unknown',
+      description: descMatch  ? decodeXml(descMatch[1])  || undefined : undefined,
+      category:    catMatch   ? decodeXml(catMatch[1])   || undefined : undefined,
       start,
       end,
-      icon: iconMatch?.[1],
+      icon:        iconMatch?.[1],
     };
 
-    if (!map.has(channelId)) map.set(channelId, []);
-    map.get(channelId)!.push(program);
+    const list = map.get(channelId);
+    if (list) list.push(program);
+    else map.set(channelId, [program]);
   }
 
-  // Sort each channel's programs by start time
-  for (const programs of map.values()) {
-    programs.sort((a, b) => a.start.getTime() - b.start.getTime());
+  // Sort each channel's programmes by start time
+  for (const programmes of map.values()) {
+    programmes.sort((a, b) => a.start.getTime() - b.start.getTime());
   }
 
   return map;
@@ -119,7 +155,7 @@ export async function fetchAndParseXmltv(
   });
   if (!res.ok) throw new Error(`XMLTV fetch failed: ${res.status} ${res.statusText}`);
   const xml = await res.text();
-  return parseXmltv(xml);
+  return parseXmltvAsync(xml, signal);
 }
 
 // ─── Base64 decoder (Xtream Codes encodes EPG titles/desc) ─────────────────
