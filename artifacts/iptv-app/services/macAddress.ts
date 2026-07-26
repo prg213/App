@@ -1,91 +1,82 @@
-import * as Application from 'expo-application';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-
-const MAC_KEY = 'streamvault_device_mac';
-
 /**
- * Derive a deterministic MAC from a seed string using a simple djb2 hash.
- * Same seed → always same MAC, no storage required.
+ * Stable device MAC for StreamVault.
+ *
+ * Priority:
+ *  1. SecureStore (Android Keystore) — survives Expo Go reloads, Metro restarts.
+ *     Only cleared on app uninstall or explicit "Clear Data".
+ *  2. Android ID — hardware-level identifier tied to device + app signing key.
+ *     Deterministically converted to a MAC so the same device always produces
+ *     the same address with no storage required.
+ *  3. Random fallback — generated once and immediately written to SecureStore.
+ *
+ * AsyncStorage is intentionally NOT used here: Expo Go can wipe it on reconnect.
  */
+
+import * as Application from 'expo-application';
+import * as SecureStore from 'expo-secure-store';
+
+const SECURE_MAC_KEY = 'sv_device_mac';
+
+/** djb2-based deterministic MAC from any seed string. */
 function deriveMacFromSeed(seed: string): string {
-  // djb2 over the seed characters, producing 6 independent byte values
   const bytes: number[] = [];
-  let hash = 5381;
   for (let b = 0; b < 6; b++) {
-    hash = 0;
-    for (let i = b; i < seed.length; i += 6) {
-      hash = ((hash << 5) + hash) ^ seed.charCodeAt(i);
-      hash = hash & 0xffffffff; // keep 32-bit
+    let hash = 5381 + b * 1000003;
+    for (let i = 0; i < seed.length; i++) {
+      hash = Math.imul(hash, 31) ^ seed.charCodeAt(i);
     }
-    // Mix in the byte index so each octet differs even for short seeds
-    hash = ((hash << 5) + hash) ^ (b * 31 + 7);
+    // Mix the byte index in so adjacent bytes differ even for short seeds
+    hash ^= (b + 1) * 2654435761;
     bytes.push(Math.abs(hash) & 0xff);
   }
   return bytes.map((b) => b.toString(16).toUpperCase().padStart(2, '0')).join(':');
 }
 
-function generateRandomMac(): string {
+function randomMac(): string {
   const hex = '0123456789ABCDEF';
-  const parts: string[] = [];
-  for (let i = 0; i < 6; i++) {
-    parts.push(
-      hex[Math.floor(Math.random() * 16)] +
-      hex[Math.floor(Math.random() * 16)],
-    );
-  }
-  return parts.join(':');
+  return Array.from({ length: 6 }, () =>
+    hex[Math.floor(Math.random() * 16)] + hex[Math.floor(Math.random() * 16)],
+  ).join(':');
 }
 
-// In-memory cache — stable for the JS runtime lifetime
+/** In-memory cache — stable for the JS runtime lifetime. */
 let cached: string | null = null;
 
-async function tryRead(): Promise<string | null> {
-  try {
-    return await AsyncStorage.getItem(MAC_KEY);
-  } catch {
-    return null;
-  }
+async function readSecure(): Promise<string | null> {
+  try { return await SecureStore.getItemAsync(SECURE_MAC_KEY); } catch { return null; }
 }
 
-async function trySave(mac: string): Promise<void> {
-  try {
-    await AsyncStorage.setItem(MAC_KEY, mac);
-  } catch {
-    // best-effort; deterministic derivation means we don't depend on this
-  }
+async function writeSecure(mac: string): Promise<void> {
+  try { await SecureStore.setItemAsync(SECURE_MAC_KEY, mac); } catch { /* best-effort */ }
 }
 
 export async function getDeviceMac(): Promise<string> {
-  // 1. In-memory cache (stable for this JS session)
+  // 1. In-memory cache
   if (cached) return cached;
 
-  // 2. Derive deterministically from the Android device ID — this is stable
-  //    across JS reloads, Metro restarts, and Expo Go reconnections.
-  //    It only changes if the app is uninstalled and reinstalled.
-  try {
-    const androidId = Application.getAndroidId?.() ?? Application.androidId ?? null;
-    if (androidId) {
-      const mac = deriveMacFromSeed(androidId);
-      cached = mac;
-      // Persist anyway so it's readable in Settings / debug screens
-      await trySave(mac);
-      return mac;
-    }
-  } catch {
-    // expo-application unavailable or threw — fall through
-  }
-
-  // 3. Try AsyncStorage (covers iOS or cases where androidId wasn't available
-  //    in a previous session but we saved a value then)
-  const stored = await tryRead();
+  // 2. SecureStore — most reliable across Expo Go reloads
+  const stored = await readSecure();
   if (stored) {
     cached = stored;
     return stored;
   }
 
-  // 4. Last resort: random, persisted as best-effort
-  const mac = generateRandomMac();
+  // 3. Android hardware ID → deterministic MAC (same device = same MAC forever)
+  try {
+    const androidId: string | null = Application.getAndroidId();
+    if (androidId && androidId.length > 0) {
+      const mac = deriveMacFromSeed(androidId);
+      cached = mac;
+      await writeSecure(mac);
+      return mac;
+    }
+  } catch {
+    // getAndroidId unavailable on this platform/build — fall through
+  }
+
+  // 4. Random fallback — written to SecureStore immediately so it never changes
+  const mac = randomMac();
   cached = mac;
-  await trySave(mac);
+  await writeSecure(mac);
   return mac;
 }
