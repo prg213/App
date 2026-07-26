@@ -32,6 +32,8 @@ export interface CatchupProgram {
   /** Raw server-local start string ("YYYY-MM-DD HH:MM:SS") — used verbatim
    *  for timeshift URLs so device timezone never shifts the replay window. */
   serverStart: string;
+  /** Unix seconds from start_timestamp — used for ?utc= style catchup URLs. */
+  startTimestamp: number;
 }
 
 export interface Category {

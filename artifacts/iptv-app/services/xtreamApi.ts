@@ -119,6 +119,7 @@ export async function getXtreamCatchupEpg(
         end: new Date(endMs),
         hasArchive: Number(e.has_archive ?? 0) === 1,
         serverStart: e.start ?? '',
+        startTimestamp: Number(e.start_timestamp ?? 0),
       };
     })
     .filter((p) =>
@@ -130,28 +131,51 @@ export async function getXtreamCatchupEpg(
 }
 
 /**
- * Timeshift playback URL — modern Xtream Codes path format.
+ * Timeshift playback URL.
  *
- * Format: {host}/{username}/{password}/timeshift/{streamId}/{duration}/{YYYY-MM-DD}:{HH}-{MM}.ts
- * This is the path used by virtually all current Xtream panels (XC Panel, Stalker, etc.).
+ * Tries the two most common Xtream catchup formats in order — the caller
+ * receives both so the player can fall back if the first returns 404.
+ *
+ * Format A (path-based, XC Panel / Xtream UI):
+ *   {host}/{user}/{pass}/timeshift/{streamId}/{duration}/{YYYY-MM-DD}:{HH}-{MM}.m3u8
+ *
+ * Format B (query-param, used by many UK/EU providers):
+ *   {host}/{user}/{pass}/{streamId}?utc={startEpoch}&lutc={endEpoch}
  *
  * IMPORTANT: `serverStart` is the raw server-local "YYYY-MM-DD HH:MM:SS" string
- * from get_simple_data_table. It is reformatted with pure string ops — never
- * converted through a JS Date — so the device timezone can't shift the window.
+ * from get_simple_data_table. String ops only — never converted through JS Date.
  */
+export function getXtreamCatchupUrls(
+  creds: Creds,
+  streamId: string,
+  serverStart: string,
+  durationMinutes: number,
+  startTimestamp: number,   // unix seconds from get_simple_data_table
+): string[] {
+  const [d, t] = serverStart.split(' ');
+  const [hh, mm] = (t ?? '').split(':');
+  const startFmt = `${d}:${hh}-${mm}`; // "2026-07-24:00-05"
+  const base = baseUrl(creds.host);
+  const u = encodeURIComponent(creds.username);
+  const p = encodeURIComponent(creds.password);
+  const endTs = startTimestamp + durationMinutes * 60;
+
+  return [
+    // Format B first — many providers that 404 on /timeshift/ support this
+    `${base}/${u}/${p}/${streamId}?utc=${startTimestamp}&lutc=${endTs}`,
+    // Format A — path-based timeshift
+    `${base}/${u}/${p}/timeshift/${streamId}/${durationMinutes}/${startFmt}.m3u8`,
+  ];
+}
+
+/** @deprecated use getXtreamCatchupUrls */
 export function getXtreamCatchupUrl(
   creds: Creds,
   streamId: string,
   serverStart: string,
   durationMinutes: number,
 ): string {
-  const [d, t] = serverStart.split(' ');
-  const [hh, mm] = (t ?? '').split(':');
-  const start = `${d}:${hh}-${mm}`; // "2026-07-26:14-00"
-  const base = baseUrl(creds.host);
-  const u = encodeURIComponent(creds.username);
-  const p = encodeURIComponent(creds.password);
-  return `${base}/${u}/${p}/timeshift/${streamId}/${durationMinutes}/${start}.m3u8`;
+  return getXtreamCatchupUrls(creds, streamId, serverStart, durationMinutes, 0)[1];
 }
 
 // ─── VOD / Movies ────────────────────────────────────────────────────────────

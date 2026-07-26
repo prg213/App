@@ -19,7 +19,7 @@ import {
   getXtreamLiveCategories,
   getXtreamLiveStreams,
   getXtreamCatchupEpg,
-  getXtreamCatchupUrl,
+  getXtreamCatchupUrls,
 } from '@/services/xtreamApi';
 import type { CatchupProgram, Category, Channel } from '@/types';
 
@@ -224,7 +224,8 @@ export default function CatchupScreen() {
     if (!creds || !selectedChannel) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const durationMin = Math.max(1, Math.round((prog.end.getTime() - prog.start.getTime()) / 60_000));
-    const url = getXtreamCatchupUrl(creds, selectedChannel.id, prog.serverStart, durationMin);
+    // getXtreamCatchupUrls returns [formatB (?utc=), formatA (/timeshift/)] — try B first
+    const url = getXtreamCatchupUrls(creds, selectedChannel.id, prog.serverStart, durationMin, prog.startTimestamp)[0];
     router.push({
       pathname: '/player',
       params: {
