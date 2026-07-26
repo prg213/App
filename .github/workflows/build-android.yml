@@ -37,6 +37,19 @@ jobs:
       - name: Install EAS CLI
         run: npm install -g eas-cli
 
+      - name: Patch app.json with android package
+        working-directory: artifacts/iptv-app
+        run: |
+          python3 - <<'EOF'
+          import json
+          with open("app.json", "r") as f:
+              config = json.load(f)
+          config["expo"].setdefault("android", {})["package"] = "com.prg213.streamvault"
+          with open("app.json", "w") as f:
+              json.dump(config, f, indent=2)
+          print("android.package set to com.prg213.streamvault")
+          EOF
+
       - name: Initialise EAS project
         working-directory: artifacts/iptv-app
         run: eas init --non-interactive --force
@@ -63,3 +76,4 @@ jobs:
           name: StreamVault-${{ github.event.inputs.profile }}-${{ github.run_number }}
           path: artifacts/iptv-app/streamvault.apk
           retention-days: 30
+          
