@@ -628,6 +628,30 @@ function FullGuide({
   );
 }
 
+// ─── EPG ID fuzzy normaliser ──────────────────────────────────────────────────
+// Converts both XMLTV channel IDs and Xtream channel names to the same token
+// so mismatches like "BBC Two HD" ↔ "BBC2.uk" resolve correctly.
+function normalizeEpgId(s: string): string {
+  return s
+    .toLowerCase()
+    // Strip TLD-style suffixes (.uk .com .net .tv .org)
+    .replace(/\.(uk|com|net|tv|org|co)$/i, '')
+    // Strip trailing quality labels (must be at word boundary / end)
+    .replace(/[\s._-]*(fhd|uhd|4k|hd|sd|hi-?def|\+1|plus\s?1)[\s._-]*$/i, '')
+    // Normalise number words → digits
+    .replace(/\bone\b/g, '1')
+    .replace(/\btwo\b/g, '2')
+    .replace(/\bthree\b/g, '3')
+    .replace(/\bfour\b/g, '4')
+    .replace(/\bfive\b/g, '5')
+    .replace(/\bsix\b/g, '6')
+    .replace(/\bseven\b/g, '7')
+    .replace(/\beight\b/g, '8')
+    .replace(/\bnine\b/g, '9')
+    // Collapse everything non-alphanumeric
+    .replace(/[^a-z0-9]/g, '');
+}
+
 // ─── Main screen ──────────────────────────────────────────────────────────────
 
 export default function GuideScreen() {
@@ -695,6 +719,51 @@ export default function GuideScreen() {
     [channels, selectedCat],
   );
 
+  // Build a fuzzy-resolved copy of epgMap so channels whose epgId doesn't
+  // exactly match any XMLTV key (e.g. "BBC Two HD" ↔ "BBC2.uk") still get
+  // their programmes.  Only adds entries — never removes existing ones.
+  const resolvedEpgMap = useMemo(() => {
+    if (!epgMap || epgMap.size === 0) return epgMap;
+
+    // Pre-build normalised → original-key index from XMLTV keys
+    const normIndex = new Map<string, string>();
+    for (const key of epgMap.keys()) {
+      const norm = normalizeEpgId(key);
+      if (norm && !normIndex.has(norm)) normIndex.set(norm, key);
+    }
+
+    let extended: Map<string, EpgProgram[]> | null = null;
+
+    for (const ch of channels) {
+      const id = ch.epgId ?? ch.id;
+      if (!id || epgMap.has(id)) continue;          // already resolved
+
+      const normId   = normalizeEpgId(id);
+      const normName = normalizeEpgId(ch.name);
+
+      // Try exact normalised match on epgId, then on channel display name
+      const matchedKey =
+        normIndex.get(normId) ??
+        normIndex.get(normName) ??
+        // Substring fallback: XMLTV key contains the channel token or vice-versa
+        (() => {
+          for (const [nk, ok] of normIndex) {
+            const shorter = normName.length <= nk.length ? normName : nk;
+            const longer  = normName.length <= nk.length ? nk : normName;
+            if (shorter.length >= 3 && longer.startsWith(shorter)) return ok;
+          }
+          return undefined;
+        })();
+
+      if (matchedKey) {
+        if (!extended) extended = new Map(epgMap);
+        extended.set(id, epgMap.get(matchedKey)!);
+      }
+    }
+
+    return extended ?? epgMap;
+  }, [epgMap, channels]);
+
   if (!isXtream) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -713,7 +782,7 @@ export default function GuideScreen() {
     return (
       <FullGuide
         channels={filteredChannels}
-        epgMap={epgMap}
+        epgMap={resolvedEpgMap}
         epgLoading={epgLoading}
         epgError={epgError}
         refetchEpg={refetchEpg}
