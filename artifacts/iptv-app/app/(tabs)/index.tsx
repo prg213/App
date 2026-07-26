@@ -169,14 +169,12 @@ export default function LiveTVScreen() {
   }, []);
 
   // ── Video player ─────────────────────────────────────────────────────────
-
-  const player = useVideoPlayer(
-    isWeb ? null : (selectedChannel?.streamUrl ?? null),
-    (p) => {
-      p.loop = false;
-      if (selectedChannel && !isWeb) p.play();
-    },
-  );
+  // Always pass null as the initial source so the player instance is stable
+  // and never reinitialises when selectedChannel changes (e.g. back to categories).
+  // All stream loading is done via replaceAsync in the effect below.
+  const player = useVideoPlayer(null, (p) => {
+    p.loop = false;
+  });
 
   useEffect(() => {
     if (isWeb || !selectedChannel?.streamUrl) return;
@@ -206,13 +204,16 @@ export default function LiveTVScreen() {
     return () => subs.forEach((s) => s.remove());
   }, [player]);
 
-  // Stop playback whenever this screen loses focus (e.g. navigating back to categories)
+  // Stop + reset only when the user picks a different tab from the sidebar.
+  // Browsing back to categories within Live TV is just a state change — no focus
+  // loss occurs — so the channel keeps playing while they browse.
   useFocusEffect(
     useCallback(() => {
       return () => {
         if (!isWeb && player) {
           try { player.pause(); } catch {}
         }
+        setSelectedChannel(null);
       };
     }, [player])
   );
