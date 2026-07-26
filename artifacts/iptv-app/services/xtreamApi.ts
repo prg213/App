@@ -7,7 +7,9 @@ interface Creds {
 }
 
 function baseUrl(host: string) {
-  return host.endsWith('/') ? host.slice(0, -1) : host;
+  // Normalise scheme to lowercase — Android's media player rejects "Https://"
+  const normalised = host.replace(/^([a-zA-Z][a-zA-Z0-9+\-.]*):\/\//, (_, scheme) => `${scheme.toLowerCase()}://`);
+  return normalised.endsWith('/') ? normalised.slice(0, -1) : normalised;
 }
 
 async function call<T>(
