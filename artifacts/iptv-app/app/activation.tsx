@@ -128,11 +128,11 @@ export default function ActivationScreen() {
       >
         <Text style={styles.instrTitle}>How to activate</Text>
         {[
-          'Go to your provider's website or admin panel',
+          "Go to your provider's website or admin panel",
           'Enter the MAC address shown on the left',
           'Enter your M3U URL or Xtream Codes credentials',
           'Tap "Check Activation" — app will connect automatically',
-        ].map((step, i) => (
+        ].map((step: string, i: number) => (
           <View key={i} style={styles.step}>
             <View style={styles.stepNum}><Text style={styles.stepNumText}>{i + 1}</Text></View>
             <Text style={styles.stepText}>{step}</Text>
