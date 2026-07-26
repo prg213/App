@@ -28,42 +28,73 @@ import { getXtreamLiveStreams, getXtreamXmltvUrl } from '@/services/xtreamApi';
 import { fetchAndParseXmltv } from '@/services/epgService';
 import type { Channel, EpgProgram } from '@/types';
 
-// ─── Constants ─────────────────────────────────────────────────────────────
-const PX_PER_MIN = 3;
+// ─── Guide constants ────────────────────────────────────────────────────────
+const PX_PER_MIN = 2;
 const CHANNEL_W = 145;
 const ROW_H = 58;
 const TIME_H = 38;
-const SLOT_MINS = 30;
-const WINDOW_MINS = 360; // 6 hours visible
-const SLOT_W = SLOT_MINS * PX_PER_MIN; // 90px per 30-min slot
-const TOTAL_W = WINDOW_MINS * PX_PER_MIN; // 1080px total grid width
-const NUM_SLOTS = WINDOW_MINS / SLOT_MINS; // 12 slots
+const SLOT_MINS = 60;           // 1-hour time slots
+const DAY_MINS = 24 * 60;       // full day
+const SLOT_W = SLOT_MINS * PX_PER_MIN;   // 120px per hour
+const TOTAL_DAY_W = DAY_MINS * PX_PER_MIN; // 2880px
 
-function getWindowStart(): Date {
-  const now = new Date();
-  const rounded = new Date(now);
-  rounded.setMinutes(Math.floor(now.getMinutes() / 30) * 30, 0, 0);
-  return new Date(rounded.getTime() - SLOT_MINS * 60_000); // -30 min for context
-}
+// ─── Helpers ────────────────────────────────────────────────────────────────
 
-function fmt(d: Date): string {
+function fmtTime(d: Date): string {
   const h = d.getHours(), m = d.getMinutes();
   const ampm = h >= 12 ? 'pm' : 'am';
   return `${h % 12 || 12}:${String(m).padStart(2, '0')}${ampm}`;
+}
+
+function fmtDayLabel(d: Date, index: number): { short: string; long: string } {
+  if (index === 0) return { short: 'Today', long: 'Today' };
+  if (index === 1) return { short: 'Tmrw', long: 'Tomorrow' };
+  const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return {
+    short: `${days[d.getDay()]} ${d.getDate()}`,
+    long: `${days[d.getDay()]}, ${months[d.getMonth()]} ${d.getDate()}`,
+  };
+}
+
+/** Midnight (00:00) of a day offset from today */
+function dayStart(offset: number): Date {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() + offset);
+  return d;
 }
 
 function buildCreds(c: ReturnType<typeof useAppContext>['credentials']) {
   return { host: c!.host!, username: c!.username!, password: c!.password! };
 }
 
-// ─── Sub-components ────────────────────────────────────────────────────────
+// ─── Category grid card ─────────────────────────────────────────────────────
 
-function TimeHeader({ windowStart, colors }: { windowStart: Date; colors: any }) {
+const CATEGORY_ICONS: Record<string, string> = {
+  news: '📰', sport: '⚽', sports: '⚽', movie: '🎬', movies: '🎬',
+  film: '🎬', kids: '👶', children: '👶', music: '🎵', documentary: '🎥',
+  docs: '🎥', entertainment: '🎭', comedy: '😄', drama: '🎭',
+  science: '🔬', nature: '🌿', travel: '✈️', food: '🍽️', cooking: '🍽️',
+  fitness: '💪', health: '💊', business: '💼', tech: '💻', gaming: '🎮',
+  religion: '⛪', lifestyle: '🌟', reality: '📺', action: '💥',
+};
+
+function getCatIcon(name: string): string {
+  const lower = name.toLowerCase();
+  for (const [key, icon] of Object.entries(CATEGORY_ICONS)) {
+    if (lower.includes(key)) return icon;
+  }
+  return '📺';
+}
+
+// ─── Time header ─────────────────────────────────────────────────────────────
+
+function TimeHeader({ dayStartMs, colors }: { dayStartMs: number; colors: any }) {
   const slots = useMemo(() =>
-    Array.from({ length: NUM_SLOTS }, (_, i) => ({
-      label: fmt(new Date(windowStart.getTime() + i * SLOT_MINS * 60_000)),
-      x: i * SLOT_W,
-    })), [windowStart]);
+    Array.from({ length: 24 }, (_, i) => ({
+      label: fmtTime(new Date(dayStartMs + i * SLOT_MINS * 60_000)),
+    })), [dayStartMs]);
 
   return (
     <View style={[styles.timeHeader, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
@@ -75,6 +106,8 @@ function TimeHeader({ windowStart, colors }: { windowStart: Date; colors: any })
     </View>
   );
 }
+
+// ─── Channel cell ─────────────────────────────────────────────────────────────
 
 function ChannelCell({ channel, colors }: { channel: Channel; colors: any }) {
   return (
@@ -93,20 +126,13 @@ function ChannelCell({ channel, colors }: { channel: Channel; colors: any }) {
   );
 }
 
+// ─── Program cell ─────────────────────────────────────────────────────────────
+
 const ProgramCell = React.memo(function ProgramCell({
-  program,
-  left,
-  width,
-  now,
-  colors,
-  onPress,
+  program, left, width, now, colors, onPress,
 }: {
-  program: EpgProgram;
-  left: number;
-  width: number;
-  now: number;
-  colors: any;
-  onPress: () => void;
+  program: EpgProgram; left: number; width: number; now: number;
+  colors: any; onPress: () => void;
 }) {
   if (width < 6) return null;
   const isNow = program.start.getTime() <= now && now < program.end.getTime();
@@ -116,21 +142,15 @@ const ProgramCell = React.memo(function ProgramCell({
 
   return (
     <TouchableOpacity
-      style={[
-        styles.programCell,
-        {
-          left,
-          width: width - 2,
-          backgroundColor: isNow ? '#1A2A4A' : colors.secondary,
-          borderColor: isNow ? '#3B82F6' : colors.border,
-        },
-      ]}
+      style={[styles.programCell, {
+        left, width: width - 2,
+        backgroundColor: isNow ? '#1A2A4A' : colors.secondary,
+        borderColor: isNow ? '#3B82F6' : colors.border,
+      }]}
       onPress={onPress}
       activeOpacity={0.7}
     >
-      {isNow && (
-        <View style={[styles.progressBar, { width: `${progress * 100}%` as any }]} />
-      )}
+      {isNow && <View style={[styles.progressBar, { width: `${progress * 100}%` as any }]} />}
       {width > 30 && (
         <Text style={[styles.progTitle, { color: isNow ? '#F2F2F2' : colors.foreground }]} numberOfLines={1}>
           {program.title}
@@ -138,51 +158,38 @@ const ProgramCell = React.memo(function ProgramCell({
       )}
       {width > 80 && (
         <Text style={[styles.progTime, { color: isNow ? '#93C5FD' : colors.mutedForeground }]}>
-          {fmt(program.start)} – {fmt(program.end)}
+          {fmtTime(program.start)} – {fmtTime(program.end)}
         </Text>
       )}
     </TouchableOpacity>
   );
 });
 
+// ─── Program row ─────────────────────────────────────────────────────────────
+
 const ProgramRow = React.memo(function ProgramRow({
-  channel,
-  programs,
-  windowStart,
-  now,
-  colors,
-  onProgramPress,
+  channel, programs, dayStartMs, now, colors, onProgramPress,
 }: {
-  channel: Channel;
-  programs: EpgProgram[];
-  windowStart: number;
-  now: number;
-  colors: any;
-  onProgramPress: (p: EpgProgram, ch: Channel) => void;
+  channel: Channel; programs: EpgProgram[]; dayStartMs: number; now: number;
+  colors: any; onProgramPress: (p: EpgProgram, ch: Channel) => void;
 }) {
-  const windowEnd = windowStart + WINDOW_MINS * 60_000;
+  const dayEndMs = dayStartMs + DAY_MINS * 60_000;
 
   const visible = useMemo(() =>
-    programs.filter((p) => p.end.getTime() > windowStart && p.start.getTime() < windowEnd),
-    [programs, windowStart, windowEnd]);
+    programs.filter((p) => p.end.getTime() > dayStartMs && p.start.getTime() < dayEndMs),
+    [programs, dayStartMs, dayEndMs]);
 
   return (
     <View style={[styles.programRow, { borderBottomColor: colors.border }]}>
       {visible.map((prog, i) => {
-        const rawLeft = (prog.start.getTime() - windowStart) / 60_000 * PX_PER_MIN;
-        const rawRight = (prog.end.getTime() - windowStart) / 60_000 * PX_PER_MIN;
+        const rawLeft = (prog.start.getTime() - dayStartMs) / 60_000 * PX_PER_MIN;
+        const rawRight = (prog.end.getTime() - dayStartMs) / 60_000 * PX_PER_MIN;
         const left = Math.max(0, rawLeft);
-        const right = Math.min(TOTAL_W, rawRight);
+        const right = Math.min(TOTAL_DAY_W, rawRight);
         const width = right - left;
-
         return (
           <ProgramCell
-            key={i}
-            program={prog}
-            left={left}
-            width={width}
-            now={now}
-            colors={colors}
+            key={i} program={prog} left={left} width={width} now={now} colors={colors}
             onPress={() => onProgramPress(prog, channel)}
           />
         );
@@ -196,24 +203,13 @@ const ProgramRow = React.memo(function ProgramRow({
   );
 });
 
-// ─── Program Info Modal ────────────────────────────────────────────────────
+// ─── Program info modal ───────────────────────────────────────────────────────
 
-function ProgramModal({
-  program,
-  channel,
-  onClose,
-  onWatch,
-  colors,
-}: {
-  program: EpgProgram;
-  channel: Channel;
-  onClose: () => void;
-  onWatch: () => void;
-  colors: any;
+function ProgramModal({ program, channel, onClose, onWatch, colors }: {
+  program: EpgProgram; channel: Channel; onClose: () => void;
+  onWatch: () => void; colors: any;
 }) {
-  const durationMins = Math.round(
-    (program.end.getTime() - program.start.getTime()) / 60_000,
-  );
+  const durationMins = Math.round((program.end.getTime() - program.start.getTime()) / 60_000);
   const isNow = program.start <= new Date() && new Date() < program.end;
 
   return (
@@ -223,7 +219,6 @@ function ProgramModal({
           style={[styles.modalCard, { backgroundColor: colors.card, borderColor: colors.border }]}
           activeOpacity={1}
         >
-          {/* Header */}
           <View style={styles.modalHeader}>
             <View style={{ flex: 1, gap: 4 }}>
               <Text style={[styles.modalTitle, { color: colors.foreground }]} numberOfLines={2}>
@@ -238,24 +233,21 @@ function ProgramModal({
             )}
           </View>
 
-          {/* Meta */}
           <View style={[styles.metaRow, { borderTopColor: colors.border, borderBottomColor: colors.border }]}>
             <View style={styles.metaItem}>
               <Text style={[styles.metaLabel, { color: colors.mutedForeground }]}>START</Text>
-              <Text style={[styles.metaValue, { color: colors.foreground }]}>{fmt(program.start)}</Text>
+              <Text style={[styles.metaValue, { color: colors.foreground }]}>{fmtTime(program.start)}</Text>
             </View>
             <View style={[styles.metaDivider, { backgroundColor: colors.border }]} />
             <View style={styles.metaItem}>
               <Text style={[styles.metaLabel, { color: colors.mutedForeground }]}>END</Text>
-              <Text style={[styles.metaValue, { color: colors.foreground }]}>{fmt(program.end)}</Text>
+              <Text style={[styles.metaValue, { color: colors.foreground }]}>{fmtTime(program.end)}</Text>
             </View>
             <View style={[styles.metaDivider, { backgroundColor: colors.border }]} />
             <View style={styles.metaItem}>
               <Text style={[styles.metaLabel, { color: colors.mutedForeground }]}>DURATION</Text>
               <Text style={[styles.metaValue, { color: colors.foreground }]}>
-                {durationMins >= 60
-                  ? `${Math.floor(durationMins / 60)}h ${durationMins % 60}m`
-                  : `${durationMins}m`}
+                {durationMins >= 60 ? `${Math.floor(durationMins / 60)}h ${durationMins % 60}m` : `${durationMins}m`}
               </Text>
             </View>
             {program.category && (
@@ -269,19 +261,16 @@ function ProgramModal({
             )}
           </View>
 
-          {/* Description */}
           {program.description ? (
             <Text style={[styles.modalDesc, { color: colors.mutedForeground }]} numberOfLines={4}>
               {program.description}
             </Text>
           ) : null}
 
-          {/* Actions */}
           <View style={styles.modalActions}>
             <TouchableOpacity
               style={[styles.closeBtn, { backgroundColor: colors.secondary, borderColor: colors.border }]}
-              onPress={onClose}
-              activeOpacity={0.7}
+              onPress={onClose} activeOpacity={0.7}
             >
               <Text style={[styles.closeBtnText, { color: colors.foreground }]}>Close</Text>
             </TouchableOpacity>
@@ -297,24 +286,102 @@ function ProgramModal({
   );
 }
 
-// ─── Main Screen ───────────────────────────────────────────────────────────
+// ─── Category grid ────────────────────────────────────────────────────────────
 
-export default function GuideScreen() {
-  const colors = useColors();
-  const insets = useSafeAreaInsets();
-  const router = useRouter();
-  const { credentials } = useAppContext();
+function CategoryGrid({
+  categories, channelCountByCategory, colors, insets, onSelect, epgLoading,
+}: {
+  categories: string[];
+  channelCountByCategory: Record<string, number>;
+  colors: any;
+  insets: any;
+  onSelect: (cat: string) => void;
+  epgLoading: boolean;
+}) {
+  const { width } = useWindowDimensions();
+  const numCols = Math.floor((width - 190) / 160); // sidebar is 190px
+  const colW = Math.floor(((width - 190) - (numCols + 1) * 12) / numCols);
+
+  const renderItem = useCallback(({ item }: { item: string }) => (
+    <TouchableOpacity
+      style={[styles.catCard, { backgroundColor: colors.card, borderColor: colors.border, width: colW }]}
+      onPress={() => onSelect(item)}
+      activeOpacity={0.75}
+    >
+      <Text style={styles.catIcon}>{getCatIcon(item)}</Text>
+      <Text style={[styles.catName, { color: colors.foreground }]} numberOfLines={2}>{item}</Text>
+      <Text style={[styles.catCount, { color: colors.mutedForeground }]}>
+        {channelCountByCategory[item] ?? 0} ch
+      </Text>
+    </TouchableOpacity>
+  ), [colors, colW, onSelect]);
+
+  return (
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
+      {/* Header */}
+      <View style={[styles.topBar, { borderBottomColor: colors.border, paddingTop: insets.top + 4 }]}>
+        <Text style={[styles.screenTitle, { color: colors.foreground }]}>TV Guide</Text>
+        <Text style={[styles.screenSub, { color: colors.mutedForeground }]}>Choose a category</Text>
+        {epgLoading && (
+          <View style={styles.loadingBadge}>
+            <ActivityIndicator size="small" color={colors.primary} />
+            <Text style={[styles.loadingLabel, { color: colors.mutedForeground }]}>Loading EPG…</Text>
+          </View>
+        )}
+      </View>
+
+      <FlatList
+        data={categories}
+        keyExtractor={(c) => c}
+        numColumns={numCols}
+        renderItem={renderItem}
+        key={numCols} // remount if column count changes
+        contentContainerStyle={[styles.catGrid, { paddingBottom: insets.bottom + 24 }]}
+        columnWrapperStyle={numCols > 1 ? styles.catRow : undefined}
+        showsVerticalScrollIndicator={false}
+      />
+    </View>
+  );
+}
+
+// ─── Full 7-day guide ──────────────────────────────────────────────────────────
+
+function FullGuide({
+  channels, epgMap, epgLoading, epgError, refetchEpg, onBack, categoryName, colors, insets, router,
+}: {
+  channels: Channel[];
+  epgMap: Map<string, EpgProgram[]> | undefined;
+  epgLoading: boolean;
+  epgError: any;
+  refetchEpg: () => void;
+  onBack: () => void;
+  categoryName: string;
+  colors: any;
+  insets: any;
+  router: any;
+}) {
   const { height: screenH } = useWindowDimensions();
-  const isXtream = credentials?.type === 'xtream';
-
-  // Measured height of the grid container — initialised with screen height so
-  // the FlatList has a valid height on first render (avoids Android blank-rows bug)
   const [gridContainerH, setGridContainerH] = useState(screenH);
+  const [selectedDay, setSelectedDay] = useState(0);
+  const [selected, setSelected] = useState<{ program: EpgProgram; channel: Channel } | null>(null);
+  const [now, setNow] = useState(Date.now());
 
-  // Category filter
-  const [selectedCat, setSelectedCat] = useState<string | null>(null);
+  // 7 day labels
+  const days = useMemo(() =>
+    Array.from({ length: 7 }, (_, i) => {
+      const d = dayStart(i);
+      return { ...fmtDayLabel(d, i), date: d };
+    }), []);
 
-  // Refs for synchronized scrolling
+  const dayStartMs = useMemo(() => dayStart(selectedDay).getTime(), [selectedDay]);
+  const nowX = ((now - dayStartMs) / 60_000) * PX_PER_MIN;
+
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(t);
+  }, []);
+
+  // Refs for scroll sync
   const timeHeaderRef = useRef<ScrollView>(null);
   const gridHorizRef = useRef<ScrollView>(null);
   const leftListRef = useRef<FlatList>(null);
@@ -322,176 +389,72 @@ export default function GuideScreen() {
   const isLeftScrolling = useRef(false);
   const isRightScrolling = useRef(false);
 
-  // Modal state
-  const [selected, setSelected] = useState<{ program: EpgProgram; channel: Channel } | null>(null);
-
-  // Current time (updates every minute)
-  const [now, setNow] = useState(Date.now());
+  // When day changes, scroll to current time (today) or start of day (other days)
   useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 60_000);
-    return () => clearInterval(t);
-  }, []);
-
-  const windowStart = useMemo(() => getWindowStart(), []);
-  const windowStartMs = windowStart.getTime();
-  const nowX = ((now - windowStartMs) / 60_000) * PX_PER_MIN;
-
-  // ── Data fetching ──
-
-  const creds = isXtream ? buildCreds(credentials) : null;
-
-  const { data: channels = [] } = useQuery<Channel[]>({
-    queryKey: ['live-channels', null, credentials],
-    queryFn: () => getXtreamLiveStreams(creds!),
-    enabled: !!creds,
-    staleTime: 5 * 60_000,
-  });
-
-  const xmltvUrl = creds ? getXtreamXmltvUrl(creds) : null;
-
-  const {
-    data: epgMap,
-    isLoading: epgLoading,
-    error: epgError,
-    refetch: refetchEpg,
-  } = useQuery<Map<string, EpgProgram[]>>({
-    queryKey: ['xmltv-epg', credentials],
-    queryFn: ({ signal }) => fetchAndParseXmltv(xmltvUrl!, signal),
-    enabled: !!xmltvUrl,
-    staleTime: 30 * 60_000,
-    gcTime: 60 * 60_000,
-    retry: 1,
-  });
-
-  // Derive category list from channels (no extra API call needed)
-  const categories = useMemo(() => {
-    const seen = new Set<string>();
-    const list: string[] = [];
-    for (const ch of channels) {
-      if (ch.groupTitle && !seen.has(ch.groupTitle)) {
-        seen.add(ch.groupTitle);
-        list.push(ch.groupTitle);
-      }
-    }
-    return list;
-  }, [channels]);
-
-  // Channels filtered by selected category
-  const filteredChannels = useMemo(
-    () => (selectedCat ? channels.filter((c) => c.groupTitle === selectedCat) : channels),
-    [channels, selectedCat],
-  );
-
-  // Reset list scroll positions when category changes
-  useEffect(() => {
-    leftListRef.current?.scrollToOffset({ offset: 0, animated: false });
-    rightListRef.current?.scrollToOffset({ offset: 0, animated: false });
-  }, [selectedCat]);
-
-  // Auto-scroll to current time on mount
-  useEffect(() => {
-    const scrollX = Math.max(0, nowX - SLOT_W);
+    const scrollX = selectedDay === 0 ? Math.max(0, nowX - SLOT_W * 2) : 0;
     const timer = setTimeout(() => {
       gridHorizRef.current?.scrollTo({ x: scrollX, animated: false });
       timeHeaderRef.current?.scrollTo({ x: scrollX, animated: false });
-    }, 500);
+    }, 100);
     return () => clearTimeout(timer);
-  }, [nowX]);
+  }, [selectedDay, nowX]);
 
-  // ── Scroll sync ──
+  const onGridHorizScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    timeHeaderRef.current?.scrollTo({ x: e.nativeEvent.contentOffset.x, animated: false });
+  }, []);
 
-  const onGridHorizScroll = useCallback(
-    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-      const x = e.nativeEvent.contentOffset.x;
-      timeHeaderRef.current?.scrollTo({ x, animated: false });
-    },
-    [],
-  );
+  const onRightVertScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const y = e.nativeEvent.contentOffset.y;
+    if (!isRightScrolling.current) {
+      isLeftScrolling.current = true;
+      leftListRef.current?.scrollToOffset({ offset: y, animated: false });
+      setTimeout(() => { isLeftScrolling.current = false; }, 100);
+    }
+    isRightScrolling.current = false;
+  }, []);
 
-  const onRightVertScroll = useCallback(
-    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-      const y = e.nativeEvent.contentOffset.y;
-      if (!isRightScrolling.current) {
-        isLeftScrolling.current = true;
-        leftListRef.current?.scrollToOffset({ offset: y, animated: false });
-        setTimeout(() => { isLeftScrolling.current = false; }, 100);
-      }
-      isRightScrolling.current = false;
-    },
-    [],
-  );
+  const onLeftVertScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const y = e.nativeEvent.contentOffset.y;
+    if (!isLeftScrolling.current) {
+      isRightScrolling.current = true;
+      rightListRef.current?.scrollToOffset({ offset: y, animated: false });
+      setTimeout(() => { isRightScrolling.current = false; }, 100);
+    }
+    isLeftScrolling.current = false;
+  }, []);
 
-  const onLeftVertScroll = useCallback(
-    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-      const y = e.nativeEvent.contentOffset.y;
-      if (!isLeftScrolling.current) {
-        isRightScrolling.current = true;
-        rightListRef.current?.scrollToOffset({ offset: y, animated: false });
-        setTimeout(() => { isRightScrolling.current = false; }, 100);
-      }
-      isLeftScrolling.current = false;
-    },
-    [],
-  );
-
-  // ── Render helpers ──
-
-  // Height of the program/channel list area (grid height minus the time-header row)
   const listH = Math.max(0, gridContainerH - TIME_H);
 
   const renderChannelCell = useCallback(
-    ({ item }: { item: Channel }) => (
-      <ChannelCell channel={item} colors={colors} />
-    ),
+    ({ item }: { item: Channel }) => <ChannelCell channel={item} colors={colors} />,
     [colors],
   );
 
-  const renderProgramRow = useCallback(
-    ({ item }: { item: Channel }) => {
-      const programs = epgMap?.get(item.epgId ?? item.id) ?? [];
-      return (
-        <ProgramRow
-          channel={item}
-          programs={programs}
-          windowStart={windowStartMs}
-          now={now}
-          colors={colors}
-          onProgramPress={(p, ch) => setSelected({ program: p, channel: ch })}
-        />
-      );
-    },
-    [epgMap, windowStartMs, now, colors],
-  );
+  const renderProgramRow = useCallback(({ item }: { item: Channel }) => {
+    const programs = epgMap?.get(item.epgId ?? item.id) ?? [];
+    return (
+      <ProgramRow
+        channel={item} programs={programs} dayStartMs={dayStartMs}
+        now={now} colors={colors}
+        onProgramPress={(p, ch) => setSelected({ program: p, channel: ch })}
+      />
+    );
+  }, [epgMap, dayStartMs, now, colors]);
 
   const getItemLayout = useCallback(
     (_: any, index: number) => ({ length: ROW_H, offset: ROW_H * index, index }),
     [],
   );
 
-  // ── Not Xtream ──
-  if (!isXtream) {
-    return (
-      <View style={[styles.container, { backgroundColor: colors.background }]}>
-        <View style={styles.empty}>
-          <Text style={{ fontSize: 40, color: colors.mutedForeground }}>📋</Text>
-          <Text style={[styles.emptyTitle, { color: colors.foreground }]}>Guide Requires Xtream Codes</Text>
-          <Text style={[styles.emptySub, { color: colors.mutedForeground }]}>
-            M3U connections don't support EPG. Connect using Xtream Codes to access the TV guide.
-          </Text>
-        </View>
-      </View>
-    );
-  }
-
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      {/* Header bar */}
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
+      {/* Top bar */}
       <View style={[styles.topBar, { borderBottomColor: colors.border, paddingTop: insets.top + 4 }]}>
-        <Text style={[styles.screenTitle, { color: colors.foreground }]}>TV Guide</Text>
-        <View style={styles.nowBadge}>
-          <View style={styles.nowDot} />
-          <Text style={styles.nowLabel}>Now: {fmt(new Date(now))}</Text>
-        </View>
+        <TouchableOpacity style={styles.backBtn} onPress={onBack} activeOpacity={0.7}>
+          <Text style={[styles.backArrow, { color: colors.foreground }]}>←</Text>
+        </TouchableOpacity>
+        <Text style={[styles.screenTitle, { color: colors.foreground }]} numberOfLines={1}>{categoryName}</Text>
+
         {epgLoading && (
           <View style={styles.loadingBadge}>
             <ActivityIndicator size="small" color={colors.primary} />
@@ -503,34 +466,70 @@ export default function GuideScreen() {
             <Text style={styles.errText}>EPG failed — tap to retry</Text>
           </TouchableOpacity>
         )}
-        <TouchableOpacity
-          style={[styles.todayBtn, { backgroundColor: colors.secondary, borderColor: colors.border }]}
-          onPress={() => {
-            const scrollX = Math.max(0, nowX - SLOT_W);
-            gridHorizRef.current?.scrollTo({ x: scrollX, animated: true });
-            timeHeaderRef.current?.scrollTo({ x: scrollX, animated: true });
-          }}
-          activeOpacity={0.7}
-        >
-          <Text style={[styles.todayBtnText, { color: colors.foreground }]}>⊙ Now</Text>
-        </TouchableOpacity>
+
+        {/* Now button */}
+        {selectedDay === 0 && (
+          <TouchableOpacity
+            style={[styles.todayBtn, { backgroundColor: colors.secondary, borderColor: colors.border }]}
+            onPress={() => {
+              const scrollX = Math.max(0, nowX - SLOT_W * 2);
+              gridHorizRef.current?.scrollTo({ x: scrollX, animated: true });
+              timeHeaderRef.current?.scrollTo({ x: scrollX, animated: true });
+            }}
+            activeOpacity={0.7}
+          >
+            <View style={styles.nowDot} />
+            <Text style={[styles.todayBtnText, { color: '#EF4444' }]}>Now</Text>
+          </TouchableOpacity>
+        )}
+
+        <Text style={[styles.chCountLabel, { color: colors.mutedForeground }]}>
+          {channels.length} channels
+        </Text>
       </View>
 
-      {/* Guide grid — onLayout measures the true available height */}
+      {/* 7-day tab strip */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={[styles.dayBar, { borderBottomColor: colors.border, backgroundColor: colors.card }]}
+        contentContainerStyle={styles.dayBarContent}
+      >
+        {days.map((d, i) => (
+          <TouchableOpacity
+            key={i}
+            style={[
+              styles.dayTab,
+              i === selectedDay
+                ? { backgroundColor: colors.primary, borderColor: colors.primary }
+                : { backgroundColor: 'transparent', borderColor: colors.border },
+            ]}
+            onPress={() => setSelectedDay(i)}
+            activeOpacity={0.7}
+          >
+            <Text style={[
+              styles.dayTabText,
+              { color: i === selectedDay ? '#fff' : colors.mutedForeground },
+            ]}>
+              {d.short}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+
+      {/* EPG grid */}
       <View
         style={[styles.grid, { paddingRight: insets.right }]}
         onLayout={(e) => setGridContainerH(e.nativeEvent.layout.height)}
       >
-        {/* Left fixed channel column */}
+        {/* Left channel column */}
         <View style={[styles.leftCol, { borderRightColor: colors.border }]}>
-          {/* Corner cell aligns with time header */}
           <View style={[styles.cornerCell, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
             <Text style={[styles.cornerText, { color: colors.mutedForeground }]}>CH</Text>
           </View>
-          {/* Channel names — flex:1 fills remaining leftCol height exactly */}
           <FlatList
             ref={leftListRef}
-            data={filteredChannels}
+            data={channels}
             keyExtractor={(ch) => ch.id}
             renderItem={renderChannelCell}
             getItemLayout={getItemLayout}
@@ -543,9 +542,8 @@ export default function GuideScreen() {
           />
         </View>
 
-        {/* Right scrollable area */}
+        {/* Right scrollable program area */}
         <View style={styles.rightArea}>
-          {/* Time header — follows horizontal scroll */}
           <ScrollView
             ref={timeHeaderRef}
             horizontal
@@ -553,10 +551,9 @@ export default function GuideScreen() {
             showsHorizontalScrollIndicator={false}
             style={{ height: TIME_H }}
           >
-            <TimeHeader windowStart={windowStart} colors={colors} />
+            <TimeHeader dayStartMs={dayStartMs} colors={colors} />
           </ScrollView>
 
-          {/* Horizontal scroll for programs */}
           <ScrollView
             ref={gridHorizRef}
             horizontal
@@ -565,17 +562,14 @@ export default function GuideScreen() {
             onScroll={onGridHorizScroll}
             style={{ flex: 1 }}
           >
-            {/* "Now" vertical indicator */}
-            {nowX >= 0 && nowX <= TOTAL_W && listH > 0 && (
-              <View
-                pointerEvents="none"
-                style={[styles.nowLine, { left: nowX, height: listH }]}
-              />
+            {/* "Now" line — only visible on today's view */}
+            {selectedDay === 0 && nowX >= 0 && nowX <= TOTAL_DAY_W && listH > 0 && (
+              <View pointerEvents="none" style={[styles.nowLine, { left: nowX, height: listH }]} />
             )}
-            {/* Program rows — nestedScrollEnabled for correct Android scroll handling */}
+
             <FlatList
               ref={rightListRef}
-              data={filteredChannels}
+              data={channels}
               keyExtractor={(ch) => ch.id}
               renderItem={renderProgramRow}
               getItemLayout={getItemLayout}
@@ -583,7 +577,7 @@ export default function GuideScreen() {
               scrollEventThrottle={16}
               onScroll={onRightVertScroll}
               nestedScrollEnabled
-              style={{ width: TOTAL_W, height: listH }}
+              style={{ width: TOTAL_DAY_W, height: listH }}
               initialNumToRender={14}
               maxToRenderPerBatch={14}
             />
@@ -591,7 +585,6 @@ export default function GuideScreen() {
         </View>
       </View>
 
-      {/* Program info modal */}
       {selected && (
         <ProgramModal
           program={selected.program}
@@ -616,68 +609,192 @@ export default function GuideScreen() {
   );
 }
 
-// ─── Styles ────────────────────────────────────────────────────────────────
+// ─── Main screen ──────────────────────────────────────────────────────────────
+
+export default function GuideScreen() {
+  const colors = useColors();
+  const insets = useSafeAreaInsets();
+  const router = useRouter();
+  const { credentials } = useAppContext();
+  const isXtream = credentials?.type === 'xtream';
+
+  const [selectedCat, setSelectedCat] = useState<string | null>(null);
+
+  const creds = isXtream ? buildCreds(credentials) : null;
+
+  const { data: channels = [] } = useQuery<Channel[]>({
+    queryKey: ['live-channels', null, credentials],
+    queryFn: () => getXtreamLiveStreams(creds!),
+    enabled: !!creds,
+    staleTime: 5 * 60_000,
+  });
+
+  const xmltvUrl = creds ? getXtreamXmltvUrl(creds) : null;
+
+  const { data: epgMap, isLoading: epgLoading, error: epgError, refetch: refetchEpg } =
+    useQuery<Map<string, EpgProgram[]>>({
+      queryKey: ['xmltv-epg', credentials],
+      queryFn: ({ signal }) => fetchAndParseXmltv(xmltvUrl!, signal),
+      enabled: !!xmltvUrl,
+      staleTime: 30 * 60_000,
+      gcTime: 60 * 60_000,
+      retry: 1,
+    });
+
+  // Sorted unique categories from channels
+  const categories = useMemo(() => {
+    const seen = new Set<string>();
+    const list: string[] = [];
+    for (const ch of channels) {
+      if (ch.groupTitle && !seen.has(ch.groupTitle)) {
+        seen.add(ch.groupTitle);
+        list.push(ch.groupTitle);
+      }
+    }
+    return list.sort((a, b) => a.localeCompare(b));
+  }, [channels]);
+
+  const channelCountByCategory = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const ch of channels) {
+      if (ch.groupTitle) map[ch.groupTitle] = (map[ch.groupTitle] ?? 0) + 1;
+    }
+    return map;
+  }, [channels]);
+
+  const filteredChannels = useMemo(
+    () => (selectedCat ? channels.filter((c) => c.groupTitle === selectedCat) : channels),
+    [channels, selectedCat],
+  );
+
+  if (!isXtream) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <View style={styles.empty}>
+          <Text style={{ fontSize: 40, color: colors.mutedForeground }}>📋</Text>
+          <Text style={[styles.emptyTitle, { color: colors.foreground }]}>Guide Requires Xtream Codes</Text>
+          <Text style={[styles.emptySub, { color: colors.mutedForeground }]}>
+            M3U connections don't support EPG. Connect using Xtream Codes to access the TV guide.
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (selectedCat) {
+    return (
+      <FullGuide
+        channels={filteredChannels}
+        epgMap={epgMap}
+        epgLoading={epgLoading}
+        epgError={epgError}
+        refetchEpg={refetchEpg}
+        onBack={() => setSelectedCat(null)}
+        categoryName={selectedCat}
+        colors={colors}
+        insets={insets}
+        router={router}
+      />
+    );
+  }
+
+  return (
+    <CategoryGrid
+      categories={categories}
+      channelCountByCategory={channelCountByCategory}
+      colors={colors}
+      insets={insets}
+      onSelect={setSelectedCat}
+      epgLoading={epgLoading}
+    />
+  );
+}
+
+// ─── Styles ──────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
     paddingHorizontal: 12,
-    paddingBottom: 6,
+    paddingBottom: 8,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   screenTitle: { fontSize: 17, fontFamily: 'Inter_700Bold', letterSpacing: -0.3 },
-  nowBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    backgroundColor: 'rgba(239,68,68,0.12)',
-    borderRadius: 99,
-  },
-  nowDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#EF4444' },
-  nowLabel: { fontSize: 11, fontFamily: 'Inter_600SemiBold', color: '#EF4444' },
+  screenSub: { fontSize: 12, fontFamily: 'Inter_400Regular' },
   loadingBadge: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   loadingLabel: { fontSize: 11, fontFamily: 'Inter_400Regular' },
   errBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, borderWidth: 1 },
   errText: { fontSize: 11, fontFamily: 'Inter_500Medium', color: '#EF4444' },
   todayBtn: {
     marginLeft: 'auto',
-    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 8,
     borderWidth: 1,
   },
-  todayBtnText: { fontSize: 12, fontFamily: 'Inter_500Medium' },
-
-  catBar: {
-    height: 40,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+  todayBtnText: { fontSize: 12, fontFamily: 'Inter_600SemiBold' },
+  chCountLabel: { fontSize: 11, fontFamily: 'Inter_400Regular' },
+  backBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  catBarContent: {
+  backArrow: { fontSize: 20 },
+  nowDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#EF4444' },
+
+  // ── Category grid ──
+  catGrid: { padding: 12, gap: 10 },
+  catRow: { gap: 10, marginBottom: 0 },
+  catCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 16,
+    alignItems: 'center',
+    gap: 8,
+    aspectRatio: 1,
+    justifyContent: 'center',
+  },
+  catIcon: { fontSize: 32 },
+  catName: {
+    fontSize: 13,
+    fontFamily: 'Inter_600SemiBold',
+    textAlign: 'center',
+    lineHeight: 17,
+  },
+  catCount: { fontSize: 10, fontFamily: 'Inter_400Regular' },
+
+  // ── Day tab bar ──
+  dayBar: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    flexGrow: 0,
+  },
+  dayBarContent: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 10,
+    paddingVertical: 8,
     gap: 6,
-    height: 40,
   },
-  catChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    borderRadius: 99,
+  dayTab: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 8,
     borderWidth: 1,
   },
-  catChipText: { fontSize: 11, fontFamily: 'Inter_500Medium' },
+  dayTabText: { fontSize: 12, fontFamily: 'Inter_600SemiBold' },
 
+  // ── EPG grid ──
   grid: { flex: 1, flexDirection: 'row' },
-
-  leftCol: {
-    width: CHANNEL_W,
-    borderRightWidth: StyleSheet.hairlineWidth,
-  },
+  leftCol: { width: CHANNEL_W, borderRightWidth: StyleSheet.hairlineWidth },
   cornerCell: {
     height: TIME_H,
     justifyContent: 'center',
@@ -685,7 +802,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   cornerText: { fontSize: 10, fontFamily: 'Inter_600SemiBold', letterSpacing: 1 },
-
   channelCell: {
     height: ROW_H,
     flexDirection: 'row',
@@ -695,108 +811,58 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   chLogo: {
-    width: 38,
-    height: 28,
-    borderRadius: 4,
-    overflow: 'hidden',
-    justifyContent: 'center',
-    alignItems: 'center',
-    flexShrink: 0,
+    width: 38, height: 28, borderRadius: 4, overflow: 'hidden',
+    justifyContent: 'center', alignItems: 'center', flexShrink: 0,
   },
   chInitials: { fontSize: 10, fontFamily: 'Inter_700Bold' },
   chName: { flex: 1, fontSize: 11, fontFamily: 'Inter_500Medium', lineHeight: 14 },
-
   rightArea: { flex: 1, overflow: 'hidden' },
-
-  timeHeader: {
-    flexDirection: 'row',
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
+  timeHeader: { flexDirection: 'row', borderBottomWidth: StyleSheet.hairlineWidth },
   timeSlot: {
-    width: SLOT_W,
-    height: TIME_H,
-    justifyContent: 'center',
-    paddingLeft: 6,
-    borderLeftWidth: StyleSheet.hairlineWidth,
+    width: SLOT_W, height: TIME_H, justifyContent: 'center',
+    paddingLeft: 6, borderLeftWidth: StyleSheet.hairlineWidth,
   },
   timeLabel: { fontSize: 10, fontFamily: 'Inter_500Medium' },
-
   programRow: {
-    height: ROW_H,
-    flexDirection: 'row',
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    position: 'relative',
+    height: ROW_H, flexDirection: 'row',
+    borderBottomWidth: StyleSheet.hairlineWidth, position: 'relative',
   },
   programCell: {
-    position: 'absolute',
-    top: 3,
-    height: ROW_H - 6,
-    borderRadius: 5,
-    borderWidth: 1,
-    paddingHorizontal: 6,
-    paddingVertical: 3,
-    overflow: 'hidden',
-    justifyContent: 'center',
-    gap: 1,
+    position: 'absolute', top: 3, height: ROW_H - 6,
+    borderRadius: 5, borderWidth: 1,
+    paddingHorizontal: 6, paddingVertical: 3,
+    overflow: 'hidden', justifyContent: 'center', gap: 1,
   },
   progressBar: {
-    position: 'absolute',
-    left: 0,
-    bottom: 0,
-    height: 2,
-    backgroundColor: '#3B82F6',
-    borderBottomLeftRadius: 5,
+    position: 'absolute', left: 0, bottom: 0, height: 2,
+    backgroundColor: '#3B82F6', borderBottomLeftRadius: 5,
   },
   progTitle: { fontSize: 11, fontFamily: 'Inter_600SemiBold' },
   progTime: { fontSize: 9, fontFamily: 'Inter_400Regular' },
   noProg: {
-    position: 'absolute',
-    left: 4,
-    top: 6,
-    right: 4,
-    bottom: 6,
-    borderRadius: 5,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderStyle: 'dashed',
-    justifyContent: 'center',
-    alignItems: 'center',
+    position: 'absolute', left: 4, top: 6, right: 4, bottom: 6,
+    borderRadius: 5, borderWidth: StyleSheet.hairlineWidth,
+    borderStyle: 'dashed', justifyContent: 'center', alignItems: 'center',
   },
   noProgText: { fontSize: 10, fontFamily: 'Inter_400Regular' },
-
   nowLine: {
-    position: 'absolute',
-    top: 0,
-    width: 2,
-    backgroundColor: '#EF4444',
-    opacity: 0.8,
-    zIndex: 10,
+    position: 'absolute', top: 0, width: 2,
+    backgroundColor: '#EF4444', opacity: 0.8, zIndex: 10,
   },
 
-  // Modal
+  // ── Modal ──
   modalBg: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center', alignItems: 'center',
   },
   modalCard: {
-    width: 480,
-    maxWidth: '85%',
-    borderRadius: 16,
-    borderWidth: 1,
-    padding: 20,
-    gap: 14,
+    width: 480, maxWidth: '85%', borderRadius: 16,
+    borderWidth: 1, padding: 20, gap: 14,
   },
   modalHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
   modalTitle: { fontSize: 17, fontFamily: 'Inter_700Bold', letterSpacing: -0.3 },
   modalCh: { fontSize: 13, fontFamily: 'Inter_500Medium' },
-  modalLogo: {
-    width: 56,
-    height: 40,
-    borderRadius: 8,
-    overflow: 'hidden',
-    flexShrink: 0,
-  },
+  modalLogo: { width: 56, height: 40, borderRadius: 8, overflow: 'hidden', flexShrink: 0 },
   metaRow: {
     flexDirection: 'row',
     borderTopWidth: StyleSheet.hairlineWidth,
@@ -809,21 +875,12 @@ const styles = StyleSheet.create({
   metaDivider: { width: 1, marginVertical: 2 },
   modalDesc: { fontSize: 13, fontFamily: 'Inter_400Regular', lineHeight: 20 },
   modalActions: { flexDirection: 'row', gap: 10, justifyContent: 'flex-end' },
-  closeBtn: {
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 10,
-    borderWidth: 1,
-  },
+  closeBtn: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10, borderWidth: 1 },
   closeBtnText: { fontSize: 14, fontFamily: 'Inter_500Medium' },
-  watchBtn: {
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 10,
-    backgroundColor: '#3B82F6',
-  },
+  watchBtn: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10, backgroundColor: '#3B82F6' },
   watchBtnText: { fontSize: 14, fontFamily: 'Inter_600SemiBold', color: '#fff' },
 
+  // ── Empty state ──
   empty: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 12, paddingHorizontal: 60 },
   emptyTitle: { fontSize: 17, fontFamily: 'Inter_600SemiBold', textAlign: 'center' },
   emptySub: { fontSize: 13, fontFamily: 'Inter_400Regular', textAlign: 'center', lineHeight: 20 },
