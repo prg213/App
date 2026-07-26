@@ -191,6 +191,9 @@ export default function PlayerScreen() {
           <Text style={styles.msgIcon}>⚠</Text>
           <Text style={styles.msgTitle}>Stream Error</Text>
           <Text style={styles.msgSub}>Unable to load stream. Check your connection or try another channel.</Text>
+          <Text style={{ color: 'rgba(255,255,255,0.35)', fontSize: 9, marginTop: 8, paddingHorizontal: 20, textAlign: 'center' }} selectable>
+            {params.url}
+          </Text>
           <TouchableOpacity
             style={styles.actionBtn}
             onPress={() => {
