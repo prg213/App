@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Animated,
+  Linking,
   Platform,
   StatusBar,
   StyleSheet,
@@ -23,6 +24,7 @@ export default function PlayerScreen() {
   }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const isWeb = Platform.OS === 'web';
 
   const videoRef = useRef<Video>(null);
   const [isPlaying, setIsPlaying] = useState(true);
@@ -111,11 +113,27 @@ export default function PlayerScreen() {
       {/* Video */}
       <TouchableWithoutFeedback onPress={handleTap}>
         <View style={StyleSheet.absoluteFill}>
-          {hasError ? (
+          {isWeb ? (
+            /* Web browser can't play IPTV streams due to CORS — guide user to native app */
+            <View style={styles.errorView}>
+              <Text style={styles.errorIcon}>📱</Text>
+              <Text style={styles.errorTitle}>Open in Expo Go</Text>
+              <Text style={styles.errorSub}>
+                Browsers can't play IPTV streams due to security restrictions.{'\n'}
+                Scan the QR code in the Replit preview with the Expo Go app on your phone to watch live.
+              </Text>
+              <TouchableOpacity
+                style={styles.retryBtn}
+                onPress={() => Linking.openURL('https://expo.dev/go')}
+              >
+                <Text style={styles.retryText}>Get Expo Go →</Text>
+              </TouchableOpacity>
+            </View>
+          ) : hasError ? (
             <View style={styles.errorView}>
               <Text style={styles.errorIcon}>⚠</Text>
               <Text style={styles.errorTitle}>Stream Error</Text>
-              <Text style={styles.errorSub}>Unable to load stream. Check your connection.</Text>
+              <Text style={styles.errorSub}>Unable to load stream. Check your connection or try a different channel.</Text>
               <TouchableOpacity
                 style={styles.retryBtn}
                 onPress={() => {
@@ -142,7 +160,7 @@ export default function PlayerScreen() {
           )}
 
           {/* Loading Indicator */}
-          {isLoading && !hasError && (
+          {isLoading && !hasError && !isWeb && (
             <View style={styles.loadingOverlay}>
               <View style={styles.loadingSpinner}>
                 <Text style={styles.loadingIcon}>▶</Text>
