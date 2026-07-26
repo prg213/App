@@ -54,6 +54,7 @@ export default function PlayerScreen() {
 
   const [isPlaying, setIsPlaying] = useState(true);
   const [hasError, setHasError] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
   const [isBuffering, setIsBuffering] = useState(true);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -103,7 +104,11 @@ export default function PlayerScreen() {
       player.addListener('playingChange', ({ isPlaying: playing }) => setIsPlaying(playing)),
       player.addListener('statusChange', ({ status, error }: { status: string; error?: unknown }) => {
         if (status === 'readyToPlay') setIsBuffering(false);
-        if (status === 'error' || error) setHasError(true);
+        if (status === 'error' || error) {
+          const msg = (error as any)?.message ?? (error as any)?.localizedDescription ?? String(error ?? '');
+          setErrorMsg(msg);
+          setHasError(true);
+        }
       }),
       player.addListener('timeUpdate', ({ currentTime: t }: { currentTime: number }) => {
         setCurrentTime(t);
@@ -194,6 +199,11 @@ export default function PlayerScreen() {
           <Text style={{ color: 'rgba(255,255,255,0.35)', fontSize: 9, marginTop: 8, paddingHorizontal: 20, textAlign: 'center' }} selectable>
             {params.url}
           </Text>
+          {!!errorMsg && (
+            <Text style={{ color: 'rgba(255,100,100,0.6)', fontSize: 9, marginTop: 4, paddingHorizontal: 20, textAlign: 'center' }} selectable>
+              {errorMsg}
+            </Text>
+          )}
           <TouchableOpacity
             style={styles.actionBtn}
             onPress={() => {
