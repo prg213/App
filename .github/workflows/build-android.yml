@@ -66,21 +66,24 @@ jobs:
           with open("artifacts/iptv-app/package.json", "w") as f:
               json.dump(iptv_pkg, f, indent=2)
 
-          layout_path = "artifacts/iptv-app/app/_layout.tsx"
-          with open(layout_path, "r") as f:
-              layout = f.read()
-          layout = layout.replace(
-              "import { setBaseUrl } from '@workspace/api-client-react';",
-              "let _easBaseUrl: string | null = null;\nconst setBaseUrl = (url: string | null) => { _easBaseUrl = url ? url.replace(/\\/+$/, '') : null; };"
-          )
-          with open(layout_path, "w") as f:
-              f.write(layout)
-
-          print("All patches applied")
+          print("JSON patches applied")
           EOF
 
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
+
+      - name: Create @workspace/api-client-react stub
+        run: |
+          mkdir -p artifacts/iptv-app/node_modules/@workspace/api-client-react
+          cat > artifacts/iptv-app/node_modules/@workspace/api-client-react/index.js << 'STUB'
+          let _baseUrl = null;
+          function setBaseUrl(url) { _baseUrl = url ? url.replace(/\/+$/, '') : null; }
+          function setAuthTokenGetter(getter) {}
+          module.exports = { setBaseUrl, setAuthTokenGetter };
+          STUB
+          cat > artifacts/iptv-app/node_modules/@workspace/api-client-react/package.json << 'STUBPKG'
+          { "name": "@workspace/api-client-react", "version": "0.0.0", "main": "index.js" }
+          STUBPKG
 
       - name: Install EAS CLI
         run: npm install -g eas-cli
