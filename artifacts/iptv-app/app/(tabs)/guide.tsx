@@ -377,9 +377,9 @@ function FullGuide({
   const [selected, setSelected] = useState<{ program: EpgProgram; channel: Channel } | null>(null);
   const [now, setNow] = useState(Date.now());
 
-  // 7 day labels
+  // 3 day labels
   const days = useMemo(() =>
-    Array.from({ length: 7 }, (_, i) => {
+    Array.from({ length: 3 }, (_, i) => {
       const d = dayStart(i);
       return { ...fmtDayLabel(d, i), date: d };
     }), []);

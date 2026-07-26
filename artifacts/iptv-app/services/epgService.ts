@@ -66,10 +66,10 @@ export async function parseXmltvAsync(
 ): Promise<Map<string, EpgProgram[]>> {
   const map = new Map<string, EpgProgram[]>();
 
-  // Keep programmes that overlap with [now - 2h, now + 7 days]
+  // Keep programmes that overlap with [now - 2h, now + 3 days]
   const nowMs = Date.now();
   const windowStart = nowMs - 2 * 60 * 60_000;
-  const windowEnd   = nowMs + 7 * 24 * 60 * 60_000;
+  const windowEnd   = nowMs + 3 * 24 * 60 * 60_000;
 
   // Split on the opening tag — avoids a single giant [\s\S]*? regex over
   // the whole document, which is what caused the main-thread freeze.
