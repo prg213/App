@@ -396,45 +396,43 @@ export default function LiveTVScreen() {
 
       {/* ══ RIGHT: preview + EPG ══ */}
       <View style={[styles.previewPanel, { paddingTop: insets.top + 4, paddingRight: insets.right + 8 }]}>
+
+        {/* VideoView is ALWAYS mounted so unmounting never pauses the player.
+            It is simply hidden (display:none) when no channel is selected. */}
+        {!isWeb && (
+          <TouchableOpacity
+            style={[styles.videoWrap, !selectedChannel && { display: 'none' }]}
+            onPress={handleWatch}
+            activeOpacity={0.85}
+          >
+            <VideoView
+              player={player}
+              style={StyleSheet.absoluteFill}
+              nativeControls={false}
+              contentFit="contain"
+            />
+            {(isBuffering && !hasError) && (
+              <View style={styles.videoOverlay}>
+                <ActivityIndicator color="#fff" size="large" />
+              </View>
+            )}
+            {hasError && (
+              <View style={styles.videoOverlay}>
+                <Text style={styles.errText}>Stream unavailable</Text>
+              </View>
+            )}
+            <View style={styles.livePill}>
+              <View style={styles.liveDot} />
+              <Text style={styles.liveText}>LIVE</Text>
+            </View>
+            <View style={styles.tapHint}>
+              <Text style={styles.tapHintText}>⛶</Text>
+            </View>
+          </TouchableOpacity>
+        )}
+
         {selectedChannel ? (
           <>
-            {/* Video preview (16:9) — tap to watch fullscreen */}
-            <TouchableOpacity
-              style={styles.videoWrap}
-              onPress={handleWatch}
-              activeOpacity={0.85}
-            >
-              {!isWeb && (
-                <VideoView
-                  player={player}
-                  style={StyleSheet.absoluteFill}
-                  nativeControls={false}
-                  contentFit="contain"
-                />
-              )}
-              {(isBuffering && !hasError) && (
-                <View style={styles.videoOverlay}>
-                  <ActivityIndicator color="#fff" size="large" />
-                </View>
-              )}
-              {hasError && (
-                <View style={styles.videoOverlay}>
-                  <Text style={styles.errText}>Stream unavailable</Text>
-                </View>
-              )}
-
-              {/* LIVE badge */}
-              <View style={styles.livePill}>
-                <View style={styles.liveDot} />
-                <Text style={styles.liveText}>LIVE</Text>
-              </View>
-
-              {/* Tap-to-fullscreen hint */}
-              <View style={styles.tapHint}>
-                <Text style={styles.tapHintText}>⛶</Text>
-              </View>
-            </TouchableOpacity>
-
             {/* EPG / TV Guide for this channel */}
             <Text style={[styles.epgHeader, { color: colors.mutedForeground }]}>TV GUIDE</Text>
             {channelEpg.length > 0 ? (
