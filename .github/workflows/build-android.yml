@@ -41,7 +41,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: .
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --no-frozen-lockfile
 
       - name: Setup EAS
         uses: expo/expo-github-action@v8
