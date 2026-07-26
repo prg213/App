@@ -9,6 +9,7 @@ import {
   View,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
+import { useQueryClient } from '@tanstack/react-query';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { useAppContext } from '@/context/AppContext';
@@ -17,7 +18,14 @@ export default function SettingsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { credentials, deviceMac, logout } = useAppContext();
+  const queryClient = useQueryClient();
   const [loggingOut, setLoggingOut] = useState(false);
+
+  const handleRefreshContent = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    queryClient.invalidateQueries();
+    Alert.alert('Content Refreshed', 'All channels, movies, and series will reload on next view.');
+  };
 
   const handleLogout = () => {
     Alert.alert(
@@ -110,6 +118,18 @@ export default function SettingsScreen() {
           </View>
         </View>
 
+        {/* Content */}
+        <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>CONTENT</Text>
+        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <TouchableOpacity style={styles.actionRow} onPress={handleRefreshContent} activeOpacity={0.7}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.actionTitle, { color: colors.foreground }]}>Refresh All Content</Text>
+              <Text style={[styles.actionSub, { color: colors.mutedForeground }]}>Reload channels, movies & series</Text>
+            </View>
+            <Text style={{ color: colors.mutedForeground, fontSize: 18 }}>↻</Text>
+          </TouchableOpacity>
+        </View>
+
         {/* Danger Zone */}
         <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>ACCOUNT</Text>
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -187,6 +207,22 @@ const styles = StyleSheet.create({
   typeBadgeText: {
     fontSize: 12,
     fontFamily: 'Inter_600SemiBold',
+  },
+  actionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    gap: 12,
+  },
+  actionTitle: {
+    fontSize: 14,
+    fontFamily: 'Inter_500Medium',
+  },
+  actionSub: {
+    fontSize: 12,
+    fontFamily: 'Inter_400Regular',
+    marginTop: 2,
   },
   logoutRow: {
     paddingHorizontal: 16,

@@ -7,9 +7,10 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  TouchableOpacity,
   View,
 } from 'react-native';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -35,9 +36,16 @@ export default function LiveTVScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { credentials } = useAppContext();
+  const queryClient = useQueryClient();
   const [selectedCat, setSelectedCat] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [favorites, setFavorites] = React.useState<FavoriteChannel[]>([]);
+
+  const handleRefresh = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    queryClient.invalidateQueries({ queryKey: ['live-categories'] });
+    queryClient.invalidateQueries({ queryKey: ['live-channels'] });
+  }, [queryClient]);
 
   React.useEffect(() => {
     StorageService.getFavorites().then(setFavorites);
@@ -136,6 +144,13 @@ export default function LiveTVScreen() {
             <View style={styles.liveDot} />
             <Text style={styles.liveLabel}>LIVE</Text>
           </View>
+          <TouchableOpacity
+            onPress={handleRefresh}
+            style={[styles.refreshBtn, { backgroundColor: colors.secondary, borderColor: colors.border }]}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.refreshIcon, { color: isRefetching ? colors.primary : colors.mutedForeground }]}>↻</Text>
+          </TouchableOpacity>
         </View>
         <TextInput
           style={[styles.searchInput, { backgroundColor: colors.secondary, color: colors.foreground, borderColor: colors.border }]}
@@ -252,6 +267,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     fontSize: 14,
     fontFamily: 'Inter_400Regular',
+  },
+  refreshBtn: {
+    marginLeft: 'auto',
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  refreshIcon: {
+    fontSize: 18,
+    fontWeight: '600',
   },
   empty: {
     flex: 1,

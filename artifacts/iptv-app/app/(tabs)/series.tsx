@@ -6,9 +6,10 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  TouchableOpacity,
   View,
 } from 'react-native';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -32,8 +33,15 @@ export default function SeriesScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { credentials } = useAppContext();
+  const queryClient = useQueryClient();
   const [selectedCat, setSelectedCat] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+
+  const handleRefresh = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    queryClient.invalidateQueries({ queryKey: ['series-categories'] });
+    queryClient.invalidateQueries({ queryKey: ['series-list'] });
+  };
 
   const isXtream = credentials?.type === 'xtream';
 
@@ -104,7 +112,16 @@ export default function SeriesScreen() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { paddingTop: insets.top + (Platform.OS === 'web' ? 67 : 0), borderBottomColor: colors.border }]}>
-        <Text style={[styles.title, { color: colors.foreground }]}>TV Series</Text>
+        <View style={styles.headerRow}>
+          <Text style={[styles.title, { color: colors.foreground }]}>TV Series</Text>
+          <TouchableOpacity
+            onPress={handleRefresh}
+            style={[styles.refreshBtn, { backgroundColor: colors.secondary, borderColor: colors.border }]}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.refreshIcon, { color: isRefetching ? colors.primary : colors.mutedForeground }]}>↻</Text>
+          </TouchableOpacity>
+        </View>
         <TextInput
           style={[styles.searchInput, { backgroundColor: colors.secondary, color: colors.foreground, borderColor: colors.border }]}
           placeholder="Search series..."
@@ -167,11 +184,28 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     gap: 10,
   },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingTop: 8,
+  },
   title: {
     fontSize: 24,
     fontFamily: 'Inter_700Bold',
     letterSpacing: -0.5,
-    paddingTop: 8,
+  },
+  refreshBtn: {
+    marginLeft: 'auto',
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  refreshIcon: {
+    fontSize: 18,
+    fontWeight: '600',
   },
   searchInput: {
     height: 38,
