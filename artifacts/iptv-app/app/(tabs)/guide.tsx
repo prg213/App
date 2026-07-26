@@ -25,6 +25,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { useAppContext } from '@/context/AppContext';
 import { getXtreamLiveCategories, getXtreamLiveStreams, getXtreamXmltvUrl } from '@/services/xtreamApi';
+import { SIDEBAR_W } from './_layout';
 import { fetchAndParseXmltv } from '@/services/epgService';
 import type { Channel, EpgProgram } from '@/types';
 
@@ -770,7 +771,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    paddingHorizontal: 12,
+    paddingLeft: 0,
+    paddingRight: 12,
     paddingBottom: 8,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
@@ -793,13 +795,15 @@ const styles = StyleSheet.create({
   todayBtnText: { fontSize: 12, fontFamily: 'Inter_600SemiBold' },
   chCountLabel: { fontSize: 11, fontFamily: 'Inter_400Regular' },
   backBtn: {
+    width: SIDEBAR_W,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 5,
     paddingHorizontal: 12,
     paddingVertical: 7,
-    borderRadius: 10,
-    borderWidth: 1,
+    borderRadius: 0,
+    borderRightWidth: 1,
   },
   backArrow: { fontSize: 16 },
   backLabel: { fontSize: 13, fontFamily: 'Inter_500Medium' },
