@@ -31,10 +31,10 @@ jobs:
         with:
           version: 9
 
-      - name: Patch workspace config for EAS
+      - name: Patch configs for EAS
         run: |
           python3 - <<'EOF'
-          import json, textwrap
+          import json, re
 
           with open("package.json", "r") as f:
               pkg = json.load(f)
@@ -48,28 +48,18 @@ jobs:
           with open("artifacts/iptv-app/app.json", "w") as f:
               json.dump(app, f, indent=2)
 
-          workspace_yaml = """packages:
-            - artifacts/*
-            - lib/*
-            - lib/integrations/*
-            - scripts
-
-          catalog:
-            '@tanstack/react-query': ^5.90.21
-            zod: ^3.25.76
-
-          autoInstallPeers: false
-
-          onlyBuiltDependencies:
-            - '@swc/core'
-            - esbuild
-            - msw
-            - unrs-resolver
-          """
+          with open("pnpm-workspace.yaml", "r") as f:
+              content = f.read()
+          content = re.sub(
+              r'# ===.*?# ===+\n+minimumReleaseAge:\s*\d+\n+minimumReleaseAgeExclude:.*?(?=\n\S)',
+              '',
+              content,
+              flags=re.DOTALL
+          )
           with open("pnpm-workspace.yaml", "w") as f:
-              f.write(textwrap.dedent(workspace_yaml).lstrip())
+              f.write(content)
 
-          print("Done patching")
+          print("Patched successfully")
           EOF
 
       - name: Install dependencies
@@ -82,6 +72,28 @@ jobs:
         working-directory: artifacts/iptv-app
         run: eas init --non-interactive --force
         env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Build APK
+        working-directory: artifacts/iptv-app
+        run: eas build --platform android --profile ${{ github.event.inputs.profile }} --non-interactive
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Download APK
+        working-directory: artifacts/iptv-app
+        run: |
+          APK_URL=$(eas build:list --platform android --limit 1 --json --non-interactive | python3 -c "import sys,json; builds=json.load(sys.stdin); print(builds[0]['artifacts']['buildUrl'])")
+          curl -L "$APK_URL" -o streamvault.apk
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: StreamVault-${{ github.event.inputs.profile }}-${{ github.run_number }}
+          path: artifacts/iptv-app/streamvault.apk
+          retention-days: 30
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
 
       - name: Build APK
