@@ -315,6 +315,7 @@ export default function LiveTVScreen() {
         title: selectedChannel.name,
         type: 'live',
         logo: selectedChannel.logo ?? '',
+        epgId: selectedChannel.epgId ?? selectedChannel.id,
       },
     });
   }, [selectedChannel, router]);
