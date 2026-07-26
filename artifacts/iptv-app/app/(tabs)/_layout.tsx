@@ -1,5 +1,6 @@
 import React from 'react';
 import {
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -37,7 +38,12 @@ function Sidebar({ state, descriptors, navigation }: BottomTabBarProps) {
       </View>
 
       {/* Nav items */}
-      <View style={styles.nav}>
+      <ScrollView
+        style={styles.nav}
+        contentContainerStyle={styles.navContent}
+        showsVerticalScrollIndicator={false}
+        bounces={false}
+      >
         {state.routes.map((route, i) => {
           const focused = state.index === i;
           const item = NAV.find((n) => n.name === route.name);
@@ -61,7 +67,7 @@ function Sidebar({ state, descriptors, navigation }: BottomTabBarProps) {
             </TouchableOpacity>
           );
         })}
-      </View>
+      </ScrollView>
 
       {/* Footer */}
       <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
@@ -123,7 +129,8 @@ const styles = StyleSheet.create({
   brandPlay: { fontSize: 14, color: '#3B82F6' },
   brandName: { fontSize: 14, fontFamily: 'Inter_700Bold', color: '#F2F2F2', letterSpacing: -0.3 },
   brandSub:  { fontSize: 9,  fontFamily: 'Inter_600SemiBold', color: '#3B82F6', letterSpacing: 2 },
-  nav: { flex: 1, paddingHorizontal: 10, gap: 2 },
+  nav: { flex: 1, paddingHorizontal: 10 },
+  navContent: { gap: 2, paddingVertical: 2 },
   navItem: {
     flexDirection: 'row', alignItems: 'center',
     gap: 10, paddingVertical: 10, paddingHorizontal: 12,
