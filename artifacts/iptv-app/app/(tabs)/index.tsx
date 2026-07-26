@@ -2,6 +2,7 @@ import React, {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import {
@@ -208,12 +209,19 @@ export default function LiveTVScreen() {
     return () => subs.forEach((s) => s.remove());
   }, [player]);
 
+  // True while navigating to the fullscreen /player route so useFocusEffect
+  // knows NOT to stop the channel — we're just overlaying the player on top.
+  const goingToPlayerRef = useRef(false);
+
   // Stop + reset only when the user picks a different tab from the sidebar.
-  // Browsing back to categories within Live TV is just a state change — no focus
-  // loss occurs — so the channel keeps playing while they browse.
+  // Going to the fullscreen player sets goingToPlayerRef so we skip the stop.
   useFocusEffect(
     useCallback(() => {
       return () => {
+        if (goingToPlayerRef.current) {
+          goingToPlayerRef.current = false;
+          return; // coming from/going to fullscreen — keep channel alive
+        }
         if (!isWeb && player) {
           try { player.pause(); } catch {}
         }
@@ -326,6 +334,7 @@ export default function LiveTVScreen() {
 
   const handleWatch = useCallback(() => {
     if (!selectedChannel) return;
+    goingToPlayerRef.current = true; // tell useFocusEffect not to stop the channel
     router.push({
       pathname: '/player',
       params: {
