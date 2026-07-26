@@ -372,8 +372,7 @@ function FullGuide({
   insets: any;
   router: any;
 }) {
-  const { height: screenH } = useWindowDimensions();
-  const [gridContainerH, setGridContainerH] = useState(screenH);
+  const [gridContainerH, setGridContainerH] = useState(0);
   const [selectedDay, setSelectedDay] = useState(0);
   const [selected, setSelected] = useState<{ program: EpgProgram; channel: Channel } | null>(null);
   const [now, setNow] = useState(Date.now());
@@ -435,7 +434,10 @@ function FullGuide({
     isLeftScrolling.current = false;
   }, []);
 
-  const listH = Math.max(0, gridContainerH - TIME_H);
+  // Only render the grid once we have a real measured height — avoids
+  // the Android artifact where an oversized FlatList bleeds through the
+  // horizontal ScrollView before onLayout corrects gridContainerH.
+  const listH = gridContainerH > 0 ? gridContainerH - TIME_H : 0;
 
   const renderChannelCell = useCallback(
     ({ item }: { item: Channel }) => <ChannelCell channel={item} colors={colors} />,
@@ -819,6 +821,7 @@ const styles = StyleSheet.create({
   dayBar: {
     borderBottomWidth: StyleSheet.hairlineWidth,
     flexGrow: 0,
+    flexShrink: 0,
   },
   dayBarContent: {
     flexDirection: 'row',
