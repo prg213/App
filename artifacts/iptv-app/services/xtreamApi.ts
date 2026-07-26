@@ -316,3 +316,10 @@ export function getXtreamSeriesUrl(
 ): string {
   return `${baseUrl(creds.host)}/series/${creds.username}/${creds.password}/${episodeId}.${ext}`;
 }
+
+// ─── EPG ─────────────────────────────────────────────────────────────────────
+
+/** Full XMLTV feed URL — parse with epgService.fetchAndParseXmltv() */
+export function getXtreamXmltvUrl(creds: Creds): string {
+  return `${baseUrl(creds.host)}/xmltv.php?username=${encodeURIComponent(creds.username)}&password=${encodeURIComponent(creds.password)}`;
+}

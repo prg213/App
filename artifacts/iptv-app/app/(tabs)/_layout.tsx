@@ -12,11 +12,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 export const SIDEBAR_W = 190;
 
 const NAV = [
-  { name: 'index', label: 'Live TV', icon: '📡' },
-  { name: 'movies', label: 'Movies', icon: '🎬' },
-  { name: 'series', label: 'Series', icon: '📺' },
-  { name: 'search', label: 'Search', icon: '🔍' },
-  { name: 'settings', label: 'Settings', icon: '⚙' },
+  { name: 'index',    label: 'Live TV', icon: '📡' },
+  { name: 'guide',    label: 'TV Guide', icon: '📋' },
+  { name: 'movies',   label: 'Movies',  icon: '🎬' },
+  { name: 'series',   label: 'Series',  icon: '📺' },
+  { name: 'search',   label: 'Search',  icon: '🔍' },
+  { name: 'settings', label: 'Settings',icon: '⚙'  },
 ];
 
 function Sidebar({ state, descriptors, navigation }: BottomTabBarProps) {
@@ -50,9 +51,7 @@ function Sidebar({ state, descriptors, navigation }: BottomTabBarProps) {
               }}
               activeOpacity={0.7}
             >
-              <Text style={[styles.navIcon, focused && styles.navIconActive]}>
-                {item.icon}
-              </Text>
+              <Text style={styles.navIcon}>{item.icon}</Text>
               <Text style={[styles.navLabel, focused && styles.navLabelActive]}>
                 {item.label}
               </Text>
@@ -80,10 +79,11 @@ export default function TabLayout() {
         sceneStyle: { marginLeft: SIDEBAR_W },
       }}
     >
-      <Tabs.Screen name="index" options={{ title: 'Live TV' }} />
-      <Tabs.Screen name="movies" options={{ title: 'Movies' }} />
-      <Tabs.Screen name="series" options={{ title: 'Series' }} />
-      <Tabs.Screen name="search" options={{ title: 'Search' }} />
+      <Tabs.Screen name="index"    options={{ title: 'Live TV'  }} />
+      <Tabs.Screen name="guide"    options={{ title: 'TV Guide' }} />
+      <Tabs.Screen name="movies"   options={{ title: 'Movies'   }} />
+      <Tabs.Screen name="series"   options={{ title: 'Series'   }} />
+      <Tabs.Screen name="search"   options={{ title: 'Search'   }} />
       <Tabs.Screen name="settings" options={{ title: 'Settings' }} />
     </Tabs>
   );
@@ -92,9 +92,7 @@ export default function TabLayout() {
 const styles = StyleSheet.create({
   sidebar: {
     position: 'absolute',
-    left: 0,
-    top: 0,
-    bottom: 0,
+    left: 0, top: 0, bottom: 0,
     width: SIDEBAR_W,
     backgroundColor: '#0E0E1A',
     borderRightWidth: 1,
@@ -113,73 +111,32 @@ const styles = StyleSheet.create({
     borderBottomColor: '#1E1E30',
   },
   brandIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
+    width: 36, height: 36, borderRadius: 10,
     backgroundColor: '#1A1A28',
-    borderWidth: 1,
-    borderColor: '#252538',
-    justifyContent: 'center',
-    alignItems: 'center',
+    borderWidth: 1, borderColor: '#252538',
+    justifyContent: 'center', alignItems: 'center',
   },
   brandPlay: { fontSize: 14, color: '#3B82F6' },
-  brandName: {
-    fontSize: 14,
-    fontFamily: 'Inter_700Bold',
-    color: '#F2F2F2',
-    letterSpacing: -0.3,
-  },
-  brandSub: {
-    fontSize: 9,
-    fontFamily: 'Inter_600SemiBold',
-    color: '#3B82F6',
-    letterSpacing: 2,
-  },
-  nav: {
-    flex: 1,
-    paddingHorizontal: 10,
-    gap: 2,
-  },
+  brandName: { fontSize: 14, fontFamily: 'Inter_700Bold', color: '#F2F2F2', letterSpacing: -0.3 },
+  brandSub:  { fontSize: 9,  fontFamily: 'Inter_600SemiBold', color: '#3B82F6', letterSpacing: 2 },
+  nav: { flex: 1, paddingHorizontal: 10, gap: 2 },
   navItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingVertical: 11,
-    paddingHorizontal: 12,
-    borderRadius: 10,
-    position: 'relative',
+    flexDirection: 'row', alignItems: 'center',
+    gap: 10, paddingVertical: 10, paddingHorizontal: 12,
+    borderRadius: 10, position: 'relative',
   },
-  navItemActive: {
-    backgroundColor: 'rgba(59,130,246,0.12)',
-  },
+  navItemActive: { backgroundColor: 'rgba(59,130,246,0.12)' },
   navIcon: { fontSize: 15, width: 22, textAlign: 'center' },
-  navIconActive: {},
-  navLabel: {
-    fontSize: 13,
-    fontFamily: 'Inter_500Medium',
-    color: '#6B7280',
-  },
-  navLabelActive: {
-    fontFamily: 'Inter_600SemiBold',
-    color: '#F2F2F2',
-  },
+  navLabel: { fontSize: 13, fontFamily: 'Inter_500Medium', color: '#6B7280' },
+  navLabelActive: { fontFamily: 'Inter_600SemiBold', color: '#F2F2F2' },
   activePip: {
-    position: 'absolute',
-    left: 0,
-    top: '25%',
-    bottom: '25%',
-    width: 3,
-    backgroundColor: '#3B82F6',
-    borderRadius: 99,
+    position: 'absolute', left: 0, top: '25%', bottom: '25%',
+    width: 3, backgroundColor: '#3B82F6', borderRadius: 99,
   },
   footer: {
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#1E1E30',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+    paddingHorizontal: 16, paddingTop: 12,
+    borderTopWidth: 1, borderTopColor: '#1E1E30',
+    flexDirection: 'row', alignItems: 'center', gap: 8,
   },
   footerDot: { width: 7, height: 7, borderRadius: 99, backgroundColor: '#22C55E' },
   footerText: { fontSize: 11, fontFamily: 'Inter_400Regular', color: '#6B7280' },

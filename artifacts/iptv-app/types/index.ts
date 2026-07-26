@@ -86,6 +86,16 @@ export interface FavoriteChannel {
   streamUrl: string;
 }
 
+export interface EpgProgram {
+  channelId: string;
+  title: string;
+  description?: string;
+  category?: string;
+  start: Date;
+  end: Date;
+  icon?: string;
+}
+
 export interface WatchHistoryEntry {
   id: string;
   title: string;
