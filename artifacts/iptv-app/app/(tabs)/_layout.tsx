@@ -9,7 +9,7 @@ import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { Tabs } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-export const SIDEBAR_W = 190;
+export const SIDEBAR_W = 220;
 
 const NAV = [
   { name: 'home',     label: 'Home',    icon: '🏠' },
