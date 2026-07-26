@@ -58,10 +58,13 @@ export default function PlayerScreen() {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [showControls, setShowControls] = useState(false);
+  const [showInfo, setShowInfo] = useState(true);   // info bar visibility
   const [nowTs, setNowTs] = useState(Date.now());
 
   const controlsOpacity = useRef(new Animated.Value(0)).current;
+  const infoOpacity = useRef(new Animated.Value(1)).current;   // starts visible
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const infoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Update "now" every minute for EPG accuracy
   useEffect(() => {
@@ -79,10 +82,13 @@ export default function PlayerScreen() {
     retry: 1,
   });
 
-  const currentProg = React.useMemo(() => {
-    if (!epgMap || !params.epgId) return null;
+  const { currentProg, nextProg } = React.useMemo(() => {
+    if (!epgMap || !params.epgId) return { currentProg: null, nextProg: null };
     const progs = epgMap.get(params.epgId) ?? [];
-    return progs.find((p) => p.start.getTime() <= nowTs && nowTs < p.end.getTime()) ?? null;
+    const curIdx = progs.findIndex((p) => p.start.getTime() <= nowTs && nowTs < p.end.getTime());
+    const cur = curIdx >= 0 ? progs[curIdx] : null;
+    const nxt = curIdx >= 0 ? (progs[curIdx + 1] ?? null) : null;
+    return { currentProg: cur, nextProg: nxt };
   }, [epgMap, params.epgId, nowTs]);
 
   // ── Video player ─────────────────────────────────────────────────────────
@@ -116,17 +122,40 @@ export default function PlayerScreen() {
     }, 3500);
   }, [controlsOpacity]);
 
+  // ── Info bar auto-hide (3 s) ─────────────────────────────────────────────
+  const scheduleInfoHide = useCallback(() => {
+    if (infoTimer.current) clearTimeout(infoTimer.current);
+    infoTimer.current = setTimeout(() => {
+      Animated.timing(infoOpacity, { toValue: 0, duration: 400, useNativeDriver: true })
+        .start(() => setShowInfo(false));
+    }, 3000);
+  }, [infoOpacity]);
+
+  // Show info bar briefly on mount
   useEffect(() => {
-    return () => { if (hideTimer.current) clearTimeout(hideTimer.current); };
-  }, []);
+    scheduleInfoHide();
+    return () => {
+      if (hideTimer.current) clearTimeout(hideTimer.current);
+      if (infoTimer.current) clearTimeout(infoTimer.current);
+    };
+  }, [scheduleInfoHide]);
+
+  const showInfoBar = useCallback(() => {
+    setShowInfo(true);
+    Animated.timing(infoOpacity, { toValue: 1, duration: 200, useNativeDriver: true }).start();
+    scheduleInfoHide();
+  }, [infoOpacity, scheduleInfoHide]);
 
   const handleTap = useCallback(() => {
+    // Show info bar
+    showInfoBar();
+    // Show controls (back / play)
     if (!showControls) {
       setShowControls(true);
       Animated.timing(controlsOpacity, { toValue: 1, duration: 200, useNativeDriver: true }).start();
     }
     scheduleHide();
-  }, [showControls, controlsOpacity, scheduleHide]);
+  }, [showControls, controlsOpacity, scheduleHide, showInfoBar]);
 
   const togglePlay = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -241,38 +270,48 @@ export default function PlayerScreen() {
         </Animated.View>
       )}
 
-      {/* ── Always-visible bottom info bar (Live TV only) ── */}
-      {isLive && !isWeb && !hasError && (
-        <View style={[styles.infoBar, { paddingBottom: insets.bottom + 6 }]}>
-          <View style={styles.infoBarInner}>
-            {/* LIVE pill */}
+      {/* ── Now/Next info bar (Live TV) — fades in on tap, hides after 3 s ── */}
+      {isLive && !isWeb && !hasError && showInfo && (
+        <Animated.View
+          style={[styles.infoBar, { paddingBottom: insets.bottom + 8, opacity: infoOpacity }]}
+          pointerEvents="box-none"
+        >
+          {/* Row 1: LIVE pill + channel name + back button */}
+          <View style={styles.infoTop}>
             <View style={styles.livePill}>
               <View style={styles.liveDot} />
               <Text style={styles.liveText}>LIVE</Text>
             </View>
-
-            <View style={{ flex: 1, gap: 2 }}>
-              {/* Channel name */}
-              <Text style={styles.infoChannel} numberOfLines={1}>{params.title}</Text>
-
-              {/* Current programme */}
-              {currentProg ? (
-                <Text style={styles.infoProg} numberOfLines={1}>
-                  {currentProg.title}
-                  {'  '}
-                  <Text style={styles.infoProgTime}>
-                    {fmtTime(currentProg.start)} – {fmtTime(currentProg.end)}
-                  </Text>
-                </Text>
-              ) : null}
-            </View>
-
-            {/* Back button always accessible */}
+            <Text style={styles.infoChannel} numberOfLines={1}>{params.title}</Text>
             <TouchableOpacity onPress={() => router.back()} style={styles.backBtnSmall} activeOpacity={0.8}>
               <Text style={styles.backIcon}>←</Text>
             </TouchableOpacity>
           </View>
-        </View>
+
+          {/* Row 2: NOW */}
+          {currentProg && (
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>NOW</Text>
+              <Text style={styles.infoProgTitle} numberOfLines={1}>{currentProg.title}</Text>
+              <Text style={styles.infoProgTime}>
+                {fmtTime(currentProg.start)} – {fmtTime(currentProg.end)}
+              </Text>
+            </View>
+          )}
+
+          {/* Row 3: NEXT */}
+          {nextProg && (
+            <View style={[styles.infoRow, styles.infoRowNext]}>
+              <Text style={[styles.infoLabel, styles.infoLabelNext]}>NEXT</Text>
+              <Text style={[styles.infoProgTitle, styles.infoProgTitleNext]} numberOfLines={1}>
+                {nextProg.title}
+              </Text>
+              <Text style={[styles.infoProgTime, { color: 'rgba(255,255,255,0.45)' }]}>
+                {fmtTime(nextProg.start)} – {fmtTime(nextProg.end)}
+              </Text>
+            </View>
+          )}
+        </Animated.View>
       )}
 
       {/* Web back button */}
@@ -348,28 +387,30 @@ const styles = StyleSheet.create({
   track: { height: 3, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 2, overflow: 'hidden' },
   fill: { height: '100%', backgroundColor: '#3B82F6', borderRadius: 2 },
 
-  // ── Always-visible live info bar ──
+  // ── Animated live info bar ──
   infoBar: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
     paddingHorizontal: 16,
-    paddingTop: 10,
-    backgroundColor: 'rgba(0,0,0,0.65)',
+    paddingTop: 12,
+    gap: 6,
+    backgroundColor: 'rgba(0,0,0,0.72)',
   },
-  infoBarInner: {
+  infoTop: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+    marginBottom: 4,
   },
   livePill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: 'rgba(239,68,68,0.2)',
+    backgroundColor: 'rgba(239,68,68,0.25)',
     borderWidth: 1,
-    borderColor: 'rgba(239,68,68,0.5)',
+    borderColor: 'rgba(239,68,68,0.55)',
     paddingHorizontal: 7,
     paddingVertical: 3,
     borderRadius: 99,
@@ -377,10 +418,36 @@ const styles = StyleSheet.create({
   },
   liveDot: { width: 5, height: 5, borderRadius: 99, backgroundColor: '#EF4444' },
   liveText: { fontSize: 9, fontFamily: 'Inter_700Bold', color: '#EF4444', letterSpacing: 1 },
+  infoChannel: { flex: 1, fontSize: 14, fontFamily: 'Inter_700Bold', color: '#fff' },
 
-  infoChannel: { fontSize: 14, fontFamily: 'Inter_700Bold', color: '#fff' },
-  infoProg: { fontSize: 12, fontFamily: 'Inter_500Medium', color: 'rgba(255,255,255,0.85)' },
-  infoProgTime: { fontSize: 11, fontFamily: 'Inter_400Regular', color: 'rgba(255,255,255,0.55)' },
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  infoRowNext: { opacity: 0.65 },
+  infoLabel: {
+    fontSize: 10,
+    fontFamily: 'Inter_700Bold',
+    color: '#3B82F6',
+    letterSpacing: 0.5,
+    width: 34,
+    flexShrink: 0,
+  },
+  infoLabelNext: { color: 'rgba(255,255,255,0.5)' },
+  infoProgTitle: {
+    flex: 1,
+    fontSize: 13,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#fff',
+  },
+  infoProgTitleNext: { fontFamily: 'Inter_400Regular' },
+  infoProgTime: {
+    fontSize: 11,
+    fontFamily: 'Inter_400Regular',
+    color: 'rgba(255,255,255,0.6)',
+    flexShrink: 0,
+  },
 
   // Buffering
   bufferWrap: { ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center', gap: 16 },
