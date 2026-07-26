@@ -12,6 +12,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 export const SIDEBAR_W = 190;
 
 const NAV = [
+  { name: 'home',     label: 'Home',    icon: '🏠' },
   { name: 'index',    label: 'Live TV', icon: '📡' },
   { name: 'guide',    label: 'TV Guide', icon: '📋' },
   { name: 'movies',   label: 'Movies',  icon: '🎬' },
@@ -79,6 +80,7 @@ export default function TabLayout() {
         sceneStyle: { marginLeft: SIDEBAR_W },
       }}
     >
+      <Tabs.Screen name="home"     options={{ title: 'Home'     }} />
       <Tabs.Screen name="index"    options={{ title: 'Live TV'  }} />
       <Tabs.Screen name="guide"    options={{ title: 'TV Guide' }} />
       <Tabs.Screen name="movies"   options={{ title: 'Movies'   }} />
