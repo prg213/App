@@ -93,7 +93,7 @@ function ChannelCell({ channel, colors }: { channel: Channel; colors: any }) {
   );
 }
 
-function ProgramCell({
+const ProgramCell = React.memo(function ProgramCell({
   program,
   left,
   width,
@@ -143,9 +143,9 @@ function ProgramCell({
       )}
     </TouchableOpacity>
   );
-}
+});
 
-function ProgramRow({
+const ProgramRow = React.memo(function ProgramRow({
   channel,
   programs,
   windowStart,
@@ -194,7 +194,7 @@ function ProgramRow({
       )}
     </View>
   );
-}
+});
 
 // ─── Program Info Modal ────────────────────────────────────────────────────
 
@@ -515,54 +515,6 @@ export default function GuideScreen() {
           <Text style={[styles.todayBtnText, { color: colors.foreground }]}>⊙ Now</Text>
         </TouchableOpacity>
       </View>
-
-      {/* Category filter bar — sits between topBar and the grid */}
-      {categories.length > 0 && (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={[styles.catBar, { borderBottomColor: colors.border, backgroundColor: colors.card }]}
-          contentContainerStyle={styles.catBarContent}
-        >
-          {/* "All" chip */}
-          <TouchableOpacity
-            onPress={() => setSelectedCat(null)}
-            activeOpacity={0.7}
-            style={[
-              styles.catChip,
-              { borderColor: !selectedCat ? '#3B82F6' : colors.border },
-              !selectedCat && { backgroundColor: 'rgba(59,130,246,0.15)' },
-            ]}
-          >
-            <Text style={[styles.catChipText, { color: !selectedCat ? '#3B82F6' : colors.mutedForeground }]}>
-              All
-            </Text>
-          </TouchableOpacity>
-
-          {categories.map((cat) => {
-            const active = cat === selectedCat;
-            return (
-              <TouchableOpacity
-                key={cat}
-                onPress={() => setSelectedCat(active ? null : cat)}
-                activeOpacity={0.7}
-                style={[
-                  styles.catChip,
-                  { borderColor: active ? '#3B82F6' : colors.border },
-                  active && { backgroundColor: 'rgba(59,130,246,0.15)' },
-                ]}
-              >
-                <Text
-                  style={[styles.catChipText, { color: active ? '#3B82F6' : colors.mutedForeground }]}
-                  numberOfLines={1}
-                >
-                  {cat}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-      )}
 
       {/* Guide grid — onLayout measures the true available height */}
       <View
