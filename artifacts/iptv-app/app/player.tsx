@@ -114,20 +114,22 @@ export default function PlayerScreen() {
   }, [player, isWeb]);
 
   // ── Controls visibility ──────────────────────────────────────────────────
+  // Don't rely on animation .start() callback — it can silently drop on Android.
+  // Instead: run the fade, then force-hide state 450 ms later unconditionally.
   const scheduleHide = useCallback(() => {
     if (hideTimer.current) clearTimeout(hideTimer.current);
     hideTimer.current = setTimeout(() => {
-      Animated.timing(controlsOpacity, { toValue: 0, duration: 400, useNativeDriver: true })
-        .start(() => setShowControls(false));
-    }, 3500);
+      Animated.timing(controlsOpacity, { toValue: 0, duration: 400, useNativeDriver: true }).start();
+      setTimeout(() => setShowControls(false), 450);
+    }, 3000);
   }, [controlsOpacity]);
 
   // ── Info bar auto-hide (3 s) ─────────────────────────────────────────────
   const scheduleInfoHide = useCallback(() => {
     if (infoTimer.current) clearTimeout(infoTimer.current);
     infoTimer.current = setTimeout(() => {
-      Animated.timing(infoOpacity, { toValue: 0, duration: 400, useNativeDriver: true })
-        .start(() => setShowInfo(false));
+      Animated.timing(infoOpacity, { toValue: 0, duration: 400, useNativeDriver: true }).start();
+      setTimeout(() => setShowInfo(false), 450);
     }, 3000);
   }, [infoOpacity]);
 
@@ -239,24 +241,22 @@ export default function PlayerScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* Play / seek controls — centre */}
-          <View style={styles.center}>
-            {!isLive && (
+          {/* Play / seek controls — VOD only; live TV has no pause */}
+          {!isLive && (
+            <View style={styles.center}>
               <TouchableOpacity style={styles.seekBtn} onPress={() => seek(-10)} activeOpacity={0.7}>
                 <Text style={styles.seekIcon}>«</Text>
                 <Text style={styles.seekLabel}>10s</Text>
               </TouchableOpacity>
-            )}
-            <TouchableOpacity style={styles.playBtn} onPress={togglePlay} activeOpacity={0.8}>
-              <Text style={styles.playIcon}>{isPlaying ? '⏸' : '▶'}</Text>
-            </TouchableOpacity>
-            {!isLive && (
+              <TouchableOpacity style={styles.playBtn} onPress={togglePlay} activeOpacity={0.8}>
+                <Text style={styles.playIcon}>{isPlaying ? '⏸' : '▶'}</Text>
+              </TouchableOpacity>
               <TouchableOpacity style={styles.seekBtn} onPress={() => seek(10)} activeOpacity={0.7}>
                 <Text style={styles.seekIcon}>»</Text>
                 <Text style={styles.seekLabel}>10s</Text>
               </TouchableOpacity>
-            )}
-          </View>
+            </View>
+          )}
 
           {/* VOD progress bar */}
           {!isLive && duration > 0 && (
