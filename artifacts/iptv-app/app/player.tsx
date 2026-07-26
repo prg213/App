@@ -174,57 +174,60 @@ export default function PlayerScreen() {
     <View style={styles.container}>
       <StatusBar hidden />
 
-      {/* Video + tap handler */}
-      <TouchableWithoutFeedback onPress={handleTap}>
-        <View style={StyleSheet.absoluteFill}>
-          {isWeb ? (
-            <View style={styles.msgView}>
-              <Text style={styles.msgIcon}>📱</Text>
-              <Text style={styles.msgTitle}>Open in Expo Go</Text>
-              <Text style={styles.msgSub}>Browsers can't play IPTV streams.{'\n'}Use the Expo Go app on your phone.</Text>
-              <TouchableOpacity style={styles.actionBtn} onPress={() => Linking.openURL('https://expo.dev/go')}>
-                <Text style={styles.actionBtnText}>Get Expo Go →</Text>
-              </TouchableOpacity>
-            </View>
-          ) : hasError ? (
-            <View style={styles.msgView}>
-              <Text style={styles.msgIcon}>⚠</Text>
-              <Text style={styles.msgTitle}>Stream Error</Text>
-              <Text style={styles.msgSub}>Unable to load stream. Check your connection or try another channel.</Text>
-              <TouchableOpacity
-                style={styles.actionBtn}
-                onPress={() => {
-                  setHasError(false);
-                  setIsBuffering(true);
-                  player.replace(params.url);
-                  player.play();
-                }}
-              >
-                <Text style={styles.actionBtnText}>Retry</Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <VideoView
-              player={player}
-              style={StyleSheet.absoluteFill}
-              contentFit="contain"
-              allowsFullscreen={false}
-              allowsPictureInPicture
-              nativeControls={false}
-            />
-          )}
-
-          {/* Buffering spinner — no overlay, just centred */}
-          {isBuffering && !hasError && !isWeb && (
-            <View style={styles.bufferWrap} pointerEvents="none">
-              <View style={styles.bufferCircle}>
-                <Text style={styles.bufferIcon}>▶</Text>
-              </View>
-              <Text style={styles.bufferText}>Loading stream…</Text>
-            </View>
-          )}
+      {/* Video layer */}
+      {isWeb ? (
+        <View style={styles.msgView}>
+          <Text style={styles.msgIcon}>📱</Text>
+          <Text style={styles.msgTitle}>Open in Expo Go</Text>
+          <Text style={styles.msgSub}>Browsers can't play IPTV streams.{'\n'}Use the Expo Go app on your phone.</Text>
+          <TouchableOpacity style={styles.actionBtn} onPress={() => Linking.openURL('https://expo.dev/go')}>
+            <Text style={styles.actionBtnText}>Get Expo Go →</Text>
+          </TouchableOpacity>
         </View>
-      </TouchableWithoutFeedback>
+      ) : hasError ? (
+        <View style={styles.msgView}>
+          <Text style={styles.msgIcon}>⚠</Text>
+          <Text style={styles.msgTitle}>Stream Error</Text>
+          <Text style={styles.msgSub}>Unable to load stream. Check your connection or try another channel.</Text>
+          <TouchableOpacity
+            style={styles.actionBtn}
+            onPress={() => {
+              setHasError(false);
+              setIsBuffering(true);
+              player.replace(params.url);
+              player.play();
+            }}
+          >
+            <Text style={styles.actionBtnText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <VideoView
+          player={player}
+          style={StyleSheet.absoluteFill}
+          contentFit="contain"
+          allowsFullscreen={false}
+          allowsPictureInPicture
+          nativeControls={false}
+        />
+      )}
+
+      {/* Buffering spinner */}
+      {isBuffering && !hasError && !isWeb && (
+        <View style={styles.bufferWrap} pointerEvents="none">
+          <View style={styles.bufferCircle}>
+            <Text style={styles.bufferIcon}>▶</Text>
+          </View>
+          <Text style={styles.bufferText}>Loading stream…</Text>
+        </View>
+      )}
+
+      {/* Transparent tap-catcher — sits above VideoView so Android doesn't swallow touches */}
+      {!isWeb && !hasError && (
+        <TouchableWithoutFeedback onPress={handleTap}>
+          <View style={StyleSheet.absoluteFill} />
+        </TouchableWithoutFeedback>
+      )}
 
       {/* ── Tap-to-reveal controls (no dim background) ── */}
       {showControls && !isWeb && (
