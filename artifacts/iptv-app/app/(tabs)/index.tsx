@@ -42,7 +42,41 @@ function fmtTime(d: Date): string {
   return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${ampm}`;
 }
 
-// ─── Channel Row ────────────────────────────────────────────────────────────
+// ─── Category Row ─────────────────────────────────────────────────────────────
+
+const CategoryRow = React.memo(function CategoryRow({
+  cat,
+  isSelected,
+  colors,
+  onPress,
+}: {
+  cat: Category;
+  isSelected: boolean;
+  colors: ReturnType<typeof useColors>;
+  onPress: () => void;
+}) {
+  return (
+    <TouchableOpacity
+      style={[
+        styles.catRow,
+        isSelected
+          ? { backgroundColor: '#3B82F6' }
+          : { borderBottomColor: colors.border },
+      ]}
+      onPress={onPress}
+      activeOpacity={0.7}
+    >
+      <Text
+        style={[styles.catRowText, { color: isSelected ? '#fff' : colors.foreground }]}
+        numberOfLines={2}
+      >
+        {cat.name}
+      </Text>
+    </TouchableOpacity>
+  );
+});
+
+// ─── Channel Row ─────────────────────────────────────────────────────────────
 
 const ChannelRow = React.memo(function ChannelRow({
   channel,
@@ -108,7 +142,7 @@ const ChannelRow = React.memo(function ChannelRow({
   );
 });
 
-// ─── Main Screen ─────────────────────────────────────────────────────────────
+// ─── Main Screen ──────────────────────────────────────────────────────────────
 
 export default function LiveTVScreen() {
   const colors = useColors();
@@ -121,8 +155,8 @@ export default function LiveTVScreen() {
   const creds = isXtream ? buildCreds(credentials) : null;
   const xmltvUrl = creds ? getXtreamXmltvUrl(creds) : null;
 
+  const [selectedCatId, setSelectedCatId] = useState<string>('__all');
   const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null);
-  const [catIndex, setCatIndex] = useState(0);
   const [favorites, setFavorites] = useState<FavoriteChannel[]>([]);
   const [isBuffering, setIsBuffering] = useState(false);
   const [hasError, setHasError] = useState(false);
@@ -134,27 +168,33 @@ export default function LiveTVScreen() {
     return () => clearInterval(t);
   }, []);
 
-  // ── Video player ────────────────────────────────────────────────────────
+  // ── Video player ─────────────────────────────────────────────────────────
 
-  const player = useVideoPlayer(isWeb ? null : (selectedChannel?.streamUrl ?? null), (p) => {
-    p.loop = false;
-    if (selectedChannel && !isWeb) p.play();
-  });
+  const player = useVideoPlayer(
+    isWeb ? null : (selectedChannel?.streamUrl ?? null),
+    (p) => {
+      p.loop = false;
+      if (selectedChannel && !isWeb) p.play();
+    },
+  );
 
-  // Replace source when channel changes
   useEffect(() => {
     if (isWeb || !selectedChannel?.streamUrl) return;
     setIsBuffering(true);
     setHasError(false);
-    try {
-      player.replace(selectedChannel.streamUrl);
-      player.play();
-    } catch {
-      setHasError(true);
-    }
+    const load = async () => {
+      try {
+        // replaceAsync is on the prototype — avoids blocking the main thread (iOS warning fix)
+        await (player as any).replaceAsync(selectedChannel.streamUrl);
+        player.play();
+      } catch {
+        setHasError(true);
+        setIsBuffering(false);
+      }
+    };
+    load();
   }, [selectedChannel?.streamUrl]);
 
-  // Player events
   useEffect(() => {
     if (isWeb || !player) return;
     const subs = [
@@ -166,7 +206,7 @@ export default function LiveTVScreen() {
     return () => subs.forEach((s) => s.remove());
   }, [player]);
 
-  // ── Data queries ────────────────────────────────────────────────────────
+  // ── Data queries ──────────────────────────────────────────────────────────
 
   const { data: rawCategories = [] } = useQuery<Category[]>({
     queryKey: ['live-categories', credentials],
@@ -184,19 +224,23 @@ export default function LiveTVScreen() {
     () => [{ id: '__all', name: 'All Channels' }, ...rawCategories],
     [rawCategories],
   );
-  const currentCat = allCategories[catIndex] ?? allCategories[0];
+
+  const currentCat = useMemo(
+    () => allCategories.find((c) => c.id === selectedCatId) ?? allCategories[0],
+    [allCategories, selectedCatId],
+  );
 
   const { data: channels = [], isLoading: channelsLoading } = useQuery<Channel[]>({
-    queryKey: ['live-channels', currentCat?.id, credentials],
+    queryKey: ['live-channels', selectedCatId, credentials],
     queryFn: async () => {
       if (!credentials) return [];
       if (credentials.type === 'xtream') {
-        const catId = currentCat?.id === '__all' ? undefined : currentCat?.id;
+        const catId = selectedCatId === '__all' ? undefined : selectedCatId;
         return getXtreamLiveStreams(buildCreds(credentials), catId);
       }
       if (credentials.m3uUrl) {
         const { channels: all } = await fetchAndParseM3U(credentials.m3uUrl);
-        return currentCat?.id === '__all' ? all : all.filter((c) => c.groupTitle === currentCat?.id);
+        return selectedCatId === '__all' ? all : all.filter((c) => c.groupTitle === selectedCatId);
       }
       return [];
     },
@@ -213,7 +257,7 @@ export default function LiveTVScreen() {
     retry: 1,
   });
 
-  // ── Derived data ────────────────────────────────────────────────────────
+  // ── Derived data ──────────────────────────────────────────────────────────
 
   const favSet = useMemo(() => new Set(favorites.map((f) => f.id)), [favorites]);
 
@@ -227,19 +271,29 @@ export default function LiveTVScreen() {
     return map;
   }, [epgMap, nowTs]);
 
-  // Current + upcoming programmes for the selected channel
-  const { current: currentProg, upcoming } = useMemo(() => {
-    if (!selectedChannel || !epgMap) return { current: null, upcoming: [] };
+  // All programmes for the selected channel (current + upcoming)
+  const channelEpg = useMemo(() => {
+    if (!selectedChannel || !epgMap) return [];
     const progs = epgMap.get(selectedChannel.epgId ?? selectedChannel.id) ?? [];
-    const cur = progs.find((p) => p.start.getTime() <= nowTs && nowTs < p.end.getTime()) ?? null;
-    const idx = cur ? progs.indexOf(cur) : -1;
-    const upcomingProgs = idx >= 0 ? progs.slice(idx + 1, idx + 8) : progs.filter((p) => p.start.getTime() > nowTs).slice(0, 7);
-    return { current: cur, upcoming: upcomingProgs };
+    // Return current onwards (up to 12 entries)
+    const nowIdx = progs.findIndex((p) => p.end.getTime() > nowTs);
+    return nowIdx >= 0 ? progs.slice(nowIdx, nowIdx + 12) : progs.slice(0, 12);
   }, [selectedChannel, epgMap, nowTs]);
 
-  // ── Handlers ────────────────────────────────────────────────────────────
+  const currentProg = useMemo(
+    () => channelEpg.find((p) => p.start.getTime() <= nowTs && nowTs < p.end.getTime()) ?? null,
+    [channelEpg, nowTs],
+  );
 
-  const handleSelect = useCallback((ch: Channel) => {
+  // ── Handlers ──────────────────────────────────────────────────────────────
+
+  const handleSelectCat = useCallback((catId: string) => {
+    Haptics.selectionAsync();
+    setSelectedCatId(catId);
+    setSelectedChannel(null);
+  }, []);
+
+  const handleSelectChannel = useCallback((ch: Channel) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setSelectedChannel(ch);
   }, []);
@@ -252,13 +306,27 @@ export default function LiveTVScreen() {
     setFavorites(updated);
   }, []);
 
-  const handleFullscreen = useCallback(() => {
+  const handleWatch = useCallback(() => {
     if (!selectedChannel) return;
     router.push({
       pathname: '/player',
-      params: { url: selectedChannel.streamUrl, title: selectedChannel.name, type: 'live', logo: selectedChannel.logo ?? '' },
+      params: {
+        url: selectedChannel.streamUrl,
+        title: selectedChannel.name,
+        type: 'live',
+        logo: selectedChannel.logo ?? '',
+      },
     });
   }, [selectedChannel, router]);
+
+  const renderCat = useCallback(({ item }: { item: Category }) => (
+    <CategoryRow
+      cat={item}
+      isSelected={item.id === selectedCatId}
+      colors={colors}
+      onPress={() => handleSelectCat(item.id)}
+    />
+  ), [selectedCatId, colors, handleSelectCat]);
 
   const renderChannel = useCallback(({ item }: { item: Channel }) => (
     <ChannelRow
@@ -267,44 +335,36 @@ export default function LiveTVScreen() {
       isFav={favSet.has(item.id)}
       nowPlaying={nowPlayingMap.get(item.epgId ?? item.id)}
       colors={colors}
-      onPress={() => handleSelect(item)}
+      onPress={() => handleSelectChannel(item)}
       onLongPress={() => handleLongPress(item)}
     />
-  ), [selectedChannel?.id, favSet, nowPlayingMap, colors, handleSelect, handleLongPress]);
+  ), [selectedChannel?.id, favSet, nowPlayingMap, colors, handleSelectChannel, handleLongPress]);
 
-  // ── Render ───────────────────────────────────────────────────────────────
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
 
-      {/* ══ LEFT PANEL: category nav + channel list ══ */}
-      <View style={[styles.leftPanel, { borderRightColor: colors.border, paddingTop: insets.top + 4 }]}>
+      {/* ══ LEFT: vertical category list ══ */}
+      <View style={[styles.catPanel, { borderRightColor: colors.border, paddingTop: insets.top + 4 }]}>
+        <Text style={[styles.panelHeader, { color: colors.mutedForeground, borderBottomColor: colors.border }]}>
+          CATEGORIES
+        </Text>
+        <FlatList
+          data={allCategories}
+          keyExtractor={(c) => c.id}
+          renderItem={renderCat}
+          showsVerticalScrollIndicator={false}
+          getItemLayout={(_, i) => ({ length: 52, offset: 52 * i, index: i })}
+          contentContainerStyle={{ paddingBottom: insets.bottom + 8 }}
+        />
+      </View>
 
-        {/* Category navigation */}
-        <View style={[styles.catNav, { borderBottomColor: colors.border }]}>
-          <TouchableOpacity
-            style={styles.catArrowBtn}
-            onPress={() => { setCatIndex((i) => Math.max(0, i - 1)); setSelectedChannel(null); }}
-            activeOpacity={0.6}
-            disabled={catIndex === 0}
-          >
-            <Text style={[styles.catArrow, { color: catIndex === 0 ? colors.border : colors.foreground }]}>‹</Text>
-          </TouchableOpacity>
-
-          <Text style={[styles.catLabel, { color: colors.foreground }]} numberOfLines={1}>
-            {currentCat?.name ?? 'All Channels'}
-          </Text>
-
-          <TouchableOpacity
-            style={styles.catArrowBtn}
-            onPress={() => { setCatIndex((i) => Math.min(allCategories.length - 1, i + 1)); setSelectedChannel(null); }}
-            activeOpacity={0.6}
-            disabled={catIndex >= allCategories.length - 1}
-          >
-            <Text style={[styles.catArrow, { color: catIndex >= allCategories.length - 1 ? colors.border : colors.foreground }]}>›</Text>
-          </TouchableOpacity>
-        </View>
-
+      {/* ══ MIDDLE: channel list ══ */}
+      <View style={[styles.chPanel, { borderRightColor: colors.border, paddingTop: insets.top + 4 }]}>
+        <Text style={[styles.panelHeader, { color: colors.mutedForeground, borderBottomColor: colors.border }]}>
+          {currentCat?.name?.toUpperCase() ?? 'CHANNELS'}
+        </Text>
         {channelsLoading ? (
           <ActivityIndicator color={colors.primary} style={{ marginTop: 32 }} />
         ) : (
@@ -321,11 +381,11 @@ export default function LiveTVScreen() {
         )}
       </View>
 
-      {/* ══ CENTER PANEL: video preview + programme description ══ */}
-      <View style={[styles.centerPanel, { backgroundColor: '#000' }]}>
+      {/* ══ RIGHT: preview + EPG ══ */}
+      <View style={[styles.previewPanel, { paddingTop: insets.top + 4, paddingRight: insets.right + 8 }]}>
         {selectedChannel ? (
           <>
-            {/* Video */}
+            {/* Video preview (16:9) */}
             <View style={styles.videoWrap}>
               {!isWeb && (
                 <VideoView
@@ -342,115 +402,99 @@ export default function LiveTVScreen() {
               )}
               {hasError && (
                 <View style={styles.videoOverlay}>
-                  <Text style={styles.errorText}>Stream unavailable</Text>
+                  <Text style={styles.errText}>Stream unavailable</Text>
                 </View>
               )}
-              {/* Fullscreen button */}
-              <TouchableOpacity style={styles.fullscreenBtn} onPress={handleFullscreen} activeOpacity={0.8}>
-                <Text style={styles.fullscreenIcon}>⛶</Text>
+
+              {/* LIVE badge */}
+              <View style={styles.livePill}>
+                <View style={styles.liveDot} />
+                <Text style={styles.liveText}>LIVE</Text>
+              </View>
+            </View>
+
+            {/* Channel name + OK button */}
+            <View style={[styles.chNameRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.selChName, { color: colors.foreground }]} numberOfLines={1}>
+                  {selectedChannel.name}
+                </Text>
+                {currentProg ? (
+                  <Text style={[styles.selChProg, { color: '#3B82F6' }]} numberOfLines={1}>
+                    {currentProg.title}
+                    <Text style={{ color: colors.mutedForeground }}>
+                      {'  '}{fmtTime(currentProg.start)} – {fmtTime(currentProg.end)}
+                    </Text>
+                  </Text>
+                ) : null}
+              </View>
+              <TouchableOpacity style={styles.okBtn} onPress={handleWatch} activeOpacity={0.8}>
+                <Text style={styles.okBtnText}>OK  ▶</Text>
               </TouchableOpacity>
             </View>
 
-            {/* Programme info below video */}
-            <View style={[styles.progInfo, { backgroundColor: colors.card, borderTopColor: colors.border }]}>
-              {currentProg ? (
-                <>
-                  <Text style={[styles.progTitle, { color: '#3B82F6' }]} numberOfLines={1}>
-                    {currentProg.title}
-                  </Text>
-                  <Text style={[styles.progTime, { color: colors.mutedForeground }]}>
-                    {fmtTime(currentProg.start)} – {fmtTime(currentProg.end)}
-                  </Text>
-                  {currentProg.description ? (
-                    <Text style={[styles.progDesc, { color: colors.mutedForeground }]} numberOfLines={4}>
-                      {currentProg.description}
-                    </Text>
-                  ) : null}
-                </>
-              ) : (
-                <Text style={[styles.progTitle, { color: colors.foreground }]}>{selectedChannel.name}</Text>
-              )}
-            </View>
-          </>
-        ) : (
-          <View style={styles.noSel}>
-            <Text style={{ fontSize: 36, marginBottom: 8 }}>📺</Text>
-            <Text style={[styles.noSelText, { color: colors.mutedForeground }]}>
-              Select a channel to preview
-            </Text>
-          </View>
-        )}
-      </View>
-
-      {/* ══ RIGHT PANEL: LIVE badge + channel info + EPG schedule ══ */}
-      <View style={[styles.rightPanel, { borderLeftColor: colors.border, paddingTop: insets.top + 8, paddingRight: insets.right + 8 }]}>
-        {selectedChannel ? (
-          <>
-            {/* LIVE TV badge */}
-            <View style={styles.liveBadge}>
-              <View style={styles.liveDot} />
-              <Text style={styles.liveBadgeText}>LIVE TV</Text>
-            </View>
-
-            {/* Channel card */}
-            <View style={[styles.chCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              {selectedChannel.logo ? (
-                <View style={[styles.chCardLogo, { backgroundColor: colors.secondary }]}>
-                  <Image source={{ uri: selectedChannel.logo }} style={StyleSheet.absoluteFill} resizeMode="contain" />
-                </View>
-              ) : null}
-              <Text style={[styles.chCardName, { color: colors.foreground }]} numberOfLines={1}>
-                {selectedChannel.name}
-              </Text>
-              {currentProg ? (
-                <>
-                  <Text style={[styles.chCardProg, { color: '#3B82F6' }]} numberOfLines={2}>
-                    {currentProg.title}
-                  </Text>
-                  <Text style={[styles.chCardTime, { color: colors.mutedForeground }]}>
-                    {fmtTime(currentProg.start)} – {fmtTime(currentProg.end)}
-                  </Text>
-                </>
-              ) : null}
-
-              {/* Fullscreen button */}
-              <TouchableOpacity style={styles.watchBtn} onPress={handleFullscreen} activeOpacity={0.8}>
-                <Text style={styles.watchBtnText}>▶  Watch Fullscreen</Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Upcoming programmes */}
-            <Text style={[styles.upcomingHeader, { color: colors.mutedForeground }]}>UPCOMING</Text>
-            {upcoming.length > 0 ? (
-              <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
-                {upcoming.map((prog, i) => (
-                  <View key={i} style={[styles.upcomingRow, { borderBottomColor: colors.border }]}>
-                    <Text style={[styles.upcomingTime, { color: '#3B82F6' }]}>
-                      {fmtTime(prog.start)} – {fmtTime(prog.end)}
-                    </Text>
-                    <Text style={[styles.upcomingTitle, { color: colors.foreground }]} numberOfLines={1}>
-                      {prog.title}
-                    </Text>
-                    {prog.description ? (
-                      <Text style={[styles.upcomingDesc, { color: colors.mutedForeground }]} numberOfLines={2}>
-                        {prog.description}
-                      </Text>
-                    ) : null}
-                  </View>
-                ))}
+            {/* EPG / TV Guide for this channel */}
+            <Text style={[styles.epgHeader, { color: colors.mutedForeground }]}>TV GUIDE</Text>
+            {channelEpg.length > 0 ? (
+              <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: insets.bottom + 8 }}>
+                {channelEpg.map((prog, i) => {
+                  const isCurrent = prog.start.getTime() <= nowTs && nowTs < prog.end.getTime();
+                  return (
+                    <View
+                      key={i}
+                      style={[
+                        styles.epgRow,
+                        { borderBottomColor: colors.border },
+                        isCurrent && { backgroundColor: 'rgba(59,130,246,0.08)' },
+                      ]}
+                    >
+                      <View style={styles.epgTimeCol}>
+                        <Text style={[styles.epgTime, { color: isCurrent ? '#3B82F6' : colors.mutedForeground }]}>
+                          {fmtTime(prog.start)}
+                        </Text>
+                        {isCurrent && (
+                          <View style={styles.nowBadge}>
+                            <Text style={styles.nowBadgeText}>NOW</Text>
+                          </View>
+                        )}
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text
+                          style={[styles.epgTitle, { color: isCurrent ? '#F2F2F2' : colors.foreground }]}
+                          numberOfLines={1}
+                        >
+                          {prog.title}
+                        </Text>
+                        {prog.description ? (
+                          <Text
+                            style={[styles.epgDesc, { color: colors.mutedForeground }]}
+                            numberOfLines={2}
+                          >
+                            {prog.description}
+                          </Text>
+                        ) : null}
+                      </View>
+                    </View>
+                  );
+                })}
               </ScrollView>
             ) : (
-              <View style={{ flex: 1, alignItems: 'center', paddingTop: 20 }}>
+              <View style={styles.epgEmpty}>
                 {epgMap
-                  ? <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>No guide data</Text>
-                  : <ActivityIndicator color={colors.primary} size="small" />
+                  ? <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>No guide data available</Text>
+                  : <><ActivityIndicator color={colors.primary} size="small" /><Text style={{ color: colors.mutedForeground, fontSize: 12, marginTop: 6 }}>Loading guide…</Text></>
                 }
               </View>
             )}
           </>
         ) : (
-          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-            <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>No channel selected</Text>
+          /* No channel selected */
+          <View style={styles.noSel}>
+            <Text style={{ fontSize: 36, marginBottom: 10 }}>📺</Text>
+            <Text style={[styles.noSelTitle, { color: colors.foreground }]}>Select a channel</Text>
+            <Text style={[styles.noSelSub, { color: colors.mutedForeground }]}>
+              Choose a category, then pick a channel to preview it here. Press OK to watch fullscreen.
+            </Text>
           </View>
         )}
       </View>
@@ -458,27 +502,39 @@ export default function LiveTVScreen() {
   );
 }
 
-// ─── Styles ──────────────────────────────────────────────────────────────────
+// ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   root: { flex: 1, flexDirection: 'row' },
 
-  // ── Left panel ──
-  leftPanel: {
-    width: 310,
+  panelHeader: {
+    fontSize: 9,
+    fontFamily: 'Inter_600SemiBold',
+    letterSpacing: 1.5,
+    paddingHorizontal: 12,
+    paddingBottom: 6,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    marginBottom: 2,
+  },
+
+  // ── Category panel ──
+  catPanel: {
+    width: 140,
     borderRightWidth: StyleSheet.hairlineWidth,
   },
-  catNav: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 4,
-    paddingVertical: 6,
+  catRow: {
+    height: 52,
+    justifyContent: 'center',
+    paddingHorizontal: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  catArrowBtn: { width: 32, height: 32, justifyContent: 'center', alignItems: 'center' },
-  catArrow: { fontSize: 22, fontWeight: '600', lineHeight: 26 },
-  catLabel: { flex: 1, textAlign: 'center', fontSize: 12, fontFamily: 'Inter_600SemiBold' },
+  catRowText: { fontSize: 12, fontFamily: 'Inter_500Medium', lineHeight: 16 },
 
+  // ── Channel panel ──
+  chPanel: {
+    width: 280,
+    borderRightWidth: StyleSheet.hairlineWidth,
+  },
   chRow: {
     height: 60,
     flexDirection: 'row',
@@ -493,93 +549,91 @@ const styles = StyleSheet.create({
     left: 0, top: '20%', bottom: '20%',
     width: 3, backgroundColor: '#3B82F6', borderRadius: 99,
   },
-  chNum: { width: 26, fontSize: 11, fontFamily: 'Inter_500Medium', textAlign: 'right', flexShrink: 0 },
-  chLogo: { width: 40, height: 30, borderRadius: 4, overflow: 'hidden', justifyContent: 'center', alignItems: 'center', flexShrink: 0 },
+  chNum: { width: 24, fontSize: 11, fontFamily: 'Inter_500Medium', textAlign: 'right', flexShrink: 0 },
+  chLogo: { width: 38, height: 28, borderRadius: 4, overflow: 'hidden', justifyContent: 'center', alignItems: 'center', flexShrink: 0 },
   chInitials: { fontSize: 10, fontFamily: 'Inter_700Bold' },
   chName: { fontSize: 12, fontFamily: 'Inter_500Medium' },
   chSub: { fontSize: 10, fontFamily: 'Inter_400Regular' },
 
-  // ── Center panel ──
-  centerPanel: { flex: 1 },
-  videoWrap: { flex: 1, position: 'relative' },
+  // ── Preview / right panel ──
+  previewPanel: {
+    flex: 1,
+    paddingLeft: 12,
+  },
+
+  videoWrap: {
+    width: '100%',
+    aspectRatio: 16 / 9,
+    backgroundColor: '#000',
+    borderRadius: 8,
+    overflow: 'hidden',
+    position: 'relative',
+    marginBottom: 8,
+  },
   videoOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.55)',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  errorText: { color: '#fff', fontSize: 13, textAlign: 'center' },
-  fullscreenBtn: {
+  errText: { color: '#fff', fontSize: 12, textAlign: 'center' },
+  livePill: {
     position: 'absolute',
-    bottom: 10,
-    right: 10,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  fullscreenIcon: { color: '#fff', fontSize: 15 },
-
-  progInfo: {
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    gap: 3,
-  },
-  progTitle: { fontSize: 14, fontFamily: 'Inter_700Bold' },
-  progTime: { fontSize: 11, fontFamily: 'Inter_400Regular' },
-  progDesc: { fontSize: 11, fontFamily: 'Inter_400Regular', lineHeight: 16, marginTop: 2 },
-
-  noSel: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 8 },
-  noSelText: { fontSize: 13, fontFamily: 'Inter_400Regular' },
-
-  // ── Right panel ──
-  rightPanel: {
-    width: 240,
-    borderLeftWidth: StyleSheet.hairlineWidth,
-    paddingLeft: 10,
-  },
-  liveBadge: {
+    top: 8, left: 8,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
+    gap: 4,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    borderRadius: 99,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  liveDot: { width: 6, height: 6, borderRadius: 99, backgroundColor: '#EF4444' },
+  liveText: { color: '#EF4444', fontSize: 10, fontFamily: 'Inter_700Bold', letterSpacing: 1 },
+
+  chNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
     marginBottom: 10,
   },
-  liveDot: { width: 7, height: 7, borderRadius: 99, backgroundColor: '#EF4444' },
-  liveBadgeText: { fontSize: 11, fontFamily: 'Inter_700Bold', color: '#EF4444', letterSpacing: 1.5 },
-
-  chCard: {
-    borderRadius: 10,
-    borderWidth: 1,
-    padding: 12,
-    gap: 5,
-    marginBottom: 12,
-  },
-  chCardLogo: { width: 60, height: 40, borderRadius: 6, overflow: 'hidden', marginBottom: 4 },
-  chCardName: { fontSize: 14, fontFamily: 'Inter_700Bold' },
-  chCardProg: { fontSize: 12, fontFamily: 'Inter_600SemiBold' },
-  chCardTime: { fontSize: 11, fontFamily: 'Inter_400Regular' },
-  watchBtn: {
-    marginTop: 4,
+  selChName: { fontSize: 14, fontFamily: 'Inter_700Bold' },
+  selChProg: { fontSize: 11, fontFamily: 'Inter_500Medium', marginTop: 2 },
+  okBtn: {
     backgroundColor: '#3B82F6',
     borderRadius: 8,
-    paddingVertical: 8,
-    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    flexShrink: 0,
   },
-  watchBtnText: { color: '#fff', fontSize: 12, fontFamily: 'Inter_600SemiBold' },
+  okBtnText: { color: '#fff', fontSize: 13, fontFamily: 'Inter_700Bold' },
 
-  upcomingHeader: {
+  epgHeader: {
     fontSize: 9,
     fontFamily: 'Inter_600SemiBold',
     letterSpacing: 1.5,
-    marginBottom: 6,
+    marginBottom: 4,
   },
-  upcomingRow: {
+  epgRow: {
+    flexDirection: 'row',
+    gap: 10,
     paddingVertical: 8,
+    paddingHorizontal: 4,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    gap: 2,
   },
-  upcomingTime: { fontSize: 10, fontFamily: 'Inter_600SemiBold' },
-  upcomingTitle: { fontSize: 12, fontFamily: 'Inter_500Medium' },
-  upcomingDesc: { fontSize: 10, fontFamily: 'Inter_400Regular', lineHeight: 14 },
+  epgTimeCol: { width: 68, alignItems: 'flex-start', gap: 3, flexShrink: 0 },
+  epgTime: { fontSize: 11, fontFamily: 'Inter_600SemiBold' },
+  nowBadge: { backgroundColor: '#3B82F6', borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1 },
+  nowBadgeText: { color: '#fff', fontSize: 9, fontFamily: 'Inter_700Bold' },
+  epgTitle: { fontSize: 12, fontFamily: 'Inter_600SemiBold', marginBottom: 2 },
+  epgDesc: { fontSize: 10, fontFamily: 'Inter_400Regular', lineHeight: 14 },
+  epgEmpty: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 6 },
+
+  noSel: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 },
+  noSelTitle: { fontSize: 16, fontFamily: 'Inter_700Bold', marginBottom: 6 },
+  noSelSub: { fontSize: 12, fontFamily: 'Inter_400Regular', textAlign: 'center', lineHeight: 18 },
 });
