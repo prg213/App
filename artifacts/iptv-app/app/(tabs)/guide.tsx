@@ -899,17 +899,19 @@ const styles = StyleSheet.create({
   dayBarContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 10,
+    paddingHorizontal: 16,
     paddingVertical: 8,
-    gap: 6,
+    gap: 16,
   },
   dayTab: {
-    paddingHorizontal: 14,
-    paddingVertical: 6,
+    flex: 1,
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 8,
     borderRadius: 8,
     borderWidth: 1,
   },
-  dayTabText: { fontSize: 12, fontFamily: 'Inter_600SemiBold' },
+  dayTabText: { fontSize: 13, fontFamily: 'Inter_600SemiBold' },
 
   // ── EPG grid ──
   // grid is now a column: fixed headerRow on top, scrollable body below
