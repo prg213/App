@@ -872,6 +872,7 @@ const styles = StyleSheet.create({
   programRow: {
     height: ROW_H, flexDirection: 'row',
     borderBottomWidth: StyleSheet.hairlineWidth, position: 'relative',
+    overflow: 'hidden',
   },
   programCell: {
     position: 'absolute', top: 3, height: ROW_H - 6,
@@ -886,9 +887,15 @@ const styles = StyleSheet.create({
   progTitle: { fontSize: 11, fontFamily: 'Inter_600SemiBold' },
   progTime: { fontSize: 9, fontFamily: 'Inter_400Regular' },
   noProg: {
-    position: 'absolute', left: 4, top: 6, right: 4, bottom: 6,
-    borderRadius: 5, borderWidth: StyleSheet.hairlineWidth,
-    borderStyle: 'dashed', justifyContent: 'center', alignItems: 'center',
+    width: TOTAL_DAY_W - 8,
+    height: ROW_H - 12,
+    marginHorizontal: 4,
+    marginVertical: 6,
+    borderRadius: 5,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderStyle: 'dashed',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   noProgText: { fontSize: 10, fontFamily: 'Inter_400Regular' },
   nowLine: {
