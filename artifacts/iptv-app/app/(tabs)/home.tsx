@@ -185,12 +185,39 @@ export default function HomeScreen() {
 
   const handleMoviePress = useCallback((movie: Movie) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    router.push({ pathname: '/movie/[id]', params: { id: movie.id } });
+    router.push({
+      pathname: '/movie/[id]',
+      params: {
+        id: movie.id,
+        title: movie.name,
+        cover: movie.cover ?? '',
+        genre: movie.genre ?? '',
+        rating: movie.rating ?? '',
+        plot: movie.plot ?? '',
+        cast: movie.cast ?? '',
+        director: movie.director ?? '',
+        releaseDate: movie.releaseDate ?? '',
+        duration: movie.duration ?? '',
+        ext: movie.containerExtension ?? 'mp4',
+      },
+    });
   }, [router]);
 
   const handleSeriesPress = useCallback((s: Series) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    router.push({ pathname: '/series/[id]', params: { id: s.id } });
+    router.push({
+      pathname: '/series/[id]',
+      params: {
+        id: s.id,
+        title: s.name,
+        cover: s.cover ?? '',
+        rating: s.rating ?? '',
+        genre: s.genre ?? '',
+        plot: s.plot ?? '',
+        cast: s.cast ?? '',
+        director: s.director ?? '',
+      },
+    });
   }, [router]);
 
   const renderMovie = useCallback(({ item }: { item: Movie }) => (
