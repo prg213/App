@@ -299,29 +299,39 @@ function CategoryGrid({
   epgLoading: boolean;
 }) {
   const { width } = useWindowDimensions();
-  const numCols = Math.floor((width - 190) / 160); // sidebar is 190px
-  const colW = Math.floor(((width - 190) - (numCols + 1) * 12) / numCols);
+  const availW = width - 190; // sidebar is 190px
+  const numCols = Math.max(2, Math.floor(availW / 180));
+  const colW = Math.floor((availW - (numCols + 1) * 12) / numCols);
 
-  const renderItem = useCallback(({ item }: { item: string }) => (
-    <TouchableOpacity
-      style={[styles.catCard, { backgroundColor: colors.card, borderColor: colors.border, width: colW }]}
-      onPress={() => onSelect(item)}
-      activeOpacity={0.75}
-    >
-      <Text style={styles.catIcon}>{getCatIcon(item)}</Text>
-      <Text style={[styles.catName, { color: colors.foreground }]} numberOfLines={2}>{item}</Text>
-      <Text style={[styles.catCount, { color: colors.mutedForeground }]}>
-        {channelCountByCategory[item] ?? 0} ch
-      </Text>
-    </TouchableOpacity>
-  ), [colors, colW, onSelect]);
+  const renderItem = useCallback(({ item }: { item: string }) => {
+    const icon = getCatIcon(item);
+    const count = channelCountByCategory[item] ?? 0;
+    return (
+      <TouchableOpacity
+        style={[styles.catCard, { backgroundColor: colors.card, borderColor: colors.border, width: colW }]}
+        onPress={() => onSelect(item)}
+        activeOpacity={0.75}
+      >
+        {/* Icon bubble */}
+        <View style={[styles.catIconBubble, { backgroundColor: colors.secondary }]}>
+          <Text style={styles.catIcon}>{icon}</Text>
+        </View>
+        {/* Text */}
+        <Text style={[styles.catName, { color: colors.foreground }]} numberOfLines={2}>{item}</Text>
+        {/* Channel count badge */}
+        <View style={[styles.catCountBadge, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
+          <Text style={[styles.catCount, { color: colors.mutedForeground }]}>{count} channels</Text>
+        </View>
+      </TouchableOpacity>
+    );
+  }, [colors, colW, channelCountByCategory, onSelect]);
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
       {/* Header */}
       <View style={[styles.topBar, { borderBottomColor: colors.border, paddingTop: insets.top + 4 }]}>
         <Text style={[styles.screenTitle, { color: colors.foreground }]}>TV Guide</Text>
-        <Text style={[styles.screenSub, { color: colors.mutedForeground }]}>Choose a category</Text>
+        <Text style={[styles.screenSub, { color: colors.mutedForeground }]}>Select a category to view the 7-day schedule</Text>
         {epgLoading && (
           <View style={styles.loadingBadge}>
             <ActivityIndicator size="small" color={colors.primary} />
@@ -335,7 +345,7 @@ function CategoryGrid({
         keyExtractor={(c) => c}
         numColumns={numCols}
         renderItem={renderItem}
-        key={numCols} // remount if column count changes
+        key={numCols}
         contentContainerStyle={[styles.catGrid, { paddingBottom: insets.bottom + 24 }]}
         columnWrapperStyle={numCols > 1 ? styles.catRow : undefined}
         showsVerticalScrollIndicator={false}
@@ -450,8 +460,13 @@ function FullGuide({
     <View style={{ flex: 1, backgroundColor: colors.background }}>
       {/* Top bar */}
       <View style={[styles.topBar, { borderBottomColor: colors.border, paddingTop: insets.top + 4 }]}>
-        <TouchableOpacity style={styles.backBtn} onPress={onBack} activeOpacity={0.7}>
+        <TouchableOpacity
+          style={[styles.backBtn, { backgroundColor: colors.secondary, borderColor: colors.border }]}
+          onPress={onBack}
+          activeOpacity={0.7}
+        >
           <Text style={[styles.backArrow, { color: colors.foreground }]}>←</Text>
+          <Text style={[styles.backLabel, { color: colors.foreground }]}>Categories</Text>
         </TouchableOpacity>
         <Text style={[styles.screenTitle, { color: colors.foreground }]} numberOfLines={1}>{categoryName}</Text>
 
@@ -742,33 +757,49 @@ const styles = StyleSheet.create({
   todayBtnText: { fontSize: 12, fontFamily: 'Inter_600SemiBold' },
   chCountLabel: { fontSize: 11, fontFamily: 'Inter_400Regular' },
   backBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    justifyContent: 'center',
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 10,
+    borderWidth: 1,
   },
-  backArrow: { fontSize: 20 },
+  backArrow: { fontSize: 16 },
+  backLabel: { fontSize: 13, fontFamily: 'Inter_500Medium' },
   nowDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#EF4444' },
 
   // ── Category grid ──
-  catGrid: { padding: 12, gap: 10 },
-  catRow: { gap: 10, marginBottom: 0 },
+  catGrid: { padding: 12 },
+  catRow: { gap: 12, marginBottom: 12 },
   catCard: {
     borderRadius: 14,
     borderWidth: 1,
-    padding: 16,
+    paddingVertical: 20,
+    paddingHorizontal: 12,
     alignItems: 'center',
-    gap: 8,
-    aspectRatio: 1,
+    gap: 10,
     justifyContent: 'center',
   },
-  catIcon: { fontSize: 32 },
+  catIconBubble: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  catIcon: { fontSize: 28 },
   catName: {
     fontSize: 13,
     fontFamily: 'Inter_600SemiBold',
     textAlign: 'center',
-    lineHeight: 17,
+    lineHeight: 18,
+  },
+  catCountBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 99,
+    borderWidth: 1,
   },
   catCount: { fontSize: 10, fontFamily: 'Inter_400Regular' },
 
