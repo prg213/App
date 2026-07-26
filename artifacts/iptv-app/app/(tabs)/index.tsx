@@ -385,8 +385,12 @@ export default function LiveTVScreen() {
       <View style={[styles.previewPanel, { paddingTop: insets.top + 4, paddingRight: insets.right + 8 }]}>
         {selectedChannel ? (
           <>
-            {/* Video preview (16:9) */}
-            <View style={styles.videoWrap}>
+            {/* Video preview (16:9) — tap to watch fullscreen */}
+            <TouchableOpacity
+              style={styles.videoWrap}
+              onPress={handleWatch}
+              activeOpacity={0.85}
+            >
               {!isWeb && (
                 <VideoView
                   player={player}
@@ -411,27 +415,12 @@ export default function LiveTVScreen() {
                 <View style={styles.liveDot} />
                 <Text style={styles.liveText}>LIVE</Text>
               </View>
-            </View>
 
-            {/* Channel name + OK button */}
-            <View style={[styles.chNameRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.selChName, { color: colors.foreground }]} numberOfLines={1}>
-                  {selectedChannel.name}
-                </Text>
-                {currentProg ? (
-                  <Text style={[styles.selChProg, { color: '#3B82F6' }]} numberOfLines={1}>
-                    {currentProg.title}
-                    <Text style={{ color: colors.mutedForeground }}>
-                      {'  '}{fmtTime(currentProg.start)} – {fmtTime(currentProg.end)}
-                    </Text>
-                  </Text>
-                ) : null}
+              {/* Tap-to-fullscreen hint */}
+              <View style={styles.tapHint}>
+                <Text style={styles.tapHintText}>⛶</Text>
               </View>
-              <TouchableOpacity style={styles.okBtn} onPress={handleWatch} activeOpacity={0.8}>
-                <Text style={styles.okBtnText}>OK  ▶</Text>
-              </TouchableOpacity>
-            </View>
+            </TouchableOpacity>
 
             {/* EPG / TV Guide for this channel */}
             <Text style={[styles.epgHeader, { color: colors.mutedForeground }]}>TV GUIDE</Text>
@@ -591,26 +580,16 @@ const styles = StyleSheet.create({
   liveDot: { width: 6, height: 6, borderRadius: 99, backgroundColor: '#EF4444' },
   liveText: { color: '#EF4444', fontSize: 10, fontFamily: 'Inter_700Bold', letterSpacing: 1 },
 
-  chNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    borderRadius: 8,
-    borderWidth: 1,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    marginBottom: 10,
+  tapHint: {
+    position: 'absolute',
+    bottom: 8,
+    right: 8,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
   },
-  selChName: { fontSize: 14, fontFamily: 'Inter_700Bold' },
-  selChProg: { fontSize: 11, fontFamily: 'Inter_500Medium', marginTop: 2 },
-  okBtn: {
-    backgroundColor: '#3B82F6',
-    borderRadius: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    flexShrink: 0,
-  },
-  okBtnText: { color: '#fff', fontSize: 13, fontFamily: 'Inter_700Bold' },
+  tapHintText: { color: '#fff', fontSize: 14 },
 
   epgHeader: {
     fontSize: 9,
