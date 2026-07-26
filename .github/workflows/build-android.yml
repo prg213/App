@@ -11,19 +11,11 @@ on:
         options:
           - preview
           - production
-  push:
-    branches:
-      - main
-    paths:
-      - 'artifacts/iptv-app/**'
 
 jobs:
   build:
     name: Build APK
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: artifacts/iptv-app
 
     steps:
       - name: Checkout
@@ -32,7 +24,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -40,28 +32,28 @@ jobs:
           version: 9
 
       - name: Install dependencies
-        working-directory: .
         run: pnpm install --no-frozen-lockfile
 
-      - name: Setup EAS
-        uses: expo/expo-github-action@v8
-        with:
-          eas-version: latest
-          token: ${{ secrets.EXPO_TOKEN }}
+      - name: Install EAS CLI
+        run: npm install -g eas-cli
 
       - name: Build APK
-        run: eas build --platform android --profile ${{ github.event.inputs.profile || 'preview' }} --non-interactive
+        working-directory: artifacts/iptv-app
+        run: eas build --platform android --profile ${{ github.event.inputs.profile }} --non-interactive
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-     
+
       - name: Download APK
+        working-directory: artifacts/iptv-app
         run: |
           APK_URL=$(eas build:list --platform android --limit 1 --json --non-interactive | python3 -c "import sys,json; builds=json.load(sys.stdin); print(builds[0]['artifacts']['buildUrl'])")
           curl -L "$APK_URL" -o streamvault.apk
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: StreamVault-${{ github.event.inputs.profile || 'preview' }}-${{ github.run_number }}
+          name: StreamVault-${{ github.event.inputs.profile }}-${{ github.run_number }}
           path: artifacts/iptv-app/streamvault.apk
           retention-days: 30
