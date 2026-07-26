@@ -1,5 +1,6 @@
 import React from 'react';
 import {
+  ActivityIndicator,
   Image,
   Platform,
   ScrollView,
@@ -10,11 +11,12 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useQuery } from '@tanstack/react-query';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useColors } from '@/hooks/useColors';
 import { useAppContext } from '@/context/AppContext';
-import { getXtreamVodUrl } from '@/services/xtreamApi';
+import { getXtreamVodInfo, getXtreamVodUrl } from '@/services/xtreamApi';
 
 export default function MovieDetailScreen() {
   const colors = useColors();
@@ -36,34 +38,63 @@ export default function MovieDetailScreen() {
     ext: string;
   }>();
 
+  const isXtream =
+    credentials?.type === 'xtream' &&
+    !!credentials.host &&
+    !!credentials.username &&
+    !!credentials.password;
+
+  // Fetch full VOD info to get plot/cast/director when not passed via params
+  const needsInfo = isXtream && (!params.plot || !params.cast);
+  const { data: vodInfo, isLoading: infoLoading } = useQuery({
+    queryKey: ['vod-info', params.id, credentials],
+    queryFn: () =>
+      getXtreamVodInfo(
+        { host: credentials!.host!, username: credentials!.username!, password: credentials!.password! },
+        params.id,
+      ),
+    enabled: needsInfo,
+    staleTime: 15 * 60_000,
+  });
+
+  // Merge params with fetched info — params take priority if present
+  const cover = params.cover || vodInfo?.cover || '';
+  const plot = params.plot || vodInfo?.plot || '';
+  const cast = params.cast || vodInfo?.cast || '';
+  const director = params.director || vodInfo?.director || '';
+  const genre = params.genre || vodInfo?.genre || '';
+  const rating = params.rating || vodInfo?.rating || '';
+  const releaseDate = params.releaseDate || vodInfo?.releaseDate || '';
+  const duration = params.duration || vodInfo?.duration || '';
+  const ext = params.ext || vodInfo?.containerExtension || 'mp4';
+
   const handlePlay = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     let url = '';
-    if (credentials?.type === 'xtream' && credentials.host && credentials.username && credentials.password) {
+    if (isXtream) {
       url = getXtreamVodUrl(
-        { host: credentials.host, username: credentials.username, password: credentials.password },
+        { host: credentials!.host!, username: credentials!.username!, password: credentials!.password! },
         params.id,
-        params.ext || 'mp4',
+        ext,
       );
     }
     if (!url) return;
     router.push({
       pathname: '/player',
-      params: { url, title: params.title, type: 'vod', logo: params.cover ?? '' },
+      params: { url, title: params.title, type: 'vod', logo: cover },
     });
   };
 
-  const hasCover = !!params.cover;
-  const year = params.releaseDate?.slice(0, 4);
-  const rating = params.rating ? parseFloat(params.rating) : 0;
+  const year = releaseDate?.slice(0, 4);
+  const ratingNum = rating ? parseFloat(rating) : 0;
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: insets.bottom + (Platform.OS === 'web' ? 34 : 20) }}>
         {/* Backdrop */}
         <View style={styles.backdrop}>
-          {hasCover ? (
-            <Image source={{ uri: params.cover }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+          {cover ? (
+            <Image source={{ uri: cover }} style={StyleSheet.absoluteFill} resizeMode="cover" />
           ) : (
             <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.secondary, justifyContent: 'center', alignItems: 'center' }]}>
               <Text style={{ fontSize: 48, color: colors.mutedForeground }}>🎬</Text>
@@ -93,19 +124,19 @@ export default function MovieDetailScreen() {
                 <Text style={[styles.metaText, { color: colors.mutedForeground }]}>{year}</Text>
               </View>
             ) : null}
-            {params.duration ? (
+            {duration ? (
               <View style={[styles.metaBadge, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
-                <Text style={[styles.metaText, { color: colors.mutedForeground }]}>{params.duration}</Text>
+                <Text style={[styles.metaText, { color: colors.mutedForeground }]}>{duration}</Text>
               </View>
             ) : null}
-            {rating > 0 ? (
+            {ratingNum > 0 ? (
               <View style={[styles.metaBadge, { backgroundColor: 'rgba(245,158,11,0.15)', borderColor: 'rgba(245,158,11,0.3)' }]}>
-                <Text style={[styles.metaText, { color: '#F59E0B' }]}>★ {rating.toFixed(1)}</Text>
+                <Text style={[styles.metaText, { color: '#F59E0B' }]}>★ {ratingNum.toFixed(1)}</Text>
               </View>
             ) : null}
-            {params.genre ? (
+            {genre ? (
               <View style={[styles.metaBadge, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
-                <Text style={[styles.metaText, { color: colors.mutedForeground }]} numberOfLines={1}>{params.genre.split(',')[0]}</Text>
+                <Text style={[styles.metaText, { color: colors.mutedForeground }]} numberOfLines={1}>{genre.split(',')[0]}</Text>
               </View>
             ) : null}
           </View>
@@ -120,26 +151,31 @@ export default function MovieDetailScreen() {
           </TouchableOpacity>
 
           {/* Plot */}
-          {params.plot ? (
+          {infoLoading && needsInfo ? (
+            <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center', paddingVertical: 8 }}>
+              <ActivityIndicator size="small" color={colors.primary} />
+              <Text style={[styles.plot, { color: colors.mutedForeground }]}>Loading synopsis…</Text>
+            </View>
+          ) : plot ? (
             <View style={styles.section}>
               <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>SYNOPSIS</Text>
-              <Text style={[styles.plot, { color: colors.foreground }]}>{params.plot}</Text>
+              <Text style={[styles.plot, { color: colors.foreground }]}>{plot}</Text>
             </View>
           ) : null}
 
           {/* Details */}
-          {(params.director || params.cast) && (
+          {(director || cast) && (
             <View style={[styles.detailsCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              {params.director ? (
+              {director ? (
                 <View style={[styles.detailRow, { borderBottomColor: colors.border }]}>
                   <Text style={[styles.detailLabel, { color: colors.mutedForeground }]}>Director</Text>
-                  <Text style={[styles.detailValue, { color: colors.foreground }]}>{params.director}</Text>
+                  <Text style={[styles.detailValue, { color: colors.foreground }]}>{director}</Text>
                 </View>
               ) : null}
-              {params.cast ? (
+              {cast ? (
                 <View style={styles.detailRow}>
                   <Text style={[styles.detailLabel, { color: colors.mutedForeground }]}>Cast</Text>
-                  <Text style={[styles.detailValue, { color: colors.foreground }]} numberOfLines={3}>{params.cast}</Text>
+                  <Text style={[styles.detailValue, { color: colors.foreground }]} numberOfLines={3}>{cast}</Text>
                 </View>
               ) : null}
             </View>
