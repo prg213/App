@@ -157,6 +157,10 @@ export default function LiveTVScreen() {
 
   const [selectedCatId, setSelectedCatId] = useState<string>('__all');
   const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null);
+  // Tracks the last channel that was actually loaded — never cleared when
+  // browsing categories, so the preview box stays visible while the user
+  // navigates the list. Only cleared when leaving the Live TV tab entirely.
+  const [playingChannel, setPlayingChannel] = useState<Channel | null>(null);
   const [favorites, setFavorites] = useState<FavoriteChannel[]>([]);
   const [isBuffering, setIsBuffering] = useState(false);
   const [hasError, setHasError] = useState(false);
@@ -214,6 +218,7 @@ export default function LiveTVScreen() {
           try { player.pause(); } catch {}
         }
         setSelectedChannel(null);
+        setPlayingChannel(null);
       };
     }, [player])
   );
@@ -308,6 +313,7 @@ export default function LiveTVScreen() {
   const handleSelectChannel = useCallback((ch: Channel) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setSelectedChannel(ch);
+    setPlayingChannel(ch);
   }, []);
 
   const handleLongPress = useCallback(async (ch: Channel) => {
@@ -401,7 +407,7 @@ export default function LiveTVScreen() {
             It is simply hidden (display:none) when no channel is selected. */}
         {!isWeb && (
           <TouchableOpacity
-            style={[styles.videoWrap, !selectedChannel && { display: 'none' }]}
+            style={[styles.videoWrap, !playingChannel && { display: 'none' }]}
             onPress={handleWatch}
             activeOpacity={0.85}
           >
