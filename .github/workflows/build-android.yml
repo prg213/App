@@ -37,6 +37,45 @@ jobs:
           import json, re
 
           with open("package.json", "r") as f:
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: 'Build profile'
+        required: true
+        default: 'preview'
+        type: choice
+        options:
+          - preview
+          - production
+
+jobs:
+  build:
+    name: Build APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Patch configs for EAS
+        run: |
+          python3 - <<'EOF'
+          import json, re
+
+          with open("package.json", "r") as f:
               pkg = json.load(f)
           pkg["packageManager"] = "pnpm@9.0.0"
           with open("package.json", "w") as f:
@@ -60,7 +99,23 @@ jobs:
           with open("pnpm-workspace.yaml", "w") as f:
               f.write(content)
 
-          print("Patched successfully")
+          with open("artifacts/iptv-app/package.json", "r") as f:
+              iptv_pkg = json.load(f)
+          iptv_pkg.get("devDependencies", {}).pop("@workspace/api-client-react", None)
+          with open("artifacts/iptv-app/package.json", "w") as f:
+              json.dump(iptv_pkg, f, indent=2)
+
+          layout_path = "artifacts/iptv-app/app/_layout.tsx"
+          with open(layout_path, "r") as f:
+              layout = f.read()
+          layout = layout.replace(
+              "import { setBaseUrl } from '@workspace/api-client-react';",
+              "let _easBaseUrl: string | null = null;\nconst setBaseUrl = (url: string | null) => { _easBaseUrl = url ? url.replace(/\\/+$/, '') : null; };"
+          )
+          with open(layout_path, "w") as f:
+              f.write(layout)
+
+          print("All patches applied")
           EOF
 
       - name: Install dependencies
