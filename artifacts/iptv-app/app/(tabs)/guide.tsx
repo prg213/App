@@ -24,7 +24,7 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { useAppContext } from '@/context/AppContext';
-import { getXtreamLiveStreams, getXtreamXmltvUrl } from '@/services/xtreamApi';
+import { getXtreamLiveCategories, getXtreamLiveStreams, getXtreamXmltvUrl } from '@/services/xtreamApi';
 import { fetchAndParseXmltv } from '@/services/epgService';
 import type { Channel, EpgProgram } from '@/types';
 
@@ -289,13 +289,14 @@ function ProgramModal({ program, channel, onClose, onWatch, colors }: {
 // ─── Category grid ────────────────────────────────────────────────────────────
 
 function CategoryGrid({
-  categories, channelCountByCategory, colors, insets, onSelect, epgLoading,
+  categoryIds, categoryNameMap, channelCountByCategory, colors, insets, onSelect, epgLoading,
 }: {
-  categories: string[];
+  categoryIds: string[];
+  categoryNameMap: Record<string, string>;
   channelCountByCategory: Record<string, number>;
   colors: any;
   insets: any;
-  onSelect: (cat: string) => void;
+  onSelect: (catId: string) => void;
   epgLoading: boolean;
 }) {
   const { width } = useWindowDimensions();
@@ -303,28 +304,29 @@ function CategoryGrid({
   const numCols = Math.max(2, Math.floor(availW / 180));
   const colW = Math.floor((availW - (numCols + 1) * 12) / numCols);
 
-  const renderItem = useCallback(({ item }: { item: string }) => {
-    const icon = getCatIcon(item);
-    const count = channelCountByCategory[item] ?? 0;
+  const renderItem = useCallback(({ item: catId }: { item: string }) => {
+    const name = categoryNameMap[catId] ?? catId;
+    const icon = getCatIcon(name);
+    const count = channelCountByCategory[catId] ?? 0;
     return (
       <TouchableOpacity
         style={[styles.catCard, { backgroundColor: colors.card, borderColor: colors.border, width: colW }]}
-        onPress={() => onSelect(item)}
+        onPress={() => onSelect(catId)}
         activeOpacity={0.75}
       >
         {/* Icon bubble */}
         <View style={[styles.catIconBubble, { backgroundColor: colors.secondary }]}>
           <Text style={styles.catIcon}>{icon}</Text>
         </View>
-        {/* Text */}
-        <Text style={[styles.catName, { color: colors.foreground }]} numberOfLines={2}>{item}</Text>
+        {/* Display name */}
+        <Text style={[styles.catName, { color: colors.foreground }]} numberOfLines={2}>{name}</Text>
         {/* Channel count badge */}
         <View style={[styles.catCountBadge, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
           <Text style={[styles.catCount, { color: colors.mutedForeground }]}>{count} channels</Text>
         </View>
       </TouchableOpacity>
     );
-  }, [colors, colW, channelCountByCategory, onSelect]);
+  }, [colors, colW, categoryNameMap, channelCountByCategory, onSelect]);
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
@@ -341,7 +343,7 @@ function CategoryGrid({
       </View>
 
       <FlatList
-        data={categories}
+        data={categoryIds}
         keyExtractor={(c) => c}
         numColumns={numCols}
         renderItem={renderItem}
@@ -633,9 +635,25 @@ export default function GuideScreen() {
   const { credentials } = useAppContext();
   const isXtream = credentials?.type === 'xtream';
 
+  // selectedCat stores the category_id (numeric string from groupTitle)
   const [selectedCat, setSelectedCat] = useState<string | null>(null);
 
   const creds = isXtream ? buildCreds(credentials) : null;
+
+  // Fetch named categories (id → name)
+  const { data: liveCategories = [] } = useQuery({
+    queryKey: ['live-categories', credentials],
+    queryFn: () => getXtreamLiveCategories(creds!),
+    enabled: !!creds,
+    staleTime: 10 * 60_000,
+  });
+
+  // id → display name map
+  const categoryNameMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const cat of liveCategories) map[cat.id] = cat.name;
+    return map;
+  }, [liveCategories]);
 
   const { data: channels = [] } = useQuery<Channel[]>({
     queryKey: ['live-channels', null, credentials],
@@ -656,18 +674,18 @@ export default function GuideScreen() {
       retry: 1,
     });
 
-  // Sorted unique categories from channels
-  const categories = useMemo(() => {
+  // Unique category IDs that actually have channels, sorted by display name
+  const categoryIds = useMemo(() => {
     const seen = new Set<string>();
-    const list: string[] = [];
     for (const ch of channels) {
-      if (ch.groupTitle && !seen.has(ch.groupTitle)) {
-        seen.add(ch.groupTitle);
-        list.push(ch.groupTitle);
-      }
+      if (ch.groupTitle) seen.add(ch.groupTitle);
     }
-    return list.sort((a, b) => a.localeCompare(b));
-  }, [channels]);
+    return Array.from(seen).sort((a, b) => {
+      const na = categoryNameMap[a] ?? a;
+      const nb = categoryNameMap[b] ?? b;
+      return na.localeCompare(nb);
+    });
+  }, [channels, categoryNameMap]);
 
   const channelCountByCategory = useMemo(() => {
     const map: Record<string, number> = {};
@@ -705,7 +723,7 @@ export default function GuideScreen() {
         epgError={epgError}
         refetchEpg={refetchEpg}
         onBack={() => setSelectedCat(null)}
-        categoryName={selectedCat}
+        categoryName={categoryNameMap[selectedCat] ?? selectedCat}
         colors={colors}
         insets={insets}
         router={router}
@@ -715,7 +733,8 @@ export default function GuideScreen() {
 
   return (
     <CategoryGrid
-      categories={categories}
+      categoryIds={categoryIds}
+      categoryNameMap={categoryNameMap}
       channelCountByCategory={channelCountByCategory}
       colors={colors}
       insets={insets}
