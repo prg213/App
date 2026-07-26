@@ -8,6 +8,7 @@
     "scheme": "iptv-app",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
+    "backgroundColor": "#0A0A0F",
     "splash": {
       "image": "./assets/images/icon.png",
       "resizeMode": "contain",
@@ -35,7 +36,16 @@
       "expo-font",
       "expo-web-browser",
       "expo-video",
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#0A0A0F",
+          "dark": {
+            "backgroundColor": "#0A0A0F"
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
