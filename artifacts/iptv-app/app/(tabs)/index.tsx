@@ -17,7 +17,7 @@ import {
 } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useQuery } from '@tanstack/react-query';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
@@ -205,6 +205,17 @@ export default function LiveTVScreen() {
     ];
     return () => subs.forEach((s) => s.remove());
   }, [player]);
+
+  // Stop playback whenever this screen loses focus (e.g. navigating back to categories)
+  useFocusEffect(
+    useCallback(() => {
+      return () => {
+        if (!isWeb && player) {
+          try { player.pause(); } catch {}
+        }
+      };
+    }, [player])
+  );
 
   // ── Data queries ──────────────────────────────────────────────────────────
 
