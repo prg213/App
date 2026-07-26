@@ -17,7 +17,6 @@ import {
   Text,
   TouchableOpacity,
   View,
-  useWindowDimensions,
 } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
@@ -304,8 +303,10 @@ export default function GuideScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { credentials } = useAppContext();
-  const { height: screenH } = useWindowDimensions();
   const isXtream = credentials?.type === 'xtream';
+
+  // Measured height of the grid container (set via onLayout)
+  const [gridContainerH, setGridContainerH] = useState(0);
 
   // Refs for synchronized scrolling
   const timeHeaderRef = useRef<ScrollView>(null);
@@ -404,7 +405,8 @@ export default function GuideScreen() {
 
   // ── Render helpers ──
 
-  const gridH = screenH - TIME_H - insets.top - insets.bottom;
+  // Height of the program/channel list area (grid height minus the time-header row)
+  const listH = Math.max(0, gridContainerH - TIME_H);
 
   const renderChannelCell = useCallback(
     ({ item }: { item: Channel }) => (
@@ -483,15 +485,18 @@ export default function GuideScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Guide grid */}
-      <View style={[styles.grid, { paddingRight: insets.right }]}>
+      {/* Guide grid — onLayout measures the true available height */}
+      <View
+        style={[styles.grid, { paddingRight: insets.right }]}
+        onLayout={(e) => setGridContainerH(e.nativeEvent.layout.height)}
+      >
         {/* Left fixed channel column */}
         <View style={[styles.leftCol, { borderRightColor: colors.border }]}>
-          {/* Spacer for time header */}
+          {/* Corner cell aligns with time header */}
           <View style={[styles.cornerCell, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
             <Text style={[styles.cornerText, { color: colors.mutedForeground }]}>CH</Text>
           </View>
-          {/* Channel names list */}
+          {/* Channel names — flex:1 fills remaining leftCol height exactly */}
           <FlatList
             ref={leftListRef}
             data={channels}
@@ -501,7 +506,7 @@ export default function GuideScreen() {
             showsVerticalScrollIndicator={false}
             scrollEventThrottle={16}
             onScroll={onLeftVertScroll}
-            style={{ height: gridH }}
+            style={{ flex: 1 }}
             initialNumToRender={12}
             maxToRenderPerBatch={12}
           />
@@ -529,14 +534,14 @@ export default function GuideScreen() {
             onScroll={onGridHorizScroll}
             style={{ flex: 1 }}
           >
-            {/* "Now" vertical indicator */}
-            {nowX >= 0 && nowX <= TOTAL_W && (
+            {/* "Now" vertical indicator — height matches the measured list area */}
+            {nowX >= 0 && nowX <= TOTAL_W && listH > 0 && (
               <View
                 pointerEvents="none"
-                style={[styles.nowLine, { left: nowX, height: gridH }]}
+                style={[styles.nowLine, { left: nowX, height: listH }]}
               />
             )}
-            {/* Program rows list */}
+            {/* Program rows list — explicit height derived from measured grid */}
             <FlatList
               ref={rightListRef}
               data={channels}
@@ -546,7 +551,7 @@ export default function GuideScreen() {
               showsVerticalScrollIndicator={false}
               scrollEventThrottle={16}
               onScroll={onRightVertScroll}
-              style={{ width: TOTAL_W, height: gridH }}
+              style={{ width: TOTAL_W, height: listH || undefined }}
               initialNumToRender={12}
               maxToRenderPerBatch={12}
             />

@@ -17,9 +17,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { useAppContext } from '@/context/AppContext';
 import { StorageService } from '@/services/storage';
-import { getXtreamLiveCategories, getXtreamLiveStreams } from '@/services/xtreamApi';
+import { getXtreamLiveCategories, getXtreamLiveStreams, getXtreamXmltvUrl } from '@/services/xtreamApi';
 import { fetchAndParseM3U } from '@/services/m3uParser';
-import type { Channel, Category, FavoriteChannel } from '@/types';
+import { fetchAndParseXmltv } from '@/services/epgService';
+import type { Channel, Category, EpgProgram, FavoriteChannel } from '@/types';
 
 function buildCreds(c: ReturnType<typeof useAppContext>['credentials']) {
   return { host: c!.host!, username: c!.username!, password: c!.password! };
@@ -29,12 +30,14 @@ function buildCreds(c: ReturnType<typeof useAppContext>['credentials']) {
 function ChannelRow({
   channel,
   isFav,
+  nowPlaying,
   onPress,
   onLongPress,
   colors,
 }: {
   channel: Channel;
   isFav: boolean;
+  nowPlaying?: string;
   onPress: () => void;
   onLongPress: () => void;
   colors: ReturnType<typeof useColors>;
@@ -59,8 +62,8 @@ function ChannelRow({
         <Text style={[styles.chName, { color: colors.foreground }]} numberOfLines={1}>
           {channel.name}
         </Text>
-        <Text style={[styles.chGroup, { color: colors.mutedForeground }]} numberOfLines={1}>
-          {channel.groupTitle}
+        <Text style={[styles.chGroup, { color: nowPlaying ? colors.primary : colors.mutedForeground }]} numberOfLines={1}>
+          {nowPlaying ?? channel.groupTitle}
         </Text>
       </View>
       <View style={styles.chRight}>
@@ -84,7 +87,35 @@ export default function LiveTVScreen() {
   const [search, setSearch] = useState('');
   const [favorites, setFavorites] = useState<FavoriteChannel[]>([]);
 
+  const isXtream = credentials?.type === 'xtream';
+  const creds = isXtream ? buildCreds(credentials) : null;
+  const xmltvUrl = creds ? getXtreamXmltvUrl(creds) : null;
+
   React.useEffect(() => { StorageService.getFavorites().then(setFavorites); }, []);
+
+  // Reuse cached EPG from the guide screen (same query key, staleTime 30 min)
+  const { data: epgMap } = useQuery<Map<string, EpgProgram[]>>({
+    queryKey: ['xmltv-epg', credentials],
+    queryFn: ({ signal }) => fetchAndParseXmltv(xmltvUrl!, signal),
+    enabled: !!xmltvUrl,
+    staleTime: 30 * 60_000,
+    gcTime: 60 * 60_000,
+    retry: 1,
+  });
+
+  // Map channelId → current programme title for O(1) lookup per row
+  const nowPlayingMap = useMemo(() => {
+    if (!epgMap) return new Map<string, string>();
+    const nowTs = Date.now();
+    const map = new Map<string, string>();
+    for (const [channelId, programs] of epgMap.entries()) {
+      const current = programs.find(
+        (p) => p.start.getTime() <= nowTs && nowTs < p.end.getTime(),
+      );
+      if (current) map.set(channelId, current.title);
+    }
+    return map;
+  }, [epgMap]);
 
   const { data: categories = [] } = useQuery<Category[]>({
     queryKey: ['live-categories', credentials],
@@ -210,6 +241,7 @@ export default function LiveTVScreen() {
               <ChannelRow
                 channel={item}
                 isFav={favSet.has(item.id)}
+                nowPlaying={nowPlayingMap.get(item.epgId ?? item.id)}
                 onPress={() => handlePlay(item)}
                 onLongPress={() => handleLongPress(item)}
                 colors={colors}
