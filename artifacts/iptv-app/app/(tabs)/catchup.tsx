@@ -121,7 +121,7 @@ export default function CatchupScreen() {
   });
 
   const catchupChannels = useMemo(
-    () => allChannels.filter((c) => (c.tvArchive ?? 0) === 1),
+    () => allChannels.filter((c) => (c.tvArchive ?? 0) === 1 && (c.tvArchiveDuration ?? 0) > 0),
     [allChannels],
   );
 
