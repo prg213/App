@@ -372,7 +372,6 @@ function FullGuide({
   insets: any;
   router: any;
 }) {
-  const [gridContainerH, setGridContainerH] = useState(0);
   const [selectedDay, setSelectedDay] = useState(0);
   const [selected, setSelected] = useState<{ program: EpgProgram; channel: Channel } | null>(null);
   const [now, setNow] = useState(Date.now());
@@ -386,21 +385,19 @@ function FullGuide({
 
   const dayStartMs = useMemo(() => dayStart(selectedDay).getTime(), [selectedDay]);
   const nowX = ((now - dayStartMs) / 60_000) * PX_PER_MIN;
+  // Height of the full programme column — used for the "Now" indicator line
+  const nowLineH = channels.length * ROW_H;
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 60_000);
     return () => clearInterval(t);
   }, []);
 
-  // Refs for scroll sync
+  // Only one horizontal scroll ref is needed — the time header shadows it
   const timeHeaderRef = useRef<ScrollView>(null);
-  const gridHorizRef = useRef<ScrollView>(null);
-  const leftListRef = useRef<FlatList>(null);
-  const rightListRef = useRef<FlatList>(null);
-  const isLeftScrolling = useRef(false);
-  const isRightScrolling = useRef(false);
+  const gridHorizRef  = useRef<ScrollView>(null);
 
-  // When day changes, scroll to current time (today) or start of day (other days)
+  // When day changes scroll horizontally to current time (today) or day start
   useEffect(() => {
     const scrollX = selectedDay === 0 ? Math.max(0, nowX - SLOT_W * 2) : 0;
     const timer = setTimeout(() => {
@@ -413,52 +410,6 @@ function FullGuide({
   const onGridHorizScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
     timeHeaderRef.current?.scrollTo({ x: e.nativeEvent.contentOffset.x, animated: false });
   }, []);
-
-  const onRightVertScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const y = e.nativeEvent.contentOffset.y;
-    if (!isRightScrolling.current) {
-      isLeftScrolling.current = true;
-      leftListRef.current?.scrollToOffset({ offset: y, animated: false });
-      setTimeout(() => { isLeftScrolling.current = false; }, 100);
-    }
-    isRightScrolling.current = false;
-  }, []);
-
-  const onLeftVertScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const y = e.nativeEvent.contentOffset.y;
-    if (!isLeftScrolling.current) {
-      isRightScrolling.current = true;
-      rightListRef.current?.scrollToOffset({ offset: y, animated: false });
-      setTimeout(() => { isRightScrolling.current = false; }, 100);
-    }
-    isLeftScrolling.current = false;
-  }, []);
-
-  // Only render the grid once we have a real measured height — avoids
-  // the Android artifact where an oversized FlatList bleeds through the
-  // horizontal ScrollView before onLayout corrects gridContainerH.
-  const listH = gridContainerH > 0 ? gridContainerH - TIME_H : 0;
-
-  const renderChannelCell = useCallback(
-    ({ item }: { item: Channel }) => <ChannelCell channel={item} colors={colors} />,
-    [colors],
-  );
-
-  const renderProgramRow = useCallback(({ item }: { item: Channel }) => {
-    const programs = epgMap?.get(item.epgId ?? item.id) ?? [];
-    return (
-      <ProgramRow
-        channel={item} programs={programs} dayStartMs={dayStartMs}
-        now={now} colors={colors}
-        onProgramPress={(p, ch) => setSelected({ program: p, channel: ch })}
-      />
-    );
-  }, [epgMap, dayStartMs, now, colors]);
-
-  const getItemLayout = useCallback(
-    (_: any, index: number) => ({ length: ROW_H, offset: ROW_H * index, index }),
-    [],
-  );
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
@@ -486,7 +437,7 @@ function FullGuide({
           </TouchableOpacity>
         )}
 
-        {/* Now button */}
+        {/* Jump-to-now button */}
         {selectedDay === 0 && (
           <TouchableOpacity
             style={[styles.todayBtn, { backgroundColor: colors.secondary, borderColor: colors.border }]}
@@ -526,82 +477,84 @@ function FullGuide({
             onPress={() => setSelectedDay(i)}
             activeOpacity={0.7}
           >
-            <Text style={[
-              styles.dayTabText,
-              { color: i === selectedDay ? '#fff' : colors.mutedForeground },
-            ]}>
+            <Text style={[styles.dayTabText, { color: i === selectedDay ? '#fff' : colors.mutedForeground }]}>
               {d.short}
             </Text>
           </TouchableOpacity>
         ))}
       </ScrollView>
 
-      {/* EPG grid */}
-      <View
-        style={[styles.grid, { paddingRight: insets.right }]}
-        onLayout={(e) => setGridContainerH(e.nativeEvent.layout.height)}
-      >
-        {/* Left channel column */}
-        <View style={[styles.leftCol, { borderRightColor: colors.border }]}>
-          <View style={[styles.cornerCell, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
+      {/* ── EPG grid ──────────────────────────────────────────────────────────
+          Layout uses a SINGLE outer vertical ScrollView so the left channel
+          column and right programme area always scroll together — no JS-based
+          sync needed, no de-sync possible.
+          ──────────────────────────────────────────────────────────────────── */}
+      <View style={[styles.grid, { paddingRight: insets.right }]}>
+
+        {/* Fixed header row: corner cell + time labels */}
+        <View style={styles.headerRow}>
+          <View style={[styles.cornerCell, { backgroundColor: colors.card, borderBottomColor: colors.border, borderRightColor: colors.border }]}>
             <Text style={[styles.cornerText, { color: colors.mutedForeground }]}>CH</Text>
           </View>
-          <FlatList
-            ref={leftListRef}
-            data={channels}
-            keyExtractor={(ch) => ch.id}
-            renderItem={renderChannelCell}
-            getItemLayout={getItemLayout}
-            showsVerticalScrollIndicator={false}
-            scrollEventThrottle={16}
-            onScroll={onLeftVertScroll}
-            style={{ flex: 1 }}
-            initialNumToRender={14}
-            maxToRenderPerBatch={14}
-          />
-        </View>
-
-        {/* Right scrollable program area */}
-        <View style={styles.rightArea}>
           <ScrollView
             ref={timeHeaderRef}
             horizontal
             scrollEnabled={false}
             showsHorizontalScrollIndicator={false}
-            style={{ height: TIME_H }}
+            style={{ flex: 1 }}
           >
             <TimeHeader dayStartMs={dayStartMs} colors={colors} />
           </ScrollView>
-
-          <ScrollView
-            ref={gridHorizRef}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            scrollEventThrottle={16}
-            onScroll={onGridHorizScroll}
-            style={{ flex: 1 }}
-          >
-            {/* "Now" line — only visible on today's view */}
-            {selectedDay === 0 && nowX >= 0 && nowX <= TOTAL_DAY_W && listH > 0 && (
-              <View pointerEvents="none" style={[styles.nowLine, { left: nowX, height: listH }]} />
-            )}
-
-            <FlatList
-              ref={rightListRef}
-              data={channels}
-              keyExtractor={(ch) => ch.id}
-              renderItem={renderProgramRow}
-              getItemLayout={getItemLayout}
-              showsVerticalScrollIndicator={false}
-              scrollEventThrottle={16}
-              onScroll={onRightVertScroll}
-              nestedScrollEnabled
-              style={{ width: TOTAL_DAY_W, height: listH }}
-              initialNumToRender={14}
-              maxToRenderPerBatch={14}
-            />
-          </ScrollView>
         </View>
+
+        {/* Scrollable body — single ScrollView moves both columns together */}
+        <ScrollView
+          style={{ flex: 1 }}
+          showsVerticalScrollIndicator={false}
+          scrollEventThrottle={16}
+        >
+          <View style={{ flexDirection: 'row' }}>
+
+            {/* Left: channel name column */}
+            <View style={[styles.leftCol, { borderRightColor: colors.border }]}>
+              {channels.map((ch) => (
+                <ChannelCell key={ch.id} channel={ch} colors={colors} />
+              ))}
+            </View>
+
+            {/* Right: horizontal scroll area for programmes */}
+            <ScrollView
+              ref={gridHorizRef}
+              horizontal
+              showsHorizontalScrollIndicator
+              scrollEventThrottle={16}
+              onScroll={onGridHorizScroll}
+              style={{ flex: 1 }}
+            >
+              {/* "Now" red indicator line */}
+              {selectedDay === 0 && nowX >= 0 && nowX <= TOTAL_DAY_W && nowLineH > 0 && (
+                <View pointerEvents="none" style={[styles.nowLine, { left: nowX, height: nowLineH }]} />
+              )}
+              <View style={{ width: TOTAL_DAY_W }}>
+                {channels.map((ch) => {
+                  const programs = epgMap?.get(ch.epgId ?? ch.id) ?? [];
+                  return (
+                    <ProgramRow
+                      key={ch.id}
+                      channel={ch}
+                      programs={programs}
+                      dayStartMs={dayStartMs}
+                      now={now}
+                      colors={colors}
+                      onProgramPress={(p, c) => setSelected({ program: p, channel: c })}
+                    />
+                  );
+                })}
+              </View>
+            </ScrollView>
+
+          </View>
+        </ScrollView>
       </View>
 
       {selected && (
@@ -908,13 +861,21 @@ const styles = StyleSheet.create({
   dayTabText: { fontSize: 12, fontFamily: 'Inter_600SemiBold' },
 
   // ── EPG grid ──
-  grid: { flex: 1, flexDirection: 'row' },
-  leftCol: { width: CHANNEL_W, borderRightWidth: StyleSheet.hairlineWidth },
+  // grid is now a column: fixed headerRow on top, scrollable body below
+  grid: { flex: 1, flexDirection: 'column' },
+  headerRow: {
+    flexDirection: 'row',
+    flexShrink: 0,
+  },
+  leftCol: { width: CHANNEL_W },
   cornerCell: {
+    width: CHANNEL_W,
     height: TIME_H,
     justifyContent: 'center',
     alignItems: 'center',
     borderBottomWidth: StyleSheet.hairlineWidth,
+    borderRightWidth: StyleSheet.hairlineWidth,
+    flexShrink: 0,
   },
   cornerText: { fontSize: 10, fontFamily: 'Inter_600SemiBold', letterSpacing: 1 },
   channelCell: {
@@ -924,6 +885,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     gap: 8,
     borderBottomWidth: StyleSheet.hairlineWidth,
+    borderRightWidth: StyleSheet.hairlineWidth,
   },
   chLogo: {
     width: 38, height: 28, borderRadius: 4, overflow: 'hidden',
@@ -931,7 +893,6 @@ const styles = StyleSheet.create({
   },
   chInitials: { fontSize: 10, fontFamily: 'Inter_700Bold' },
   chName: { flex: 1, fontSize: 11, fontFamily: 'Inter_500Medium', lineHeight: 14 },
-  rightArea: { flex: 1, overflow: 'hidden' },
   timeHeader: { flexDirection: 'row', borderBottomWidth: StyleSheet.hairlineWidth },
   timeSlot: {
     width: SLOT_W, height: TIME_H, justifyContent: 'center',
