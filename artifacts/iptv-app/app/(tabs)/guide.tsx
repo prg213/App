@@ -17,6 +17,7 @@ import {
   Text,
   TouchableOpacity,
   View,
+  useWindowDimensions,
 } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
@@ -303,10 +304,15 @@ export default function GuideScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { credentials } = useAppContext();
+  const { height: screenH } = useWindowDimensions();
   const isXtream = credentials?.type === 'xtream';
 
-  // Measured height of the grid container (set via onLayout)
-  const [gridContainerH, setGridContainerH] = useState(0);
+  // Measured height of the grid container — initialised with screen height so
+  // the FlatList has a valid height on first render (avoids Android blank-rows bug)
+  const [gridContainerH, setGridContainerH] = useState(screenH);
+
+  // Category filter
+  const [selectedCat, setSelectedCat] = useState<string | null>(null);
 
   // Refs for synchronized scrolling
   const timeHeaderRef = useRef<ScrollView>(null);
@@ -356,6 +362,31 @@ export default function GuideScreen() {
     gcTime: 60 * 60_000,
     retry: 1,
   });
+
+  // Derive category list from channels (no extra API call needed)
+  const categories = useMemo(() => {
+    const seen = new Set<string>();
+    const list: string[] = [];
+    for (const ch of channels) {
+      if (ch.groupTitle && !seen.has(ch.groupTitle)) {
+        seen.add(ch.groupTitle);
+        list.push(ch.groupTitle);
+      }
+    }
+    return list;
+  }, [channels]);
+
+  // Channels filtered by selected category
+  const filteredChannels = useMemo(
+    () => (selectedCat ? channels.filter((c) => c.groupTitle === selectedCat) : channels),
+    [channels, selectedCat],
+  );
+
+  // Reset list scroll positions when category changes
+  useEffect(() => {
+    leftListRef.current?.scrollToOffset({ offset: 0, animated: false });
+    rightListRef.current?.scrollToOffset({ offset: 0, animated: false });
+  }, [selectedCat]);
 
   // Auto-scroll to current time on mount
   useEffect(() => {
@@ -485,6 +516,54 @@ export default function GuideScreen() {
         </TouchableOpacity>
       </View>
 
+      {/* Category filter bar — sits between topBar and the grid */}
+      {categories.length > 0 && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={[styles.catBar, { borderBottomColor: colors.border, backgroundColor: colors.card }]}
+          contentContainerStyle={styles.catBarContent}
+        >
+          {/* "All" chip */}
+          <TouchableOpacity
+            onPress={() => setSelectedCat(null)}
+            activeOpacity={0.7}
+            style={[
+              styles.catChip,
+              { borderColor: !selectedCat ? '#3B82F6' : colors.border },
+              !selectedCat && { backgroundColor: 'rgba(59,130,246,0.15)' },
+            ]}
+          >
+            <Text style={[styles.catChipText, { color: !selectedCat ? '#3B82F6' : colors.mutedForeground }]}>
+              All
+            </Text>
+          </TouchableOpacity>
+
+          {categories.map((cat) => {
+            const active = cat === selectedCat;
+            return (
+              <TouchableOpacity
+                key={cat}
+                onPress={() => setSelectedCat(active ? null : cat)}
+                activeOpacity={0.7}
+                style={[
+                  styles.catChip,
+                  { borderColor: active ? '#3B82F6' : colors.border },
+                  active && { backgroundColor: 'rgba(59,130,246,0.15)' },
+                ]}
+              >
+                <Text
+                  style={[styles.catChipText, { color: active ? '#3B82F6' : colors.mutedForeground }]}
+                  numberOfLines={1}
+                >
+                  {cat}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      )}
+
       {/* Guide grid — onLayout measures the true available height */}
       <View
         style={[styles.grid, { paddingRight: insets.right }]}
@@ -499,7 +578,7 @@ export default function GuideScreen() {
           {/* Channel names — flex:1 fills remaining leftCol height exactly */}
           <FlatList
             ref={leftListRef}
-            data={channels}
+            data={filteredChannels}
             keyExtractor={(ch) => ch.id}
             renderItem={renderChannelCell}
             getItemLayout={getItemLayout}
@@ -507,8 +586,8 @@ export default function GuideScreen() {
             scrollEventThrottle={16}
             onScroll={onLeftVertScroll}
             style={{ flex: 1 }}
-            initialNumToRender={12}
-            maxToRenderPerBatch={12}
+            initialNumToRender={14}
+            maxToRenderPerBatch={14}
           />
         </View>
 
@@ -534,26 +613,27 @@ export default function GuideScreen() {
             onScroll={onGridHorizScroll}
             style={{ flex: 1 }}
           >
-            {/* "Now" vertical indicator — height matches the measured list area */}
+            {/* "Now" vertical indicator */}
             {nowX >= 0 && nowX <= TOTAL_W && listH > 0 && (
               <View
                 pointerEvents="none"
                 style={[styles.nowLine, { left: nowX, height: listH }]}
               />
             )}
-            {/* Program rows list — explicit height derived from measured grid */}
+            {/* Program rows — nestedScrollEnabled for correct Android scroll handling */}
             <FlatList
               ref={rightListRef}
-              data={channels}
+              data={filteredChannels}
               keyExtractor={(ch) => ch.id}
               renderItem={renderProgramRow}
               getItemLayout={getItemLayout}
               showsVerticalScrollIndicator={false}
               scrollEventThrottle={16}
               onScroll={onRightVertScroll}
-              style={{ width: TOTAL_W, height: listH || undefined }}
-              initialNumToRender={12}
-              maxToRenderPerBatch={12}
+              nestedScrollEnabled
+              style={{ width: TOTAL_W, height: listH }}
+              initialNumToRender={14}
+              maxToRenderPerBatch={14}
             />
           </ScrollView>
         </View>
@@ -620,6 +700,25 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   todayBtnText: { fontSize: 12, fontFamily: 'Inter_500Medium' },
+
+  catBar: {
+    height: 40,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  catBarContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    gap: 6,
+    height: 40,
+  },
+  catChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 99,
+    borderWidth: 1,
+  },
+  catChipText: { fontSize: 11, fontFamily: 'Inter_500Medium' },
 
   grid: { flex: 1, flexDirection: 'row' },
 
