@@ -16,6 +16,22 @@ export interface Channel {
   streamUrl: string;
   epgId?: string;
   num?: number;
+  /** 1 if the channel supports catch-up/archive */
+  tvArchive?: number;
+  /** How many days of archive are kept */
+  tvArchiveDuration?: number;
+}
+
+export interface CatchupProgram {
+  id: string;
+  title: string;
+  description?: string;
+  start: Date;
+  end: Date;
+  hasArchive: boolean;
+  /** Raw server-local start string ("YYYY-MM-DD HH:MM:SS") — used verbatim
+   *  for timeshift URLs so device timezone never shifts the replay window. */
+  serverStart: string;
 }
 
 export interface Category {

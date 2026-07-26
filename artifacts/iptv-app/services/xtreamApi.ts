@@ -54,6 +54,8 @@ export async function getXtreamLiveStreams(
       category_id: string;
       epg_channel_id?: string;
       num: number;
+      tv_archive?: number;
+      tv_archive_duration?: number;
     }>
   >(creds, 'get_live_streams', params);
 
@@ -66,7 +68,84 @@ export async function getXtreamLiveStreams(
     streamUrl: `${base}/${creds.username}/${creds.password}/${s.stream_id}`,
     epgId: s.epg_channel_id || undefined,
     num: s.num,
+    tvArchive: Number(s.tv_archive ?? 0),
+    tvArchiveDuration: Number(s.tv_archive_duration ?? 0),
   }));
+}
+
+// ─── Catch-up / Archive ──────────────────────────────────────────────────────
+
+/** Decode base64 strings returned by get_simple_data_table (titles/descriptions). */
+function b64decode(s: string | undefined): string {
+  if (!s) return '';
+  try {
+    // atob is available in React Native (Hermes) and modern JS runtimes
+    return decodeURIComponent(escape(atob(s)));
+  } catch {
+    return s;
+  }
+}
+
+/** Archive EPG for one channel — programmes that can be replayed. */
+export async function getXtreamCatchupEpg(
+  creds: Creds,
+  streamId: string,
+): Promise<import('@/types').CatchupProgram[]> {
+  const data = await call<{
+    epg_listings?: Array<{
+      id: string;
+      title?: string;
+      description?: string;
+      start: string;               // "2026-07-26 14:00:00" (server-local)
+      end?: string;
+      stop_timestamp?: string;     // unix seconds
+      start_timestamp?: string;    // unix seconds
+      has_archive?: number;
+      now_playing?: number;
+    }>;
+  }>(creds, 'get_simple_data_table', { stream_id: streamId });
+
+  return (data?.epg_listings ?? [])
+    .map((e) => {
+      const startMs = Number(e.start_timestamp) * 1000;
+      const endMs = Number(e.stop_timestamp) * 1000;
+      return {
+        id: e.id,
+        title: b64decode(e.title) || 'Untitled',
+        description: b64decode(e.description) || undefined,
+        start: new Date(startMs),
+        end: new Date(endMs),
+        hasArchive: Number(e.has_archive ?? 0) === 1,
+        serverStart: e.start ?? '',
+      };
+    })
+    .filter((p) =>
+      Number.isFinite(p.start.getTime()) &&
+      Number.isFinite(p.end.getTime()) &&
+      // serverStart must look like "YYYY-MM-DD HH:MM[:SS]" to build a valid timeshift URL
+      /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(p.serverStart),
+    );
+}
+
+/**
+ * Timeshift playback URL.
+ * Classic Xtream format: {base}/streaming/timeshift.php?username=..&password=..&stream=ID&start=YYYY-MM-DD:HH-MM&duration=minutes
+ *
+ * IMPORTANT: `serverStart` is the raw server-local "YYYY-MM-DD HH:MM:SS" string
+ * from get_simple_data_table. It is reformatted with pure string ops — never
+ * converted through a JS Date — so the device timezone can't shift the window.
+ */
+export function getXtreamCatchupUrl(
+  creds: Creds,
+  streamId: string,
+  serverStart: string,
+  durationMinutes: number,
+): string {
+  const [d, t] = serverStart.split(' ');
+  const [hh, mm] = (t ?? '').split(':');
+  const s = `${d}:${hh}-${mm}`; // "2026-07-26:14-00"
+  const base = baseUrl(creds.host);
+  return `${base}/streaming/timeshift.php?username=${encodeURIComponent(creds.username)}&password=${encodeURIComponent(creds.password)}&stream=${streamId}&start=${s}&duration=${durationMinutes}`;
 }
 
 // ─── VOD / Movies ────────────────────────────────────────────────────────────
