@@ -674,14 +674,11 @@ export default function GuideScreen() {
       retry: 1,
     });
 
-  // Unique category IDs that actually have channels, sorted by display name
+  // Category IDs in server order (same as Live TV), filtered to only those with channels
   const categoryIds = useMemo(() => {
-    const seen = new Set<string>();
-    for (const ch of channels) {
-      if (ch.groupTitle) seen.add(ch.groupTitle);
-    }
-    return Array.from(seen);
-  }, [channels, categoryNameMap]);
+    const withChannels = new Set(channels.map((ch) => ch.groupTitle).filter(Boolean));
+    return liveCategories.map((c) => c.id).filter((id) => withChannels.has(id));
+  }, [liveCategories, channels]);
 
   const channelCountByCategory = useMemo(() => {
     const map: Record<string, number> = {};
