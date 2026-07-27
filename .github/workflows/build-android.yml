@@ -58,6 +58,7 @@ jobs:
       - name: Build APK
         working-directory: artifacts/iptv-app/android
         run: |
+          set -o pipefail
           if [ "${{ github.event.inputs.variant }}" = "release" ]; then
             ./gradlew assembleRelease --stacktrace --no-daemon 2>&1 | tee build.log
           else
