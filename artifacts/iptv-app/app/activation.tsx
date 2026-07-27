@@ -36,7 +36,7 @@ export default function ActivationScreen() {
   const insets = useSafeAreaInsets();
   const { deviceMac, setActivated, isActivated } = useAppContext();
   const [copied, setCopied] = useState(false);
-  const [isPolling, setIsPolling] = useState(false);
+  const [isPolling, setIsPolling] = useState(true);
   const pulse = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
