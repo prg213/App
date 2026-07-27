@@ -14,10 +14,12 @@ import {
 } from '@expo-google-fonts/inter';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { setBaseUrl } from '@workspace/api-client-react';
 import { AppContextProvider, useAppContext } from '@/context/AppContext';
 
-// Wire up the API base URL for Expo (bypasses web proxy)
+// setBaseUrl inlined — @workspace/api-client-react is not available in EAS builds
+let _apiBaseUrl: string | null = null;
+function setBaseUrl(url: string | null) { _apiBaseUrl = url ? url.replace(/\/+$/, '') : null; }
+
 if (process.env.EXPO_PUBLIC_DOMAIN) {
   setBaseUrl(`https://${process.env.EXPO_PUBLIC_DOMAIN}`);
 }
