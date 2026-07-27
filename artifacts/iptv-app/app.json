@@ -7,7 +7,7 @@
     "icon": "./assets/images/icon.png",
     "scheme": "iptv-app",
     "userInterfaceStyle": "dark",
-    "newArchEnabled": false,
+    "newArchEnabled": true,
     "backgroundColor": "#0A0A0F",
     "splash": {
       "image": "./assets/images/icon.png",
