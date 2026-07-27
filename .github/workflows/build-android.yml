@@ -3,14 +3,14 @@ name: Build Android APK
 on:
   workflow_dispatch:
     inputs:
-      profile:
-        description: 'Build profile'
+      variant:
+        description: 'Build variant'
         required: true
-        default: 'preview'
+        default: 'debug'
         type: choice
         options:
-          - preview
-          - production
+          - debug
+          - release
 
 jobs:
   build:
@@ -20,6 +20,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -31,48 +37,50 @@ jobs:
         with:
           version: 9
 
-      - name: Set pnpm packageManager field
-        run: |
-          node -e "
-            const fs = require('fs');
-            const pkg = JSON.parse(fs.readFileSync('package.json'));
-            pkg.packageManager = 'pnpm@9.0.0';
-            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2));
-          "
-
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
 
-      - name: Install EAS CLI
-        run: npm install -g eas-cli
-
-      - name: Initialise EAS project
+      - name: Expo prebuild (generate android/ project)
         working-directory: artifacts/iptv-app
-        run: eas init --non-interactive --force
+        run: npx expo prebuild --platform android --no-install --clean
         env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          # suppress interactive prompts
+          CI: 1
+
+      - name: Install NDK
+        run: |
+          echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager \
+            "ndk;27.1.12297006" \
+            "cmake;3.22.1" \
+            --sdk_root=$ANDROID_HOME
+          echo "NDK_VERSION=27.1.12297006" >> $GITHUB_ENV
 
       - name: Build APK
-        working-directory: artifacts/iptv-app
-        run: eas build --platform android --profile ${{ github.event.inputs.profile }} --non-interactive
-        env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-
-      - name: Download APK
-        working-directory: artifacts/iptv-app
+        working-directory: artifacts/iptv-app/android
         run: |
-          APK_URL=$(eas build:list --platform android --limit 1 --json --non-interactive | node -e "
-            let d=''; process.stdin.on('data',c=>d+=c).on('end',()=>{
-              const b=JSON.parse(d); console.log(b[0].artifacts.buildUrl);
-            });
-          ")
-          curl -L "$APK_URL" -o streamvault.apk
+          if [ "${{ github.event.inputs.variant }}" = "release" ]; then
+            ./gradlew assembleRelease --stacktrace --no-daemon 2>&1 | tee build.log
+          else
+            ./gradlew assembleDebug --stacktrace --no-daemon 2>&1 | tee build.log
+          fi
         env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          ANDROID_HOME: ${{ env.ANDROID_HOME }}
+          ANDROID_NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/27.1.12297006
 
-      - name: Upload APK artifact
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: StreamVault-${{ github.event.inputs.profile }}-${{ github.run_number }}
-          path: artifacts/iptv-app/streamvault.apk
+          name: StreamVault-${{ github.event.inputs.variant }}-${{ github.run_number }}
+          path: |
+            artifacts/iptv-app/android/app/build/outputs/apk/debug/app-debug.apk
+            artifacts/iptv-app/android/app/build/outputs/apk/release/app-release-unsigned.apk
+          if-no-files-found: warn
           retention-days: 30
+
+      - name: Upload build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gradle-build-log-${{ github.run_number }}
+          path: artifacts/iptv-app/android/build.log
+          retention-days: 7
