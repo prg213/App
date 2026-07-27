@@ -34,7 +34,7 @@ jobs:
       - name: Patch all files and write Metro stub
         run: |
           python3 - << 'PYEOF'
-          import json, os
+          import json, os, re
 
           # Root package.json
           with open("package.json") as f:
@@ -59,8 +59,14 @@ jobs:
           with open("artifacts/iptv-app/package.json", "w") as f:
               json.dump(iptv, f, indent=2)
 
+          # tsconfig.json - remove dangling project reference to lib/api-client-react
+          with open("artifacts/iptv-app/tsconfig.json") as f:
+              tsconfig = json.load(f)
+          tsconfig.pop("references", None)
+          with open("artifacts/iptv-app/tsconfig.json", "w") as f:
+              json.dump(tsconfig, f, indent=2)
+
           # _layout.tsx - ensure @workspace import is gone (safety net)
-          import re
           with open("artifacts/iptv-app/app/_layout.tsx") as f:
               layout = f.read()
           layout = re.sub(
@@ -85,7 +91,7 @@ jobs:
                   "module.exports={setBaseUrl,setAuthTokenGetter};\n"
               )
 
-          # metro.config.js - custom resolver so Metro never tries to find the workspace pkg
+          # metro.config.js - custom resolver
           with open("artifacts/iptv-app/metro.config.js", "w") as f:
               f.write("\n".join([
                   "const {getDefaultConfig}=require('expo/metro-config');",
@@ -131,19 +137,3 @@ jobs:
         working-directory: artifacts/iptv-app
         run: eas build --platform android --profile ${{ github.event.inputs.profile }} --non-interactive
         env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-
-      - name: Download APK
-        working-directory: artifacts/iptv-app
-        run: |
-          APK_URL=$(eas build:list --platform android --limit 1 --json --non-interactive | python3 -c "import sys,json; builds=json.load(sys.stdin); print(builds[0]['artifacts']['buildUrl'])")
-          curl -L "$APK_URL" -o streamvault.apk
-        env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-
-      - name: Upload APK artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: StreamVault-${{ github.event.inputs.profile }}-${{ github.run_number }}
-          path: artifacts/iptv-app/streamvault.apk
-          retention-days: 30
