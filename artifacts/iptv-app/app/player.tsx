@@ -292,6 +292,9 @@ export default function PlayerScreen() {
             </TouchableOpacity>
           </View>
 
+          {/* Spacer pushes VOD controls to the bottom */}
+          <View style={{ flex: 1 }} pointerEvents="none" />
+
           {/* VOD bottom controls: seek + play + progress */}
           {!isLive && (
             <View style={[styles.vodBottom, { paddingBottom: insets.bottom + 16 }]}>
@@ -413,7 +416,8 @@ const styles = StyleSheet.create({
 
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    justifyContent: 'space-between',
+    flexDirection: 'column',
+    justifyContent: 'flex-start',
   },
   topBar: {
     paddingHorizontal: 16,
