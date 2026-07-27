@@ -1,19 +1,39 @@
 import { Router } from "express";
 import { eq, and } from "drizzle-orm";
-import { getAuth } from "@clerk/express";
+import { getAuth, clerkClient } from "@clerk/express";
 import { db, devicesTable } from "@workspace/db";
 
 const router: Router = Router();
+const ADMIN_EMAIL = "prgriffiths123@gmail.com";
 
-function requireAuth(req: any, res: any, next: any) {
+async function requireAuth(req: any, res: any, next: any) {
   const auth = getAuth(req);
-  const userId = auth?.userId;
-  if (!userId) {
+  if (!auth?.userId) {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
-  req.userId = userId;
+  req.userId = auth.userId;
   next();
+}
+
+async function requireAdmin(req: any, res: any, next: any) {
+  const auth = getAuth(req);
+  if (!auth?.userId) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  try {
+    const user = await clerkClient.users.getUser(auth.userId);
+    const email = user.emailAddresses[0]?.emailAddress;
+    if (email !== ADMIN_EMAIL) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+    req.userId = auth.userId;
+    next();
+  } catch {
+    res.status(403).json({ error: "Forbidden" });
+  }
 }
 
 function formatDevice(d: typeof devicesTable.$inferSelect) {
@@ -30,6 +50,8 @@ function formatDevice(d: typeof devicesTable.$inferSelect) {
   };
 }
 
+// ── Regular user routes ──────────────────────────────────────
+
 router.get("/devices", requireAuth, async (req: any, res): Promise<void> => {
   const devices = await db
     .select()
@@ -40,14 +62,11 @@ router.get("/devices", requireAuth, async (req: any, res): Promise<void> => {
 });
 
 router.post("/devices", requireAuth, async (req: any, res): Promise<void> => {
-  const { mac_address, name, type, host, username, password, m3u_url } =
-    req.body;
-
+  const { mac_address, name, type, host, username, password, m3u_url } = req.body;
   if (!mac_address || !type) {
     res.status(400).json({ error: "mac_address and type are required" });
     return;
   }
-
   const [device] = await db
     .insert(devicesTable)
     .values({
@@ -61,20 +80,52 @@ router.post("/devices", requireAuth, async (req: any, res): Promise<void> => {
       m3uUrl: m3u_url ?? null,
     })
     .returning();
-
   res.status(201).json(formatDevice(device));
 });
 
 router.delete("/devices/:id", requireAuth, async (req: any, res): Promise<void> => {
   const id = parseInt(req.params.id, 10);
-  if (isNaN(id)) {
-    res.status(400).json({ error: "Invalid id" });
-    return;
-  }
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  await db.delete(devicesTable).where(
+    and(eq(devicesTable.id, id), eq(devicesTable.userId, req.userId))
+  );
+  res.sendStatus(204);
+});
 
-  await db
-    .delete(devicesTable)
-    .where(and(eq(devicesTable.id, id), eq(devicesTable.userId, req.userId)));
+// ── Admin routes ──────────────────────────────────────────────
+
+router.get("/admin/devices", requireAdmin, async (_req, res): Promise<void> => {
+  const devices = await db
+    .select()
+    .from(devicesTable)
+    .orderBy(devicesTable.createdAt);
+
+  // Resolve emails for all unique userIds
+  const userIds = [...new Set(devices.map(d => d.userId).filter(Boolean))] as string[];
+  const emailMap: Record<string, string> = {};
+  await Promise.all(
+    userIds.map(async (uid) => {
+      try {
+        const u = await clerkClient.users.getUser(uid);
+        emailMap[uid] = u.emailAddresses[0]?.emailAddress ?? uid;
+      } catch {
+        emailMap[uid] = uid;
+      }
+    })
+  );
+
+  res.json(
+    devices.map(d => ({
+      ...formatDevice(d),
+      registered_by: d.userId ? (emailMap[d.userId] ?? d.userId) : "unknown",
+    }))
+  );
+});
+
+router.delete("/admin/devices/:id", requireAdmin, async (_req, res): Promise<void> => {
+  const id = parseInt(_req.params.id, 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  await db.delete(devicesTable).where(eq(devicesTable.id, id));
   res.sendStatus(204);
 });
 

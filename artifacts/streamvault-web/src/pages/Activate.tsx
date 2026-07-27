@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Play, Plus, Trash2, Monitor, CheckCircle2, AlertCircle, LogOut } from 'lucide-react';
+import { Play, Plus, Trash2, Monitor, CheckCircle2, AlertCircle, LogOut, ShieldCheck } from 'lucide-react';
 import { Link } from 'wouter';
 import { useClerk, useUser } from '@clerk/react';
 
 const API = '/api';
+const ADMIN_EMAIL = 'prgriffiths123@gmail.com';
 
 type Device = {
   id: number;
@@ -14,6 +15,7 @@ type Device = {
   host?: string | null;
   m3u_url?: string | null;
   created_at: string;
+  registered_by?: string; // admin view only
 };
 
 function Toast({ msg, kind }: { msg: string; kind: 'success' | 'error' }) {
@@ -37,6 +39,8 @@ function Toast({ msg, kind }: { msg: string; kind: 'success' | 'error' }) {
 export default function Activate() {
   const { signOut } = useClerk();
   const { user } = useUser();
+  const isAdmin = user?.primaryEmailAddress?.emailAddress === ADMIN_EMAIL;
+
   const [devices, setDevices] = useState<Device[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -58,7 +62,9 @@ export default function Activate() {
 
   async function loadDevices() {
     try {
-      const res = await fetch(`${API}/devices`);
+      const endpoint = isAdmin ? `${API}/admin/devices` : `${API}/devices`;
+      const res = await fetch(endpoint);
+      if (res.status === 401 || res.status === 403) { setDevices([]); return; }
       const data = await res.json();
       setDevices(Array.isArray(data) ? data : []);
     } catch {
@@ -68,9 +74,10 @@ export default function Activate() {
     }
   }
 
-  useEffect(() => { loadDevices(); }, []);
+  useEffect(() => {
+    if (user !== undefined) loadDevices();
+  }, [user, isAdmin]);
 
-  // Format MAC as XX:XX:XX:XX:XX:XX
   function handleMacInput(val: string) {
     const clean = val.replace(/[^0-9A-Fa-f]/g, '').toUpperCase();
     const grouped = clean.match(/.{1,2}/g)?.join(':') ?? clean;
@@ -109,7 +116,8 @@ export default function Activate() {
 
   async function handleDelete(id: number) {
     if (!confirm('Remove this device? The app will need to be re-activated.')) return;
-    await fetch(`${API}/devices/${id}`, { method: 'DELETE' });
+    const endpoint = isAdmin ? `${API}/admin/devices/${id}` : `${API}/devices/${id}`;
+    await fetch(endpoint, { method: 'DELETE' });
     showToast('Device removed', 'success');
     loadDevices();
   }
@@ -126,8 +134,13 @@ export default function Activate() {
             <span className="text-base font-bold tracking-tight text-white">StreamVault</span>
           </Link>
           <div className="flex items-center gap-3">
+            {isAdmin && (
+              <span className="hidden sm:flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 uppercase tracking-widest">
+                <ShieldCheck className="w-3 h-3" /> Admin
+              </span>
+            )}
             {user && (
-              <span className="text-xs text-white/40 hidden sm:block truncate max-w-[180px]">
+              <span className="text-xs text-white/40 hidden sm:block truncate max-w-[200px]">
                 {user.primaryEmailAddress?.emailAddress}
               </span>
             )}
@@ -149,19 +162,23 @@ export default function Activate() {
           transition={{ duration: 0.5 }}
           className="mb-10"
         >
-          <h1 className="text-3xl font-bold text-white mb-2">Activate a Device</h1>
+          <h1 className="text-3xl font-bold text-white mb-2">
+            {isAdmin ? 'Admin Panel' : 'Activate a Device'}
+          </h1>
           <p className="text-white/50 text-sm">
-            Enter the MAC address shown in the StreamVault app along with the IPTV credentials.
+            {isAdmin
+              ? 'Full visibility across all registered accounts and activated MACs.'
+              : 'Enter the MAC address shown in the StreamVault app along with the IPTV credentials.'}
           </p>
         </motion.div>
 
-        <div className="grid lg:grid-cols-2 gap-8">
+        <div className={`grid gap-8 ${isAdmin ? 'lg:grid-cols-[420px_1fr]' : 'lg:grid-cols-2'}`}>
           {/* ── Activation Form ── */}
           <motion.div
             initial={{ opacity: 0, y: 24 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.1 }}
-            className="bg-white/[0.03] border border-white/8 rounded-2xl p-7"
+            className="bg-white/[0.03] border border-white/8 rounded-2xl p-7 self-start"
           >
             <h2 className="text-base font-semibold text-white mb-6 flex items-center gap-2">
               <Plus className="w-4 h-4 text-primary" />
@@ -207,46 +224,22 @@ export default function Activate() {
               {type === 'xtream' ? (
                 <>
                   <Field label="Host / Panel URL">
-                    <input
-                      type="text"
-                      value={host}
-                      onChange={e => setHost(e.target.value)}
-                      placeholder="http://provider.com:8080"
-                      required
-                      className={inputClass}
-                    />
+                    <input type="text" value={host} onChange={e => setHost(e.target.value)}
+                      placeholder="http://provider.com:8080" required className={inputClass} />
                   </Field>
                   <Field label="Username">
-                    <input
-                      type="text"
-                      value={username}
-                      onChange={e => setUsername(e.target.value)}
-                      placeholder="username"
-                      required
-                      className={inputClass}
-                    />
+                    <input type="text" value={username} onChange={e => setUsername(e.target.value)}
+                      placeholder="username" required className={inputClass} />
                   </Field>
                   <Field label="Password">
-                    <input
-                      type="password"
-                      value={password}
-                      onChange={e => setPassword(e.target.value)}
-                      placeholder="••••••••"
-                      required
-                      className={inputClass}
-                    />
+                    <input type="password" value={password} onChange={e => setPassword(e.target.value)}
+                      placeholder="••••••••" required className={inputClass} />
                   </Field>
                 </>
               ) : (
                 <Field label="M3U Playlist URL">
-                  <input
-                    type="url"
-                    value={m3uUrl}
-                    onChange={e => setM3uUrl(e.target.value)}
-                    placeholder="http://provider.com/get.php?..."
-                    required
-                    className={inputClass}
-                  />
+                  <input type="url" value={m3uUrl} onChange={e => setM3uUrl(e.target.value)}
+                    placeholder="http://provider.com/get.php?..." required className={inputClass} />
                 </Field>
               )}
 
@@ -260,19 +253,21 @@ export default function Activate() {
             </form>
           </motion.div>
 
-          {/* ── Registered Devices ── */}
+          {/* ── Devices Panel ── */}
           <motion.div
             initial={{ opacity: 0, y: 24 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.2 }}
             className="bg-white/[0.03] border border-white/8 rounded-2xl p-7"
           >
-            <h2 className="text-base font-semibold text-white mb-6 flex items-center gap-2 justify-between">
+            <h2 className="text-base font-semibold text-white mb-6 flex items-center justify-between">
               <span className="flex items-center gap-2">
                 <Monitor className="w-4 h-4 text-primary" />
-                Registered Devices
+                {isAdmin ? 'All Registered Devices' : 'Your Devices'}
               </span>
-              <span className="text-xs text-white/30 font-normal">{devices.length} device{devices.length !== 1 ? 's' : ''}</span>
+              <span className="text-xs text-white/30 font-normal">
+                {devices.length} device{devices.length !== 1 ? 's' : ''}
+              </span>
             </h2>
 
             {loading ? (
@@ -282,11 +277,64 @@ export default function Activate() {
                 <Monitor className="w-8 h-8 text-white/10" />
                 <p className="text-white/30 text-sm">No devices yet.<br />Activate one using the form.</p>
               </div>
+            ) : isAdmin ? (
+              /* Admin: scrollable table */
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-white/5">
+                      <th className="text-left text-xs text-white/30 font-medium pb-3 pr-4">MAC</th>
+                      <th className="text-left text-xs text-white/30 font-medium pb-3 pr-4">Type</th>
+                      <th className="text-left text-xs text-white/30 font-medium pb-3 pr-4">Name / Host</th>
+                      <th className="text-left text-xs text-white/30 font-medium pb-3 pr-4">Registered By</th>
+                      <th className="pb-3 w-8" />
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/[0.04]">
+                    {devices.map(d => (
+                      <tr key={d.id} className="group">
+                        <td className="py-3 pr-4">
+                          <span className="font-mono text-xs bg-white/8 text-white/70 px-2 py-0.5 rounded-md whitespace-nowrap">
+                            {d.mac_address}
+                          </span>
+                        </td>
+                        <td className="py-3 pr-4">
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap ${
+                            d.type === 'xtream'
+                              ? 'bg-primary/15 text-primary'
+                              : 'bg-emerald-500/15 text-emerald-400'
+                          }`}>
+                            {d.type?.toUpperCase() ?? '?'}
+                          </span>
+                        </td>
+                        <td className="py-3 pr-4 max-w-[160px]">
+                          <span className="text-xs text-white/50 truncate block">
+                            {d.name || d.host || d.m3u_url || '—'}
+                          </span>
+                        </td>
+                        <td className="py-3 pr-4 max-w-[180px]">
+                          <span className="text-xs text-white/40 truncate block">
+                            {d.registered_by ?? '—'}
+                          </span>
+                        </td>
+                        <td className="py-3">
+                          <button
+                            onClick={() => handleDelete(d.id)}
+                            className="p-1.5 rounded-lg text-white/20 hover:text-red-400 hover:bg-red-500/10 transition-colors opacity-0 group-hover:opacity-100"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             ) : (
+              /* Regular user: card list */
               <div className="space-y-3">
                 {devices.map(d => (
-                  <div
-                    key={d.id}
+                  <div key={d.id}
                     className="flex items-center gap-4 bg-white/[0.02] border border-white/5 rounded-xl px-4 py-3"
                   >
                     <div className="flex-1 min-w-0">
