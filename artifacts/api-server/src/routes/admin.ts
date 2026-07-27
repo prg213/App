@@ -160,8 +160,8 @@ const adminHtml = `<!DOCTYPE html>
           <input id="macInput" type="text" placeholder="AA:BB:CC:DD:EE:FF" required
             pattern="([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}" maxlength="17" />
 
-          <label>Device Name (optional)</label>
-          <input id="nameInput" type="text" placeholder="Living Room TV" />
+          <label>Device Name *</label>
+          <input id="nameInput" type="text" placeholder="Living Room TV" required />
 
           <label>Connection Type *</label>
           <select id="typeSelect" required>
@@ -171,11 +171,11 @@ const adminHtml = `<!DOCTYPE html>
 
           <div id="xtreamFields" class="type-fields">
             <label>Host / Panel URL *</label>
-            <input id="hostInput" type="text" placeholder="http://your-provider.com:8080" />
+            <input id="hostInput" type="text" placeholder="http://your-provider.com:8080" required />
             <label>Username *</label>
-            <input id="usernameInput" type="text" placeholder="username" />
+            <input id="usernameInput" type="text" placeholder="username" required />
             <label>Password *</label>
-            <input id="passwordInput" type="password" placeholder="password" />
+            <input id="passwordInput" type="password" placeholder="password" required />
           </div>
 
           <div id="m3uFields" class="type-fields" style="display:none">
@@ -222,15 +222,25 @@ const adminHtml = `<!DOCTYPE html>
     const xtreamFields = document.getElementById('xtreamFields');
     const m3uFields = document.getElementById('m3uFields');
 
-    typeSelect.addEventListener('change', () => {
-      if (typeSelect.value === 'xtream') {
+    const xtreamInputs = xtreamFields.querySelectorAll('input');
+    const m3uInput = document.getElementById('m3uInput');
+
+    function setType(type) {
+      if (type === 'xtream') {
         xtreamFields.style.display = '';
         m3uFields.style.display = 'none';
+        xtreamInputs.forEach(i => i.required = true);
+        m3uInput.required = false;
       } else {
         xtreamFields.style.display = 'none';
         m3uFields.style.display = '';
+        xtreamInputs.forEach(i => i.required = false);
+        m3uInput.required = true;
       }
-    });
+    }
+
+    typeSelect.addEventListener('change', () => setType(typeSelect.value));
+    setType(typeSelect.value);
 
     function showToast(msg, type = 'success') {
       const t = document.getElementById('toast');
