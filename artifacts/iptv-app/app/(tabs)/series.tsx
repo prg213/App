@@ -20,6 +20,7 @@ import { getXtreamSeriesCategories, getXtreamSeries } from '@/services/xtreamApi
 import { StorageService } from '@/services/storage';
 import type { Series, Category, FavoriteSeries } from '@/types';
 
+const ALL_CAT_ID = '__all';
 const FAVS_CAT_ID = '__favs';
 
 function buildCreds(c: ReturnType<typeof useAppContext>['credentials']) {
@@ -32,7 +33,7 @@ export default function SeriesScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { credentials } = useAppContext();
-  const [selectedCat, setSelectedCat] = useState<string | null>(FAVS_CAT_ID);
+  const [selectedCat, setSelectedCat] = useState<string>(ALL_CAT_ID);
   const [search, setSearch] = useState('');
   const [favSeries, setFavSeries] = useState<FavoriteSeries[]>([]);
   const isXtream = credentials?.type === 'xtream';
@@ -43,6 +44,7 @@ export default function SeriesScreen() {
 
   const favSet = useMemo(() => new Set(favSeries.map((f) => f.id)), [favSeries]);
   const isFavsSelected = selectedCat === FAVS_CAT_ID;
+  const isAllSelected = selectedCat === ALL_CAT_ID;
 
   const { data: rawCategories = [] } = useQuery<Category[]>({
     queryKey: ['series-categories', credentials],
@@ -52,18 +54,30 @@ export default function SeriesScreen() {
   });
 
   const categories: Category[] = useMemo(
-    () => [{ id: FAVS_CAT_ID, name: '♥ Favourites' }, ...rawCategories],
+    () => [
+      { id: ALL_CAT_ID, name: '◈ All' },
+      { id: FAVS_CAT_ID, name: '♥ Favourites' },
+      ...rawCategories,
+    ],
     [rawCategories],
   );
 
+  // Pass undefined when All is selected so the API returns everything
+  const queryCategory = isAllSelected || isFavsSelected ? undefined : selectedCat;
+
   const { data: fetchedSeries = [], isLoading, refetch, isRefetching } = useQuery<Series[]>({
-    queryKey: ['series-list', selectedCat, credentials],
-    queryFn: () => getXtreamSeries(buildCreds(credentials), selectedCat ?? undefined),
+    queryKey: ['series-list', queryCategory, credentials],
+    queryFn: () => getXtreamSeries(buildCreds(credentials), queryCategory),
     enabled: !!credentials && isXtream && !isFavsSelected,
     staleTime: 5 * 60_000,
   });
 
-  // When Favourites is selected, map stored favs back to Series objects
+  // Sort fetched series newest first (highest series_id = most recently added)
+  const sortedSeries: Series[] = useMemo(
+    () => [...fetchedSeries].sort((a, b) => parseInt(b.id) - parseInt(a.id)),
+    [fetchedSeries],
+  );
+
   const seriesList: Series[] = useMemo(() => {
     if (isFavsSelected) {
       return favSeries.map((f) => ({
@@ -78,8 +92,8 @@ export default function SeriesScreen() {
         director: f.director,
       }));
     }
-    return fetchedSeries;
-  }, [isFavsSelected, favSeries, fetchedSeries]);
+    return sortedSeries;
+  }, [isFavsSelected, favSeries, sortedSeries]);
 
   const filtered = useMemo(() => {
     if (!search.trim()) return seriesList;

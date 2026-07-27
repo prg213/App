@@ -20,6 +20,7 @@ import { getXtreamVodCategories, getXtreamVodStreams } from '@/services/xtreamAp
 import { StorageService } from '@/services/storage';
 import type { Movie, Category, FavoriteMovie } from '@/types';
 
+const ALL_CAT_ID = '__all';
 const FAVS_CAT_ID = '__favs';
 
 function buildCreds(c: ReturnType<typeof useAppContext>['credentials']) {
@@ -32,7 +33,7 @@ export default function MoviesScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { credentials } = useAppContext();
-  const [selectedCat, setSelectedCat] = useState<string | null>(FAVS_CAT_ID);
+  const [selectedCat, setSelectedCat] = useState<string>(ALL_CAT_ID);
   const [search, setSearch] = useState('');
   const [favMovies, setFavMovies] = useState<FavoriteMovie[]>([]);
   const isXtream = credentials?.type === 'xtream';
@@ -43,6 +44,7 @@ export default function MoviesScreen() {
 
   const favSet = useMemo(() => new Set(favMovies.map((f) => f.id)), [favMovies]);
   const isFavsSelected = selectedCat === FAVS_CAT_ID;
+  const isAllSelected = selectedCat === ALL_CAT_ID;
 
   const { data: rawCategories = [] } = useQuery<Category[]>({
     queryKey: ['vod-categories', credentials],
@@ -52,18 +54,30 @@ export default function MoviesScreen() {
   });
 
   const categories: Category[] = useMemo(
-    () => [{ id: FAVS_CAT_ID, name: '♥ Favourites' }, ...rawCategories],
+    () => [
+      { id: ALL_CAT_ID, name: '◈ All' },
+      { id: FAVS_CAT_ID, name: '♥ Favourites' },
+      ...rawCategories,
+    ],
     [rawCategories],
   );
 
+  // Pass undefined when All is selected so the API returns everything
+  const queryCategory = isAllSelected || isFavsSelected ? undefined : selectedCat;
+
   const { data: fetchedMovies = [], isLoading, refetch, isRefetching } = useQuery<Movie[]>({
-    queryKey: ['vod-streams', selectedCat, credentials],
-    queryFn: () => getXtreamVodStreams(buildCreds(credentials), selectedCat ?? undefined),
+    queryKey: ['vod-streams', queryCategory, credentials],
+    queryFn: () => getXtreamVodStreams(buildCreds(credentials), queryCategory),
     enabled: !!credentials && isXtream && !isFavsSelected,
     staleTime: 5 * 60_000,
   });
 
-  // When Favourites is selected, map stored favs back to Movie objects
+  // Sort fetched movies newest first (highest stream_id = most recently added)
+  const sortedMovies: Movie[] = useMemo(
+    () => [...fetchedMovies].sort((a, b) => parseInt(b.id) - parseInt(a.id)),
+    [fetchedMovies],
+  );
+
   const movies: Movie[] = useMemo(() => {
     if (isFavsSelected) {
       return favMovies.map((f) => ({
@@ -82,8 +96,8 @@ export default function MoviesScreen() {
         duration: f.duration,
       }));
     }
-    return fetchedMovies;
-  }, [isFavsSelected, favMovies, fetchedMovies]);
+    return sortedMovies;
+  }, [isFavsSelected, favMovies, sortedMovies]);
 
   const filtered = useMemo(() => {
     if (!search.trim()) return movies;
