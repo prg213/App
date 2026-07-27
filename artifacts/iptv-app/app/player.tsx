@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   Linking,
@@ -19,6 +19,8 @@ import { useAppContext } from '@/context/AppContext';
 import { getXtreamXmltvUrl } from '@/services/xtreamApi';
 import { fetchAndParseXmltv } from '@/services/epgService';
 import type { EpgProgram } from '@/types';
+
+type ChannelEntry = { url: string; title: string; epgId: string };
 
 function buildCreds(c: ReturnType<typeof useAppContext>['credentials']) {
   return { host: c!.host!, username: c!.username!, password: c!.password! };
@@ -42,6 +44,8 @@ export default function PlayerScreen() {
     title: string;
     type: 'live' | 'vod' | 'series';
     epgId?: string;
+    channelsJson?: string;
+    channelIndex?: string;
   }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -52,6 +56,21 @@ export default function PlayerScreen() {
   const isXtream = credentials?.type === 'xtream';
   const xmltvUrl = isXtream ? getXtreamXmltvUrl(buildCreds(credentials)) : null;
 
+  // ── Channel list for prev/next navigation ────────────────────────────────
+  const channelList = useMemo<ChannelEntry[]>(() => {
+    try { return JSON.parse(params.channelsJson ?? '[]'); } catch { return []; }
+  }, [params.channelsJson]);
+
+  const [channelIdx, setChannelIdx] = useState(() => parseInt(params.channelIndex ?? '-1'));
+
+  // Active channel state — updates when navigating prev/next
+  const [activeTitle, setActiveTitle] = useState(params.title);
+  const [activeEpgId, setActiveEpgId] = useState(params.epgId ?? '');
+
+  const prevChannel = channelList.length > 0 && channelIdx > 0 ? channelList[channelIdx - 1] : null;
+  const nextChannel = channelList.length > 0 && channelIdx < channelList.length - 1 ? channelList[channelIdx + 1] : null;
+
+  // ── Player state ─────────────────────────────────────────────────────────
   const [isPlaying, setIsPlaying] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -59,21 +78,20 @@ export default function PlayerScreen() {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [showControls, setShowControls] = useState(false);
-  const [showInfo, setShowInfo] = useState(true);   // info bar visibility
+  const [showInfo, setShowInfo] = useState(true);
   const [nowTs, setNowTs] = useState(Date.now());
 
   const controlsOpacity = useRef(new Animated.Value(0)).current;
-  const infoOpacity = useRef(new Animated.Value(1)).current;   // starts visible
+  const infoOpacity = useRef(new Animated.Value(1)).current;
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const infoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Update "now" every minute for EPG accuracy
   useEffect(() => {
     const t = setInterval(() => setNowTs(Date.now()), 60_000);
     return () => clearInterval(t);
   }, []);
 
-  // ── EPG: reuse cached query from Live TV screen ──────────────────────────
+  // ── EPG ──────────────────────────────────────────────────────────────────
   const { data: epgMap } = useQuery<Map<string, EpgProgram[]>>({
     queryKey: ['xmltv-epg', credentials],
     queryFn: ({ signal }) => fetchAndParseXmltv(xmltvUrl!, signal),
@@ -84,13 +102,13 @@ export default function PlayerScreen() {
   });
 
   const { currentProg, nextProg } = React.useMemo(() => {
-    if (!epgMap || !params.epgId) return { currentProg: null, nextProg: null };
-    const progs = epgMap.get(params.epgId) ?? [];
+    if (!epgMap || !activeEpgId) return { currentProg: null, nextProg: null };
+    const progs = epgMap.get(activeEpgId) ?? [];
     const curIdx = progs.findIndex((p) => p.start.getTime() <= nowTs && nowTs < p.end.getTime());
     const cur = curIdx >= 0 ? progs[curIdx] : null;
     const nxt = curIdx >= 0 ? (progs[curIdx + 1] ?? null) : null;
     return { currentProg: cur, nextProg: nxt };
-  }, [epgMap, params.epgId, nowTs]);
+  }, [epgMap, activeEpgId, nowTs]);
 
   // ── Video player ─────────────────────────────────────────────────────────
   const player = useVideoPlayer(isWeb ? null : params.url, (p) => {
@@ -118,9 +136,32 @@ export default function PlayerScreen() {
     return () => subs.forEach((s) => s.remove());
   }, [player, isWeb]);
 
+  // ── Channel navigation ───────────────────────────────────────────────────
+  const switchChannel = useCallback((entry: ChannelEntry, newIdx: number) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setChannelIdx(newIdx);
+    setActiveTitle(entry.title);
+    setActiveEpgId(entry.epgId);
+    setIsBuffering(true);
+    setHasError(false);
+    setErrorMsg('');
+    try {
+      player.replace(entry.url);
+      player.play();
+    } catch {}
+  }, [player]);
+
+  const handlePrevChannel = useCallback(() => {
+    if (!prevChannel) return;
+    switchChannel(prevChannel, channelIdx - 1);
+  }, [prevChannel, channelIdx, switchChannel]);
+
+  const handleNextChannel = useCallback(() => {
+    if (!nextChannel) return;
+    switchChannel(nextChannel, channelIdx + 1);
+  }, [nextChannel, channelIdx, switchChannel]);
+
   // ── Controls visibility ──────────────────────────────────────────────────
-  // Don't rely on animation .start() callback — it can silently drop on Android.
-  // Instead: run the fade, then force-hide state 450 ms later unconditionally.
   const scheduleHide = useCallback(() => {
     if (hideTimer.current) clearTimeout(hideTimer.current);
     hideTimer.current = setTimeout(() => {
@@ -129,7 +170,6 @@ export default function PlayerScreen() {
     }, 3000);
   }, [controlsOpacity]);
 
-  // ── Info bar auto-hide (3 s) ─────────────────────────────────────────────
   const scheduleInfoHide = useCallback(() => {
     if (infoTimer.current) clearTimeout(infoTimer.current);
     infoTimer.current = setTimeout(() => {
@@ -138,7 +178,6 @@ export default function PlayerScreen() {
     }, 3000);
   }, [infoOpacity]);
 
-  // Show info bar briefly on mount
   useEffect(() => {
     scheduleInfoHide();
     return () => {
@@ -154,9 +193,7 @@ export default function PlayerScreen() {
   }, [infoOpacity, scheduleInfoHide]);
 
   const handleTap = useCallback(() => {
-    // Show info bar
     showInfoBar();
-    // Show controls (back / play)
     if (!showControls) {
       setShowControls(true);
       Animated.timing(controlsOpacity, { toValue: 1, duration: 200, useNativeDriver: true }).start();
@@ -209,7 +246,8 @@ export default function PlayerScreen() {
             onPress={() => {
               setHasError(false);
               setIsBuffering(true);
-              player.replace(params.url);
+              const currentEntry = channelIdx >= 0 && channelList[channelIdx];
+              player.replace(currentEntry ? currentEntry.url : params.url);
               player.play();
             }}
           >
@@ -237,14 +275,14 @@ export default function PlayerScreen() {
         </View>
       )}
 
-      {/* Transparent tap-catcher — sits above VideoView so Android doesn't swallow touches */}
+      {/* Tap catcher */}
       {!isWeb && !hasError && (
         <TouchableWithoutFeedback onPress={handleTap}>
           <View style={StyleSheet.absoluteFill} />
         </TouchableWithoutFeedback>
       )}
 
-      {/* ── Tap-to-reveal controls (no dim background) ── */}
+      {/* ── Controls overlay (VOD: play/seek/back) ── */}
       {showControls && !isWeb && (
         <Animated.View style={[styles.overlay, { opacity: controlsOpacity }]} pointerEvents="box-none">
           {/* Back button — top left */}
@@ -254,7 +292,7 @@ export default function PlayerScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* Play / seek controls — VOD only; live TV has no pause */}
+          {/* Play / seek controls — VOD only */}
           {!isLive && (
             <View style={styles.center}>
               <TouchableOpacity style={styles.seekBtn} onPress={() => seek(-10)} activeOpacity={0.7}>
@@ -286,7 +324,7 @@ export default function PlayerScreen() {
         </Animated.View>
       )}
 
-      {/* ── Now/Next info bar (Live TV) — fades in on tap, hides after 3 s ── */}
+      {/* ── Live TV info bar (NOW/NEXT + prev/next channel) ── */}
       {isLive && !isWeb && !hasError && showInfo && (
         <Animated.View
           style={[styles.infoBar, { paddingBottom: insets.bottom + 8, opacity: infoOpacity }]}
@@ -298,7 +336,7 @@ export default function PlayerScreen() {
               <View style={styles.liveDot} />
               <Text style={styles.liveText}>LIVE</Text>
             </View>
-            <Text style={styles.infoChannel} numberOfLines={1}>{params.title}</Text>
+            <Text style={styles.infoChannel} numberOfLines={1}>{activeTitle}</Text>
             <TouchableOpacity onPress={() => router.back()} style={styles.backBtnSmall} activeOpacity={0.8}>
               <Text style={styles.backIcon}>←</Text>
             </TouchableOpacity>
@@ -327,6 +365,29 @@ export default function PlayerScreen() {
               </Text>
             </View>
           )}
+
+          {/* Row 4: Prev / Next channel navigation */}
+          {(prevChannel || nextChannel) && (
+            <View style={styles.chNavRow}>
+              {prevChannel ? (
+                <TouchableOpacity style={styles.chNavBtn} onPress={handlePrevChannel} activeOpacity={0.8}>
+                  <Text style={styles.chNavArrow}>‹</Text>
+                  <Text style={styles.chNavLabel} numberOfLines={1}>{prevChannel.title}</Text>
+                </TouchableOpacity>
+              ) : (
+                <View style={styles.chNavPlaceholder} />
+              )}
+
+              {nextChannel ? (
+                <TouchableOpacity style={[styles.chNavBtn, styles.chNavBtnRight]} onPress={handleNextChannel} activeOpacity={0.8}>
+                  <Text style={styles.chNavLabel} numberOfLines={1}>{nextChannel.title}</Text>
+                  <Text style={styles.chNavArrow}>›</Text>
+                </TouchableOpacity>
+              ) : (
+                <View style={styles.chNavPlaceholder} />
+              )}
+            </View>
+          )}
         </Animated.View>
       )}
 
@@ -347,11 +408,9 @@ export default function PlayerScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000' },
 
-  // Controls overlay — transparent background so video shows through cleanly
   overlay: {
     ...StyleSheet.absoluteFillObject,
     justifyContent: 'space-between',
-    // No backgroundColor — overlay is invisible until tapped
   },
   topBar: {
     paddingHorizontal: 16,
@@ -403,7 +462,7 @@ const styles = StyleSheet.create({
   track: { height: 3, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 2, overflow: 'hidden' },
   fill: { height: '100%', backgroundColor: '#3B82F6', borderRadius: 2 },
 
-  // ── Animated live info bar ──
+  // ── Live info bar ──
   infoBar: {
     position: 'absolute',
     bottom: 0,
@@ -464,6 +523,43 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.6)',
     flexShrink: 0,
   },
+
+  // ── Prev / Next channel navigation ──
+  chNavRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(255,255,255,0.15)',
+    gap: 12,
+  },
+  chNavBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  chNavBtnRight: {
+    justifyContent: 'flex-end',
+  },
+  chNavArrow: {
+    fontSize: 22,
+    color: '#fff',
+    lineHeight: 24,
+    flexShrink: 0,
+  },
+  chNavLabel: {
+    flex: 1,
+    fontSize: 12,
+    fontFamily: 'Inter_500Medium',
+    color: 'rgba(255,255,255,0.85)',
+  },
+  chNavPlaceholder: { flex: 1 },
 
   // Buffering
   bufferWrap: { ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center', gap: 16 },

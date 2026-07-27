@@ -359,6 +359,18 @@ export default function LiveTVScreen() {
   const handleWatch = useCallback(() => {
     if (!selectedChannel) return;
     goingToPlayerRef.current = true;
+
+    // Pause preview player BEFORE navigating to stop double audio
+    try { player.pause(); } catch {}
+
+    // Build a lean channel list for prev/next navigation in fullscreen
+    const chList = channels.map((ch) => ({
+      url: ch.streamUrl,
+      title: ch.name,
+      epgId: ch.epgId ?? ch.id,
+    }));
+    const idx = channels.findIndex((ch) => ch.id === selectedChannel.id);
+
     router.push({
       pathname: '/player',
       params: {
@@ -367,9 +379,11 @@ export default function LiveTVScreen() {
         type: 'live',
         logo: selectedChannel.logo ?? '',
         epgId: selectedChannel.epgId ?? selectedChannel.id,
+        channelsJson: JSON.stringify(chList),
+        channelIndex: String(idx),
       },
     });
-  }, [selectedChannel, router]);
+  }, [selectedChannel, channels, player, router]);
 
   const renderCat = useCallback(({ item }: { item: Category }) => (
     <CategoryRow
