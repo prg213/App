@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Animated,
   Linking,
+  PanResponder,
   Platform,
   StatusBar,
   StyleSheet,
@@ -37,6 +38,100 @@ function fmtSecs(secs: number) {
   const ss = String(s % 60).padStart(2, '0'), mm = String(m % 60).padStart(2, '0');
   return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
 }
+
+// ── Draggable scrubber bar ────────────────────────────────────────────────────
+function VodScrubber({
+  currentTime,
+  duration,
+  insetBottom,
+  onSeek,
+}: {
+  currentTime: number;
+  duration: number;
+  insetBottom: number;
+  onSeek: (t: number) => void;
+}) {
+  const trackWidth = useRef(0);
+  const [scrubbing, setScrubbing] = useState(false);
+  const [scrubProgress, setScrubProgress] = useState(0);
+
+  const progress = duration > 0 ? currentTime / duration : 0;
+  const displayProgress = scrubbing ? scrubProgress : progress;
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: (e) => {
+        setScrubbing(true);
+        const p = Math.max(0, Math.min(1, e.nativeEvent.locationX / (trackWidth.current || 1)));
+        setScrubProgress(p);
+      },
+      onPanResponderMove: (e) => {
+        const p = Math.max(0, Math.min(1, e.nativeEvent.locationX / (trackWidth.current || 1)));
+        setScrubProgress(p);
+      },
+      onPanResponderRelease: (e) => {
+        const p = Math.max(0, Math.min(1, e.nativeEvent.locationX / (trackWidth.current || 1)));
+        setScrubbing(false);
+        onSeek(p * duration);
+      },
+      onPanResponderTerminate: () => setScrubbing(false),
+    })
+  ).current;
+
+  if (duration <= 0) return null;
+
+  return (
+    <View style={[scrubberStyles.wrap, { bottom: insetBottom + 16 }]}>
+      <View style={scrubberStyles.timeRow}>
+        <Text style={scrubberStyles.timeText}>{fmtSecs(currentTime)}</Text>
+        <Text style={scrubberStyles.timeText}>{fmtSecs(duration)}</Text>
+      </View>
+      <View
+        style={scrubberStyles.track}
+        onLayout={(e) => { trackWidth.current = e.nativeEvent.layout.width; }}
+        {...panResponder.panHandlers}
+        hitSlop={{ top: 12, bottom: 12 }}
+      >
+        <View style={[scrubberStyles.fill, { width: `${displayProgress * 100}%` as any }]} />
+        <View style={[scrubberStyles.thumb, { left: `${displayProgress * 100}%` as any }]} />
+      </View>
+    </View>
+  );
+}
+
+const scrubberStyles = StyleSheet.create({
+  wrap: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    gap: 8,
+  },
+  timeRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  timeText: { fontSize: 12, color: 'rgba(255,255,255,0.85)', fontFamily: 'Inter_500Medium' },
+  track: {
+    height: 4,
+    backgroundColor: 'rgba(255,255,255,0.25)',
+    borderRadius: 2,
+    overflow: 'visible',
+    justifyContent: 'center',
+  },
+  fill: { position: 'absolute', left: 0, top: 0, bottom: 0, backgroundColor: '#3B82F6', borderRadius: 2 },
+  thumb: {
+    position: 'absolute',
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: '#fff',
+    top: -5,
+    marginLeft: -7,
+    shadowColor: '#000',
+    shadowOpacity: 0.4,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+});
 
 export default function PlayerScreen() {
   const params = useLocalSearchParams<{
@@ -274,44 +369,48 @@ export default function PlayerScreen() {
       )}
 
       {/* ── Controls overlay (VOD: play/seek/back) ── */}
-      {showControls && !isWeb && (
-        <Animated.View style={[styles.overlay, { opacity: controlsOpacity }]} pointerEvents="box-none">
-          {/* Back button — top left */}
-          <View style={[styles.topBar, { paddingTop: insets.top + 8 }]}>
-            <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} activeOpacity={0.8}>
-              <Text style={styles.backIcon}>←</Text>
+      {showControls && !isWeb && !isLive && (
+        <Animated.View style={[StyleSheet.absoluteFill, { opacity: controlsOpacity }]} pointerEvents="box-none">
+          {/* Back button — absolute top-left */}
+          <TouchableOpacity
+            style={[styles.backBtn, { position: 'absolute', top: insets.top + 8, left: 16 }]}
+            onPress={() => router.back()}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.backIcon}>←</Text>
+          </TouchableOpacity>
+
+          {/* Play / seek — absolute centre */}
+          <View style={styles.centerAbs} pointerEvents="box-none">
+            <TouchableOpacity style={styles.seekBtn} onPress={() => seek(-10)} activeOpacity={0.7}>
+              <Text style={styles.seekIcon}>«</Text>
+              <Text style={styles.seekLabel}>10s</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.playBtn} onPress={togglePlay} activeOpacity={0.8}>
+              <Text style={styles.playIcon}>{isPlaying ? '⏸' : '▶'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.seekBtn} onPress={() => seek(10)} activeOpacity={0.7}>
+              <Text style={styles.seekIcon}>»</Text>
+              <Text style={styles.seekLabel}>10s</Text>
             </TouchableOpacity>
           </View>
 
-          {/* Play / seek — centred on screen (VOD only) */}
-          {!isLive && (
-            <View style={styles.centerAbs}>
-              <TouchableOpacity style={styles.seekBtn} onPress={() => seek(-10)} activeOpacity={0.7}>
-                <Text style={styles.seekIcon}>«</Text>
-                <Text style={styles.seekLabel}>10s</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.playBtn} onPress={togglePlay} activeOpacity={0.8}>
-                <Text style={styles.playIcon}>{isPlaying ? '⏸' : '▶'}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.seekBtn} onPress={() => seek(10)} activeOpacity={0.7}>
-                <Text style={styles.seekIcon}>»</Text>
-                <Text style={styles.seekLabel}>10s</Text>
-              </TouchableOpacity>
-            </View>
-          )}
+          {/* Scrubber + times — absolute bottom */}
+          <VodScrubber
+            currentTime={currentTime}
+            duration={duration}
+            insetBottom={insets.bottom}
+            onSeek={(t) => { player.currentTime = t; scheduleHide(); }}
+          />
+        </Animated.View>
+      )}
 
-          {/* Progress bar — pinned to bottom (VOD only) */}
-          {!isLive && duration > 0 && (
-            <View style={[styles.vodBar, { position: 'absolute', bottom: insets.bottom + 16, left: 16, right: 16 }]}>
-              <View style={styles.timeRow}>
-                <Text style={styles.timeText}>{fmtSecs(currentTime)}</Text>
-                <Text style={styles.timeText}>{fmtSecs(duration)}</Text>
-              </View>
-              <View style={styles.track}>
-                <View style={[styles.fill, { width: `${progress}%` as any }]} />
-              </View>
-            </View>
-          )}
+      {/* Back button overlay for Live (always visible when controls shown) */}
+      {showControls && !isWeb && isLive && (
+        <Animated.View style={{ opacity: controlsOpacity, position: 'absolute', top: insets.top + 8, left: 16 }} pointerEvents="box-none">
+          <TouchableOpacity style={styles.backBtn} onPress={() => router.back()} activeOpacity={0.8}>
+            <Text style={styles.backIcon}>←</Text>
+          </TouchableOpacity>
         </Animated.View>
       )}
 
