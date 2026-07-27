@@ -80,22 +80,26 @@ function VodScrubber({
     })
   ).current;
 
-  if (duration <= 0) return null;
+  const hasDuration = duration > 0 && isFinite(duration);
 
   return (
     <View style={[scrubberStyles.wrap, { bottom: insetBottom + 16 }]}>
       <View style={scrubberStyles.timeRow}>
         <Text style={scrubberStyles.timeText}>{fmtSecs(currentTime)}</Text>
-        <Text style={scrubberStyles.timeText}>{fmtSecs(duration)}</Text>
+        {hasDuration && <Text style={scrubberStyles.timeText}>{fmtSecs(duration)}</Text>}
       </View>
       <View
         style={scrubberStyles.track}
         onLayout={(e) => { trackWidth.current = e.nativeEvent.layout.width; }}
-        {...panResponder.panHandlers}
+        {...(hasDuration ? panResponder.panHandlers : {})}
         hitSlop={{ top: 12, bottom: 12 }}
       >
-        <View style={[scrubberStyles.fill, { width: `${displayProgress * 100}%` as any }]} />
-        <View style={[scrubberStyles.thumb, { left: `${displayProgress * 100}%` as any }]} />
+        {hasDuration && (
+          <>
+            <View style={[scrubberStyles.fill, { width: `${displayProgress * 100}%` as any }]} />
+            <View style={[scrubberStyles.thumb, { left: `${displayProgress * 100}%` as any }]} />
+          </>
+        )}
       </View>
     </View>
   );
@@ -225,10 +229,16 @@ export default function PlayerScreen() {
       }),
       player.addListener('timeUpdate', ({ currentTime: t }: { currentTime: number }) => {
         setCurrentTime(t);
-        if (player.duration) setDuration(player.duration);
+        const d = player.duration;
+        if (d && isFinite(d) && d > 0) setDuration(d);
       }),
     ];
-    return () => subs.forEach((s) => s.remove());
+    // Also poll duration — some streams only expose it after buffering
+    const durationPoll = setInterval(() => {
+      const d = player.duration;
+      if (d && isFinite(d) && d > 0) setDuration(d);
+    }, 500);
+    return () => { subs.forEach((s) => s.remove()); clearInterval(durationPoll); };
   }, [player, isWeb]);
 
   // ── Channel navigation ───────────────────────────────────────────────────
