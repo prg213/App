@@ -2,19 +2,10 @@ name: Build Android APK
 
 on:
   workflow_dispatch:
-    inputs:
-      variant:
-        description: 'Build variant'
-        required: true
-        default: 'debug'
-        type: choice
-        options:
-          - debug
-          - release
 
 jobs:
   build:
-    name: Build APK
+    name: Build Release APK
     runs-on: ubuntu-latest
 
     steps:
@@ -40,11 +31,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
 
-      - name: Expo prebuild (generate android/ project)
+      - name: Expo prebuild
         working-directory: artifacts/iptv-app
         run: npx expo prebuild --platform android --no-install --clean
         env:
-          # suppress interactive prompts
           CI: 1
 
       - name: Install NDK
@@ -53,17 +43,29 @@ jobs:
             "ndk;27.1.12297006" \
             "cmake;3.22.1" \
             --sdk_root=$ANDROID_HOME
-          echo "NDK_VERSION=27.1.12297006" >> $GITHUB_ENV
 
-      - name: Build APK
+      - name: Generate signing keystore
+        working-directory: artifacts/iptv-app
+        run: |
+          keytool -genkeypair -v \
+            -storetype PKCS12 \
+            -keystore release.keystore \
+            -alias streamvault \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass streamvault123 \
+            -keypass streamvault123 \
+            -dname "CN=StreamVault, O=StreamVault, C=US"
+
+      - name: Build release APK
         working-directory: artifacts/iptv-app/android
         run: |
           set -o pipefail
-          if [ "${{ github.event.inputs.variant }}" = "release" ]; then
-            ./gradlew assembleRelease --stacktrace --no-daemon 2>&1 | tee build.log
-          else
-            ./gradlew assembleDebug --stacktrace --no-daemon 2>&1 | tee build.log
-          fi
+          ./gradlew assembleRelease \
+            -Pandroid.injected.signing.store.file=../release.keystore \
+            -Pandroid.injected.signing.store.password=streamvault123 \
+            -Pandroid.injected.signing.key.alias=streamvault \
+            -Pandroid.injected.signing.key.password=streamvault123 \
+            --stacktrace --no-daemon 2>&1 | tee build.log
         env:
           ANDROID_HOME: ${{ env.ANDROID_HOME }}
           ANDROID_NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/27.1.12297006
@@ -71,11 +73,8 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: StreamVault-${{ github.event.inputs.variant }}-${{ github.run_number }}
-          path: |
-            artifacts/iptv-app/android/app/build/outputs/apk/debug/app-debug.apk
-            artifacts/iptv-app/android/app/build/outputs/apk/release/app-release-unsigned.apk
-          if-no-files-found: warn
+          name: StreamVault-release-${{ github.run_number }}
+          path: artifacts/iptv-app/android/app/build/outputs/apk/release/app-release.apk
           retention-days: 30
 
       - name: Upload build log on failure
