@@ -34,7 +34,7 @@ jobs:
       - name: Patch configs for EAS
         run: |
           python3 - <<'EOF'
-          import json, re
+          import json
 
           # Root package.json
           with open("package.json", "r") as f:
@@ -59,28 +59,46 @@ jobs:
           with open("artifacts/iptv-app/package.json", "w") as f:
               json.dump(iptv_pkg, f, indent=2)
 
-          # _layout.tsx — replace the @workspace import with an inline stub
-          with open("artifacts/iptv-app/app/_layout.tsx", "r") as f:
-              layout = f.read()
-
-          stub = (
-              "// setBaseUrl inlined — @workspace/api-client-react not available in EAS\n"
-              "let _apiBaseUrl: string | null = null;\n"
-              "function setBaseUrl(url: string | null) { _apiBaseUrl = url ? url.replace(/\\/+$/, '') : null; }"
-          )
-
-          # Remove any existing import of setBaseUrl from @workspace/api-client-react
-          layout = re.sub(
-              r"import\s*\{[^}]*setBaseUrl[^}]*\}\s*from\s*['\"]@workspace/api-client-react['\"];?\n?",
-              stub + "\n",
-              layout
-          )
-
-          with open("artifacts/iptv-app/app/_layout.tsx", "w") as f:
-              f.write(layout)
-
-          print("All patches applied")
+          print("JSON patches applied")
           EOF
+
+      - name: Write Metro resolver stub
+        run: |
+          # Create the stub module Metro will resolve to
+          mkdir -p artifacts/iptv-app/eas-stubs
+          cat > artifacts/iptv-app/eas-stubs/api-client-react.js << 'STUB'
+          let _baseUrl = null;
+          function setBaseUrl(url) { _baseUrl = url ? url.replace(/\/+$/, '') : null; }
+          function setAuthTokenGetter(getter) {}
+          module.exports = { setBaseUrl, setAuthTokenGetter };
+          STUB
+
+          # Overwrite metro.config.js to add a custom resolver that intercepts
+          # @workspace/api-client-react and returns our stub instead
+          cat > artifacts/iptv-app/metro.config.js << 'METRO'
+          const { getDefaultConfig } = require('expo/metro-config');
+          const path = require('path');
+
+          const config = getDefaultConfig(__dirname);
+
+          const _resolveRequest = config.resolver && config.resolver.resolveRequest;
+          config.resolver = config.resolver || {};
+          config.resolver.resolveRequest = function(context, moduleName, platform) {
+            if (moduleName === '@workspace/api-client-react') {
+              return {
+                filePath: path.resolve(__dirname, 'eas-stubs/api-client-react.js'),
+                type: 'sourceFile',
+              };
+            }
+            if (_resolveRequest) return _resolveRequest(context, moduleName, platform);
+            return context.resolveRequest(context, moduleName, platform);
+          };
+
+          module.exports = config;
+          METRO
+
+          echo "Metro config written:"
+          cat artifacts/iptv-app/metro.config.js
 
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
