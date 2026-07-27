@@ -233,14 +233,6 @@ export default function PlayerScreen() {
           <Text style={styles.msgIcon}>⚠</Text>
           <Text style={styles.msgTitle}>Stream Error</Text>
           <Text style={styles.msgSub}>Unable to load stream. Check your connection or try another channel.</Text>
-          <Text style={{ color: 'rgba(255,255,255,0.35)', fontSize: 9, marginTop: 8, paddingHorizontal: 20, textAlign: 'center' }} selectable>
-            {params.url}
-          </Text>
-          {!!errorMsg && (
-            <Text style={{ color: 'rgba(255,100,100,0.6)', fontSize: 9, marginTop: 4, paddingHorizontal: 20, textAlign: 'center' }} selectable>
-              {errorMsg}
-            </Text>
-          )}
           <TouchableOpacity
             style={styles.actionBtn}
             onPress={() => {
@@ -271,7 +263,6 @@ export default function PlayerScreen() {
           <View style={styles.bufferCircle}>
             <Text style={styles.bufferIcon}>▶</Text>
           </View>
-          <Text style={styles.bufferText}>Loading stream…</Text>
         </View>
       )}
 
@@ -292,39 +283,33 @@ export default function PlayerScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* Spacer pushes VOD controls to the bottom */}
-          <View style={{ flex: 1 }} pointerEvents="none" />
-
-          {/* VOD bottom controls: seek + play + progress */}
+          {/* Play / seek — centred on screen (VOD only) */}
           {!isLive && (
-            <View style={[styles.vodBottom, { paddingBottom: insets.bottom + 16 }]}>
-              {/* Play / seek row */}
-              <View style={styles.center}>
-                <TouchableOpacity style={styles.seekBtn} onPress={() => seek(-10)} activeOpacity={0.7}>
-                  <Text style={styles.seekIcon}>«</Text>
-                  <Text style={styles.seekLabel}>10s</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.playBtn} onPress={togglePlay} activeOpacity={0.8}>
-                  <Text style={styles.playIcon}>{isPlaying ? '⏸' : '▶'}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.seekBtn} onPress={() => seek(10)} activeOpacity={0.7}>
-                  <Text style={styles.seekIcon}>»</Text>
-                  <Text style={styles.seekLabel}>10s</Text>
-                </TouchableOpacity>
-              </View>
+            <View style={styles.centerAbs}>
+              <TouchableOpacity style={styles.seekBtn} onPress={() => seek(-10)} activeOpacity={0.7}>
+                <Text style={styles.seekIcon}>«</Text>
+                <Text style={styles.seekLabel}>10s</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.playBtn} onPress={togglePlay} activeOpacity={0.8}>
+                <Text style={styles.playIcon}>{isPlaying ? '⏸' : '▶'}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.seekBtn} onPress={() => seek(10)} activeOpacity={0.7}>
+                <Text style={styles.seekIcon}>»</Text>
+                <Text style={styles.seekLabel}>10s</Text>
+              </TouchableOpacity>
+            </View>
+          )}
 
-              {/* Progress bar */}
-              {duration > 0 && (
-                <View style={styles.vodBar}>
-                  <View style={styles.timeRow}>
-                    <Text style={styles.timeText}>{fmtSecs(currentTime)}</Text>
-                    <Text style={styles.timeText}>{fmtSecs(duration)}</Text>
-                  </View>
-                  <View style={styles.track}>
-                    <View style={[styles.fill, { width: `${progress}%` as any }]} />
-                  </View>
-                </View>
-              )}
+          {/* Progress bar — pinned to bottom (VOD only) */}
+          {!isLive && duration > 0 && (
+            <View style={[styles.vodBar, { position: 'absolute', bottom: insets.bottom + 16, left: 16, right: 16 }]}>
+              <View style={styles.timeRow}>
+                <Text style={styles.timeText}>{fmtSecs(currentTime)}</Text>
+                <Text style={styles.timeText}>{fmtSecs(duration)}</Text>
+              </View>
+              <View style={styles.track}>
+                <View style={[styles.fill, { width: `${progress}%` as any }]} />
+              </View>
             </View>
           )}
         </Animated.View>
@@ -463,11 +448,13 @@ const styles = StyleSheet.create({
   seekIcon: { fontSize: 22, color: '#fff' },
   seekLabel: { fontSize: 11, color: 'rgba(255,255,255,0.7)', fontFamily: 'Inter_500Medium' },
 
-  vodBottom: {
-    paddingHorizontal: 16,
-    gap: 16,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    paddingTop: 20,
+  centerAbs: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 32,
   },
   vodBar: { gap: 6 },
   timeRow: { flexDirection: 'row', justifyContent: 'space-between' },
