@@ -36,12 +36,14 @@ jobs:
           python3 - <<'EOF'
           import json, re
 
+          # Root package.json
           with open("package.json", "r") as f:
               pkg = json.load(f)
           pkg["packageManager"] = "pnpm@9.0.0"
           with open("package.json", "w") as f:
               json.dump(pkg, f, indent=2)
 
+          # app.json
           with open("artifacts/iptv-app/app.json", "r") as f:
               app = json.load(f)
           app["expo"].setdefault("android", {})["package"] = "com.prg213.streamvault"
@@ -49,41 +51,39 @@ jobs:
           with open("artifacts/iptv-app/app.json", "w") as f:
               json.dump(app, f, indent=2)
 
-          with open("pnpm-workspace.yaml", "r") as f:
-              content = f.read()
-          content = re.sub(
-              r'# ===.*?# ===+\n+minimumReleaseAge:\s*\d+\n+minimumReleaseAgeExclude:.*?(?=\n\S)',
-              '',
-              content,
-              flags=re.DOTALL
-          )
-          with open("pnpm-workspace.yaml", "w") as f:
-              f.write(content)
-
+          # iptv-app package.json — remove workspace dep
           with open("artifacts/iptv-app/package.json", "r") as f:
               iptv_pkg = json.load(f)
-          iptv_pkg.get("devDependencies", {}).pop("@workspace/api-client-react", None)
+          for section in ("dependencies", "devDependencies"):
+              iptv_pkg.get(section, {}).pop("@workspace/api-client-react", None)
           with open("artifacts/iptv-app/package.json", "w") as f:
               json.dump(iptv_pkg, f, indent=2)
 
-          print("JSON patches applied")
+          # _layout.tsx — replace the @workspace import with an inline stub
+          with open("artifacts/iptv-app/app/_layout.tsx", "r") as f:
+              layout = f.read()
+
+          stub = (
+              "// setBaseUrl inlined — @workspace/api-client-react not available in EAS\n"
+              "let _apiBaseUrl: string | null = null;\n"
+              "function setBaseUrl(url: string | null) { _apiBaseUrl = url ? url.replace(/\\/+$/, '') : null; }"
+          )
+
+          # Remove any existing import of setBaseUrl from @workspace/api-client-react
+          layout = re.sub(
+              r"import\s*\{[^}]*setBaseUrl[^}]*\}\s*from\s*['\"]@workspace/api-client-react['\"];?\n?",
+              stub + "\n",
+              layout
+          )
+
+          with open("artifacts/iptv-app/app/_layout.tsx", "w") as f:
+              f.write(layout)
+
+          print("All patches applied")
           EOF
 
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
-
-      - name: Create @workspace/api-client-react stub
-        run: |
-          mkdir -p artifacts/iptv-app/node_modules/@workspace/api-client-react
-          cat > artifacts/iptv-app/node_modules/@workspace/api-client-react/index.js << 'STUB'
-          let _baseUrl = null;
-          function setBaseUrl(url) { _baseUrl = url ? url.replace(/\/+$/, '') : null; }
-          function setAuthTokenGetter(getter) {}
-          module.exports = { setBaseUrl, setAuthTokenGetter };
-          STUB
-          cat > artifacts/iptv-app/node_modules/@workspace/api-client-react/package.json << 'STUBPKG'
-          { "name": "@workspace/api-client-react", "version": "0.0.0", "main": "index.js" }
-          STUBPKG
 
       - name: Install EAS CLI
         run: npm install -g eas-cli
