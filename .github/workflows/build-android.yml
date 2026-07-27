@@ -31,7 +31,7 @@ jobs:
         with:
           version: 9
 
-      - name: Patch configs and write Metro stub
+      - name: Patch all files and write Metro stub
         run: |
           python3 - << 'PYEOF'
           import json, os
@@ -59,7 +59,23 @@ jobs:
           with open("artifacts/iptv-app/package.json", "w") as f:
               json.dump(iptv, f, indent=2)
 
-          # EAS stub for @workspace/api-client-react
+          # _layout.tsx - ensure @workspace import is gone (safety net)
+          import re
+          with open("artifacts/iptv-app/app/_layout.tsx") as f:
+              layout = f.read()
+          layout = re.sub(
+              r"import\s*\{[^}]*\}\s*from\s*['\"]@workspace/api-client-react['\"];?\n?",
+              (
+                  "// setBaseUrl inlined for EAS builds\n"
+                  "let _apiBaseUrl: string | null = null;\n"
+                  "function setBaseUrl(url: string | null) { _apiBaseUrl = url ? url.replace(/\\/+$/, '') : null; }\n"
+              ),
+              layout
+          )
+          with open("artifacts/iptv-app/app/_layout.tsx", "w") as f:
+              f.write(layout)
+
+          # eas-stubs/api-client-react.js
           os.makedirs("artifacts/iptv-app/eas-stubs", exist_ok=True)
           with open("artifacts/iptv-app/eas-stubs/api-client-react.js", "w") as f:
               f.write(
@@ -69,33 +85,35 @@ jobs:
                   "module.exports={setBaseUrl,setAuthTokenGetter};\n"
               )
 
-          # metro.config.js with custom resolver
+          # metro.config.js - custom resolver so Metro never tries to find the workspace pkg
           with open("artifacts/iptv-app/metro.config.js", "w") as f:
-              f.write(
-                  "const {getDefaultConfig}=require('expo/metro-config');\n"
-                  "const path=require('path');\n"
-                  "const config=getDefaultConfig(__dirname);\n"
-                  "const _rr=config.resolver&&config.resolver.resolveRequest;\n"
-                  "config.resolver=config.resolver||{};\n"
-                  "config.resolver.resolveRequest=function(ctx,mod,plat){\n"
-                  "  if(mod==='@workspace/api-client-react'){\n"
-                  "    return{filePath:path.resolve(__dirname,'eas-stubs/api-client-react.js'),type:'sourceFile'};\n"
-                  "  }\n"
-                  "  if(_rr)return _rr(ctx,mod,plat);\n"
-                  "  return ctx.resolveRequest(ctx,mod,plat);\n"
-                  "};\n"
-                  "module.exports=config;\n"
-              )
+              f.write("\n".join([
+                  "const {getDefaultConfig}=require('expo/metro-config');",
+                  "const path=require('path');",
+                  "const config=getDefaultConfig(__dirname);",
+                  "const _rr=config.resolver&&config.resolver.resolveRequest;",
+                  "config.resolver=config.resolver||{};",
+                  "config.resolver.resolveRequest=function(ctx,mod,plat){",
+                  "  if(mod==='@workspace/api-client-react'){",
+                  "    return{filePath:path.resolve(__dirname,'eas-stubs/api-client-react.js'),type:'sourceFile'};",
+                  "  }",
+                  "  if(_rr)return _rr(ctx,mod,plat);",
+                  "  return ctx.resolveRequest(ctx,mod,plat);",
+                  "};",
+                  "module.exports=config;",
+                  "",
+              ]))
 
-          print("All patches applied")
+          print("All patches written")
           PYEOF
 
-      - name: Commit patches so EAS archives them
+      - name: Commit patches so EAS git-archive includes them
         run: |
           git config user.email "ci@build.local"
           git config user.name "EAS CI"
           git add -A
-          git commit -m "chore: EAS build patches [skip ci]"
+          git diff --cached --stat
+          git commit -m "chore: EAS build patches [skip ci]" || echo "Nothing to commit"
 
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
