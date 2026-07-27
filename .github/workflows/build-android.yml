@@ -36,14 +36,12 @@ jobs:
           python3 - <<'EOF'
           import json
 
-          # Root package.json
           with open("package.json", "r") as f:
               pkg = json.load(f)
           pkg["packageManager"] = "pnpm@9.0.0"
           with open("package.json", "w") as f:
               json.dump(pkg, f, indent=2)
 
-          # app.json
           with open("artifacts/iptv-app/app.json", "r") as f:
               app = json.load(f)
           app["expo"].setdefault("android", {})["package"] = "com.prg213.streamvault"
@@ -51,7 +49,6 @@ jobs:
           with open("artifacts/iptv-app/app.json", "w") as f:
               json.dump(app, f, indent=2)
 
-          # iptv-app package.json — remove workspace dep
           with open("artifacts/iptv-app/package.json", "r") as f:
               iptv_pkg = json.load(f)
           for section in ("dependencies", "devDependencies"):
@@ -64,41 +61,44 @@ jobs:
 
       - name: Write Metro resolver stub
         run: |
-          # Create the stub module Metro will resolve to
           mkdir -p artifacts/iptv-app/eas-stubs
+
           cat > artifacts/iptv-app/eas-stubs/api-client-react.js << 'STUB'
-          let _baseUrl = null;
-          function setBaseUrl(url) { _baseUrl = url ? url.replace(/\/+$/, '') : null; }
-          function setAuthTokenGetter(getter) {}
-          module.exports = { setBaseUrl, setAuthTokenGetter };
-          STUB
+let _baseUrl = null;
+function setBaseUrl(url) { _baseUrl = url ? url.replace(/\/+$/, '') : null; }
+function setAuthTokenGetter(getter) {}
+module.exports = { setBaseUrl, setAuthTokenGetter };
+STUB
 
-          # Overwrite metro.config.js to add a custom resolver that intercepts
-          # @workspace/api-client-react and returns our stub instead
           cat > artifacts/iptv-app/metro.config.js << 'METRO'
-          const { getDefaultConfig } = require('expo/metro-config');
-          const path = require('path');
+const { getDefaultConfig } = require('expo/metro-config');
+const path = require('path');
 
-          const config = getDefaultConfig(__dirname);
+const config = getDefaultConfig(__dirname);
 
-          const _resolveRequest = config.resolver && config.resolver.resolveRequest;
-          config.resolver = config.resolver || {};
-          config.resolver.resolveRequest = function(context, moduleName, platform) {
-            if (moduleName === '@workspace/api-client-react') {
-              return {
-                filePath: path.resolve(__dirname, 'eas-stubs/api-client-react.js'),
-                type: 'sourceFile',
-              };
-            }
-            if (_resolveRequest) return _resolveRequest(context, moduleName, platform);
-            return context.resolveRequest(context, moduleName, platform);
-          };
+const _resolveRequest = config.resolver && config.resolver.resolveRequest;
+config.resolver = config.resolver || {};
+config.resolver.resolveRequest = function(context, moduleName, platform) {
+  if (moduleName === '@workspace/api-client-react') {
+    return {
+      filePath: path.resolve(__dirname, 'eas-stubs/api-client-react.js'),
+      type: 'sourceFile',
+    };
+  }
+  if (_resolveRequest) return _resolveRequest(context, moduleName, platform);
+  return context.resolveRequest(context, moduleName, platform);
+};
 
-          module.exports = config;
-          METRO
+module.exports = config;
+METRO
 
-          echo "Metro config written:"
-          cat artifacts/iptv-app/metro.config.js
+      - name: Commit patches so EAS archives them
+        working-directory: artifacts/iptv-app
+        run: |
+          git config --global user.email "ci@build.local"
+          git config --global user.name "EAS CI"
+          git add -A
+          git commit -m "chore: EAS build patches [skip ci]"
 
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
