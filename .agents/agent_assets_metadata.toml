@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "jjKyL8UHcTCF2r348q6pT"
+uri = "file://StreamVault-debug.apk"
+type = "unspecified"
+title = "StreamVault Debug APK"
