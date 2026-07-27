@@ -1,6 +1,8 @@
+import { Switch, Route } from 'wouter';
 import { motion, Variants } from 'framer-motion';
 import { Download, Tv, Film, ListVideo, FastForward, Key, Zap, ChevronRight, Play } from 'lucide-react';
 import { useEffect } from 'react';
+import Activate from './pages/Activate';
 
 // Force dark mode on mount
 function useDarkMode() {
@@ -22,7 +24,7 @@ const staggerContainer: Variants = {
   }
 };
 
-function App() {
+function Home() {
   useDarkMode();
 
   return (
@@ -250,7 +252,7 @@ function App() {
             <span>&copy; {new Date().getFullYear()} StreamVault. All rights reserved.</span>
             <span className="hidden md:inline">&bull;</span>
             <a 
-              href="https://ee7158f7-9a75-41e8-a92a-260cf9085a78-00-ex3f1jvz614w.janeway.replit.dev/api/admin"
+              href="/activate"
               className="hover:text-primary transition-colors flex items-center gap-1"
             >
               Provider Admin Panel
@@ -260,6 +262,15 @@ function App() {
         </div>
       </footer>
     </div>
+  );
+}
+
+function App() {
+  return (
+    <Switch>
+      <Route path="/activate" component={Activate} />
+      <Route component={Home} />
+    </Switch>
   );
 }
 
