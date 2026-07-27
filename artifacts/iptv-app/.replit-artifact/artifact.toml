@@ -1,5 +1,5 @@
 kind = "mobile"
-previewPath = "/"
+previewPath = "/iptv-app/"
 title = "StreamVault IPTV"
 version = "1.0.0"
 id = "artifacts/iptv-app"
@@ -8,7 +8,7 @@ router = "expo-domain"
 [[services]]
 name = "expo"
 ensurePreviewReachable = "/status"
-paths = [ "/" ]
+paths = [ "/iptv-app/" ]
 localPort = 20864
 
 [services.development]
@@ -20,4 +20,4 @@ run = [ "pnpm", "--filter", "@workspace/iptv-app", "run", "serve" ]
 
 [services.env]
 PORT = "20864"
-BASE_PATH = "/"
+BASE_PATH = "/iptv-app/"
