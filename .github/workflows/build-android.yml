@@ -137,3 +137,19 @@ jobs:
         working-directory: artifacts/iptv-app
         run: eas build --platform android --profile ${{ github.event.inputs.profile }} --non-interactive
         env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Download APK
+        working-directory: artifacts/iptv-app
+        run: |
+          APK_URL=$(eas build:list --platform android --limit 1 --json --non-interactive | python3 -c "import sys,json; builds=json.load(sys.stdin); print(builds[0]['artifacts']['buildUrl'])")
+          curl -L "$APK_URL" -o streamvault.apk
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: StreamVault-${{ github.event.inputs.profile }}-${{ github.run_number }}
+          path: artifacts/iptv-app/streamvault.apk
+          retention-days: 30
