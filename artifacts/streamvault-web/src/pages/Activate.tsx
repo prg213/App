@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Play, Plus, Trash2, Monitor, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Play, Plus, Trash2, Monitor, CheckCircle2, AlertCircle, LogOut } from 'lucide-react';
 import { Link } from 'wouter';
+import { useClerk, useUser } from '@clerk/react';
 
 const API = '/api';
 
@@ -34,6 +35,8 @@ function Toast({ msg, kind }: { msg: string; kind: 'success' | 'error' }) {
 }
 
 export default function Activate() {
+  const { signOut } = useClerk();
+  const { user } = useUser();
   const [devices, setDevices] = useState<Device[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -122,9 +125,20 @@ export default function Activate() {
             </div>
             <span className="text-base font-bold tracking-tight text-white">StreamVault</span>
           </Link>
-          <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-primary/10 text-primary border border-primary/20 tracking-wide uppercase">
-            Device Activation
-          </span>
+          <div className="flex items-center gap-3">
+            {user && (
+              <span className="text-xs text-white/40 hidden sm:block truncate max-w-[180px]">
+                {user.primaryEmailAddress?.emailAddress}
+              </span>
+            )}
+            <button
+              onClick={() => signOut({ redirectUrl: '/' })}
+              className="flex items-center gap-1.5 text-xs text-white/40 hover:text-white/80 transition-colors px-3 py-1.5 rounded-lg hover:bg-white/5 border border-transparent hover:border-white/10"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              Sign out
+            </button>
+          </div>
         </div>
       </nav>
 

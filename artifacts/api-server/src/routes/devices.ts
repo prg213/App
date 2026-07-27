@@ -1,8 +1,20 @@
 import { Router } from "express";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
+import { getAuth } from "@clerk/express";
 import { db, devicesTable } from "@workspace/db";
 
 const router: Router = Router();
+
+function requireAuth(req: any, res: any, next: any) {
+  const auth = getAuth(req);
+  const userId = auth?.userId;
+  if (!userId) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  req.userId = userId;
+  next();
+}
 
 function formatDevice(d: typeof devicesTable.$inferSelect) {
   return {
@@ -18,28 +30,28 @@ function formatDevice(d: typeof devicesTable.$inferSelect) {
   };
 }
 
-router.get("/devices", async (req, res): Promise<void> => {
+router.get("/devices", requireAuth, async (req: any, res): Promise<void> => {
   const devices = await db
     .select()
     .from(devicesTable)
+    .where(eq(devicesTable.userId, req.userId))
     .orderBy(devicesTable.createdAt);
   res.json(devices.map(formatDevice));
 });
 
-router.post("/devices", async (req, res): Promise<void> => {
+router.post("/devices", requireAuth, async (req: any, res): Promise<void> => {
   const { mac_address, name, type, host, username, password, m3u_url } =
     req.body;
 
   if (!mac_address || !type) {
-    res
-      .status(400)
-      .json({ error: "mac_address and type are required" });
+    res.status(400).json({ error: "mac_address and type are required" });
     return;
   }
 
   const [device] = await db
     .insert(devicesTable)
     .values({
+      userId: req.userId,
       macAddress: (mac_address as string).toUpperCase(),
       name: name ?? null,
       type,
@@ -53,51 +65,16 @@ router.post("/devices", async (req, res): Promise<void> => {
   res.status(201).json(formatDevice(device));
 });
 
-router.put("/devices/:id", async (req, res): Promise<void> => {
-  const raw = Array.isArray(req.params.id)
-    ? req.params.id[0]
-    : req.params.id;
-  const id = parseInt(raw, 10);
+router.delete("/devices/:id", requireAuth, async (req: any, res): Promise<void> => {
+  const id = parseInt(req.params.id, 10);
   if (isNaN(id)) {
     res.status(400).json({ error: "Invalid id" });
     return;
   }
 
-  const { name, type, host, username, password, m3u_url } = req.body;
-
-  const updateData: Partial<typeof devicesTable.$inferInsert> = {};
-  if (name !== undefined) updateData.name = name;
-  if (type !== undefined) updateData.type = type;
-  if (host !== undefined) updateData.host = host;
-  if (username !== undefined) updateData.username = username;
-  if (password !== undefined) updateData.password = password;
-  if (m3u_url !== undefined) updateData.m3uUrl = m3u_url;
-
-  const [device] = await db
-    .update(devicesTable)
-    .set(updateData)
-    .where(eq(devicesTable.id, id))
-    .returning();
-
-  if (!device) {
-    res.status(404).json({ error: "Device not found" });
-    return;
-  }
-
-  res.json(formatDevice(device));
-});
-
-router.delete("/devices/:id", async (req, res): Promise<void> => {
-  const raw = Array.isArray(req.params.id)
-    ? req.params.id[0]
-    : req.params.id;
-  const id = parseInt(raw, 10);
-  if (isNaN(id)) {
-    res.status(400).json({ error: "Invalid id" });
-    return;
-  }
-
-  await db.delete(devicesTable).where(eq(devicesTable.id, id));
+  await db
+    .delete(devicesTable)
+    .where(and(eq(devicesTable.id, id), eq(devicesTable.userId, req.userId)));
   res.sendStatus(204);
 });
 

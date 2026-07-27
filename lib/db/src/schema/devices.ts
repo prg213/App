@@ -4,6 +4,7 @@ import { z } from "zod/v4";
 
 export const devicesTable = pgTable("devices", {
   id: serial("id").primaryKey(),
+  userId: text("user_id"),
   macAddress: text("mac_address").notNull().unique(),
   name: text("name"),
   type: text("type"), // 'xtream' | 'm3u'

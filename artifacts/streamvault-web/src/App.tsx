@@ -1,8 +1,73 @@
-import { Switch, Route } from 'wouter';
+import { ClerkProvider, SignIn, SignUp, Show, useClerk } from '@clerk/react';
+import { publishableKeyFromHost } from '@clerk/react/internal';
+import { dark } from '@clerk/themes';
+import { Switch, Route, Redirect, useLocation, Router as WouterRouter } from 'wouter';
 import { motion, Variants } from 'framer-motion';
-import { Download, Tv, Film, ListVideo, FastForward, Key, Zap, ChevronRight, Play } from 'lucide-react';
+import { Download, Tv, Film, ListVideo, FastForward, Key, Zap, ChevronRight, Play, LogOut } from 'lucide-react';
 import { useEffect } from 'react';
 import Activate from './pages/Activate';
+
+const clerkPubKey = publishableKeyFromHost(
+  window.location.hostname,
+  import.meta.env.VITE_CLERK_PUBLISHABLE_KEY,
+);
+const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
+const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
+
+function stripBase(path: string): string {
+  return basePath && path.startsWith(basePath)
+    ? path.slice(basePath.length) || '/'
+    : path;
+}
+
+const clerkAppearance = {
+  baseTheme: dark,
+  cssLayerName: 'clerk',
+  options: {
+    logoPlacement: 'inside' as const,
+    logoLinkUrl: basePath || '/',
+    logoImageUrl: `${window.location.origin}${basePath}/logo.svg`,
+  },
+  variables: {
+    colorPrimary: '#00e5ff',
+    colorForeground: '#f2f2f2',
+    colorMutedForeground: '#6b7280',
+    colorDanger: '#ef4444',
+    colorBackground: '#0a0a14',
+    colorInput: '#13131e',
+    colorInputForeground: '#f2f2f2',
+    colorNeutral: '#252538',
+    fontFamily: '-apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif',
+    borderRadius: '0.75rem',
+  },
+  elements: {
+    rootBox: 'w-full flex justify-center',
+    cardBox: 'bg-[#0a0a14] border border-white/10 rounded-2xl w-[440px] max-w-full overflow-hidden shadow-2xl shadow-black/60',
+    card: '!shadow-none !border-0 !bg-transparent !rounded-none',
+    footer: '!shadow-none !border-0 !bg-transparent !rounded-none',
+    headerTitle: 'text-white',
+    headerSubtitle: 'text-white/50',
+    socialButtonsBlockButtonText: 'text-white/80',
+    formFieldLabel: 'text-white/50',
+    footerActionLink: 'text-[#00e5ff]',
+    footerActionText: 'text-white/40',
+    dividerText: 'text-white/30',
+    identityPreviewEditButton: 'text-[#00e5ff]',
+    formFieldSuccessText: 'text-emerald-400',
+    alertText: 'text-white/80',
+    logoBox: 'mb-2',
+    logoImage: 'h-8',
+    socialButtonsBlockButton: 'border-white/10 bg-white/5 hover:bg-white/10',
+    formButtonPrimary: 'bg-[#00e5ff] text-black hover:bg-[#00ccee] font-bold',
+    formFieldInput: 'bg-white/5 border-white/10 text-white',
+    footerAction: 'bg-transparent',
+    dividerLine: 'bg-white/10',
+    alert: 'bg-white/5 border-white/10',
+    otpCodeFieldInput: 'bg-white/5 border-white/10 text-white',
+    formFieldRow: 'gap-2',
+    main: 'gap-4',
+  },
+};
 
 // Force dark mode on mount
 function useDarkMode() {
@@ -78,7 +143,7 @@ function Home() {
             
             <motion.div variants={fadeUp} className="flex flex-col sm:flex-row items-center justify-center gap-4">
               <a 
-                href="https://github.com/prg213/App/releases/latest"
+                href="https://github.com/prg213/App/releases/latest/download/StreamVault.apk"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="group relative flex items-center gap-3 bg-primary hover:bg-primary/90 text-background px-8 py-4 rounded-xl font-bold text-lg transition-all hover:scale-105 active:scale-95 shadow-[0_0_40px_-10px_rgba(0,229,255,0.5)]"
@@ -272,12 +337,62 @@ function Home() {
   );
 }
 
+function SignInPage() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-background px-4">
+      <SignIn routing="path" path={`${basePath}/sign-in`} signUpUrl={`${basePath}/sign-up`} />
+    </div>
+  );
+}
+
+function SignUpPage() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-background px-4">
+      <SignUp routing="path" path={`${basePath}/sign-up`} signInUrl={`${basePath}/sign-in`} />
+    </div>
+  );
+}
+
+function ProtectedActivate() {
+  return (
+    <>
+      <Show when="signed-in"><Activate /></Show>
+      <Show when="signed-out"><Redirect to="/sign-in" /></Show>
+    </>
+  );
+}
+
+function ClerkProviderWithRoutes() {
+  const [, setLocation] = useLocation();
+  return (
+    <ClerkProvider
+      publishableKey={clerkPubKey}
+      proxyUrl={clerkProxyUrl}
+      appearance={clerkAppearance}
+      signInUrl={`${basePath}/sign-in`}
+      signUpUrl={`${basePath}/sign-up`}
+      routerPush={(to) => setLocation(stripBase(to))}
+      routerReplace={(to) => setLocation(stripBase(to), { replace: true })}
+      localization={{
+        signIn: { start: { title: 'Sign in to StreamVault', subtitle: 'Access your device activation panel' } },
+        signUp: { start: { title: 'Create your StreamVault account', subtitle: 'Get started in seconds' } },
+      }}
+    >
+      <Switch>
+        <Route path="/" component={Home} />
+        <Route path="/sign-in/*?" component={SignInPage} />
+        <Route path="/sign-up/*?" component={SignUpPage} />
+        <Route path="/activate" component={ProtectedActivate} />
+      </Switch>
+    </ClerkProvider>
+  );
+}
+
 function App() {
   return (
-    <Switch>
-      <Route path="/activate" component={Activate} />
-      <Route component={Home} />
-    </Switch>
+    <WouterRouter base={basePath}>
+      <ClerkProviderWithRoutes />
+    </WouterRouter>
   );
 }
 
