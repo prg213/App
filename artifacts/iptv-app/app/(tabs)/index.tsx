@@ -217,6 +217,11 @@ export default function LiveTVScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      // Resume preview player when returning from fullscreen player
+      if (!isWeb && player && selectedChannel) {
+        try { player.play(); } catch {}
+      }
+
       return () => {
         if (goingToPlayerRef.current) {
           goingToPlayerRef.current = false;
@@ -228,7 +233,7 @@ export default function LiveTVScreen() {
         setSelectedChannel(null);
         setPlayingChannel(null);
       };
-    }, [player])
+    }, [player, isWeb, selectedChannel])
   );
 
   // ── Data queries ──────────────────────────────────────────────────────────
