@@ -292,33 +292,36 @@ export default function PlayerScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* Play / seek controls — VOD only */}
+          {/* VOD bottom controls: seek + play + progress */}
           {!isLive && (
-            <View style={styles.center}>
-              <TouchableOpacity style={styles.seekBtn} onPress={() => seek(-10)} activeOpacity={0.7}>
-                <Text style={styles.seekIcon}>«</Text>
-                <Text style={styles.seekLabel}>10s</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.playBtn} onPress={togglePlay} activeOpacity={0.8}>
-                <Text style={styles.playIcon}>{isPlaying ? '⏸' : '▶'}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.seekBtn} onPress={() => seek(10)} activeOpacity={0.7}>
-                <Text style={styles.seekIcon}>»</Text>
-                <Text style={styles.seekLabel}>10s</Text>
-              </TouchableOpacity>
-            </View>
-          )}
+            <View style={[styles.vodBottom, { paddingBottom: insets.bottom + 16 }]}>
+              {/* Play / seek row */}
+              <View style={styles.center}>
+                <TouchableOpacity style={styles.seekBtn} onPress={() => seek(-10)} activeOpacity={0.7}>
+                  <Text style={styles.seekIcon}>«</Text>
+                  <Text style={styles.seekLabel}>10s</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.playBtn} onPress={togglePlay} activeOpacity={0.8}>
+                  <Text style={styles.playIcon}>{isPlaying ? '⏸' : '▶'}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.seekBtn} onPress={() => seek(10)} activeOpacity={0.7}>
+                  <Text style={styles.seekIcon}>»</Text>
+                  <Text style={styles.seekLabel}>10s</Text>
+                </TouchableOpacity>
+              </View>
 
-          {/* VOD progress bar */}
-          {!isLive && duration > 0 && (
-            <View style={[styles.vodBar, { paddingBottom: insets.bottom + 70 }]}>
-              <View style={styles.timeRow}>
-                <Text style={styles.timeText}>{fmtSecs(currentTime)}</Text>
-                <Text style={styles.timeText}>{fmtSecs(duration)}</Text>
-              </View>
-              <View style={styles.track}>
-                <View style={[styles.fill, { width: `${progress}%` as any }]} />
-              </View>
+              {/* Progress bar */}
+              {duration > 0 && (
+                <View style={styles.vodBar}>
+                  <View style={styles.timeRow}>
+                    <Text style={styles.timeText}>{fmtSecs(currentTime)}</Text>
+                    <Text style={styles.timeText}>{fmtSecs(duration)}</Text>
+                  </View>
+                  <View style={styles.track}>
+                    <View style={[styles.fill, { width: `${progress}%` as any }]} />
+                  </View>
+                </View>
+              )}
             </View>
           )}
         </Animated.View>
@@ -456,7 +459,13 @@ const styles = StyleSheet.create({
   seekIcon: { fontSize: 22, color: '#fff' },
   seekLabel: { fontSize: 11, color: 'rgba(255,255,255,0.7)', fontFamily: 'Inter_500Medium' },
 
-  vodBar: { paddingHorizontal: 16, gap: 6 },
+  vodBottom: {
+    paddingHorizontal: 16,
+    gap: 16,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    paddingTop: 20,
+  },
+  vodBar: { gap: 6 },
   timeRow: { flexDirection: 'row', justifyContent: 'space-between' },
   timeText: { fontSize: 12, color: 'rgba(255,255,255,0.8)', fontFamily: 'Inter_500Medium' },
   track: { height: 3, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 2, overflow: 'hidden' },
