@@ -45,7 +45,7 @@ jobs:
             --sdk_root=$ANDROID_HOME
 
       - name: Generate signing keystore
-        working-directory: artifacts/iptv-app
+        working-directory: artifacts/iptv-app/android
         run: |
           keytool -genkeypair -v \
             -storetype PKCS12 \
@@ -61,7 +61,7 @@ jobs:
         run: |
           set -o pipefail
           ./gradlew assembleRelease \
-            -Pandroid.injected.signing.store.file=../release.keystore \
+            -Pandroid.injected.signing.store.file=$(pwd)/release.keystore \
             -Pandroid.injected.signing.store.password=streamvault123 \
             -Pandroid.injected.signing.key.alias=streamvault \
             -Pandroid.injected.signing.key.password=streamvault123 \
