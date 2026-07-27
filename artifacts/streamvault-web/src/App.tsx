@@ -67,11 +67,6 @@ function Home() {
             variants={staggerContainer}
             className="max-w-4xl mx-auto"
           >
-            <motion.div variants={fadeUp} className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10 mb-8">
-              <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-              <span className="text-xs font-medium text-white/80 tracking-wide uppercase">The Premium IPTV Experience</span>
-            </motion.div>
-            
             <motion.h1 variants={fadeUp} className="text-5xl md:text-7xl font-bold text-white tracking-tight mb-8 leading-[1.1]">
               Your Screen.<br />
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-blue-500">Uncompromised.</span>
@@ -84,6 +79,8 @@ function Home() {
             <motion.div variants={fadeUp} className="flex flex-col sm:flex-row items-center justify-center gap-4">
               <a 
                 href="https://github.com/prg213/App/releases/latest"
+                target="_blank"
+                rel="noopener noreferrer"
                 className="group relative flex items-center gap-3 bg-primary hover:bg-primary/90 text-background px-8 py-4 rounded-xl font-bold text-lg transition-all hover:scale-105 active:scale-95 shadow-[0_0_40px_-10px_rgba(0,229,255,0.5)]"
               >
                 <Download className="w-6 h-6" />
@@ -91,6 +88,10 @@ function Home() {
                 <div className="absolute inset-0 rounded-xl ring-2 ring-primary ring-offset-2 ring-offset-background opacity-0 group-hover:opacity-100 transition-opacity" />
               </a>
               <span className="text-sm text-white/40 mt-4 sm:mt-0 sm:ml-4">Requires Android 8.0+</span>
+            </motion.div>
+
+            <motion.div variants={fadeUp} className="mt-10 inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/[0.04] border border-white/10">
+              <span className="text-xs font-bold tracking-widest text-white/50 uppercase">⚠ We do not provide any channels or playlists</span>
             </motion.div>
           </motion.div>
         </div>
