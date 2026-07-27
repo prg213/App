@@ -406,18 +406,10 @@ export default function PlayerScreen() {
             <Text style={styles.backIcon}>←</Text>
           </TouchableOpacity>
 
-          {/* Play / seek — absolute centre */}
+          {/* Play/pause — absolute centre */}
           <View style={styles.centerAbs} pointerEvents="box-none">
-            <TouchableOpacity style={styles.seekBtn} onPress={() => seek(-10)} activeOpacity={0.7}>
-              <Text style={styles.seekIcon}>«</Text>
-              <Text style={styles.seekLabel}>10s</Text>
-            </TouchableOpacity>
             <TouchableOpacity style={styles.playBtn} onPress={togglePlay} activeOpacity={0.8}>
               <Text style={styles.playIcon}>{isPlaying ? '⏸' : '▶'}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.seekBtn} onPress={() => seek(10)} activeOpacity={0.7}>
-              <Text style={styles.seekIcon}>»</Text>
-              <Text style={styles.seekLabel}>10s</Text>
             </TouchableOpacity>
           </View>
 

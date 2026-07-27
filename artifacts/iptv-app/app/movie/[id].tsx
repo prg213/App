@@ -189,7 +189,7 @@ export default function MovieDetailScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   backdrop: {
-    height: 300,
+    height: 180,
     position: 'relative',
   },
   backBtn: {

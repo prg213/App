@@ -203,7 +203,7 @@ export default function SeriesDetailScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  backdrop: { height: 280, position: 'relative' },
+  backdrop: { height: 180, position: 'relative' },
   backBtn: {
     position: 'absolute',
     left: 16,
