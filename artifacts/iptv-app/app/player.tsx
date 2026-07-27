@@ -51,36 +51,44 @@ function VodScrubber({
   insetBottom: number;
   onSeek: (t: number) => void;
 }) {
-  const trackWidth = useRef(0);
-  const [scrubbing, setScrubbing] = useState(false);
-  const [scrubProgress, setScrubProgress] = useState(0);
+  // Use refs so PanResponder closures always see the latest values
+  const durationRef = useRef(duration);
+  const onSeekRef   = useRef(onSeek);
+  const trackPageX  = useRef(0);
+  const trackW      = useRef(1);
+  useEffect(() => { durationRef.current = duration; }, [duration]);
+  useEffect(() => { onSeekRef.current   = onSeek;   }, [onSeek]);
 
-  const progress = duration > 0 ? currentTime / duration : 0;
-  const displayProgress = scrubbing ? scrubProgress : progress;
+  const [scrubbing, setScrubbing] = useState(false);
+  const [scrubFrac, setScrubFrac] = useState(0);
+
+  const hasDuration = duration > 0 && isFinite(duration);
+  const progress    = hasDuration ? currentTime / duration : 0;
+  const display     = scrubbing ? scrubFrac : progress;
+
+  const clamp = (v: number) => Math.max(0, Math.min(1, v));
+  const fracFrom = (pageX: number) =>
+    clamp((pageX - trackPageX.current) / trackW.current);
 
   const panResponder = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
+      onStartShouldSetPanResponder: () => durationRef.current > 0,
+      onMoveShouldSetPanResponder:  () => durationRef.current > 0,
       onPanResponderGrant: (e) => {
         setScrubbing(true);
-        const p = Math.max(0, Math.min(1, e.nativeEvent.locationX / (trackWidth.current || 1)));
-        setScrubProgress(p);
+        setScrubFrac(fracFrom(e.nativeEvent.pageX));
       },
       onPanResponderMove: (e) => {
-        const p = Math.max(0, Math.min(1, e.nativeEvent.locationX / (trackWidth.current || 1)));
-        setScrubProgress(p);
+        setScrubFrac(fracFrom(e.nativeEvent.pageX));
       },
       onPanResponderRelease: (e) => {
-        const p = Math.max(0, Math.min(1, e.nativeEvent.locationX / (trackWidth.current || 1)));
+        const f = fracFrom(e.nativeEvent.pageX);
         setScrubbing(false);
-        onSeek(p * duration);
+        onSeekRef.current(f * durationRef.current);
       },
       onPanResponderTerminate: () => setScrubbing(false),
     })
   ).current;
-
-  const hasDuration = duration > 0 && isFinite(duration);
 
   return (
     <View style={[scrubberStyles.wrap, { bottom: insetBottom + 16 }]}>
@@ -90,15 +98,23 @@ function VodScrubber({
       </View>
       <View
         style={scrubberStyles.track}
-        onLayout={(e) => { trackWidth.current = e.nativeEvent.layout.width; }}
-        {...(hasDuration ? panResponder.panHandlers : {})}
-        hitSlop={{ top: 12, bottom: 12 }}
+        onLayout={(e) => {
+          trackW.current = e.nativeEvent.layout.width || 1;
+          // Capture absolute pageX after layout
+        }}
+        onStartShouldSetResponder={() => false}
+        ref={(v: any) => {
+          if (v) v.measure((_x: number, _y: number, w: number, _h: number, px: number) => {
+            if (w) trackW.current = w;
+            trackPageX.current = px;
+          });
+        }}
+        {...panResponder.panHandlers}
+        hitSlop={{ top: 16, bottom: 16 }}
       >
+        <View style={[scrubberStyles.fill, { width: `${display * 100}%` as any }]} />
         {hasDuration && (
-          <>
-            <View style={[scrubberStyles.fill, { width: `${displayProgress * 100}%` as any }]} />
-            <View style={[scrubberStyles.thumb, { left: `${displayProgress * 100}%` as any }]} />
-          </>
+          <View style={[scrubberStyles.thumb, { left: `${display * 100}%` as any }]} />
         )}
       </View>
     </View>
