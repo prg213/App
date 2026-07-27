@@ -87,7 +87,13 @@ function Home() {
                 <span>Download APK</span>
                 <div className="absolute inset-0 rounded-xl ring-2 ring-primary ring-offset-2 ring-offset-background opacity-0 group-hover:opacity-100 transition-opacity" />
               </a>
-              <span className="text-sm text-white/40 mt-4 sm:mt-0 sm:ml-4">Requires Android 8.0+</span>
+              <a
+                href="/activate"
+                className="flex items-center gap-2 border border-white/15 hover:border-white/30 text-white/70 hover:text-white px-8 py-4 rounded-xl font-semibold text-lg transition-all hover:scale-105 active:scale-95"
+              >
+                <Key className="w-5 h-5" />
+                <span>Activate Device</span>
+              </a>
             </motion.div>
 
             <motion.div variants={fadeUp} className="mt-10 inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/[0.04] border border-white/10">
