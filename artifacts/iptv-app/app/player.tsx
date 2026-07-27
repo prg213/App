@@ -420,38 +420,37 @@ export default function PlayerScreen() {
           style={[styles.infoBar, { paddingBottom: insets.bottom + 8, opacity: infoOpacity }]}
           pointerEvents="box-none"
         >
-          {/* Row 1: LIVE pill + channel name + back button */}
+          {/* Single compact row: LIVE pill + channel name + NOW prog + time + back */}
           <View style={styles.infoTop}>
             <View style={styles.livePill}>
               <View style={styles.liveDot} />
               <Text style={styles.liveText}>LIVE</Text>
             </View>
             <Text style={styles.infoChannel} numberOfLines={1}>{activeTitle}</Text>
+            {currentProg && (
+              <>
+                <View style={styles.infoSep} />
+                <Text style={styles.infoNowLabel}>NOW</Text>
+                <Text style={styles.infoNowTitle} numberOfLines={1}>{currentProg.title}</Text>
+                <Text style={styles.infoProgTime}>
+                  {fmtTime(currentProg.start)}–{fmtTime(currentProg.end)}
+                </Text>
+              </>
+            )}
             <TouchableOpacity onPress={() => router.back()} style={styles.backBtnSmall} activeOpacity={0.8}>
               <Text style={styles.backIcon}>←</Text>
             </TouchableOpacity>
           </View>
 
-          {/* Row 2: NOW */}
-          {currentProg && (
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>NOW</Text>
-              <Text style={styles.infoProgTitle} numberOfLines={1}>{currentProg.title}</Text>
-              <Text style={styles.infoProgTime}>
-                {fmtTime(currentProg.start)} – {fmtTime(currentProg.end)}
-              </Text>
-            </View>
-          )}
-
-          {/* Row 3: NEXT */}
+          {/* NEXT row — dimmed, compact */}
           {nextProg && (
             <View style={[styles.infoRow, styles.infoRowNext]}>
               <Text style={[styles.infoLabel, styles.infoLabelNext]}>NEXT</Text>
               <Text style={[styles.infoProgTitle, styles.infoProgTitleNext]} numberOfLines={1}>
                 {nextProg.title}
               </Text>
-              <Text style={[styles.infoProgTime, { color: 'rgba(255,255,255,0.45)' }]}>
-                {fmtTime(nextProg.start)} – {fmtTime(nextProg.end)}
+              <Text style={[styles.infoProgTime, { color: 'rgba(255,255,255,0.4)' }]}>
+                {fmtTime(nextProg.start)}–{fmtTime(nextProg.end)}
               </Text>
             </View>
           )}
@@ -592,7 +591,10 @@ const styles = StyleSheet.create({
   },
   liveDot: { width: 5, height: 5, borderRadius: 99, backgroundColor: '#EF4444' },
   liveText: { fontSize: 9, fontFamily: 'Inter_700Bold', color: '#EF4444', letterSpacing: 1 },
-  infoChannel: { flex: 1, fontSize: 14, fontFamily: 'Inter_700Bold', color: '#fff' },
+  infoChannel: { fontSize: 14, fontFamily: 'Inter_700Bold', color: '#fff', flexShrink: 1 },
+  infoSep: { width: StyleSheet.hairlineWidth, height: 16, backgroundColor: 'rgba(255,255,255,0.25)', flexShrink: 0 },
+  infoNowLabel: { fontSize: 10, fontFamily: 'Inter_700Bold', color: '#3B82F6', letterSpacing: 0.5, flexShrink: 0 },
+  infoNowTitle: { flex: 1, fontSize: 13, fontFamily: 'Inter_600SemiBold', color: '#fff' },
 
   infoRow: {
     flexDirection: 'row',
