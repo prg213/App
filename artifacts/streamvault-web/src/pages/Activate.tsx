@@ -85,11 +85,14 @@ export default function Activate() {
     setMac(grouped.slice(0, 17));
   }
 
-  // Normalise host URL: lowercase scheme, strip trailing slash
+  // While typing: only lowercase the scheme so the user can still type "://"
+  function lowercaseScheme(val: string) {
+    return val.replace(/^([a-zA-Z][a-zA-Z0-9+\-.]*):/, (_, s) => `${s.toLowerCase()}:`);
+  }
+
+  // At submit time: lowercase scheme + strip trailing slash
   function normaliseHost(val: string) {
-    return val
-      .replace(/^([a-zA-Z][a-zA-Z0-9+\-.]*):\/\//, (_, s) => `${s.toLowerCase()}://`)
-      .replace(/\/+$/, '');
+    return lowercaseScheme(val).replace(/\/+$/, '');
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -255,8 +258,12 @@ export default function Activate() {
                 <>
                   <Field label="Host / Panel URL">
                     <input type="text" value={host}
-                      onChange={e => setHost(normaliseHost(e.target.value))}
-                      placeholder="http://provider.com:8080" required className={inputClass} />
+                      onChange={e => setHost(lowercaseScheme(e.target.value))}
+                      placeholder="http://provider.com:8080"
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      spellCheck={false}
+                      required className={inputClass} />
                   </Field>
                   <Field label="Username">
                     <input type="text" value={username} onChange={e => setUsername(e.target.value)}
