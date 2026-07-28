@@ -47,7 +47,11 @@ export function AppContextProvider({
   }, []);
 
   const setActivated = async (creds: Credentials) => {
-    await StorageService.saveCredentials(creds);
+    try {
+      await StorageService.saveCredentials(creds);
+    } catch {
+      // Storage failure must not block navigation — session still works in-memory
+    }
     setCredentials(creds);
     setIsActivated(true);
   };
