@@ -1,9 +1,9 @@
 import React from 'react';
 import {
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from 'react-native';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
@@ -45,26 +45,31 @@ function Sidebar({ state, descriptors, navigation }: BottomTabBarProps) {
         bounces={false}
       >
         {state.routes.map((route, i) => {
-          const focused = state.index === i;
+          const active = state.index === i;
           const item = NAV.find((n) => n.name === route.name);
           if (!item) return null;
 
           return (
-            <TouchableOpacity
+            <Pressable
               key={route.key}
-              style={[styles.navItem, focused && styles.navItemActive]}
+              focusable
+              hasTVPreferredFocus={i === 0}
+              style={({ focused }) => [
+                styles.navItem,
+                active && styles.navItemActive,
+                focused && styles.navItemFocused,
+              ]}
               onPress={() => {
                 const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
                 if (!event.defaultPrevented) navigation.navigate(route.name);
               }}
-              activeOpacity={0.7}
             >
               <Text style={styles.navIcon}>{item.icon}</Text>
-              <Text style={[styles.navLabel, focused && styles.navLabelActive]}>
+              <Text style={[styles.navLabel, active && styles.navLabelActive]}>
                 {item.label}
               </Text>
-              {focused && <View style={styles.activePip} />}
-            </TouchableOpacity>
+              {active && <View style={styles.activePip} />}
+            </Pressable>
           );
         })}
       </ScrollView>
@@ -137,6 +142,11 @@ const styles = StyleSheet.create({
     borderRadius: 10, position: 'relative',
   },
   navItemActive: { backgroundColor: 'rgba(59,130,246,0.12)' },
+  navItemFocused: {
+    borderWidth: 2,
+    borderColor: '#00E5FF',
+    backgroundColor: 'rgba(0,229,255,0.08)',
+  },
   navIcon: { fontSize: 15, width: 22, textAlign: 'center' },
   navLabel: { fontSize: 13, fontFamily: 'Inter_500Medium', color: '#6B7280' },
   navLabelActive: { fontFamily: 'Inter_600SemiBold', color: '#F2F2F2' },

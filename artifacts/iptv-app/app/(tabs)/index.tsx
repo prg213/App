@@ -10,6 +10,7 @@ import {
   FlatList,
   Image,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -60,15 +61,16 @@ const CategoryRow = React.memo(function CategoryRow({
   onPress: () => void;
 }) {
   return (
-    <TouchableOpacity
-      style={[
+    <Pressable
+      focusable
+      style={({ focused }) => [
         styles.catRow,
         isSelected
           ? { backgroundColor: '#3B82F6' }
           : { borderBottomColor: colors.border },
+        focused && styles.tvFocused,
       ]}
       onPress={onPress}
-      activeOpacity={0.7}
     >
       <Text
         style={[styles.catRowText, { color: isSelected ? '#fff' : colors.foreground }]}
@@ -76,7 +78,7 @@ const CategoryRow = React.memo(function CategoryRow({
       >
         {cat.name}
       </Text>
-    </TouchableOpacity>
+    </Pressable>
   );
 });
 
@@ -100,14 +102,15 @@ const ChannelRow = React.memo(function ChannelRow({
   onHeartPress: () => void;
 }) {
   return (
-    <TouchableOpacity
-      style={[
+    <Pressable
+      focusable
+      style={({ focused }) => [
         styles.chRow,
         isSelected && { backgroundColor: 'rgba(59,130,246,0.15)' },
         { borderBottomColor: colors.border },
+        focused && styles.tvFocused,
       ]}
       onPress={onPress}
-      activeOpacity={0.7}
     >
       {isSelected && <View style={styles.selectedPip} />}
       {channel.num != null && (
@@ -140,17 +143,17 @@ const ChannelRow = React.memo(function ChannelRow({
           </Text>
         ) : null}
       </View>
-      <TouchableOpacity
+      <Pressable
+        focusable
         onPress={onHeartPress}
         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        activeOpacity={0.7}
-        style={styles.heartBtn}
+        style={({ focused }) => [styles.heartBtn, focused && styles.tvFocusedRound]}
       >
         <Text style={[styles.heartIcon, { color: isFav ? '#EF4444' : colors.mutedForeground }]}>
           {isFav ? '♥' : '♡'}
         </Text>
-      </TouchableOpacity>
-    </TouchableOpacity>
+      </Pressable>
+    </Pressable>
   );
 });
 
@@ -430,6 +433,7 @@ export default function LiveTVScreen() {
           showsVerticalScrollIndicator={false}
           getItemLayout={(_, i) => ({ length: 52, offset: 52 * i, index: i })}
           contentContainerStyle={{ paddingBottom: insets.bottom + 8 }}
+          removeClippedSubviews={false}
         />
       </View>
 
@@ -458,6 +462,7 @@ export default function LiveTVScreen() {
             initialNumToRender={20}
             maxToRenderPerBatch={20}
             contentContainerStyle={{ paddingBottom: insets.bottom + 8 }}
+            removeClippedSubviews={false}
           />
         )}
       </View>
@@ -466,35 +471,47 @@ export default function LiveTVScreen() {
       <View style={[styles.previewPanel, { paddingTop: insets.top + 4, paddingRight: insets.right + 8 }]}>
 
         {!isWeb && (
-          <TouchableOpacity
-            style={[styles.videoWrap, !playingChannel && { display: 'none' }]}
-            onPress={handleWatch}
-            activeOpacity={0.85}
-          >
-            <VideoView
-              player={player}
-              style={StyleSheet.absoluteFill}
-              nativeControls={false}
-              contentFit="contain"
-            />
-            {(isBuffering && !hasError) && (
-              <View style={styles.videoOverlay}>
-                <ActivityIndicator color="#fff" size="large" />
+          <>
+            <TouchableOpacity
+              style={[styles.videoWrap, !playingChannel && { display: 'none' }]}
+              onPress={handleWatch}
+              activeOpacity={0.85}
+              focusable={false}
+            >
+              <VideoView
+                player={player}
+                style={StyleSheet.absoluteFill}
+                nativeControls={false}
+                contentFit="contain"
+              />
+              {(isBuffering && !hasError) && (
+                <View style={styles.videoOverlay}>
+                  <ActivityIndicator color="#fff" size="large" />
+                </View>
+              )}
+              {hasError && (
+                <View style={styles.videoOverlay}>
+                  <Text style={styles.errText}>Stream unavailable</Text>
+                </View>
+              )}
+              <View style={styles.livePill}>
+                <View style={styles.liveDot} />
+                <Text style={styles.liveText}>LIVE</Text>
               </View>
+            </TouchableOpacity>
+            {playingChannel && (
+              <Pressable
+                focusable
+                onPress={handleWatch}
+                style={({ focused }) => [
+                  styles.watchBtn,
+                  focused && styles.watchBtnFocused,
+                ]}
+              >
+                <Text style={styles.watchBtnText}>▶  Watch Fullscreen</Text>
+              </Pressable>
             )}
-            {hasError && (
-              <View style={styles.videoOverlay}>
-                <Text style={styles.errText}>Stream unavailable</Text>
-              </View>
-            )}
-            <View style={styles.livePill}>
-              <View style={styles.liveDot} />
-              <Text style={styles.liveText}>LIVE</Text>
-            </View>
-            <View style={styles.tapHint}>
-              <Text style={styles.tapHintText}>⛶</Text>
-            </View>
-          </TouchableOpacity>
+          </>
         )}
 
         {selectedChannel ? (
@@ -570,6 +587,40 @@ export default function LiveTVScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, flexDirection: 'row' },
+
+  // ── TV / D-pad focus rings ──
+  tvFocused: {
+    borderWidth: 2,
+    borderColor: '#00E5FF',
+  },
+  tvFocusedRound: {
+    borderWidth: 2,
+    borderColor: '#00E5FF',
+    borderRadius: 99,
+  },
+
+  // ── Watch fullscreen button ──
+  watchBtn: {
+    marginTop: 6,
+    marginBottom: 4,
+    backgroundColor: '#3B82F6',
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  watchBtnFocused: {
+    borderColor: '#00E5FF',
+    backgroundColor: '#2563EB',
+  },
+  watchBtnText: {
+    color: '#fff',
+    fontSize: 13,
+    fontFamily: 'Inter_700Bold',
+    letterSpacing: 0.3,
+  },
 
   panelHeader: {
     fontSize: 9,

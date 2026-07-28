@@ -3,10 +3,10 @@ import {
   ActivityIndicator,
   FlatList,
   Image,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -42,7 +42,11 @@ const MovieBanner = React.memo(function MovieBanner({
   onPress: () => void;
 }) {
   return (
-    <TouchableOpacity style={styles.banner} onPress={onPress} activeOpacity={0.8}>
+    <Pressable
+      focusable
+      style={({ focused }) => [styles.banner, focused && styles.bannerFocused]}
+      onPress={onPress}
+    >
       {movie.cover ? (
         <Image source={{ uri: movie.cover }} style={StyleSheet.absoluteFill} resizeMode="cover" />
       ) : (
@@ -65,7 +69,7 @@ const MovieBanner = React.memo(function MovieBanner({
           <Text style={styles.bannerMeta} numberOfLines={1}>{movie.genre}</Text>
         ) : null}
       </View>
-    </TouchableOpacity>
+    </Pressable>
   );
 });
 
@@ -81,7 +85,11 @@ const SeriesBanner = React.memo(function SeriesBanner({
   onPress: () => void;
 }) {
   return (
-    <TouchableOpacity style={styles.banner} onPress={onPress} activeOpacity={0.8}>
+    <Pressable
+      focusable
+      style={({ focused }) => [styles.banner, focused && styles.bannerFocused]}
+      onPress={onPress}
+    >
       {series.cover ? (
         <Image source={{ uri: series.cover }} style={StyleSheet.absoluteFill} resizeMode="cover" />
       ) : (
@@ -104,7 +112,7 @@ const SeriesBanner = React.memo(function SeriesBanner({
           <Text style={styles.bannerMeta} numberOfLines={1}>{series.genre}</Text>
         ) : null}
       </View>
-    </TouchableOpacity>
+    </Pressable>
   );
 });
 
@@ -250,10 +258,10 @@ export default function HomeScreen() {
     >
       {/* ── Hero banner ── */}
       {hero && (
-        <TouchableOpacity
-          style={[styles.hero, { marginTop: insets.top }]}
+        <Pressable
+          focusable
+          style={({ focused }) => [styles.hero, { marginTop: insets.top }, focused && styles.heroFocused]}
           onPress={() => handleMoviePress(hero)}
-          activeOpacity={0.88}
         >
           {hero.cover && (
             <Image source={{ uri: hero.cover }} style={StyleSheet.absoluteFill} resizeMode="cover" />
@@ -286,7 +294,7 @@ export default function HomeScreen() {
               <Text style={styles.heroBtnText}>▶  Watch Now</Text>
             </View>
           </View>
-        </TouchableOpacity>
+        </Pressable>
       )}
 
       {/* ── Latest Movies ── */}
@@ -306,6 +314,7 @@ export default function HomeScreen() {
           getItemLayout={(_, i) => ({ length: BANNER_W + 10, offset: (BANNER_W + 10) * i, index: i })}
           initialNumToRender={6}
           maxToRenderPerBatch={8}
+          removeClippedSubviews={false}
         />
       </Section>
 
@@ -326,6 +335,7 @@ export default function HomeScreen() {
           getItemLayout={(_, i) => ({ length: BANNER_W + 10, offset: (BANNER_W + 10) * i, index: i })}
           initialNumToRender={6}
           maxToRenderPerBatch={8}
+          removeClippedSubviews={false}
         />
       </Section>
     </ScrollView>
@@ -384,6 +394,10 @@ const styles = StyleSheet.create({
   loadingRow: { height: BANNER_H, justifyContent: 'center', alignItems: 'center' },
 
   bannerList: { paddingHorizontal: 16, gap: 10 },
+
+  // ── TV focus ──
+  heroFocused: { borderWidth: 3, borderColor: '#00E5FF' },
+  bannerFocused: { borderWidth: 3, borderColor: '#00E5FF' },
 
   // ── Banner card ──
   banner: {

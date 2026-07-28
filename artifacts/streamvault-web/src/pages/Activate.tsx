@@ -320,7 +320,7 @@ export default function Activate() {
                         <td className="py-3">
                           <button
                             onClick={() => handleDelete(d.id)}
-                            className="p-1.5 rounded-lg text-white/20 hover:text-red-400 hover:bg-red-500/10 transition-colors opacity-0 group-hover:opacity-100"
+                            className="p-1.5 rounded-lg text-red-400/50 hover:text-red-400 hover:bg-red-500/10 transition-colors"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
