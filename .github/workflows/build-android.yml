@@ -1,108 +1,107 @@
 name: Build Android APK
 
-    on:
-    workflow_dispatch:
+on:
+  workflow_dispatch:
 
-    jobs:
-    build:
-      name: Build Release APK
-      runs-on: ubuntu-latest
+jobs:
+  build:
+    name: Build Release APK
+    runs-on: ubuntu-latest
 
-      steps:
-        - name: Checkout
-          uses: actions/checkout@v4
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-        - name: Setup Java 17
-          uses: actions/setup-java@v4
-          with:
-            java-version: '17'
-            distribution: 'temurin'
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
 
-        - name: Setup Node
-          uses: actions/setup-node@v4
-          with:
-            node-version: 22
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
 
-        - name: Setup pnpm
-          uses: pnpm/action-setup@v4
-          with:
-            version: 9
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
 
-        - name: Install dependencies
-          run: pnpm install --no-frozen-lockfile
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
 
-        - name: Expo prebuild
-          working-directory: artifacts/iptv-app
-          run: npx expo prebuild --platform android --no-install --clean
-          env:
-            CI: 1
-            EXPO_PUBLIC_DOMAIN: ee7158f7-9a75-41e8-a92a-260cf9085a78-00-ex3f1jvz614w.janeway.replit.dev
+      - name: Expo prebuild
+        working-directory: artifacts/iptv-app
+        run: npx expo prebuild --platform android --no-install --clean
+        env:
+          CI: 1
+          EXPO_PUBLIC_DOMAIN: ee7158f7-9a75-41e8-a92a-260cf9085a78-00-ex3f1jvz614w.janeway.replit.dev
 
-        - name: Install NDK
-          run: |
-            echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager \
-              "ndk;27.1.12297006" \
-              "cmake;3.22.1" \
-              --sdk_root=$ANDROID_HOME
+      - name: Install NDK
+        run: |
+          echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager \
+            "ndk;27.1.12297006" \
+            "cmake;3.22.1" \
+            --sdk_root=$ANDROID_HOME
 
-        - name: Generate signing keystore
-          working-directory: artifacts/iptv-app/android
-          run: |
-            keytool -genkeypair -v \
-              -storetype PKCS12 \
-              -keystore release.keystore \
-              -alias streamvault \
-              -keyalg RSA -keysize 2048 -validity 10000 \
-              -storepass streamvault123 \
-              -keypass streamvault123 \
-              -dname "CN=StreamVault, O=StreamVault, C=US"
+      - name: Generate signing keystore
+        working-directory: artifacts/iptv-app/android
+        run: |
+          keytool -genkeypair -v \
+            -storetype PKCS12 \
+            -keystore release.keystore \
+            -alias streamvault \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass streamvault123 \
+            -keypass streamvault123 \
+            -dname "CN=StreamVault, O=StreamVault, C=US"
 
-        - name: Build release APK
-          working-directory: artifacts/iptv-app/android
-          run: |
-            set -o pipefail
-            ./gradlew assembleRelease \
-              -Pandroid.injected.signing.store.file=$(pwd)/release.keystore \
-              -Pandroid.injected.signing.store.password=streamvault123 \
-              -Pandroid.injected.signing.key.alias=streamvault \
-              -Pandroid.injected.signing.key.password=streamvault123 \
-              --stacktrace --no-daemon 2>&1 | tee build.log
-          env:
-            ANDROID_HOME: ${{ env.ANDROID_HOME }}
-            ANDROID_NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/27.1.12297006
-            EXPO_PUBLIC_DOMAIN: ee7158f7-9a75-41e8-a92a-260cf9085a78-00-ex3f1jvz614w.janeway.replit.dev
+      - name: Build release APK
+        working-directory: artifacts/iptv-app/android
+        run: |
+          set -o pipefail
+          ./gradlew assembleRelease \
+            -Pandroid.injected.signing.store.file=$(pwd)/release.keystore \
+            -Pandroid.injected.signing.store.password=streamvault123 \
+            -Pandroid.injected.signing.key.alias=streamvault \
+            -Pandroid.injected.signing.key.password=streamvault123 \
+            --stacktrace --no-daemon 2>&1 | tee build.log
+        env:
+          ANDROID_HOME: ${{ env.ANDROID_HOME }}
+          ANDROID_NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/27.1.12297006
+          EXPO_PUBLIC_DOMAIN: ee7158f7-9a75-41e8-a92a-260cf9085a78-00-ex3f1jvz614w.janeway.replit.dev
 
-        - name: Rename APK
-          run: |
-            cp artifacts/iptv-app/android/app/build/outputs/apk/release/app-release.apk \
-               StreamVault.apk
+      - name: Rename APK
+        run: |
+          cp artifacts/iptv-app/android/app/build/outputs/apk/release/app-release.apk \
+             StreamVault.apk
 
-        - name: Create GitHub Release
-          uses: softprops/action-gh-release@v2
-          with:
-            tag_name: build-${{ github.run_number }}
-            name: StreamVault v${{ github.run_number }}
-            body: |
-              Android APK — build #${{ github.run_number }}
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: StreamVault v${{ github.run_number }}
+          body: |
+            Android APK — build #${{ github.run_number }}
 
-              **Install:** Download StreamVault.apk, open it on your Android device, and follow the on-screen activation steps.
-            files: StreamVault.apk
-            make_latest: true
-          env:
-            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            **Install:** Download StreamVault.apk, open it on your Android device, and follow the on-screen activation steps.
+          files: StreamVault.apk
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-        - name: Upload APK artifact (fallback)
-          uses: actions/upload-artifact@v4
-          with:
-            name: StreamVault-release-${{ github.run_number }}
-            path: StreamVault.apk
-            retention-days: 30
+      - name: Upload APK artifact (fallback)
+        uses: actions/upload-artifact@v4
+        with:
+          name: StreamVault-release-${{ github.run_number }}
+          path: StreamVault.apk
+          retention-days: 30
 
-        - name: Upload build log on failure
-          if: failure()
-          uses: actions/upload-artifact@v4
-          with:
-            name: gradle-build-log-${{ github.run_number }}
-            path: artifacts/iptv-app/android/build.log
-            retention-days: 7
-    
+      - name: Upload build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gradle-build-log-${{ github.run_number }}
+          path: artifacts/iptv-app/android/build.log
+          retention-days: 7
