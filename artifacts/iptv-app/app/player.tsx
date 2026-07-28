@@ -230,6 +230,7 @@ export default function PlayerScreen() {
   // ── Video player ─────────────────────────────────────────────────────────
   const player = useVideoPlayer(isWeb ? null : params.url, (p) => {
     p.loop = isLive;
+    p.scrubbingModeOptions = { isEnabled: true };
     p.play();
   });
 
