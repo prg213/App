@@ -5,6 +5,7 @@ import { db, devicesTable } from "@workspace/db";
 const router: Router = Router();
 
 router.get("/activate", async (req, res): Promise<void> => {
+  res.setHeader("Cache-Control", "no-store");
   const mac = (req.query.mac as string)?.toUpperCase();
   if (!mac) {
     res.status(400).json({ error: "mac query parameter is required" });
