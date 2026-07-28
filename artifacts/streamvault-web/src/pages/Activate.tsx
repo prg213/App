@@ -44,6 +44,7 @@ export default function Activate() {
   const [devices, setDevices] = useState<Device[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [submitStage, setSubmitStage] = useState<'idle' | 'verifying' | 'saving'>('idle');
   const [toast, setToast] = useState<{ msg: string; kind: 'success' | 'error' } | null>(null);
 
   // Form state
@@ -84,15 +85,42 @@ export default function Activate() {
     setMac(grouped.slice(0, 17));
   }
 
+  // Normalise host URL: lowercase scheme, strip trailing slash
+  function normaliseHost(val: string) {
+    return val
+      .replace(/^([a-zA-Z][a-zA-Z0-9+\-.]*):\/\//, (_, s) => `${s.toLowerCase()}://`)
+      .replace(/\/+$/, '');
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSubmitting(true);
+
     try {
+      // Step 1: verify Xtream credentials before saving
+      if (type === 'xtream') {
+        setSubmitStage('verifying');
+        const vRes = await fetch(`${API}/verify-credentials`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type, host: normaliseHost(host), username, password }),
+        });
+        const vData = await vRes.json();
+        if (!vData.ok) {
+          showToast(vData.error ?? 'Credential check failed', 'error');
+          return;
+        }
+      }
+
+      // Step 2: save the device
+      setSubmitStage('saving');
       const body: Record<string, string> = {
         mac_address: mac.toUpperCase(),
         type,
-        ...(name ? { name } : {}),
-        ...(type === 'xtream' ? { host, username, password } : { m3u_url: m3uUrl }),
+        name,
+        ...(type === 'xtream'
+          ? { host: normaliseHost(host), username, password }
+          : { m3u_url: m3uUrl }),
       };
       const res = await fetch(`${API}/devices`, {
         method: 'POST',
@@ -100,7 +128,7 @@ export default function Activate() {
         body: JSON.stringify(body),
       });
       if (res.ok) {
-        showToast('Device activated successfully', 'success');
+        showToast('Device verified and activated ✓', 'success');
         setMac(''); setName(''); setHost(''); setUsername(''); setPassword(''); setM3uUrl('');
         loadDevices();
       } else {
@@ -111,6 +139,7 @@ export default function Activate() {
       showToast('Network error — is the API server running?', 'error');
     } finally {
       setSubmitting(false);
+      setSubmitStage('idle');
     }
   }
 
@@ -199,12 +228,13 @@ export default function Activate() {
                 />
               </Field>
 
-              <Field label="Device Name (optional)">
+              <Field label="Device Name">
                 <input
                   type="text"
                   value={name}
                   onChange={e => setName(e.target.value)}
                   placeholder="Living Room TV"
+                  required
                   className={inputClass}
                 />
               </Field>
@@ -224,7 +254,8 @@ export default function Activate() {
               {type === 'xtream' ? (
                 <>
                   <Field label="Host / Panel URL">
-                    <input type="text" value={host} onChange={e => setHost(e.target.value)}
+                    <input type="text" value={host}
+                      onChange={e => setHost(normaliseHost(e.target.value))}
                       placeholder="http://provider.com:8080" required className={inputClass} />
                   </Field>
                   <Field label="Username">
@@ -248,7 +279,9 @@ export default function Activate() {
                 disabled={submitting}
                 className="w-full mt-2 flex items-center justify-center gap-2 bg-primary hover:bg-primary/90 disabled:opacity-50 text-black font-bold py-3 rounded-xl transition-all hover:scale-[1.02] active:scale-[0.98]"
               >
-                {submitting ? 'Activating…' : 'Activate Device'}
+                {submitStage === 'verifying' ? '🔍 Verifying credentials…'
+                  : submitStage === 'saving' ? '💾 Saving…'
+                  : 'Activate Device'}
               </button>
             </form>
           </motion.div>
