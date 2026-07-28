@@ -7,6 +7,9 @@ const router: Router = Router();
 router.get("/activate", async (req, res): Promise<void> => {
   res.setHeader("Cache-Control", "no-store");
   const mac = (req.query.mac as string)?.toUpperCase();
+
+  console.log(`[activate] mac=${mac ?? "(missing)"}`);
+
   if (!mac) {
     res.status(400).json({ error: "mac query parameter is required" });
     return;
@@ -16,6 +19,9 @@ router.get("/activate", async (req, res): Promise<void> => {
     .select()
     .from(devicesTable)
     .where(eq(devicesTable.macAddress, mac));
+
+  const result = device?.type ? "active" : "pending";
+  console.log(`[activate] mac=${mac} → ${result}`);
 
   if (!device || !device.type) {
     res.json({ status: "pending" });
