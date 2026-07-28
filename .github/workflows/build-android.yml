@@ -47,17 +47,9 @@ jobs:
             "cmake;3.22.1" \
             --sdk_root=$ANDROID_HOME
 
-      - name: Generate signing keystore
+      - name: Restore signing keystore
         working-directory: artifacts/iptv-app/android
-        run: |
-          keytool -genkeypair -v \
-            -storetype PKCS12 \
-            -keystore release.keystore \
-            -alias streamvault \
-            -keyalg RSA -keysize 2048 -validity 10000 \
-            -storepass streamvault123 \
-            -keypass streamvault123 \
-            -dname "CN=StreamVault, O=StreamVault, C=US"
+        run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > release.keystore
 
       - name: Build release APK
         working-directory: artifacts/iptv-app/android
