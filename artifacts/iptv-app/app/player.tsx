@@ -56,6 +56,7 @@ function VodScrubber({
   const onSeekRef   = useRef(onSeek);
   const trackPageX  = useRef(0);
   const trackW      = useRef(1);
+  const trackViewRef = useRef<any>(null);
   useEffect(() => { durationRef.current = duration; }, [duration]);
   useEffect(() => { onSeekRef.current   = onSeek;   }, [onSeek]);
 
@@ -68,13 +69,27 @@ function VodScrubber({
 
   const clamp = (v: number) => Math.max(0, Math.min(1, v));
   const fracFrom = (pageX: number) =>
-    clamp((pageX - trackPageX.current) / trackW.current);
+    clamp((pageX - trackPageX.current) / Math.max(trackW.current, 1));
+
+  // Re-measure the track's absolute position — called on layout and on each gesture start
+  const measureTrack = () => {
+    if (trackViewRef.current) {
+      trackViewRef.current.measure(
+        (_x: number, _y: number, w: number, _h: number, px: number) => {
+          if (w > 0) trackW.current = w;
+          trackPageX.current = px;
+        },
+      );
+    }
+  };
 
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => durationRef.current > 0,
       onMoveShouldSetPanResponder:  () => durationRef.current > 0,
       onPanResponderGrant: (e) => {
+        // Re-measure every time so position is always fresh
+        measureTrack();
         setScrubbing(true);
         setScrubFrac(fracFrom(e.nativeEvent.pageX));
       },
@@ -97,20 +112,11 @@ function VodScrubber({
         {hasDuration && <Text style={scrubberStyles.timeText}>{fmtSecs(duration)}</Text>}
       </View>
       <View
+        ref={trackViewRef}
         style={scrubberStyles.track}
-        onLayout={(e) => {
-          trackW.current = e.nativeEvent.layout.width || 1;
-          // Capture absolute pageX after layout
-        }}
-        onStartShouldSetResponder={() => false}
-        ref={(v: any) => {
-          if (v) v.measure((_x: number, _y: number, w: number, _h: number, px: number) => {
-            if (w) trackW.current = w;
-            trackPageX.current = px;
-          });
-        }}
+        onLayout={measureTrack}
         {...panResponder.panHandlers}
-        hitSlop={{ top: 16, bottom: 16 }}
+        hitSlop={{ top: 20, bottom: 20 }}
       >
         <View style={[scrubberStyles.fill, { width: `${display * 100}%` as any }]} />
         {hasDuration && (
