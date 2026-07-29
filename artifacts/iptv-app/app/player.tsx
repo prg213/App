@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Animated,
   Linking,
-  PanResponder,
   Platform,
   Pressable,
   StatusBar,
@@ -12,6 +11,7 @@ import {
   TouchableWithoutFeedback,
   View,
 } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -40,7 +40,9 @@ function fmtSecs(secs: number) {
   return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
 }
 
-// ── Scrubber bar (touch + D-pad remote) ──────────────────────────────────────
+// ── Scrubber bar ─────────────────────────────────────────────────────────────
+// Uses RNGH GestureDetector (Pan) so it can't be stolen by the
+// TouchableWithoutFeedback tap-catcher or any other RN responder.
 function VodScrubber({
   currentTime,
   duration,
@@ -59,87 +61,46 @@ function VodScrubber({
   useEffect(() => { onSeekRef.current      = onSeek;      }, [onSeek]);
   useEffect(() => { currentTimeRef.current = currentTime; }, [currentTime]);
 
-  // ── Touch scrubbing ───────────────────────────────────────────────────────
-  // KEY FIX: panHandlers go on the Pressable itself, not a nested inner View.
-  // When they were on a child View, Pressable would claim the touch first on
-  // Android, and the PanResponder inside would never fire.
-  const touchAreaW    = useRef(1);
-  const touchAreaLeft = useRef(0);
-  const [touchScrub, setTouchScrub] = useState(false);
-  const [touchFrac, setTouchFrac]   = useState(0);
-  const clamp = (v: number) => Math.max(0, Math.min(1, v));
+  const trackW    = useRef(1);
+  const [scrubbing, setScrubbing] = useState(false);
+  const [scrubFrac, setScrubFrac] = useState(0);
+  const clamp = (x: number) => Math.max(0, Math.min(1, x));
 
-  const panResponder = useRef(PanResponder.create({
-    onStartShouldSetPanResponder: () => durationRef.current > 0 && isFinite(durationRef.current),
-    onMoveShouldSetPanResponder:  () => durationRef.current > 0 && isFinite(durationRef.current),
-    onPanResponderGrant: (e) => {
-      const { pageX, locationX } = e.nativeEvent;
-      // Derive the left edge of this view synchronously — no async measure() needed
-      touchAreaLeft.current = pageX - locationX;
-      setTouchScrub(true);
-      setTouchFrac(clamp(locationX / Math.max(touchAreaW.current, 1)));
-    },
-    onPanResponderMove: (e) => {
-      setTouchFrac(clamp((e.nativeEvent.pageX - touchAreaLeft.current) / Math.max(touchAreaW.current, 1)));
-    },
-    onPanResponderRelease: (e) => {
-      const frac = clamp((e.nativeEvent.pageX - touchAreaLeft.current) / Math.max(touchAreaW.current, 1));
-      setTouchScrub(false);
+  // .runOnJS(true) keeps all callbacks on the JS thread so we can freely
+  // access refs and call setState — no worklet / shared-value needed.
+  const pan = useMemo(() => Gesture.Pan()
+    .runOnJS(true)
+    .minDistance(0)
+    .onBegin((e) => {
+      if (durationRef.current <= 0 || !isFinite(durationRef.current)) return;
+      setScrubFrac(clamp(e.x / Math.max(trackW.current, 1)));
+      setScrubbing(true);
+    })
+    .onUpdate((e) => {
+      if (durationRef.current <= 0) return;
+      setScrubFrac(clamp(e.x / Math.max(trackW.current, 1)));
+    })
+    .onEnd((e) => {
+      const frac = clamp(e.x / Math.max(trackW.current, 1));
+      setScrubbing(false);
       onSeekRef.current(frac * durationRef.current);
-    },
-    onPanResponderTerminate: () => setTouchScrub(false),
-  })).current;
+    })
+    .onFinalize(() => {
+      setScrubbing(false);
+    }),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  []);
 
-  // ── D-pad / remote-control seek ───────────────────────────────────────────
-  const [dpadFocused, setDpadFocused] = useState(false);
-  const [seekMode,    setSeekMode]    = useState(false);
-  const [seekTime,    setSeekTime]    = useState(0);
-  const seekModeRef  = useRef(false);
-  const seekTimeRef  = useRef(0);
-  const autoTimer    = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const commitSeek = useCallback(() => {
-    if (autoTimer.current) clearTimeout(autoTimer.current);
-    const t = seekTimeRef.current;
-    seekModeRef.current = false;
-    setSeekMode(false);
-    onSeekRef.current(t);
-  }, []);
-
-  const adjustSeek = useCallback((delta: number) => {
-    const base = seekModeRef.current ? seekTimeRef.current : currentTimeRef.current;
-    const t = Math.max(0, Math.min(base + delta, durationRef.current));
-    seekTimeRef.current = t;
-    setSeekTime(t);
-    if (!seekModeRef.current) { seekModeRef.current = true; setSeekMode(true); }
-    if (autoTimer.current) clearTimeout(autoTimer.current);
-    autoTimer.current = setTimeout(commitSeek, 1500);
-  }, [commitSeek]);
-
-  const handleKeyDown = useCallback((e: any) => {
-    const kc: number = e?.nativeEvent?.keyCode ?? 0;
-    if      (kc === 22) adjustSeek(+30);
-    else if (kc === 21) adjustSeek(-30);
-    else if ((kc === 23 || kc === 66) && seekModeRef.current) commitSeek();
-  }, [adjustSeek, commitSeek]);
-
-  // ── Derived display values ────────────────────────────────────────────────
-  const hasDuration = duration > 0 && isFinite(duration);
-  const displayFrac = touchScrub
-    ? touchFrac
-    : seekMode
-    ? seekTime / Math.max(duration, 1)
-    : hasDuration ? currentTime / duration : 0;
-  const displayTime = touchScrub
-    ? touchFrac * duration
-    : seekMode ? seekTime : currentTime;
+  const hasDuration  = duration > 0 && isFinite(duration);
+  const displayFrac  = scrubbing ? scrubFrac : (hasDuration ? currentTime / duration : 0);
+  const displayTime  = scrubbing ? scrubFrac * duration : currentTime;
 
   return (
-    <View style={[scrubberStyles.wrap, { bottom: insetBottom + 12 }]}>
-      {/* Bubble above thumb showing seek target time */}
-      {(touchScrub || seekMode) && hasDuration && (
+    <View style={[scrubberStyles.wrap, { bottom: insetBottom + 12 }]} pointerEvents="box-none">
+      {/* Bubble above thumb while scrubbing */}
+      {scrubbing && hasDuration && (
         <View
-          style={[scrubberStyles.bubble, { left: `${Math.max(2, Math.min(92, displayFrac * 100))}%` as any }]}
+          style={[scrubberStyles.bubble, { left: `${Math.max(2, Math.min(90, displayFrac * 100))}%` as any }]}
           pointerEvents="none"
         >
           <Text style={scrubberStyles.bubbleText}>{fmtSecs(displayTime)}</Text>
@@ -147,91 +108,72 @@ function VodScrubber({
         </View>
       )}
 
-      {/* Touch target + track visual — PanResponder AND D-pad on same element */}
-      <Pressable
-        focusable={hasDuration}
-        onFocus={() => setDpadFocused(true)}
-        onBlur={() => { setDpadFocused(false); if (seekModeRef.current) commitSeek(); }}
-        onKeyDown={handleKeyDown as any}
-        onLayout={(e) => { touchAreaW.current = e.nativeEvent.layout.width; }}
-        style={({ focused }) => [
-          scrubberStyles.touchTarget,
-          (focused || dpadFocused || seekMode) && scrubberStyles.touchTargetFocused,
-        ]}
-        {...panResponder.panHandlers}
-      >
-        {/* Track rail */}
-        <View style={scrubberStyles.rail} pointerEvents="none">
-          {/* Filled portion */}
-          <View style={[scrubberStyles.filled, { width: `${displayFrac * 100}%` as any }]} pointerEvents="none" />
+      {/* Hit area — GestureDetector handles all touch */}
+      <GestureDetector gesture={pan}>
+        <View
+          style={scrubberStyles.hitArea}
+          onLayout={(e) => { trackW.current = e.nativeEvent.layout.width; }}
+        >
+          {/* Visual track */}
+          <View style={scrubberStyles.rail} pointerEvents="none">
+            <View style={[scrubberStyles.filled, { width: `${displayFrac * 100}%` as any }]} />
+          </View>
           {/* Thumb */}
           {hasDuration && (
             <View
               style={[
                 scrubberStyles.thumb,
                 { left: `${displayFrac * 100}%` as any },
-                (touchScrub || seekMode || dpadFocused) && scrubberStyles.thumbActive,
+                scrubbing && scrubberStyles.thumbActive,
               ]}
               pointerEvents="none"
             />
           )}
         </View>
-      </Pressable>
+      </GestureDetector>
 
-      {/* Time row: elapsed ← → total */}
-      <View style={scrubberStyles.timeRow}>
+      {/* Times */}
+      <View style={scrubberStyles.timeRow} pointerEvents="none">
         <Text style={scrubberStyles.timeLeft}>{fmtSecs(displayTime)}</Text>
-        {hasDuration
-          ? <Text style={scrubberStyles.timeRight}>{fmtSecs(duration)}</Text>
-          : <Text style={scrubberStyles.timeRight}>LIVE</Text>
-        }
+        <Text style={scrubberStyles.timeRight}>{hasDuration ? fmtSecs(duration) : 'LIVE'}</Text>
       </View>
-
-      {/* D-pad hint */}
-      {seekMode && (
-        <Text style={scrubberStyles.hint}>◄ ► to seek  ·  OK to confirm</Text>
-      )}
     </View>
   );
 }
 
 const scrubberStyles = StyleSheet.create({
+  // Outer absolutely-positioned container
   wrap: { position: 'absolute', left: 16, right: 16, gap: 4 },
 
-  // Bubble
+  // Seek-position bubble shown above thumb while dragging
   bubble: {
     position: 'absolute',
-    bottom: 68, // sits above the track row
+    bottom: 64,
     alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.82)',
+    backgroundColor: 'rgba(0,0,0,0.85)',
     borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    transform: [{ translateX: -32 }],
-    minWidth: 64,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    transform: [{ translateX: -36 }],
+    minWidth: 72,
   },
-  bubbleText: { fontSize: 14, fontFamily: 'Inter_700Bold', color: '#fff' },
+  bubbleText: { fontSize: 14, fontFamily: 'Inter_700Bold', color: '#fff', textAlign: 'center' },
   bubbleTip: {
     position: 'absolute',
     bottom: -5,
     width: 0, height: 0,
     borderLeftWidth: 5, borderRightWidth: 5, borderTopWidth: 6,
     borderLeftColor: 'transparent', borderRightColor: 'transparent',
-    borderTopColor: 'rgba(0,0,0,0.82)',
+    borderTopColor: 'rgba(0,0,0,0.85)',
   },
 
-  // Touch area — large vertical hit target
-  touchTarget: {
-    paddingVertical: 16,
-    borderRadius: 6,
-  },
-  touchTargetFocused: {
-    backgroundColor: 'rgba(0,229,255,0.07)',
-    borderWidth: 1.5,
-    borderColor: 'rgba(0,229,255,0.45)',
+  // GestureDetector target — generous vertical touch area
+  hitArea: {
+    paddingVertical: 18,
+    overflow: 'visible',
   },
 
-  // Track rail
+  // Visual track inside hitArea
   rail: {
     height: 4,
     backgroundColor: 'rgba(255,255,255,0.25)',
@@ -242,9 +184,11 @@ const scrubberStyles = StyleSheet.create({
   filled: {
     position: 'absolute',
     left: 0, top: 0, bottom: 0,
-    backgroundColor: '#7C3AED', // purple like the reference
+    backgroundColor: '#7C3AED',
     borderRadius: 2,
   },
+
+  // Thumb circle (positioned inside rail, overflow: 'visible' lets it poke out)
   thumb: {
     position: 'absolute',
     width: 16, height: 16, borderRadius: 8,
@@ -254,24 +198,15 @@ const scrubberStyles = StyleSheet.create({
     shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 4, shadowOffset: { width: 0, height: 2 },
   },
   thumbActive: {
-    width: 22, height: 22, borderRadius: 11,
-    top: -9, marginLeft: -11,
-    backgroundColor: '#fff',
+    width: 24, height: 24, borderRadius: 12,
+    top: -10, marginLeft: -12,
     elevation: 8,
   },
 
-  // Times
+  // Time labels below the track
   timeRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 },
   timeLeft:  { fontSize: 12, color: '#fff', fontFamily: 'Inter_600SemiBold' },
-  timeRight: { fontSize: 12, color: 'rgba(255,255,255,0.6)', fontFamily: 'Inter_500Medium' },
-
-  hint: {
-    textAlign: 'center',
-    fontSize: 11,
-    color: 'rgba(0,229,255,0.8)',
-    fontFamily: 'Inter_400Regular',
-    marginTop: 2,
-  },
+  timeRight: { fontSize: 12, color: 'rgba(255,255,255,0.55)', fontFamily: 'Inter_500Medium' },
 });
 
 export default function PlayerScreen() {
