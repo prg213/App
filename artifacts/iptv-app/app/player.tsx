@@ -497,7 +497,13 @@ export default function PlayerScreen() {
             currentTime={currentTime}
             duration={duration}
             insetBottom={insets.bottom}
-            onSeek={(t) => { player.currentTime = t; scheduleHide(); }}
+            onSeek={(t) => {
+              // Optimistic update so the scrubber stays at the dragged
+              // position while expo-video fires its next timeUpdate event.
+              setCurrentTime(t);
+              player.currentTime = t;
+              scheduleHide();
+            }}
           />
         </Animated.View>
       )}
