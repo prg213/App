@@ -84,9 +84,11 @@ export const StorageService = {
   async getParentalSettings(): Promise<ParentalSettings> {
     try {
       const data = await AsyncStorage.getItem(KEYS.PARENTAL);
-      return data ? (JSON.parse(data) as ParentalSettings) : { maxRating: 'all', lockEnabled: false };
+      return data
+        ? { blockedChannelIds: [], ...(JSON.parse(data) as ParentalSettings) }
+        : { maxRating: 'all', lockEnabled: false, blockedChannelIds: [] };
     } catch {
-      return { maxRating: 'all', lockEnabled: false };
+      return { maxRating: 'all', lockEnabled: false, blockedChannelIds: [] };
     }
   },
 

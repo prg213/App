@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
+import { useRouter } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
@@ -34,6 +35,7 @@ type PinFlowKind =
 export default function SettingsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const queryClient = useQueryClient();
   const { credentials, deviceMac, logout } = useAppContext();
   const {
@@ -387,6 +389,21 @@ export default function SettingsScreen() {
               </Text>
             </View>
             <Text style={{ color: colors.mutedForeground, fontSize: 18 }}>🔒</Text>
+          </TouchableOpacity>
+
+          {/* Blocked Channels */}
+          <TouchableOpacity
+            style={[styles.actionRow, { borderBottomColor: colors.border }]}
+            onPress={() => router.push('/blocked-channels')}
+            activeOpacity={0.7}
+          >
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.actionTitle, { color: colors.foreground }]}>Blocked Channels</Text>
+              <Text style={[styles.actionSub, { color: colors.mutedForeground }]}>
+                Hide specific Live TV channels
+              </Text>
+            </View>
+            <Text style={{ color: colors.mutedForeground, fontSize: 18 }}>›</Text>
           </TouchableOpacity>
 
           {/* Remove PIN */}

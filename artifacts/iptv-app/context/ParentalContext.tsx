@@ -14,6 +14,8 @@ interface ParentalContextValue {
   isLocked: boolean;
   maxRating: MaxRating;
   lockEnabled: boolean;
+  /** IDs of live channels manually blocked by the user. */
+  blockedChannelIds: string[];
 
   /** Attempt to unlock. Returns true on success. */
   unlockApp: (pin: string) => Promise<boolean>;
@@ -31,6 +33,8 @@ interface ParentalContextValue {
   setLockEnabled: (enabled: boolean) => Promise<void>;
   /** Change the max-rating ceiling. */
   setMaxRating: (rating: MaxRating) => Promise<void>;
+  /** Toggle a channel in/out of the blocked list. */
+  toggleBlockedChannel: (id: string) => Promise<void>;
   /** Provided by the root layout — clears credentials (logout) as the forgot-PIN escape. */
   resetAndLogout: () => void;
 }
@@ -41,12 +45,14 @@ const ParentalContext = createContext<ParentalContextValue>({
   isLocked: false,
   maxRating: 'all',
   lockEnabled: false,
+  blockedChannelIds: [],
   unlockApp: async () => false,
   verifyPin: async () => false,
   setPin: async () => false,
   disablePin: async () => false,
   setLockEnabled: async () => {},
   setMaxRating: async () => {},
+  toggleBlockedChannel: async () => {},
   resetAndLogout: () => {},
 });
 
@@ -62,6 +68,7 @@ export function ParentalContextProvider({
   const [isLocked, setIsLocked] = useState(false);
   const [maxRating, setMaxRatingState] = useState<MaxRating>('all');
   const [lockEnabled, setLockEnabledState] = useState(false);
+  const [blockedChannelIds, setBlockedChannelIds] = useState<string[]>([]);
 
   // Timestamp when the app went to background
   const bgTimestamp = useRef<number | null>(null);
@@ -77,6 +84,7 @@ export function ParentalContextProvider({
       setIsPinSet(pinSet);
       setMaxRatingState(settings.maxRating);
       setLockEnabledState(settings.lockEnabled);
+      setBlockedChannelIds(settings.blockedChannelIds ?? []);
       // Lock on first launch if PIN + lock are configured
       if (pinSet && settings.lockEnabled) {
         setIsLocked(true);
@@ -152,6 +160,16 @@ export function ParentalContextProvider({
     setMaxRatingState(rating);
   }, []);
 
+  const toggleBlockedChannel = useCallback(async (id: string) => {
+    const settings = await StorageService.getParentalSettings();
+    const current = settings.blockedChannelIds ?? [];
+    const updated = current.includes(id)
+      ? current.filter((bid) => bid !== id)
+      : [...current, id];
+    await StorageService.saveParentalSettings({ ...settings, blockedChannelIds: updated });
+    setBlockedChannelIds(updated);
+  }, []);
+
   return (
     <ParentalContext.Provider
       value={{
@@ -160,12 +178,14 @@ export function ParentalContextProvider({
         isLocked,
         maxRating,
         lockEnabled,
+        blockedChannelIds,
         unlockApp,
         verifyPin,
         setPin,
         disablePin,
         setLockEnabled,
         setMaxRating,
+        toggleBlockedChannel,
         resetAndLogout: onForgotPin,
       }}
     >

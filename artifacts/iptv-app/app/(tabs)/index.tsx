@@ -24,6 +24,7 @@ import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { useAppContext } from '@/context/AppContext';
+import { useParentalContext } from '@/context/ParentalContext';
 import { StorageService } from '@/services/storage';
 import {
   getXtreamLiveCategories,
@@ -164,6 +165,7 @@ export default function LiveTVScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { credentials, lastWatchedUrl } = useAppContext();
+  const { blockedChannelIds } = useParentalContext();
   const isWeb = Platform.OS === 'web';
 
   const isXtream = credentials?.type === 'xtream';
@@ -316,20 +318,23 @@ export default function LiveTVScreen() {
     staleTime: 5 * 60_000,
   });
 
-  // When Favourites is selected, use stored favourites as the channel list
+  // When Favourites is selected, use stored favourites as the channel list.
+  // Always exclude any channels the user has manually blocked.
   const channels: Channel[] = useMemo(() => {
-    if (isFavsSelected) {
-      return favorites.map((f) => ({
-        id: f.id,
-        name: f.name,
-        logo: f.logo,
-        groupTitle: f.groupTitle,
-        streamUrl: f.streamUrl,
-        epgId: f.epgId,
-      }));
-    }
-    return fetchedChannels;
-  }, [isFavsSelected, favorites, fetchedChannels]);
+    const base = isFavsSelected
+      ? favorites.map((f) => ({
+          id: f.id,
+          name: f.name,
+          logo: f.logo,
+          groupTitle: f.groupTitle,
+          streamUrl: f.streamUrl,
+          epgId: f.epgId,
+        }))
+      : fetchedChannels;
+    if (blockedChannelIds.length === 0) return base;
+    const blockedSet = new Set(blockedChannelIds);
+    return base.filter((ch) => !blockedSet.has(ch.id));
+  }, [isFavsSelected, favorites, fetchedChannels, blockedChannelIds]);
 
   const { data: epgMap } = useQuery<Map<string, EpgProgram[]>>({
     queryKey: ['xmltv-epg', credentials],
