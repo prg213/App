@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useColors } from '@/hooks/useColors';
 import { useAppContext } from '@/context/AppContext';
+import { StorageService } from '@/services/storage';
 import { getXtreamVodInfo, getXtreamVodUrl } from '@/services/xtreamApi';
 
 export default function MovieDetailScreen() {
@@ -23,6 +24,7 @@ export default function MovieDetailScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { credentials } = useAppContext();
+  const [isFav, setIsFav] = useState(false);
 
   const params = useLocalSearchParams<{
     id: string;
@@ -43,6 +45,13 @@ export default function MovieDetailScreen() {
     !!credentials.host &&
     !!credentials.username &&
     !!credentials.password;
+
+  // Load favourite state
+  useEffect(() => {
+    StorageService.getMovieFavorites().then((favs) => {
+      setIsFav(favs.some((f) => f.id === params.id));
+    });
+  }, [params.id]);
 
   // Fetch full VOD info to get plot/cast/director when not passed via params
   const needsInfo = isXtream && (!params.plot || !params.cast);
@@ -67,6 +76,26 @@ export default function MovieDetailScreen() {
   const releaseDate = params.releaseDate || vodInfo?.releaseDate || '';
   const duration = params.duration || vodInfo?.duration || '';
   const ext = params.ext || vodInfo?.containerExtension || 'mp4';
+
+  const handleToggleFav = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const updated = await StorageService.toggleMovieFavorite({
+      id: params.id,
+      name: params.title,
+      cover: cover || undefined,
+      rating: rating || undefined,
+      genre: genre || undefined,
+      streamId: params.id,
+      containerExtension: ext,
+      categoryId: '',
+      plot: plot || undefined,
+      cast: cast || undefined,
+      director: director || undefined,
+      releaseDate: releaseDate || undefined,
+      duration: duration || undefined,
+    });
+    setIsFav(updated.some((f) => f.id === params.id));
+  };
 
   const handlePlay = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -112,6 +141,16 @@ export default function MovieDetailScreen() {
             activeOpacity={0.8}
           >
             <Text style={styles.backIcon}>←</Text>
+          </TouchableOpacity>
+          {/* Favourite button */}
+          <TouchableOpacity
+            style={[styles.favBtn, { top: insets.top + (Platform.OS === 'web' ? 67 : 8) }]}
+            onPress={handleToggleFav}
+            activeOpacity={0.8}
+          >
+            <Text style={[styles.favIcon, { color: isFav ? '#EF4444' : '#fff' }]}>
+              {isFav ? '♥' : '♡'}
+            </Text>
           </TouchableOpacity>
         </View>
 
@@ -203,6 +242,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   backIcon: { fontSize: 20, color: '#fff' },
+  favBtn: {
+    position: 'absolute',
+    right: 16,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  favIcon: { fontSize: 20, lineHeight: 24 },
   content: {
     paddingHorizontal: 20,
     gap: 16,

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   FlatList,
   Image,
@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useColors } from '@/hooks/useColors';
 import { useAppContext } from '@/context/AppContext';
+import { StorageService } from '@/services/storage';
 import { getXtreamSeriesInfo, getXtreamSeriesUrl } from '@/services/xtreamApi';
 import type { Episode } from '@/types';
 
@@ -38,6 +39,7 @@ export default function SeriesDetailScreen() {
   }>();
 
   const [selectedSeason, setSelectedSeason] = useState(0);
+  const [isFav, setIsFav] = useState(false);
 
   const isXtream =
     credentials?.type === 'xtream' &&
@@ -45,7 +47,31 @@ export default function SeriesDetailScreen() {
     !!credentials.username &&
     !!credentials.password;
 
+  // Load favourite state
+  useEffect(() => {
+    StorageService.getSeriesFavorites().then((favs) => {
+      setIsFav(favs.some((f) => f.id === params.id));
+    });
+  }, [params.id]);
+
+  const handleToggleFav = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const updated = await StorageService.toggleSeriesFavorite({
+      id: params.id,
+      name: params.title,
+      cover: params.cover || undefined,
+      rating: params.rating || undefined,
+      genre: params.genre || undefined,
+      categoryId: '',
+      plot: params.plot || undefined,
+      cast: params.cast || undefined,
+      director: params.director || undefined,
+    });
+    setIsFav(updated.some((f) => f.id === params.id));
+  };
+
   const { data, isLoading } = useQuery({
+
     queryKey: ['series-info', params.id, credentials],
     queryFn: () =>
       getXtreamSeriesInfo(
@@ -103,6 +129,16 @@ export default function SeriesDetailScreen() {
             activeOpacity={0.8}
           >
             <Text style={styles.backIcon}>←</Text>
+          </TouchableOpacity>
+          {/* Favourite button */}
+          <TouchableOpacity
+            style={[styles.favBtn, { top: insets.top + (Platform.OS === 'web' ? 67 : 8) }]}
+            onPress={handleToggleFav}
+            activeOpacity={0.8}
+          >
+            <Text style={[styles.favIcon, { color: isFav ? '#EF4444' : '#fff' }]}>
+              {isFav ? '♥' : '♡'}
+            </Text>
           </TouchableOpacity>
         </View>
 
@@ -215,6 +251,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   backIcon: { fontSize: 20, color: '#fff' },
+  favBtn: {
+    position: 'absolute',
+    right: 16,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  favIcon: { fontSize: 20, lineHeight: 24 },
   content: { paddingHorizontal: 20, gap: 14, marginTop: -20 },
   metaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   metaBadge: {
