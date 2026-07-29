@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { getDeviceMac } from '@/services/macAddress';
 import { StorageService } from '@/services/storage';
 import type { Credentials } from '@/types';
@@ -10,6 +10,9 @@ interface AppContextValue {
   deviceMac: string;
   setActivated: (creds: Credentials) => Promise<void>;
   logout: () => Promise<void>;
+  /** URL of the last channel played in the fullscreen player — in-memory only */
+  lastWatchedUrl: string | null;
+  setLastWatchedUrl: (url: string | null) => void;
 }
 
 const AppContext = createContext<AppContextValue>({
@@ -30,6 +33,7 @@ export function AppContextProvider({
   const [isActivated, setIsActivated] = useState(false);
   const [credentials, setCredentials] = useState<Credentials | null>(null);
   const [deviceMac, setDeviceMac] = useState('');
+  const [lastWatchedUrl, setLastWatchedUrl] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -64,7 +68,7 @@ export function AppContextProvider({
 
   return (
     <AppContext.Provider
-      value={{ isLoading, isActivated, credentials, deviceMac, setActivated, logout }}
+      value={{ isLoading, isActivated, credentials, deviceMac, setActivated, logout, lastWatchedUrl, setLastWatchedUrl }}
     >
       {children}
     </AppContext.Provider>

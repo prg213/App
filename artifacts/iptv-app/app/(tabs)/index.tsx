@@ -163,7 +163,7 @@ export default function LiveTVScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { credentials } = useAppContext();
+  const { credentials, lastWatchedUrl } = useAppContext();
   const isWeb = Platform.OS === 'web';
 
   const isXtream = credentials?.type === 'xtream';
@@ -219,12 +219,39 @@ export default function LiveTVScreen() {
   const goingToPlayerRef = useRef(false);
   const selectedChannelRef = useRef(selectedChannel);
   useEffect(() => { selectedChannelRef.current = selectedChannel; }, [selectedChannel]);
+  const channelsRef = useRef(channels);
+  useEffect(() => { channelsRef.current = channels; }, [channels]);
+  const lastWatchedUrlRef = useRef(lastWatchedUrl);
+  useEffect(() => { lastWatchedUrlRef.current = lastWatchedUrl; }, [lastWatchedUrl]);
 
   useFocusEffect(
     useCallback(() => {
-      // Resume preview player when returning from fullscreen player
-      if (!isWeb && player && selectedChannelRef.current) {
-        try { player.play(); } catch {}
+      if (!isWeb && player) {
+        const curCh  = selectedChannelRef.current;
+        const lastUrl = lastWatchedUrlRef.current;
+
+        // If returning from fullscreen player where user navigated to a
+        // different channel, sync the preview box to that channel.
+        if (lastUrl && curCh && lastUrl !== curCh.streamUrl) {
+          const found = channelsRef.current.find((ch) => ch.streamUrl === lastUrl);
+          if (found) {
+            setSelectedChannel(found);
+            setPlayingChannel(found);
+            // The useEffect on selectedChannel.streamUrl reloads the preview player
+          } else {
+            try { player.play(); } catch {}
+          }
+        } else if (curCh) {
+          // Normal return — resume the same channel
+          try { player.play(); } catch {}
+        } else if (lastUrl) {
+          // Arriving at Live TV fresh after watching elsewhere — restore preview
+          const found = channelsRef.current.find((ch) => ch.streamUrl === lastUrl);
+          if (found) {
+            setSelectedChannel(found);
+            setPlayingChannel(found);
+          }
+        }
       }
 
       return () => {

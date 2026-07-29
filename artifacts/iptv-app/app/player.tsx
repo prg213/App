@@ -4,6 +4,7 @@ import {
   Linking,
   PanResponder,
   Platform,
+  Pressable,
   StatusBar,
   StyleSheet,
   Text,
@@ -39,7 +40,7 @@ function fmtSecs(secs: number) {
   return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
 }
 
-// ── Draggable scrubber bar ────────────────────────────────────────────────────
+// ── Scrubber bar (touch + D-pad remote) ──────────────────────────────────────
 function VodScrubber({
   currentTime,
   duration,
@@ -51,87 +52,182 @@ function VodScrubber({
   insetBottom: number;
   onSeek: (t: number) => void;
 }) {
-  const durationRef = useRef(duration);
-  const onSeekRef   = useRef(onSeek);
-  useEffect(() => { durationRef.current = duration; }, [duration]);
-  useEffect(() => { onSeekRef.current   = onSeek;   }, [onSeek]);
+  const durationRef    = useRef(duration);
+  const onSeekRef      = useRef(onSeek);
+  const currentTimeRef = useRef(currentTime);
+  useEffect(() => { durationRef.current    = duration;    }, [duration]);
+  useEffect(() => { onSeekRef.current      = onSeek;      }, [onSeek]);
+  useEffect(() => { currentTimeRef.current = currentTime; }, [currentTime]);
 
-  // Track width from onLayout — reliable and synchronous
-  const trackW = useRef(1);
-
-  // Track's absolute left edge — derived synchronously from the touch event
-  // (pageX - locationX), so no async measure() call is needed.
+  // ── Touch scrubbing ───────────────────────────────────────────────────────
+  const trackW    = useRef(1);
   const trackLeft = useRef(0);
-
-  const [scrubbing, setScrubbing] = useState(false);
-  const [scrubFrac, setScrubFrac] = useState(0);
-
-  const hasDuration = duration > 0 && isFinite(duration);
-  const progress    = hasDuration ? currentTime / duration : 0;
-  const display     = scrubbing ? scrubFrac : progress;
-
+  const [touchScrub, setTouchScrub] = useState(false);
+  const [touchFrac, setTouchFrac]   = useState(0);
   const clamp = (v: number) => Math.max(0, Math.min(1, v));
 
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => durationRef.current > 0,
-      onMoveShouldSetPanResponder:  () => durationRef.current > 0,
-      onPanResponderGrant: (e) => {
-        // Derive track left edge synchronously — no async measure() needed.
-        // pageX is absolute screen X; locationX is X relative to this view.
-        const { pageX, locationX } = e.nativeEvent;
-        trackLeft.current = pageX - locationX;
-        const frac = clamp(locationX / Math.max(trackW.current, 1));
-        setScrubbing(true);
-        setScrubFrac(frac);
-      },
-      onPanResponderMove: (e) => {
-        const frac = clamp(
-          (e.nativeEvent.pageX - trackLeft.current) / Math.max(trackW.current, 1),
-        );
-        setScrubFrac(frac);
-      },
-      onPanResponderRelease: (e) => {
-        const frac = clamp(
-          (e.nativeEvent.pageX - trackLeft.current) / Math.max(trackW.current, 1),
-        );
-        setScrubbing(false);
-        onSeekRef.current(frac * durationRef.current);
-      },
-      onPanResponderTerminate: () => setScrubbing(false),
-    })
-  ).current;
+  const panResponder = useRef(PanResponder.create({
+    onStartShouldSetPanResponder: () => durationRef.current > 0,
+    onMoveShouldSetPanResponder:  () => durationRef.current > 0,
+    onPanResponderGrant: (e) => {
+      const { pageX, locationX } = e.nativeEvent;
+      trackLeft.current = pageX - locationX;
+      setTouchScrub(true);
+      setTouchFrac(clamp(locationX / Math.max(trackW.current, 1)));
+    },
+    onPanResponderMove: (e) => {
+      setTouchFrac(clamp((e.nativeEvent.pageX - trackLeft.current) / Math.max(trackW.current, 1)));
+    },
+    onPanResponderRelease: (e) => {
+      const frac = clamp((e.nativeEvent.pageX - trackLeft.current) / Math.max(trackW.current, 1));
+      setTouchScrub(false);
+      onSeekRef.current(frac * durationRef.current);
+    },
+    onPanResponderTerminate: () => setTouchScrub(false),
+  })).current;
+
+  // ── D-pad / remote-control seek ───────────────────────────────────────────
+  const [dpadFocused, setDpadFocused] = useState(false);
+  const [seekMode,    setSeekMode]    = useState(false);
+  const [seekTime,    setSeekTime]    = useState(0);
+  const seekModeRef  = useRef(false);
+  const seekTimeRef  = useRef(0);
+  const autoTimer    = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const commitSeek = useCallback(() => {
+    if (autoTimer.current) clearTimeout(autoTimer.current);
+    const t = seekTimeRef.current;
+    seekModeRef.current = false;
+    setSeekMode(false);
+    onSeekRef.current(t);
+  }, []);
+
+  const resetAutoCommit = useCallback(() => {
+    if (autoTimer.current) clearTimeout(autoTimer.current);
+    autoTimer.current = setTimeout(commitSeek, 1500);
+  }, [commitSeek]);
+
+  const adjustSeek = useCallback((delta: number) => {
+    if (!seekModeRef.current) {
+      // Enter seek mode at current position + first step
+      const t = Math.max(0, Math.min(currentTimeRef.current + delta, durationRef.current));
+      seekTimeRef.current = t;
+      setSeekTime(t);
+      seekModeRef.current = true;
+      setSeekMode(true);
+    } else {
+      const t = Math.max(0, Math.min(seekTimeRef.current + delta, durationRef.current));
+      seekTimeRef.current = t;
+      setSeekTime(t);
+    }
+    resetAutoCommit();
+  }, [resetAutoCommit]);
+
+  const handleKeyDown = useCallback((e: any) => {
+    const kc: number = e?.nativeEvent?.keyCode ?? 0;
+    // Android D-pad codes: left=21, right=22, center=23, enter=66
+    if      (kc === 22) { adjustSeek(+30); }
+    else if (kc === 21) { adjustSeek(-30); }
+    else if (kc === 23 || kc === 66) {
+      if (seekModeRef.current) commitSeek();
+      else {
+        const t = currentTimeRef.current;
+        seekTimeRef.current = t;
+        setSeekTime(t);
+        seekModeRef.current = true;
+        setSeekMode(true);
+        resetAutoCommit();
+      }
+    }
+  }, [adjustSeek, commitSeek, resetAutoCommit]);
+
+  // ── Display ───────────────────────────────────────────────────────────────
+  const hasDuration = duration > 0 && isFinite(duration);
+  const display = touchScrub
+    ? touchFrac
+    : seekMode
+    ? seekTime / Math.max(duration, 1)
+    : hasDuration ? currentTime / duration : 0;
 
   return (
     <View style={[scrubberStyles.wrap, { bottom: insetBottom + 16 }]}>
+      {/* Time display */}
       <View style={scrubberStyles.timeRow}>
-        <Text style={scrubberStyles.timeText}>{fmtSecs(currentTime)}</Text>
-        {hasDuration && <Text style={scrubberStyles.timeText}>{fmtSecs(duration)}</Text>}
-      </View>
-      <View
-        style={scrubberStyles.track}
-        onLayout={(e) => { trackW.current = e.nativeEvent.layout.width; }}
-        {...panResponder.panHandlers}
-        hitSlop={{ top: 20, bottom: 20, left: 10, right: 10 }}
-      >
-        <View style={[scrubberStyles.fill, { width: `${display * 100}%` as any }]} />
+        <Text style={[scrubberStyles.timeText, seekMode && scrubberStyles.timeSeek]}>
+          {fmtSecs(seekMode ? seekTime : currentTime)}
+        </Text>
         {hasDuration && (
-          <View style={[scrubberStyles.thumb, { left: `${display * 100}%` as any }]} />
+          <Text style={scrubberStyles.timeText}>{fmtSecs(duration)}</Text>
         )}
       </View>
+
+      {/* D-pad focusable wrapper around the track */}
+      <Pressable
+        focusable={hasDuration}
+        onFocus={() => setDpadFocused(true)}
+        onBlur={() => {
+          setDpadFocused(false);
+          if (seekModeRef.current) commitSeek();
+        }}
+        onPress={() => {
+          if (!hasDuration) return;
+          if (seekModeRef.current) commitSeek();
+          else {
+            const t = currentTimeRef.current;
+            seekTimeRef.current = t;
+            setSeekTime(t);
+            seekModeRef.current = true;
+            setSeekMode(true);
+            resetAutoCommit();
+          }
+        }}
+        onKeyDown={handleKeyDown as any}
+        style={({ focused }) => [
+          scrubberStyles.trackWrapper,
+          (focused || dpadFocused || seekMode) && scrubberStyles.trackWrapperFocused,
+        ]}
+      >
+        <View
+          style={scrubberStyles.track}
+          onLayout={(e) => { trackW.current = e.nativeEvent.layout.width; }}
+          {...panResponder.panHandlers}
+        >
+          <View style={[scrubberStyles.fill, { width: `${display * 100}%` as any }]} />
+          {hasDuration && (
+            <View style={[
+              scrubberStyles.thumb,
+              { left: `${display * 100}%` as any },
+              (seekMode || dpadFocused) && scrubberStyles.thumbActive,
+            ]} />
+          )}
+        </View>
+      </Pressable>
+
+      {/* Remote hint */}
+      {seekMode ? (
+        <Text style={scrubberStyles.hint}>◄ ► to seek · OK or pause to confirm</Text>
+      ) : dpadFocused && hasDuration ? (
+        <Text style={scrubberStyles.hint}>Press OK to seek</Text>
+      ) : null}
     </View>
   );
 }
 
 const scrubberStyles = StyleSheet.create({
-  wrap: {
-    position: 'absolute',
-    left: 16,
-    right: 16,
-    gap: 8,
-  },
+  wrap: { position: 'absolute', left: 16, right: 16, gap: 6 },
   timeRow: { flexDirection: 'row', justifyContent: 'space-between' },
   timeText: { fontSize: 12, color: 'rgba(255,255,255,0.85)', fontFamily: 'Inter_500Medium' },
+  timeSeek: { fontSize: 20, color: '#00E5FF', fontFamily: 'Inter_700Bold' },
+  trackWrapper: {
+    paddingVertical: 12,
+    borderRadius: 8,
+    paddingHorizontal: 4,
+  },
+  trackWrapperFocused: {
+    backgroundColor: 'rgba(0,229,255,0.08)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(0,229,255,0.5)',
+  },
   track: {
     height: 4,
     backgroundColor: 'rgba(255,255,255,0.25)',
@@ -142,16 +238,22 @@ const scrubberStyles = StyleSheet.create({
   fill: { position: 'absolute', left: 0, top: 0, bottom: 0, backgroundColor: '#3B82F6', borderRadius: 2 },
   thumb: {
     position: 'absolute',
-    width: 14,
-    height: 14,
-    borderRadius: 7,
+    width: 14, height: 14, borderRadius: 7,
     backgroundColor: '#fff',
-    top: -5,
-    marginLeft: -7,
-    shadowColor: '#000',
-    shadowOpacity: 0.4,
-    shadowRadius: 4,
+    top: -5, marginLeft: -7,
     elevation: 4,
+  },
+  thumbActive: {
+    width: 20, height: 20, borderRadius: 10,
+    backgroundColor: '#00E5FF',
+    top: -8, marginLeft: -10,
+    elevation: 6,
+  },
+  hint: {
+    textAlign: 'center',
+    fontSize: 11,
+    color: 'rgba(0,229,255,0.75)',
+    fontFamily: 'Inter_400Regular',
   },
 });
 
@@ -169,7 +271,7 @@ export default function PlayerScreen() {
   const isWeb = Platform.OS === 'web';
   const isLive = params.type === 'live';
 
-  const { credentials } = useAppContext();
+  const { credentials, setLastWatchedUrl } = useAppContext();
   const isXtream = credentials?.type === 'xtream';
   const xmltvUrl = isXtream ? getXtreamXmltvUrl(buildCreds(credentials)) : null;
 
@@ -261,6 +363,11 @@ export default function PlayerScreen() {
   }, [player, isWeb]);
 
   // ── Channel navigation ───────────────────────────────────────────────────
+  // Track last-watched URL globally so the channel list can restore it on back
+  useEffect(() => {
+    setLastWatchedUrl(params.url);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const switchChannel = useCallback((entry: ChannelEntry, newIdx: number) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setChannelIdx(newIdx);
@@ -269,11 +376,12 @@ export default function PlayerScreen() {
     setIsBuffering(true);
     setHasError(false);
     setErrorMsg('');
+    setLastWatchedUrl(entry.url);
     try {
       player.replace(entry.url);
       player.play();
     } catch {}
-  }, [player]);
+  }, [player, setLastWatchedUrl]);
 
   const handlePrevChannel = useCallback(() => {
     if (!prevChannel) return;
@@ -409,11 +517,27 @@ export default function PlayerScreen() {
             <Text style={styles.backIcon}>←</Text>
           </TouchableOpacity>
 
-          {/* Play/pause — absolute centre */}
+          {/* Seek + play/pause buttons — absolute centre */}
           <View style={styles.centerAbs} pointerEvents="box-none">
+            <Pressable
+              focusable
+              style={({ focused }) => [styles.seekBtn, focused && styles.focusRing]}
+              onPress={() => seek(-30)}
+            >
+              <Text style={styles.seekIcon}>⏮</Text>
+              <Text style={styles.seekLabel}>-30s</Text>
+            </Pressable>
             <TouchableOpacity style={styles.playBtn} onPress={togglePlay} activeOpacity={0.8}>
               <Text style={styles.playIcon}>{isPlaying ? '⏸' : '▶'}</Text>
             </TouchableOpacity>
+            <Pressable
+              focusable
+              style={({ focused }) => [styles.seekBtn, focused && styles.focusRing]}
+              onPress={() => seek(+30)}
+            >
+              <Text style={styles.seekIcon}>⏭</Text>
+              <Text style={styles.seekLabel}>+30s</Text>
+            </Pressable>
           </View>
 
           {/* Scrubber + times — absolute bottom */}
@@ -563,9 +687,15 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.3)',
   },
   playIcon: { fontSize: 28, color: '#fff' },
-  seekBtn: { alignItems: 'center', gap: 4 },
+  seekBtn: {
+    alignItems: 'center', gap: 4,
+    paddingHorizontal: 20, paddingVertical: 14,
+    borderRadius: 12, borderWidth: 2, borderColor: 'transparent',
+    backgroundColor: 'rgba(0,0,0,0.35)',
+  },
   seekIcon: { fontSize: 22, color: '#fff' },
   seekLabel: { fontSize: 11, color: 'rgba(255,255,255,0.7)', fontFamily: 'Inter_500Medium' },
+  focusRing: { borderColor: '#00E5FF' },
 
   centerAbs: {
     position: 'absolute',

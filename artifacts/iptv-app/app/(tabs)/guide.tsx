@@ -32,7 +32,7 @@ import type { Channel, EpgProgram } from '@/types';
 // ─── Guide constants ────────────────────────────────────────────────────────
 const PX_PER_MIN = 2;
 const CHANNEL_W = 145;
-const ROW_H = 58;
+const ROW_H = 72;
 const TIME_H = 38;
 const SLOT_MINS = 60;           // 1-hour time slots
 const DAY_MINS = 24 * 60;       // full day
@@ -110,7 +110,14 @@ function TimeHeader({ dayStartMs, colors }: { dayStartMs: number; colors: any })
 
 // ─── Channel cell ─────────────────────────────────────────────────────────────
 
-function ChannelCell({ channel, colors }: { channel: Channel; colors: any }) {
+function ChannelCell({
+  channel, nowTitle, nextTitle, colors,
+}: {
+  channel: Channel;
+  nowTitle?: string | null;
+  nextTitle?: string | null;
+  colors: any;
+}) {
   return (
     <View style={[styles.channelCell, { borderBottomColor: colors.border, backgroundColor: colors.card }]}>
       <View style={[styles.chLogo, { backgroundColor: colors.secondary }]}>
@@ -122,7 +129,14 @@ function ChannelCell({ channel, colors }: { channel: Channel; colors: any }) {
           </Text>
         )}
       </View>
-      <Text style={[styles.chName, { color: colors.foreground }]} numberOfLines={2}>{channel.name}</Text>
+      <View style={{ flex: 1, gap: 1 }}>
+        <Text style={[styles.chName, { color: colors.foreground }]} numberOfLines={1}>{channel.name}</Text>
+        {nowTitle ? (
+          <Text style={[styles.chNow, { color: '#3B82F6' }]} numberOfLines={1}>▶ {nowTitle}</Text>
+        ) : nextTitle ? (
+          <Text style={[styles.chNow, { color: colors.mutedForeground }]} numberOfLines={1}>Next: {nextTitle}</Text>
+        ) : null}
+      </View>
     </View>
   );
 }
@@ -565,9 +579,21 @@ function FullGuide({
 
             {/* Left: channel name column */}
             <View style={[styles.leftCol, { borderRightColor: colors.border }]}>
-              {channels.map((ch) => (
-                <ChannelCell key={ch.id} channel={ch} colors={colors} />
-              ))}
+              {channels.map((ch) => {
+                const progs = epgMap?.get(ch.epgId ?? ch.id) ?? [];
+                const nowIdx = progs.findIndex(
+                  (p) => p.start.getTime() <= now && now < p.end.getTime(),
+                );
+                return (
+                  <ChannelCell
+                    key={ch.id}
+                    channel={ch}
+                    nowTitle={nowIdx >= 0 ? progs[nowIdx].title : null}
+                    nextTitle={nowIdx >= 0 && progs[nowIdx + 1] ? progs[nowIdx + 1].title : null}
+                    colors={colors}
+                  />
+                );
+              })}
             </View>
 
             {/* Right: horizontal scroll area for programmes */}
@@ -612,14 +638,23 @@ function FullGuide({
           colors={colors}
           onClose={() => setSelected(null)}
           onWatch={() => {
+            const chList = channels.map((ch) => ({
+              url: ch.streamUrl,
+              title: ch.name,
+              epgId: ch.epgId ?? ch.id,
+            }));
+            const idx = channels.findIndex((ch) => ch.id === selected!.channel.id);
             setSelected(null);
             router.push({
               pathname: '/player',
               params: {
-                url: selected.channel.streamUrl,
-                title: `${selected.channel.name} — ${selected.program.title}`,
+                url: selected!.channel.streamUrl,
+                title: `${selected!.channel.name} — ${selected!.program.title}`,
                 type: 'live',
-                logo: selected.channel.logo ?? '',
+                logo: selected!.channel.logo ?? '',
+                epgId: selected!.channel.epgId ?? selected!.channel.id,
+                channelsJson: JSON.stringify(chList),
+                channelIndex: String(idx),
               },
             });
           }}
@@ -945,7 +980,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center', alignItems: 'center', flexShrink: 0,
   },
   chInitials: { fontSize: 10, fontFamily: 'Inter_700Bold' },
-  chName: { flex: 1, fontSize: 11, fontFamily: 'Inter_500Medium', lineHeight: 14 },
+  chName: { fontSize: 11, fontFamily: 'Inter_500Medium', lineHeight: 14 },
+  chNow:  { fontSize: 9,  fontFamily: 'Inter_400Regular', lineHeight: 12 },
   timeHeader: { flexDirection: 'row', borderBottomWidth: StyleSheet.hairlineWidth },
   timeSlot: {
     width: SLOT_W, height: TIME_H, justifyContent: 'center',
