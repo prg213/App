@@ -145,6 +145,8 @@ export interface EpgProgram {
 
 export interface WatchHistoryEntry {
   id: string;
+  /** For series episodes: the parent series ID so the rail can navigate to the series page. */
+  parentId?: string;
   title: string;
   cover?: string;
   type: 'movie' | 'series';

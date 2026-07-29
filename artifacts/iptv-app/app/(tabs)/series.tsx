@@ -16,6 +16,7 @@ import { useColors } from '@/hooks/useColors';
 import { useAppContext } from '@/context/AppContext';
 import { SeriesCard } from '@/components/SeriesCard';
 import { MovieCardSkeleton } from '@/components/SkeletonCard';
+import { ContinueWatchingRail } from '@/components/ContinueWatchingRail';
 import { getXtreamSeriesCategories, getXtreamSeries } from '@/services/xtreamApi';
 import { StorageService } from '@/services/storage';
 import type { Series, Category, FavoriteSeries } from '@/types';
@@ -179,6 +180,9 @@ export default function SeriesScreen() {
             <Text style={[styles.refreshIcon, { color: isRefetching ? colors.primary : colors.mutedForeground }]}>↻</Text>
           </TouchableOpacity>
         </View>
+
+        {/* Continue Watching rail */}
+        <ContinueWatchingRail type="series" />
 
         {isLoading && !isFavsSelected ? (
           <FlatList

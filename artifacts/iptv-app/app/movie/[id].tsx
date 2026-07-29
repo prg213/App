@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -10,7 +10,7 @@ import {
   View,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
@@ -19,12 +19,19 @@ import { useAppContext } from '@/context/AppContext';
 import { StorageService } from '@/services/storage';
 import { getXtreamVodInfo, getXtreamVodUrl } from '@/services/xtreamApi';
 
+function fmtSecs(secs: number) {
+  const s = Math.floor(secs), m = Math.floor(s / 60), h = Math.floor(m / 60);
+  const ss = String(s % 60).padStart(2, '0'), mm = String(m % 60).padStart(2, '0');
+  return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
+}
+
 export default function MovieDetailScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { credentials } = useAppContext();
   const [isFav, setIsFav] = useState(false);
+  const [savedPosition, setSavedPosition] = useState<number | null>(null);
 
   const params = useLocalSearchParams<{
     id: string;
@@ -46,12 +53,18 @@ export default function MovieDetailScreen() {
     !!credentials.username &&
     !!credentials.password;
 
-  // Load favourite state
-  useEffect(() => {
-    StorageService.getMovieFavorites().then((favs) => {
-      setIsFav(favs.some((f) => f.id === params.id));
-    });
-  }, [params.id]);
+  // Load favourite state + saved watch position (refresh on focus so resuming works)
+  useFocusEffect(
+    useCallback(() => {
+      StorageService.getMovieFavorites().then((favs) => {
+        setIsFav(favs.some((f) => f.id === params.id));
+      });
+      StorageService.getWatchHistory().then((h) => {
+        const entry = h.find((e) => e.id === params.id);
+        setSavedPosition(entry?.position && entry.position > 5 ? entry.position : null);
+      });
+    }, [params.id]),
+  );
 
   // Fetch full VOD info to get plot/cast/director when not passed via params
   const needsInfo = isXtream && (!params.plot || !params.cast);
@@ -97,20 +110,29 @@ export default function MovieDetailScreen() {
     setIsFav(updated.some((f) => f.id === params.id));
   };
 
-  const handlePlay = () => {
+  const buildPlayUrl = () => {
+    if (!isXtream) return '';
+    return getXtreamVodUrl(
+      { host: credentials!.host!, username: credentials!.username!, password: credentials!.password! },
+      params.id,
+      ext,
+    );
+  };
+
+  const handlePlay = (startAt?: number) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    let url = '';
-    if (isXtream) {
-      url = getXtreamVodUrl(
-        { host: credentials!.host!, username: credentials!.username!, password: credentials!.password! },
-        params.id,
-        ext,
-      );
-    }
+    const url = buildPlayUrl();
     if (!url) return;
     router.push({
       pathname: '/player',
-      params: { url, title: params.title, type: 'vod', logo: cover },
+      params: {
+        url,
+        title: params.title,
+        type: 'vod',
+        logo: cover,
+        contentId: params.id,
+        ...(startAt ? { startAt: String(startAt) } : {}),
+      },
     });
   };
 
@@ -183,11 +205,31 @@ export default function MovieDetailScreen() {
           {/* Title */}
           <Text style={[styles.titleText, { color: colors.foreground }]}>{params.title}</Text>
 
-          {/* Play Button */}
-          <TouchableOpacity style={styles.playBtn} onPress={handlePlay} activeOpacity={0.85}>
-            <Text style={styles.playIcon}>▶</Text>
-            <Text style={styles.playLabel}>Play</Text>
-          </TouchableOpacity>
+          {/* Play / Resume Buttons */}
+          {savedPosition ? (
+            <View style={styles.btnRow}>
+              <TouchableOpacity
+                style={[styles.playBtn, { flex: 1 }]}
+                onPress={() => handlePlay(savedPosition)}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.playIcon}>▶</Text>
+                <Text style={styles.playLabel}>Resume {fmtSecs(savedPosition)}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.secondaryBtn, { borderColor: colors.border }]}
+                onPress={() => handlePlay()}
+                activeOpacity={0.85}
+              >
+                <Text style={[styles.secondaryLabel, { color: colors.foreground }]}>From start</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <TouchableOpacity style={styles.playBtn} onPress={() => handlePlay()} activeOpacity={0.85}>
+              <Text style={styles.playIcon}>▶</Text>
+              <Text style={styles.playLabel}>Play</Text>
+            </TouchableOpacity>
+          )}
 
           {/* Plot */}
           {infoLoading && needsInfo ? (
@@ -290,6 +332,16 @@ const styles = StyleSheet.create({
   },
   playIcon: { fontSize: 18, color: '#fff' },
   playLabel: { fontSize: 16, fontFamily: 'Inter_600SemiBold', color: '#fff' },
+  btnRow: { flexDirection: 'row', gap: 10 },
+  secondaryBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 15,
+    borderRadius: 14,
+    borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  secondaryLabel: { fontSize: 14, fontFamily: 'Inter_500Medium' },
   section: { gap: 8 },
   sectionLabel: {
     fontSize: 11,

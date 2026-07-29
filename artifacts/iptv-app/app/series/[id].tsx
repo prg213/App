@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   FlatList,
   Image,
@@ -15,11 +15,12 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
+import { useFocusEffect } from 'expo-router';
 import { useColors } from '@/hooks/useColors';
 import { useAppContext } from '@/context/AppContext';
 import { StorageService } from '@/services/storage';
 import { getXtreamSeriesInfo, getXtreamSeriesUrl } from '@/services/xtreamApi';
-import type { Episode } from '@/types';
+import type { Episode, WatchHistoryEntry } from '@/types';
 
 export default function SeriesDetailScreen() {
   const colors = useColors();
@@ -40,6 +41,7 @@ export default function SeriesDetailScreen() {
 
   const [selectedSeason, setSelectedSeason] = useState(0);
   const [isFav, setIsFav] = useState(false);
+  const [episodeHistory, setEpisodeHistory] = useState<Record<string, WatchHistoryEntry>>({});
 
   const isXtream =
     credentials?.type === 'xtream' &&
@@ -47,12 +49,19 @@ export default function SeriesDetailScreen() {
     !!credentials.username &&
     !!credentials.password;
 
-  // Load favourite state
-  useEffect(() => {
-    StorageService.getSeriesFavorites().then((favs) => {
-      setIsFav(favs.some((f) => f.id === params.id));
-    });
-  }, [params.id]);
+  // Load favourite state + episode watch history (refresh on focus after returning from player)
+  useFocusEffect(
+    useCallback(() => {
+      StorageService.getSeriesFavorites().then((favs) => {
+        setIsFav(favs.some((f) => f.id === params.id));
+      });
+      StorageService.getWatchHistory().then((h) => {
+        const map: Record<string, WatchHistoryEntry> = {};
+        h.filter((e) => e.type === 'series').forEach((e) => { map[e.id] = e; });
+        setEpisodeHistory(map);
+      });
+    }, [params.id]),
+  );
 
   const handleToggleFav = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -85,7 +94,7 @@ export default function SeriesDetailScreen() {
   const seasons = data?.seasons ?? [];
   const activeSeason = seasons[selectedSeason];
 
-  const handlePlayEpisode = (ep: Episode) => {
+  const handlePlayEpisode = (ep: Episode, startAt?: number) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const url = getXtreamSeriesUrl(
       { host: credentials!.host!, username: credentials!.username!, password: credentials!.password! },
@@ -99,6 +108,9 @@ export default function SeriesDetailScreen() {
         title: `${params.title} - ${ep.title}`,
         type: 'series',
         logo: ep.info?.cover ?? params.cover ?? '',
+        contentId: ep.streamId,
+        parentId: params.id,
+        ...(startAt ? { startAt: String(startAt) } : {}),
       },
     });
   };
@@ -204,31 +216,57 @@ export default function SeriesDetailScreen() {
               <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>
                 {activeSeason?.name.toUpperCase()} — {activeSeason?.episodes.length ?? 0} EPISODES
               </Text>
-              {activeSeason?.episodes.map((ep) => (
-                <TouchableOpacity
-                  key={ep.id}
-                  style={[styles.episodeRow, { backgroundColor: colors.card, borderColor: colors.border }]}
-                  onPress={() => handlePlayEpisode(ep)}
-                  activeOpacity={0.7}
-                >
-                  <View style={[styles.epNumBox, { backgroundColor: colors.secondary }]}>
-                    <Text style={[styles.epNum, { color: colors.primary }]}>
-                      {String(ep.episodeNum).padStart(2, '0')}
-                    </Text>
-                  </View>
-                  <View style={{ flex: 1, gap: 3 }}>
-                    <Text style={[styles.epTitle, { color: colors.foreground }]} numberOfLines={2}>
-                      {ep.title}
-                    </Text>
-                    {ep.info?.duration && (
-                      <Text style={[styles.epDuration, { color: colors.mutedForeground }]}>
-                        {ep.info.duration}
+              {activeSeason?.episodes.map((ep) => {
+                const hist = episodeHistory[ep.streamId];
+                const histProgress = hist?.position && hist?.duration
+                  ? hist.position / hist.duration : 0;
+                return (
+                  <TouchableOpacity
+                    key={ep.id}
+                    style={[styles.episodeRow, { backgroundColor: colors.card, borderColor: colors.border }]}
+                    onPress={() => handlePlayEpisode(ep)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={[styles.epNumBox, { backgroundColor: colors.secondary }]}>
+                      <Text style={[styles.epNum, { color: colors.primary }]}>
+                        {String(ep.episodeNum).padStart(2, '0')}
                       </Text>
+                    </View>
+                    <View style={{ flex: 1, gap: 3 }}>
+                      <Text style={[styles.epTitle, { color: colors.foreground }]} numberOfLines={2}>
+                        {ep.title}
+                      </Text>
+                      {ep.info?.duration && (
+                        <Text style={[styles.epDuration, { color: colors.mutedForeground }]}>
+                          {ep.info.duration}
+                        </Text>
+                      )}
+                      {/* Progress bar for partially watched episodes */}
+                      {histProgress > 0 && (
+                        <View style={[styles.epProgressRail, { backgroundColor: colors.secondary }]}>
+                          <View
+                            style={[
+                              styles.epProgressFill,
+                              { width: `${Math.min(100, histProgress * 100)}%` as any },
+                            ]}
+                          />
+                        </View>
+                      )}
+                    </View>
+                    {hist?.position && hist.position > 5 ? (
+                      <TouchableOpacity
+                        style={[styles.resumeBtn, { borderColor: colors.primary }]}
+                        onPress={() => handlePlayEpisode(ep, hist.position)}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={[styles.resumeLabel, { color: colors.primary }]}>Resume</Text>
+                      </TouchableOpacity>
+                    ) : (
+                      <Text style={{ color: colors.mutedForeground, fontSize: 18 }}>▶</Text>
                     )}
-                  </View>
-                  <Text style={{ color: colors.mutedForeground, fontSize: 18 }}>▶</Text>
-                </TouchableOpacity>
-              ))}
+                  </TouchableOpacity>
+                );
+              })}
             </>
           )}
         </View>
@@ -333,4 +371,25 @@ const styles = StyleSheet.create({
   epNum: { fontSize: 14, fontFamily: 'Inter_700Bold' },
   epTitle: { fontSize: 14, fontFamily: 'Inter_500Medium', lineHeight: 20 },
   epDuration: { fontSize: 12, fontFamily: 'Inter_400Regular' },
+  epProgressRail: {
+    height: 3,
+    borderRadius: 1.5,
+    overflow: 'hidden',
+    marginTop: 4,
+  },
+  epProgressFill: {
+    height: '100%',
+    backgroundColor: '#3B82F6',
+    borderRadius: 1.5,
+  },
+  resumeBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexShrink: 0,
+  },
+  resumeLabel: { fontSize: 11, fontFamily: 'Inter_600SemiBold' },
 });

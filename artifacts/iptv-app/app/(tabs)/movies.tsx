@@ -16,6 +16,7 @@ import { useColors } from '@/hooks/useColors';
 import { useAppContext } from '@/context/AppContext';
 import { MovieCard } from '@/components/MovieCard';
 import { MovieCardSkeleton } from '@/components/SkeletonCard';
+import { ContinueWatchingRail } from '@/components/ContinueWatchingRail';
 import { getXtreamVodCategories, getXtreamVodStreams } from '@/services/xtreamApi';
 import { StorageService } from '@/services/storage';
 import type { Movie, Category, FavoriteMovie } from '@/types';
@@ -189,6 +190,9 @@ export default function MoviesScreen() {
             <Text style={[styles.refreshIcon, { color: isRefetching ? colors.primary : colors.mutedForeground }]}>↻</Text>
           </TouchableOpacity>
         </View>
+
+        {/* Continue Watching rail */}
+        <ContinueWatchingRail type="movie" />
 
         {isLoading && !isFavsSelected ? (
           <FlatList

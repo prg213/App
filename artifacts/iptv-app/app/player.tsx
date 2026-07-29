@@ -2,8 +2,10 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Animated,
   Linking,
+  Modal,
   Platform,
   Pressable,
+  ScrollView,
   StatusBar,
   StyleSheet,
   Text,
@@ -18,9 +20,17 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
 import { useAppContext } from '@/context/AppContext';
+import { StorageService } from '@/services/storage';
 import { getXtreamXmltvUrl } from '@/services/xtreamApi';
 import { fetchAndParseXmltv } from '@/services/epgService';
 import type { EpgProgram } from '@/types';
+
+const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2] as const;
+const FITS = [
+  { value: 'contain' as const, label: 'Fit' },
+  { value: 'cover' as const, label: 'Fill' },
+  { value: 'fill' as const, label: 'Stretch' },
+];
 
 type ChannelEntry = { url: string; title: string; epgId: string };
 
@@ -217,11 +227,20 @@ export default function PlayerScreen() {
     epgId?: string;
     channelsJson?: string;
     channelIndex?: string;
+    /** Stable content ID used as the history key (movie stream ID or episode stream ID). */
+    contentId?: string;
+    /** For series episodes: the parent series ID, used by the Continue Watching rail. */
+    parentId?: string;
+    /** Logo/cover used as the history thumbnail. */
+    logo?: string;
+    /** Seconds to seek to after the player is ready. */
+    startAt?: string;
   }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const isWeb = Platform.OS === 'web';
   const isLive = params.type === 'live';
+  const startAtSecs = params.startAt ? parseFloat(params.startAt) : 0;
 
   const { credentials, setLastWatchedUrl } = useAppContext();
   const isXtream = credentials?.type === 'xtream';
@@ -251,6 +270,18 @@ export default function PlayerScreen() {
   const [showControls, setShowControls] = useState(false);
   const [showInfo, setShowInfo] = useState(true);
   const [nowTs, setNowTs] = useState(Date.now());
+
+  // ── Settings state ────────────────────────────────────────────────────────
+  const [showSettings, setShowSettings] = useState(false);
+  const [speed, setSpeed] = useState(1);
+  const [contentFit, setContentFit] = useState<'contain' | 'cover' | 'fill'>('contain');
+
+  // Refs so interval / unmount callbacks can read latest values without stale closures
+  const currentTimeRef = useRef(0);
+  const durationRef = useRef(0);
+  const didInitialSeekRef = useRef(false);
+  useEffect(() => { currentTimeRef.current = currentTime; }, [currentTime]);
+  useEffect(() => { durationRef.current = duration; }, [duration]);
 
   const controlsOpacity = useRef(new Animated.Value(0)).current;
   const infoOpacity = useRef(new Animated.Value(1)).current;
@@ -293,7 +324,14 @@ export default function PlayerScreen() {
     const subs = [
       player.addListener('playingChange', ({ isPlaying: playing }) => setIsPlaying(playing)),
       player.addListener('statusChange', ({ status, error }: { status: string; error?: unknown }) => {
-        if (status === 'readyToPlay') setIsBuffering(false);
+        if (status === 'readyToPlay') {
+          setIsBuffering(false);
+          // Seek to saved position (only once, on first ready)
+          if (!didInitialSeekRef.current && startAtSecs > 0) {
+            didInitialSeekRef.current = true;
+            try { player.currentTime = startAtSecs; } catch {}
+          }
+        }
         if (status === 'error' || error) {
           const msg = (error as any)?.message ?? (error as any)?.localizedDescription ?? String(error ?? '');
           setErrorMsg(msg);
@@ -312,7 +350,32 @@ export default function PlayerScreen() {
       if (d && isFinite(d) && d > 0) setDuration(d);
     }, 500);
     return () => { subs.forEach((s) => s.remove()); clearInterval(durationPoll); };
-  }, [player, isWeb]);
+  }, [player, isWeb]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── History save (every 10 s for VOD/series) ─────────────────────────────
+  useEffect(() => {
+    if (isLive || isWeb || !params.contentId) return;
+    const interval = setInterval(async () => {
+      const pos = currentTimeRef.current;
+      const dur = durationRef.current;
+      if (pos < 5 || dur <= 0) return;
+      if (pos / dur >= 0.95) {
+        await StorageService.removeFromHistory(params.contentId!);
+      } else {
+        await StorageService.addToHistory({
+          id: params.contentId!,
+          parentId: params.parentId,
+          title: params.title,
+          cover: params.logo,
+          type: params.type === 'series' ? 'series' : 'movie',
+          position: pos,
+          duration: dur,
+          timestamp: Date.now(),
+        });
+      }
+    }, 10_000);
+    return () => clearInterval(interval);
+  }, [isLive, isWeb, params.contentId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Channel navigation ───────────────────────────────────────────────────
   // Track last-watched URL globally so the channel list can restore it on back
@@ -344,6 +407,38 @@ export default function PlayerScreen() {
     if (!nextChannel) return;
     switchChannel(nextChannel, channelIdx + 1);
   }, [nextChannel, channelIdx, switchChannel]);
+
+  // ── Save history on exit and navigate back ────────────────────────────────
+  const handleBack = useCallback(async () => {
+    if (!isLive && params.contentId) {
+      const pos = currentTimeRef.current;
+      const dur = durationRef.current;
+      if (pos >= 5 && dur > 0) {
+        if (pos / dur >= 0.95) {
+          StorageService.removeFromHistory(params.contentId);
+        } else {
+          StorageService.addToHistory({
+            id: params.contentId,
+            parentId: params.parentId,
+            title: params.title,
+            cover: params.logo,
+            type: params.type === 'series' ? 'series' : 'movie',
+            position: pos,
+            duration: dur,
+            timestamp: Date.now(),
+          });
+        }
+      }
+    }
+    router.back();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLive, router]);
+
+  // ── Apply playback speed ──────────────────────────────────────────────────
+  useEffect(() => {
+    if (!player || isWeb) return;
+    try { player.playbackRate = speed; } catch {}
+  }, [speed, player, isWeb]);
 
   // ── Controls visibility ──────────────────────────────────────────────────
   const scheduleHide = useCallback(() => {
@@ -434,7 +529,7 @@ export default function PlayerScreen() {
         <VideoView
           player={player}
           style={StyleSheet.absoluteFill}
-          contentFit="contain"
+          contentFit={contentFit}
           allowsFullscreen={false}
           allowsPictureInPicture
           nativeControls={false}
@@ -463,10 +558,19 @@ export default function PlayerScreen() {
           {/* Back button — absolute top-left */}
           <TouchableOpacity
             style={[styles.backBtn, { position: 'absolute', top: insets.top + 8, left: 16 }]}
-            onPress={() => router.back()}
+            onPress={handleBack}
             activeOpacity={0.8}
           >
             <Text style={styles.backIcon}>←</Text>
+          </TouchableOpacity>
+
+          {/* Settings ⚙ — absolute top-right */}
+          <TouchableOpacity
+            style={[styles.backBtn, { position: 'absolute', top: insets.top + 8, right: 16 }]}
+            onPress={() => { setShowSettings(true); }}
+            activeOpacity={0.8}
+          >
+            <Text style={{ fontSize: 18, color: '#fff' }}>⚙</Text>
           </TouchableOpacity>
 
           {/* Seek + play/pause buttons — absolute centre */}
@@ -593,6 +697,55 @@ export default function PlayerScreen() {
           <Text style={styles.backIcon}>←</Text>
         </TouchableOpacity>
       )}
+
+      {/* ── Settings tray ── */}
+      <Modal
+        visible={showSettings}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowSettings(false)}
+      >
+        <TouchableOpacity
+          style={styles.settingsBackdrop}
+          activeOpacity={1}
+          onPress={() => setShowSettings(false)}
+        />
+        <View style={[styles.settingsSheet, { paddingBottom: insets.bottom + 16 }]}>
+          <View style={styles.settingsHandle} />
+
+          <Text style={styles.settingsTitle}>Playback Speed</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+            {SPEEDS.map((s) => (
+              <TouchableOpacity
+                key={s}
+                style={[styles.chip, speed === s && styles.chipActive]}
+                onPress={() => { setSpeed(s); player.playbackRate = s; }}
+                activeOpacity={0.75}
+              >
+                <Text style={[styles.chipText, speed === s && styles.chipTextActive]}>
+                  {s === 1 ? '1× Normal' : `${s}×`}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+
+          <Text style={[styles.settingsTitle, { marginTop: 16 }]}>Aspect Ratio</Text>
+          <View style={styles.chipRow}>
+            {FITS.map((f) => (
+              <TouchableOpacity
+                key={f.value}
+                style={[styles.chip, contentFit === f.value && styles.chipActive]}
+                onPress={() => setContentFit(f.value)}
+                activeOpacity={0.75}
+              >
+                <Text style={[styles.chipText, contentFit === f.value && styles.chipTextActive]}>
+                  {f.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -770,6 +923,60 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.85)',
   },
   chNavPlaceholder: { flex: 1 },
+
+  // ── Settings tray ──
+  settingsBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  settingsSheet: {
+    backgroundColor: '#111',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    gap: 8,
+  },
+  settingsHandle: {
+    width: 40, height: 4, borderRadius: 2,
+    backgroundColor: 'rgba(255,255,255,0.25)',
+    alignSelf: 'center',
+    marginBottom: 12,
+  },
+  settingsTitle: {
+    fontSize: 11,
+    fontFamily: 'Inter_600SemiBold',
+    letterSpacing: 1,
+    color: 'rgba(255,255,255,0.5)',
+    marginBottom: 8,
+  },
+  chipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    paddingBottom: 4,
+  },
+  chip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+  },
+  chipActive: {
+    backgroundColor: 'rgba(59,130,246,0.25)',
+    borderColor: '#3B82F6',
+  },
+  chipText: {
+    fontSize: 13,
+    fontFamily: 'Inter_500Medium',
+    color: 'rgba(255,255,255,0.6)',
+  },
+  chipTextActive: {
+    color: '#60A5FA',
+    fontFamily: 'Inter_600SemiBold',
+  },
 
   // Buffering
   bufferWrap: { ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center', gap: 16 },

@@ -124,4 +124,10 @@ export const StorageService = {
     const updated = [entry, ...filtered].slice(0, 100);
     await AsyncStorage.setItem(KEYS.HISTORY, JSON.stringify(updated));
   },
+
+  async removeFromHistory(id: string): Promise<void> {
+    const history = await StorageService.getWatchHistory();
+    const updated = history.filter((h) => h.id !== id);
+    await AsyncStorage.setItem(KEYS.HISTORY, JSON.stringify(updated));
+  },
 };
