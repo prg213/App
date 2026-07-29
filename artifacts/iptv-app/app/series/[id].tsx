@@ -1,14 +1,15 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   FlatList,
   Image,
+  Modal,
   Platform,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
-  ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -18,6 +19,8 @@ import * as Haptics from 'expo-haptics';
 import { useFocusEffect } from 'expo-router';
 import { useColors } from '@/hooks/useColors';
 import { useAppContext } from '@/context/AppContext';
+import { useParentalContext, isContentBlocked } from '@/context/ParentalContext';
+import { PinPad } from '@/components/PinPad';
 import { StorageService } from '@/services/storage';
 import { getXtreamSeriesInfo, getXtreamSeriesUrl } from '@/services/xtreamApi';
 import type { Episode, WatchHistoryEntry } from '@/types';
@@ -27,6 +30,9 @@ export default function SeriesDetailScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { credentials } = useAppContext();
+  const { maxRating, verifyPin } = useParentalContext();
+  const [showEpPinGate, setShowEpPinGate] = useState(false);
+  const [pendingEpisode, setPendingEpisode] = useState<{ ep: Episode; startAt?: number } | null>(null);
 
   const params = useLocalSearchParams<{
     id: string;
@@ -94,8 +100,7 @@ export default function SeriesDetailScreen() {
   const seasons = data?.seasons ?? [];
   const activeSeason = seasons[selectedSeason];
 
-  const handlePlayEpisode = (ep: Episode, startAt?: number) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  const doPlayEpisode = useCallback((ep: Episode, startAt?: number) => {
     const url = getXtreamSeriesUrl(
       { host: credentials!.host!, username: credentials!.username!, password: credentials!.password! },
       ep.streamId,
@@ -110,9 +115,22 @@ export default function SeriesDetailScreen() {
         logo: ep.info?.cover ?? params.cover ?? '',
         contentId: ep.streamId,
         parentId: params.id,
-        ...(startAt ? { startAt: String(startAt) } : {}),
+        ...(startAt !== undefined ? { startAt: String(startAt) } : {}),
       },
     });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [credentials, params.id, params.title, params.cover, router]);
+
+  const handlePlayEpisode = (ep: Episode, startAt?: number) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    // Gate behind PIN if episode rating exceeds the parental ceiling
+    const epRating = ep.info?.rating;
+    if (isContentBlocked(epRating, maxRating)) {
+      setPendingEpisode({ ep, startAt });
+      setShowEpPinGate(true);
+      return;
+    }
+    doPlayEpisode(ep, startAt);
   };
 
   return (
@@ -271,6 +289,27 @@ export default function SeriesDetailScreen() {
           )}
         </View>
       </ScrollView>
+
+      {/* PIN gate for age-restricted episodes */}
+      <Modal
+        visible={showEpPinGate}
+        transparent={false}
+        animationType="slide"
+        onRequestClose={() => setShowEpPinGate(false)}
+      >
+        <PinPad
+          mode="verify"
+          title="Age-Restricted Content"
+          subtitle="Enter your PIN to play this episode"
+          verify={verifyPin}
+          onSuccess={() => {
+            setShowEpPinGate(false);
+            if (pendingEpisode) doPlayEpisode(pendingEpisode.ep, pendingEpisode.startAt);
+            setPendingEpisode(null);
+          }}
+          onCancel={() => { setShowEpPinGate(false); setPendingEpisode(null); }}
+        />
+      </Modal>
     </View>
   );
 }

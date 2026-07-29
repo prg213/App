@@ -1,11 +1,14 @@
 import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { Credentials, FavoriteChannel, FavoriteMovie, FavoriteSeries, WatchHistoryEntry } from '@/types';
+import type { Credentials, FavoriteChannel, FavoriteMovie, FavoriteSeries, ParentalSettings, WatchHistoryEntry } from '@/types';
 
 // Credentials live in SecureStore (Android Keystore / iOS Keychain).
 // This survives Expo Go bundle reloads and Metro restarts — unlike AsyncStorage
 // which can be wiped when Expo Go establishes a new development connection.
 const SECURE_CREDS_KEY = 'sv_credentials';
+// PIN also lives in SecureStore — never in AsyncStorage so it cannot be
+// read without the device being unlocked (Android Keystore / iOS Keychain).
+const SECURE_PIN_KEY = 'sv_pin';
 
 // Everything else (favourites, history, cache) stays in AsyncStorage.
 const KEYS = {
@@ -15,6 +18,7 @@ const KEYS = {
   HISTORY: 'sv_history',
   CHANNELS_CACHE: 'sv_channels_cache',
   MOVIES_CACHE: 'sv_movies_cache',
+  PARENTAL: 'sv_parental',
 };
 
 export const StorageService = {
@@ -46,7 +50,48 @@ export const StorageService = {
       KEYS.HISTORY,
       KEYS.CHANNELS_CACHE,
       KEYS.MOVIES_CACHE,
+      KEYS.PARENTAL,
     ]);
+  },
+
+  // ── PIN (SecureStore) ──────────────────────────────────────────────────────
+
+  async setPin(pin: string): Promise<void> {
+    await SecureStore.setItemAsync(SECURE_PIN_KEY, pin);
+  },
+
+  async getPin(): Promise<string | null> {
+    try {
+      return await SecureStore.getItemAsync(SECURE_PIN_KEY);
+    } catch {
+      return null;
+    }
+  },
+
+  async clearPin(): Promise<void> {
+    try {
+      await SecureStore.deleteItemAsync(SECURE_PIN_KEY);
+    } catch {}
+  },
+
+  async verifyPin(pin: string): Promise<boolean> {
+    const stored = await StorageService.getPin();
+    return stored !== null && stored === pin;
+  },
+
+  // ── Parental settings (AsyncStorage) ──────────────────────────────────────
+
+  async getParentalSettings(): Promise<ParentalSettings> {
+    try {
+      const data = await AsyncStorage.getItem(KEYS.PARENTAL);
+      return data ? (JSON.parse(data) as ParentalSettings) : { maxRating: 'all', lockEnabled: false };
+    } catch {
+      return { maxRating: 'all', lockEnabled: false };
+    }
+  },
+
+  async saveParentalSettings(settings: ParentalSettings): Promise<void> {
+    await AsyncStorage.setItem(KEYS.PARENTAL, JSON.stringify(settings));
   },
 
   // ── Channel Favourites (AsyncStorage) ─────────────────────────────────────

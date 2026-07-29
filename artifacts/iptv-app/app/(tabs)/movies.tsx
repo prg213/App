@@ -14,6 +14,7 @@ import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { useAppContext } from '@/context/AppContext';
+import { useParentalContext, isContentBlocked } from '@/context/ParentalContext';
 import { MovieCard } from '@/components/MovieCard';
 import { MovieCardSkeleton } from '@/components/SkeletonCard';
 import { ContinueWatchingRail } from '@/components/ContinueWatchingRail';
@@ -34,6 +35,7 @@ export default function MoviesScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { credentials } = useAppContext();
+  const { maxRating } = useParentalContext();
   const [selectedCat, setSelectedCat] = useState<string>(ALL_CAT_ID);
   const [search, setSearch] = useState('');
   const [favMovies, setFavMovies] = useState<FavoriteMovie[]>([]);
@@ -101,9 +103,12 @@ export default function MoviesScreen() {
   }, [isFavsSelected, favMovies, sortedMovies]);
 
   const filtered = useMemo(() => {
-    if (!search.trim()) return movies;
-    return movies.filter((m) => m.name.toLowerCase().includes(search.toLowerCase()));
-  }, [movies, search]);
+    let list = movies;
+    if (search.trim()) list = list.filter((m) => m.name.toLowerCase().includes(search.toLowerCase()));
+    // Hide content above the parental rating ceiling
+    if (maxRating !== 'all') list = list.filter((m) => !isContentBlocked(m.rating, maxRating));
+    return list;
+  }, [movies, search, maxRating]);
 
   const handleToggleFav = useCallback(async (item: Movie) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
+  Modal,
   Platform,
   ScrollView,
   StyleSheet,
@@ -16,6 +17,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useColors } from '@/hooks/useColors';
 import { useAppContext } from '@/context/AppContext';
+import { useParentalContext, isContentBlocked } from '@/context/ParentalContext';
+import { PinPad } from '@/components/PinPad';
 import { StorageService } from '@/services/storage';
 import { getXtreamVodInfo, getXtreamVodUrl } from '@/services/xtreamApi';
 
@@ -30,8 +33,11 @@ export default function MovieDetailScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { credentials } = useAppContext();
+  const { maxRating, verifyPin } = useParentalContext();
   const [isFav, setIsFav] = useState(false);
   const [savedPosition, setSavedPosition] = useState<number | null>(null);
+  const [showPinGate, setShowPinGate] = useState(false);
+  const [pendingStartAt, setPendingStartAt] = useState<number | undefined>(undefined);
 
   const params = useLocalSearchParams<{
     id: string;
@@ -119,8 +125,7 @@ export default function MovieDetailScreen() {
     );
   };
 
-  const handlePlay = (startAt?: number) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+  const doPlay = useCallback((startAt?: number) => {
     const url = buildPlayUrl();
     if (!url) return;
     router.push({
@@ -131,9 +136,21 @@ export default function MovieDetailScreen() {
         type: 'vod',
         logo: cover,
         contentId: params.id,
-        ...(startAt ? { startAt: String(startAt) } : {}),
+        ...(startAt !== undefined ? { startAt: String(startAt) } : {}),
       },
     });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cover, params.id, params.title, router]);
+
+  const handlePlay = (startAt?: number) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    // Gate behind PIN when content is restricted under the current ceiling
+    if (isContentBlocked(params.rating, maxRating)) {
+      setPendingStartAt(startAt);
+      setShowPinGate(true);
+      return;
+    }
+    doPlay(startAt);
   };
 
   const year = releaseDate?.slice(0, 4);
@@ -263,6 +280,26 @@ export default function MovieDetailScreen() {
           )}
         </View>
       </ScrollView>
+
+      {/* PIN gate for age-restricted content */}
+      <Modal
+        visible={showPinGate}
+        transparent={false}
+        animationType="slide"
+        onRequestClose={() => setShowPinGate(false)}
+      >
+        <PinPad
+          mode="verify"
+          title="Age-Restricted Content"
+          subtitle="Enter your PIN to play this title"
+          verify={verifyPin}
+          onSuccess={() => {
+            setShowPinGate(false);
+            doPlay(pendingStartAt);
+          }}
+          onCancel={() => setShowPinGate(false)}
+        />
+      </Modal>
     </View>
   );
 }

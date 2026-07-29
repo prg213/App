@@ -1,5 +1,15 @@
 export type ConnectionType = 'xtream' | 'm3u';
 
+/** Age-rating ceiling for parental content filter.
+ *  Numeric strings map to European/international content age bands.
+ *  'all' means no restriction. */
+export type MaxRating = 'all' | '7' | '12' | '16' | '18';
+
+export interface ParentalSettings {
+  maxRating: MaxRating;
+  lockEnabled: boolean;
+}
+
 export interface Credentials {
   type: ConnectionType;
   host?: string | null;

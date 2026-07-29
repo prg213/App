@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import {
   Alert,
+  Modal,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TouchableOpacity,
   View,
@@ -12,17 +14,45 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { useAppContext } from '@/context/AppContext';
+import { useParentalContext, RATING_OPTIONS } from '@/context/ParentalContext';
+import { PinPad } from '@/components/PinPad';
 import {
   getXtreamAccountInfo,
   parseXtreamCredsFromM3u,
 } from '@/services/xtreamApi';
+import type { MaxRating } from '@/types';
+
+type PinFlowKind =
+  | 'set-first'   // no existing PIN — set a new one
+  | 'verify-to-change-rating'
+  | 'verify-to-toggle-lock'
+  | 'verify-to-change-pin'
+  | 'change-pin'  // after old PIN verified, enter new PIN
+  | 'verify-to-disable'
+  | null;
 
 export default function SettingsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const { credentials, deviceMac, logout } = useAppContext();
+  const {
+    isPinSet,
+    lockEnabled,
+    maxRating,
+    verifyPin,
+    setPin,
+    disablePin,
+    setLockEnabled,
+    setMaxRating,
+  } = useParentalContext();
   const [loggingOut, setLoggingOut] = useState(false);
+
+  // PIN modal state
+  const [pinFlow, setPinFlow] = useState<PinFlowKind>(null);
+  const [pendingRating, setPendingRating] = useState<MaxRating | null>(null);
+  const [pendingLock, setPendingLock] = useState<boolean | null>(null);
+  const [showRatingSheet, setShowRatingSheet] = useState(false);
 
   // Resolve Xtream credentials — either directly (xtream type) or parsed from M3U URL
   const xtreamCreds =
@@ -71,6 +101,80 @@ export default function SettingsScreen() {
     ]);
   };
 
+  // ── Parental controls actions ──────────────────────────────────────────────
+
+  const handleRatingPress = (rating: MaxRating) => {
+    if (rating === maxRating) { setShowRatingSheet(false); return; }
+    if (isPinSet) {
+      setPendingRating(rating);
+      setShowRatingSheet(false);
+      setPinFlow('verify-to-change-rating');
+    } else {
+      setMaxRating(rating);
+      setShowRatingSheet(false);
+    }
+  };
+
+  const handleLockToggle = (val: boolean) => {
+    if (!isPinSet && val) {
+      // Must set a PIN first
+      setPinFlow('set-first');
+      setPendingLock(true);
+      return;
+    }
+    if (isPinSet) {
+      setPendingLock(val);
+      setPinFlow('verify-to-toggle-lock');
+      return;
+    }
+    setLockEnabled(val);
+  };
+
+  const handleSetPinPress = () => {
+    if (isPinSet) {
+      setPinFlow('verify-to-change-pin');
+    } else {
+      setPinFlow('set-first');
+    }
+  };
+
+  const handleDisablePinPress = () => {
+    if (!isPinSet) return;
+    setPinFlow('verify-to-disable');
+  };
+
+  // PIN modal success callbacks
+  const onPinSuccess = async (pin: string) => {
+    if (pinFlow === 'set-first') {
+      await setPin(pin);
+      // If we were pending a lock toggle, apply it
+      if (pendingLock !== null) {
+        await setLockEnabled(pendingLock);
+        setPendingLock(null);
+      }
+    } else if (pinFlow === 'verify-to-change-rating' && pendingRating !== null) {
+      // Pin was verified (PinPad's verify fn returns true) — now apply the change
+      await setMaxRating(pendingRating);
+      setPendingRating(null);
+    } else if (pinFlow === 'verify-to-toggle-lock' && pendingLock !== null) {
+      await setLockEnabled(pendingLock);
+      setPendingLock(null);
+    } else if (pinFlow === 'verify-to-change-pin') {
+      // Old PIN verified — now set new PIN
+      setPinFlow('change-pin');
+      return; // don't close modal yet
+    } else if (pinFlow === 'change-pin') {
+      // New PIN set
+      await setPin(pin);
+    } else if (pinFlow === 'verify-to-disable') {
+      const ok = await disablePin(pin);
+      if (!ok) return; // shouldn't happen — PinPad's verify already checked
+    }
+    setPinFlow(null);
+  };
+
+  const ratingLabel = RATING_OPTIONS.find((r) => r.value === maxRating)?.label ?? 'All content';
+
   const typeLabel = credentials?.type === 'xtream' ? 'Xtream Codes' : 'M3U Playlist';
   const typeColor = credentials?.type === 'xtream' ? '#3B82F6' : '#22C55E';
 
@@ -112,6 +216,25 @@ export default function SettingsScreen() {
   const expiry = accountInfo?.expDate ?? null;
   const expiryLoading = accountLoading && !!xtreamCreds;
 
+  // Determine which PIN pad title/mode to show
+  const pinModalTitle = () => {
+    switch (pinFlow) {
+      case 'set-first': return 'Set a PIN';
+      case 'change-pin': return 'Enter new PIN';
+      case 'verify-to-change-rating':
+      case 'verify-to-toggle-lock':
+      case 'verify-to-change-pin':
+      case 'verify-to-disable':
+        return 'Confirm your PIN';
+      default: return 'Enter PIN';
+    }
+  };
+
+  const isVerifyMode = pinFlow === 'verify-to-change-rating' ||
+    pinFlow === 'verify-to-toggle-lock' ||
+    pinFlow === 'verify-to-change-pin' ||
+    pinFlow === 'verify-to-disable';
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       {/* Left: Connection info */}
@@ -149,7 +272,7 @@ export default function SettingsScreen() {
             </View>
           )}
 
-          {/* Expiry date — shown for both xtream and parseable M3U */}
+          {/* Expiry date */}
           <View style={[styles.infoRow, { borderBottomColor: colors.border }]}>
             <Text style={[styles.infoLabel, { color: colors.mutedForeground }]}>Expires</Text>
             {expiryLoading ? (
@@ -217,6 +340,67 @@ export default function SettingsScreen() {
           />
         </View>
 
+        {/* ── Parental Controls ── */}
+        <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>PARENTAL CONTROLS</Text>
+        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          {/* Content Rating picker */}
+          <TouchableOpacity
+            style={[styles.actionRow, { borderBottomColor: colors.border }]}
+            onPress={() => setShowRatingSheet(true)}
+            activeOpacity={0.7}
+          >
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.actionTitle, { color: colors.foreground }]}>Content Rating</Text>
+              <Text style={[styles.actionSub, { color: colors.mutedForeground }]}>{ratingLabel}</Text>
+            </View>
+            <Text style={{ color: colors.mutedForeground, fontSize: 18 }}>›</Text>
+          </TouchableOpacity>
+
+          {/* App Lock toggle */}
+          <View style={[styles.actionRow, { borderBottomColor: colors.border }]}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.actionTitle, { color: colors.foreground }]}>App Lock PIN</Text>
+              <Text style={[styles.actionSub, { color: colors.mutedForeground }]}>
+                {lockEnabled ? 'Locked after 2 min in background' : 'Disabled'}
+              </Text>
+            </View>
+            <Switch
+              value={lockEnabled}
+              onValueChange={handleLockToggle}
+              trackColor={{ true: '#3B82F6' }}
+              thumbColor="#fff"
+            />
+          </View>
+
+          {/* Set / Change PIN */}
+          <TouchableOpacity
+            style={[styles.actionRow, { borderBottomColor: colors.border }]}
+            onPress={handleSetPinPress}
+            activeOpacity={0.7}
+          >
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.actionTitle, { color: colors.foreground }]}>
+                {isPinSet ? 'Change PIN' : 'Set PIN'}
+              </Text>
+              <Text style={[styles.actionSub, { color: colors.mutedForeground }]}>
+                {isPinSet ? 'Update your 4-digit PIN' : 'Protect parental settings'}
+              </Text>
+            </View>
+            <Text style={{ color: colors.mutedForeground, fontSize: 18 }}>🔒</Text>
+          </TouchableOpacity>
+
+          {/* Remove PIN */}
+          {isPinSet && (
+            <TouchableOpacity style={styles.actionRow} onPress={handleDisablePinPress} activeOpacity={0.7}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.actionTitle, { color: colors.destructive }]}>Remove PIN</Text>
+                <Text style={[styles.actionSub, { color: colors.mutedForeground }]}>Disable all PIN protection</Text>
+              </View>
+              <Text style={{ color: colors.destructive, fontSize: 18 }}>✕</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
         <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>ABOUT</Text>
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <View style={[styles.infoRow, { borderBottomColor: colors.border }]}>
@@ -236,6 +420,51 @@ export default function SettingsScreen() {
           </TouchableOpacity>
         </View>
       </ScrollView>
+
+      {/* ── Rating picker sheet ── */}
+      <Modal
+        visible={showRatingSheet}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowRatingSheet(false)}
+      >
+        <TouchableOpacity
+          style={styles.sheetBackdrop}
+          activeOpacity={1}
+          onPress={() => setShowRatingSheet(false)}
+        />
+        <View style={[styles.sheet, { backgroundColor: colors.card, paddingBottom: insets.bottom + 16 }]}>
+          <View style={styles.sheetHandle} />
+          <Text style={[styles.sheetTitle, { color: colors.mutedForeground }]}>CONTENT RATING CEILING</Text>
+          {RATING_OPTIONS.map((opt) => (
+            <TouchableOpacity
+              key={opt.value}
+              style={[styles.sheetRow, { borderBottomColor: colors.border }]}
+              onPress={() => handleRatingPress(opt.value)}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.sheetRowText, { color: colors.foreground }]}>{opt.label}</Text>
+              {maxRating === opt.value && <Text style={{ color: '#3B82F6', fontSize: 18 }}>✓</Text>}
+            </TouchableOpacity>
+          ))}
+        </View>
+      </Modal>
+
+      {/* ── PIN entry modal ── */}
+      <Modal
+        visible={pinFlow !== null}
+        transparent={false}
+        animationType="slide"
+        onRequestClose={() => setPinFlow(null)}
+      >
+        <PinPad
+          mode={isVerifyMode || pinFlow === 'change-pin' ? (pinFlow === 'change-pin' ? 'set' : 'verify') : 'set'}
+          title={pinModalTitle()}
+          verify={isVerifyMode ? verifyPin : undefined}
+          onSuccess={onPinSuccess}
+          onCancel={() => { setPinFlow(null); setPendingRating(null); setPendingLock(null); }}
+        />
+      </Modal>
     </View>
   );
 }
@@ -260,4 +489,11 @@ const styles = StyleSheet.create({
   actionSub: { fontSize: 12, fontFamily: 'Inter_400Regular', marginTop: 2 },
   logoutRow: { paddingHorizontal: 14, paddingVertical: 16, alignItems: 'center' },
   logoutText: { fontSize: 15, fontFamily: 'Inter_600SemiBold' },
+  // Rating sheet
+  sheetBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' },
+  sheet: { borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingTop: 12, paddingHorizontal: 0 },
+  sheetHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: 'rgba(128,128,128,0.4)', alignSelf: 'center', marginBottom: 12 },
+  sheetTitle: { fontSize: 10, fontFamily: 'Inter_600SemiBold', letterSpacing: 1.5, paddingHorizontal: 20, paddingBottom: 8 },
+  sheetRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: StyleSheet.hairlineWidth },
+  sheetRowText: { fontSize: 15, fontFamily: 'Inter_400Regular' },
 });
