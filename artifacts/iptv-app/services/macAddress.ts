@@ -2,19 +2,33 @@
  * Stable device MAC for StreamVault.
  *
  * Priority:
- *  1. SecureStore (Android Keystore) — survives app updates as long as the
- *     signing key stays the same. Only cleared on full uninstall / "Clear Data".
- *  2. Random — generated once on first launch and immediately stored.
- *     Never derived from Android ID (which is signing-key-scoped and would
- *     produce a different value if the APK is signed with a new certificate).
- *
- * A MAC changing on reinstall (after uninstall) is intentional: the user
- * must re-activate, which is correct behaviour for a licensed IPTV app.
+ *  1. SecureStore — persists across app updates (signing key unchanged).
+ *     Cleared only on full uninstall or "Clear Data".
+ *  2. Android ID — scoped to (device × signing key). With a persistent
+ *     keystore, this is stable forever on the same device, including after
+ *     a reinstall. Only changes on factory reset.
+ *  3. Random fallback — written to SecureStore immediately so it is stable
+ *     for the lifetime of that install.
  */
 
+import * as Application from 'expo-application';
 import * as SecureStore from 'expo-secure-store';
 
 const SECURE_MAC_KEY = 'sv_device_mac';
+
+/** djb2-based deterministic MAC from any seed string. */
+function deriveMacFromSeed(seed: string): string {
+  const bytes: number[] = [];
+  for (let b = 0; b < 6; b++) {
+    let hash = 5381 + b * 1000003;
+    for (let i = 0; i < seed.length; i++) {
+      hash = Math.imul(hash, 31) ^ seed.charCodeAt(i);
+    }
+    hash ^= (b + 1) * 2654435761;
+    bytes.push(Math.abs(hash) & 0xff);
+  }
+  return bytes.map((b) => b.toString(16).toUpperCase().padStart(2, '0')).join(':');
+}
 
 function randomMac(): string {
   const hex = '0123456789ABCDEF';
@@ -23,7 +37,6 @@ function randomMac(): string {
   ).join(':');
 }
 
-/** In-memory cache — stable for the JS runtime lifetime. */
 let cached: string | null = null;
 
 async function readSecure(): Promise<string | null> {
@@ -35,17 +48,25 @@ async function writeSecure(mac: string): Promise<void> {
 }
 
 export async function getDeviceMac(): Promise<string> {
-  // 1. In-memory cache
   if (cached) return cached;
 
-  // 2. SecureStore — persists across app updates (same signing key)
+  // 1. SecureStore — most stable across Expo Go reloads and app updates
   const stored = await readSecure();
-  if (stored) {
-    cached = stored;
-    return stored;
-  }
+  if (stored) { cached = stored; return stored; }
 
-  // 3. First launch — generate random MAC and persist it
+  // 2. Android ID — deterministic per device + signing key.
+  //    Stable across reinstalls as long as the signing key doesn't change.
+  try {
+    const androidId: string | null = Application.getAndroidId();
+    if (androidId && androidId.length > 0) {
+      const mac = deriveMacFromSeed(androidId);
+      cached = mac;
+      await writeSecure(mac);
+      return mac;
+    }
+  } catch { /* fall through */ }
+
+  // 3. Random fallback — persisted immediately so it never changes this install
   const mac = randomMac();
   cached = mac;
   await writeSecure(mac);
