@@ -33,6 +33,7 @@ import {
 } from '@/services/xtreamApi';
 import { fetchAndParseM3U } from '@/services/m3uParser';
 import { fetchAndParseXmltv } from '@/services/epgService';
+import { RecentChannelsRail } from '@/components/RecentChannelsRail';
 import type { Channel, Category, EpgProgram, FavoriteChannel } from '@/types';
 
 const FAVS_CAT_ID = '__favs';
@@ -383,6 +384,16 @@ export default function LiveTVScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setSelectedChannel(ch);
     setPlayingChannel(ch);
+    // Record in recently-watched (fire-and-forget — never blocks the UI)
+    StorageService.addRecentChannel({
+      id: ch.id,
+      name: ch.name,
+      logo: ch.logo,
+      groupTitle: ch.groupTitle,
+      streamUrl: ch.streamUrl,
+      epgId: ch.epgId,
+      watchedAt: Date.now(),
+    }).catch(() => {});
   }, []);
 
   const handleToggleFav = useCallback(async (ch: Channel) => {
@@ -426,6 +437,33 @@ export default function LiveTVScreen() {
       },
     });
   }, [selectedChannel, channels, player, router]);
+
+  /** Navigate directly to the fullscreen player from a recently-watched card. */
+  const handleWatchChannel = useCallback((ch: Channel) => {
+    goingToPlayerRef.current = true;
+    try { player.pause(); } catch {}
+
+    const chList = channels.map((c) => ({
+      url: c.streamUrl,
+      title: c.name,
+      epgId: c.epgId ?? c.id,
+    }));
+    const idx = channels.findIndex((c) => c.id === ch.id);
+
+    router.push({
+      pathname: '/player',
+      params: {
+        url: ch.streamUrl,
+        title: ch.name,
+        type: 'live',
+        logo: ch.logo ?? '',
+        epgId: ch.epgId ?? ch.id,
+        // If the channel isn't in the current category list, skip nav arrows
+        channelsJson: idx >= 0 ? JSON.stringify(chList) : '[]',
+        channelIndex: String(idx),
+      },
+    });
+  }, [channels, player, router]);
 
   const renderCat = useCallback(({ item }: { item: Category }) => (
     <CategoryRow
@@ -545,6 +583,14 @@ export default function LiveTVScreen() {
             )}
           </>
         )}
+
+        {/* ── Recently Watched Rail ── */}
+        <RecentChannelsRail
+          blockedIds={blockedSet}
+          nowPlayingMap={nowPlayingMap}
+          onSelectChannel={handleSelectChannel}
+          onWatchFullscreen={handleWatchChannel}
+        />
 
         {selectedChannel ? (
           <>

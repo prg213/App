@@ -1,6 +1,6 @@
 import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { Credentials, FavoriteChannel, FavoriteMovie, FavoriteSeries, ParentalSettings, WatchHistoryEntry } from '@/types';
+import type { Credentials, FavoriteChannel, FavoriteMovie, FavoriteSeries, ParentalSettings, RecentChannel, WatchHistoryEntry } from '@/types';
 
 // Credentials live in SecureStore (Android Keystore / iOS Keychain).
 // This survives Expo Go bundle reloads and Metro restarts — unlike AsyncStorage
@@ -19,6 +19,7 @@ const KEYS = {
   CHANNELS_CACHE: 'sv_channels_cache',
   MOVIES_CACHE: 'sv_movies_cache',
   PARENTAL: 'sv_parental',
+  RECENT_CHANNELS: 'sv_recent_channels',
 };
 
 export const StorageService = {
@@ -51,6 +52,7 @@ export const StorageService = {
       KEYS.CHANNELS_CACHE,
       KEYS.MOVIES_CACHE,
       KEYS.PARENTAL,
+      KEYS.RECENT_CHANNELS,
     ]);
   },
 
@@ -178,5 +180,27 @@ export const StorageService = {
     const history = await StorageService.getWatchHistory();
     const updated = history.filter((h) => h.id !== id);
     await AsyncStorage.setItem(KEYS.HISTORY, JSON.stringify(updated));
+  },
+
+  // ── Recently watched channels (AsyncStorage) ───────────────────────────────
+
+  async getRecentChannels(): Promise<RecentChannel[]> {
+    try {
+      const data = await AsyncStorage.getItem(KEYS.RECENT_CHANNELS);
+      return data ? (JSON.parse(data) as RecentChannel[]) : [];
+    } catch {
+      return [];
+    }
+  },
+
+  /**
+   * Adds (or moves to the top) a channel in the recently-watched list.
+   * Deduplicates by channel ID and retains at most 20 entries.
+   */
+  async addRecentChannel(ch: RecentChannel): Promise<void> {
+    const current = await StorageService.getRecentChannels();
+    const deduped = current.filter((c) => c.id !== ch.id);
+    const updated = [{ ...ch, watchedAt: Date.now() }, ...deduped].slice(0, 20);
+    await AsyncStorage.setItem(KEYS.RECENT_CHANNELS, JSON.stringify(updated));
   },
 };

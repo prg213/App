@@ -166,3 +166,15 @@ export interface WatchHistoryEntry {
   duration?: number;
   timestamp: number;
 }
+
+/** A channel entry saved to the recently-watched list. */
+export interface RecentChannel {
+  id: string;
+  name: string;
+  logo?: string;
+  groupTitle: string;
+  streamUrl: string;
+  epgId?: string;
+  /** Unix ms timestamp of when the user last selected or watched this channel. */
+  watchedAt: number;
+}
