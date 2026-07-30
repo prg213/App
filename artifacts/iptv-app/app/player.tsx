@@ -24,6 +24,8 @@ import { StorageService } from '@/services/storage';
 import { getXtreamXmltvUrl } from '@/services/xtreamApi';
 import { fetchAndParseXmltv } from '@/services/epgService';
 import type { EpgProgram } from '@/types';
+import { useCast } from '@/hooks/useCast';
+import CastButton from '@/components/CastButton';
 
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2] as const;
 const FITS = [
@@ -242,6 +244,10 @@ export default function PlayerScreen() {
   const isLive = params.type === 'live';
   const startAtSecs = params.startAt ? parseFloat(params.startAt) : 0;
 
+  // Tracks the URL currently loaded in the player so the cast hook can
+  // reload the correct stream when the user switches channels.
+  const [activeUrl, setActiveUrl] = useState(params.url);
+
   const { credentials, setLastWatchedUrl } = useAppContext();
   const isXtream = credentials?.type === 'xtream';
   const xmltvUrl = isXtream ? getXtreamXmltvUrl(buildCreds(credentials)) : null;
@@ -259,6 +265,15 @@ export default function PlayerScreen() {
 
   const prevChannel = channelList.length > 0 && channelIdx > 0 ? channelList[channelIdx - 1] : null;
   const nextChannel = channelList.length > 0 && channelIdx < channelList.length - 1 ? channelList[channelIdx + 1] : null;
+
+  // ── Cast (AirPlay on iOS / Chromecast on Android) ─────────────────────────
+  const {
+    isConnected: isCasting,
+    deviceName:  castDeviceName,
+    playRemote,
+    pauseRemote,
+    seekRemote,
+  } = useCast(activeUrl, activeTitle, isLive);
 
   // ── Player state ─────────────────────────────────────────────────────────
   const [isPlaying, setIsPlaying] = useState(true);
@@ -388,6 +403,7 @@ export default function PlayerScreen() {
     setChannelIdx(newIdx);
     setActiveTitle(entry.title);
     setActiveEpgId(entry.epgId);
+    setActiveUrl(entry.url);   // keeps cast hook in sync with the new stream
     setIsBuffering(true);
     setHasError(false);
     setErrorMsg('');
@@ -433,6 +449,13 @@ export default function PlayerScreen() {
     router.back();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLive, router]);
+
+  // ── Pause local playback while casting (device becomes the remote) ────────
+  useEffect(() => {
+    if (isCasting && !isWeb) {
+      try { player.pause(); } catch {}
+    }
+  }, [isCasting, isWeb, player]);
 
   // ── Apply playback speed ──────────────────────────────────────────────────
   useEffect(() => {
@@ -482,14 +505,21 @@ export default function PlayerScreen() {
 
   const togglePlay = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    if (player.playing) { player.pause(); } else { player.play(); }
+    if (isCasting) {
+      // Drive the remote cast device instead of the local player
+      if (isPlaying) { pauseRemote(); setIsPlaying(false); }
+      else           { playRemote();  setIsPlaying(true);  }
+    } else {
+      if (player.playing) { player.pause(); } else { player.play(); }
+    }
     scheduleHide();
-  }, [player, scheduleHide]);
+  }, [isCasting, isPlaying, player, scheduleHide, pauseRemote, playRemote]);
 
   const seek = useCallback((delta: number) => {
-    player.seekBy(delta);
+    if (isCasting) { seekRemote(currentTime + delta); }
+    else           { player.seekBy(delta); }
     scheduleHide();
-  }, [player, scheduleHide]);
+  }, [isCasting, currentTime, player, scheduleHide, seekRemote]);
 
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
@@ -555,23 +585,27 @@ export default function PlayerScreen() {
       {/* ── Controls overlay (VOD: play/seek/back) ── */}
       {showControls && !isWeb && !isLive && (
         <Animated.View style={[StyleSheet.absoluteFill, { opacity: controlsOpacity }]} pointerEvents="box-none">
-          {/* Back button — absolute top-left */}
-          <TouchableOpacity
-            style={[styles.backBtn, { position: 'absolute', top: insets.top + 8, left: 16 }]}
-            onPress={handleBack}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.backIcon}>←</Text>
-          </TouchableOpacity>
+          {/* Back button + casting pill — absolute top-left */}
+          <View style={{ position: 'absolute', top: insets.top + 8, left: 16, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <TouchableOpacity style={styles.backBtn} onPress={handleBack} activeOpacity={0.8}>
+              <Text style={styles.backIcon}>←</Text>
+            </TouchableOpacity>
+            {isCasting && (
+              <View style={styles.castingPill}>
+                <Text style={styles.castingText}>
+                  {castDeviceName ? `📺 ${castDeviceName}` : '📺 Casting'}
+                </Text>
+              </View>
+            )}
+          </View>
 
-          {/* Settings ⚙ — absolute top-right */}
-          <TouchableOpacity
-            style={[styles.backBtn, { position: 'absolute', top: insets.top + 8, right: 16 }]}
-            onPress={() => { setShowSettings(true); }}
-            activeOpacity={0.8}
-          >
-            <Text style={{ fontSize: 18, color: '#fff' }}>⚙</Text>
-          </TouchableOpacity>
+          {/* Cast button + Settings ⚙ — absolute top-right */}
+          <View style={{ position: 'absolute', top: insets.top + 8, right: 16, flexDirection: 'row', gap: 8 }}>
+            <CastButton />
+            <TouchableOpacity style={styles.backBtn} onPress={() => { setShowSettings(true); }} activeOpacity={0.8}>
+              <Text style={{ fontSize: 18, color: '#fff' }}>⚙</Text>
+            </TouchableOpacity>
+          </View>
 
           {/* Seek + play/pause buttons — absolute centre */}
           <View style={styles.centerAbs} pointerEvents="box-none">
@@ -602,22 +636,26 @@ export default function PlayerScreen() {
             duration={duration}
             insetBottom={insets.bottom}
             onSeek={(t) => {
-              // Optimistic update so the scrubber stays at the dragged
-              // position while expo-video fires its next timeUpdate event.
+              // Optimistic update so the scrubber stays at the dragged position
               setCurrentTime(t);
-              player.currentTime = t;
+              if (isCasting) { seekRemote(t); }
+              else           { player.currentTime = t; }
               scheduleHide();
             }}
           />
         </Animated.View>
       )}
 
-      {/* Back button overlay for Live (always visible when controls shown) */}
+      {/* Back button + Cast button for Live */}
       {showControls && !isWeb && isLive && (
-        <Animated.View style={{ opacity: controlsOpacity, position: 'absolute', top: insets.top + 8, left: 16 }} pointerEvents="box-none">
+        <Animated.View
+          style={{ opacity: controlsOpacity, position: 'absolute', top: insets.top + 8, left: 16, flexDirection: 'row', gap: 8 }}
+          pointerEvents="box-none"
+        >
           <TouchableOpacity style={styles.backBtn} onPress={() => router.back()} activeOpacity={0.8}>
             <Text style={styles.backIcon}>←</Text>
           </TouchableOpacity>
+          <CastButton />
         </Animated.View>
       )}
 
@@ -627,12 +665,19 @@ export default function PlayerScreen() {
           style={[styles.infoBar, { paddingBottom: insets.bottom + 8, opacity: infoOpacity }]}
           pointerEvents="box-none"
         >
-          {/* Single compact row: LIVE pill + channel name + NOW prog + time + back */}
+          {/* Single compact row: LIVE pill + casting pill + channel name + NOW prog + time + back */}
           <View style={styles.infoTop}>
             <View style={styles.livePill}>
               <View style={styles.liveDot} />
               <Text style={styles.liveText}>LIVE</Text>
             </View>
+            {isCasting && (
+              <View style={styles.castingPill}>
+                <Text style={styles.castingText}>
+                  {castDeviceName ? `📺 ${castDeviceName}` : '📺 Casting'}
+                </Text>
+              </View>
+            )}
             <Text style={styles.infoChannel} numberOfLines={1}>{activeTitle}</Text>
             {currentProg && (
               <>
@@ -976,6 +1021,25 @@ const styles = StyleSheet.create({
   chipTextActive: {
     color: '#60A5FA',
     fontFamily: 'Inter_600SemiBold',
+  },
+
+  // ── Casting pill ──
+  castingPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(59,130,246,0.25)',
+    borderWidth: 1,
+    borderColor: 'rgba(59,130,246,0.55)',
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 99,
+    flexShrink: 0,
+  },
+  castingText: {
+    fontSize: 9,
+    fontFamily: 'Inter_700Bold',
+    color: '#60A5FA',
+    letterSpacing: 0.5,
   },
 
   // Buffering
