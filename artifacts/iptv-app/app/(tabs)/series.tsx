@@ -20,6 +20,7 @@ import { MovieCardSkeleton } from '@/components/SkeletonCard';
 import { ContinueWatchingRail } from '@/components/ContinueWatchingRail';
 import { getXtreamSeriesCategories, getXtreamSeries } from '@/services/xtreamApi';
 import { StorageService } from '@/services/storage';
+import { fetchRemoteFavourites, pushRemoteSeries, mergeFavourites } from '@/services/favoritesSync';
 import type { Series, Category, FavoriteSeries } from '@/types';
 
 const ALL_CAT_ID = '__all';
@@ -34,7 +35,7 @@ export default function SeriesScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { credentials } = useAppContext();
+  const { credentials, deviceMac } = useAppContext();
   const { maxRating } = useParentalContext();
   const [selectedCat, setSelectedCat] = useState<string>(ALL_CAT_ID);
   const [search, setSearch] = useState('');
@@ -42,8 +43,16 @@ export default function SeriesScreen() {
   const isXtream = credentials?.type === 'xtream';
 
   useEffect(() => {
-    StorageService.getSeriesFavorites().then(setFavSeries);
-  }, []);
+    StorageService.getSeriesFavorites().then(async (local) => {
+      setFavSeries(local);
+      const remote = await fetchRemoteFavourites(deviceMac);
+      if (remote) {
+        const merged = mergeFavourites(remote.series, local);
+        await StorageService.saveSeriesFavorites(merged);
+        setFavSeries(merged);
+      }
+    });
+  }, [deviceMac]);
 
   const favSet = useMemo(() => new Set(favSeries.map((f) => f.id)), [favSeries]);
   const isFavsSelected = selectedCat === FAVS_CAT_ID;
@@ -120,7 +129,9 @@ export default function SeriesScreen() {
       director: item.director,
     });
     setFavSeries(updated);
-  }, []);
+    // Sync only series to the server — other categories remain untouched.
+    pushRemoteSeries(deviceMac, updated);
+  }, [deviceMac]);
 
   const handleRefresh = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);

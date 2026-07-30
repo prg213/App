@@ -133,6 +133,9 @@ export const StorageService = {
       return [];
     }
   },
+  async saveMovieFavorites(favorites: FavoriteMovie[]): Promise<void> {
+    await AsyncStorage.setItem(KEYS.MOVIE_FAVORITES, JSON.stringify(favorites));
+  },
   async toggleMovieFavorite(movie: FavoriteMovie): Promise<FavoriteMovie[]> {
     const current = await StorageService.getMovieFavorites();
     const exists = current.find((f) => f.id === movie.id);
@@ -150,6 +153,9 @@ export const StorageService = {
     } catch {
       return [];
     }
+  },
+  async saveSeriesFavorites(favorites: FavoriteSeries[]): Promise<void> {
+    await AsyncStorage.setItem(KEYS.SERIES_FAVORITES, JSON.stringify(favorites));
   },
   async toggleSeriesFavorite(series: FavoriteSeries): Promise<FavoriteSeries[]> {
     const current = await StorageService.getSeriesFavorites();

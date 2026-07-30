@@ -4,6 +4,7 @@ import activateRouter from "./activate";
 import devicesRouter from "./devices";
 import adminRouter from "./admin";
 import verifyRouter from "./verify";
+import favouritesRouter from "./favourites";
 
 const router: Router = Router();
 
@@ -12,5 +13,6 @@ router.use(activateRouter);
 router.use(devicesRouter);
 router.use(adminRouter);
 router.use(verifyRouter);
+router.use(favouritesRouter);
 
 export default router;

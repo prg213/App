@@ -26,6 +26,7 @@ import { useColors } from '@/hooks/useColors';
 import { useAppContext } from '@/context/AppContext';
 import { useParentalContext } from '@/context/ParentalContext';
 import { StorageService } from '@/services/storage';
+import { fetchRemoteFavourites, pushRemoteChannels, mergeFavourites } from '@/services/favoritesSync';
 import {
   getXtreamLiveCategories,
   getXtreamLiveStreams,
@@ -165,7 +166,7 @@ export default function LiveTVScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { credentials, lastWatchedUrl } = useAppContext();
+  const { credentials, lastWatchedUrl, deviceMac } = useAppContext();
   const { blockedChannels } = useParentalContext();
   const isWeb = Platform.OS === 'web';
 
@@ -182,10 +183,20 @@ export default function LiveTVScreen() {
   const [nowTs, setNowTs] = useState(Date.now());
 
   useEffect(() => {
-    StorageService.getFavorites().then(setFavorites);
+    // Load local favourites immediately for instant UI, then merge with server.
+    StorageService.getFavorites().then(async (local) => {
+      setFavorites(local);
+      const remote = await fetchRemoteFavourites(deviceMac);
+      if (remote) {
+        const merged = mergeFavourites(remote.channels, local);
+        // Persist merged list locally so future offline loads are up-to-date.
+        await StorageService.saveFavorites(merged);
+        setFavorites(merged);
+      }
+    });
     const t = setInterval(() => setNowTs(Date.now()), 60_000);
     return () => clearInterval(t);
-  }, []);
+  }, [deviceMac]);
 
   // ── Video player ─────────────────────────────────────────────────────────
   const player = useVideoPlayer(null, (p) => {
@@ -407,7 +418,9 @@ export default function LiveTVScreen() {
       epgId: ch.epgId,
     });
     setFavorites(updated);
-  }, []);
+    // Sync only channels to the server — other categories remain untouched.
+    pushRemoteChannels(deviceMac, updated);
+  }, [deviceMac]);
 
   const handleWatch = useCallback(() => {
     if (!selectedChannel) return;
