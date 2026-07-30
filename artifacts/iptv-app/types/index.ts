@@ -8,8 +8,8 @@ export type MaxRating = 'all' | '7' | '12' | '16' | '18';
 export interface ParentalSettings {
   maxRating: MaxRating;
   lockEnabled: boolean;
-  /** IDs of live channels the user has manually blocked. */
-  blockedChannelIds?: string[];
+  /** IDs of channels hidden from the Live TV list and player navigation. */
+  blockedChannels: string[];
 }
 
 export interface Credentials {

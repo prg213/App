@@ -30,18 +30,20 @@ type PinFlowKind =
   | 'verify-to-change-pin'
   | 'change-pin'  // after old PIN verified, enter new PIN
   | 'verify-to-disable'
+  | 'verify-to-blocked-channels'
   | null;
 
 export default function SettingsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const router = useRouter();
   const queryClient = useQueryClient();
+  const router = useRouter();
   const { credentials, deviceMac, logout } = useAppContext();
   const {
     isPinSet,
     lockEnabled,
     maxRating,
+    blockedChannels,
     verifyPin,
     setPin,
     disablePin,
@@ -145,6 +147,14 @@ export default function SettingsScreen() {
     setPinFlow('verify-to-disable');
   };
 
+  const handleBlockedChannelsPress = () => {
+    if (isPinSet) {
+      setPinFlow('verify-to-blocked-channels');
+    } else {
+      router.push('/blocked-channels');
+    }
+  };
+
   // PIN modal success callbacks
   const onPinSuccess = async (pin: string) => {
     if (pinFlow === 'set-first') {
@@ -171,6 +181,10 @@ export default function SettingsScreen() {
     } else if (pinFlow === 'verify-to-disable') {
       const ok = await disablePin(pin);
       if (!ok) return; // shouldn't happen — PinPad's verify already checked
+    } else if (pinFlow === 'verify-to-blocked-channels') {
+      setPinFlow(null);
+      router.push('/blocked-channels');
+      return;
     }
     setPinFlow(null);
   };
@@ -227,6 +241,7 @@ export default function SettingsScreen() {
       case 'verify-to-toggle-lock':
       case 'verify-to-change-pin':
       case 'verify-to-disable':
+      case 'verify-to-blocked-channels':
         return 'Confirm your PIN';
       default: return 'Enter PIN';
     }
@@ -235,7 +250,8 @@ export default function SettingsScreen() {
   const isVerifyMode = pinFlow === 'verify-to-change-rating' ||
     pinFlow === 'verify-to-toggle-lock' ||
     pinFlow === 'verify-to-change-pin' ||
-    pinFlow === 'verify-to-disable';
+    pinFlow === 'verify-to-disable' ||
+    pinFlow === 'verify-to-blocked-channels';
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -394,16 +410,18 @@ export default function SettingsScreen() {
           {/* Blocked Channels */}
           <TouchableOpacity
             style={[styles.actionRow, { borderBottomColor: colors.border }]}
-            onPress={() => router.push('/blocked-channels')}
+            onPress={handleBlockedChannelsPress}
             activeOpacity={0.7}
           >
             <View style={{ flex: 1 }}>
               <Text style={[styles.actionTitle, { color: colors.foreground }]}>Blocked Channels</Text>
               <Text style={[styles.actionSub, { color: colors.mutedForeground }]}>
-                Hide specific Live TV channels
+                {blockedChannels.length > 0
+                  ? `${blockedChannels.length} channel${blockedChannels.length === 1 ? '' : 's'} blocked`
+                  : 'Hide specific Live TV channels'}
               </Text>
             </View>
-            <Text style={{ color: colors.mutedForeground, fontSize: 18 }}>›</Text>
+            <Text style={{ color: colors.mutedForeground, fontSize: 18 }}>🚫</Text>
           </TouchableOpacity>
 
           {/* Remove PIN */}

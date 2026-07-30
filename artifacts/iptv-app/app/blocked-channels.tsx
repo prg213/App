@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -17,7 +17,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { useAppContext } from '@/context/AppContext';
 import { useParentalContext } from '@/context/ParentalContext';
-import { PinPad } from '@/components/PinPad';
 import { getXtreamLiveStreams } from '@/services/xtreamApi';
 import { fetchAndParseM3U } from '@/services/m3uParser';
 import type { Channel } from '@/types';
@@ -107,10 +106,7 @@ export default function BlockedChannelsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { credentials } = useAppContext();
-  const { isPinSet, verifyPin, blockedChannelIds, toggleBlockedChannel } = useParentalContext();
-
-  // If a PIN is set, require verification before revealing the blocked-channels list
-  const [pinVerified, setPinVerified] = useState(!isPinSet);
+  const { blockedChannels, toggleBlockedChannel } = useParentalContext();
   const [search, setSearch] = useState('');
 
   // Fetch ALL live channels (no category filter)
@@ -132,11 +128,11 @@ export default function BlockedChannelsScreen() {
       }
       return [];
     },
-    enabled: !!credentials && pinVerified,
+    enabled: !!credentials,
     staleTime: 5 * 60_000,
   });
 
-  const blockedSet = useMemo(() => new Set(blockedChannelIds), [blockedChannelIds]);
+  const blockedSet = useMemo(() => new Set(blockedChannels), [blockedChannels]);
 
   const filtered = useMemo(() => {
     if (!search.trim()) return allChannels;
@@ -144,26 +140,19 @@ export default function BlockedChannelsScreen() {
     return allChannels.filter((ch) => ch.name.toLowerCase().includes(q));
   }, [allChannels, search]);
 
-  // ── PIN gate ─────────────────────────────────────────────────────────────
-
-  if (!pinVerified) {
-    return (
-      <PinPad
-        mode="verify"
-        title="Confirm your PIN"
-        verify={verifyPin}
-        onSuccess={() => setPinVerified(true)}
-        onCancel={() => router.back()}
-      />
-    );
-  }
-
-  // ── Main content ─────────────────────────────────────────────────────────
-
-  const handleToggle = (ch: Channel) => {
+  const handleToggle = useCallback((ch: Channel) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     toggleBlockedChannel(ch.id);
-  };
+  }, [toggleBlockedChannel]);
+
+  const renderItem = useCallback(({ item }: { item: Channel }) => (
+    <ChannelBlockRow
+      channel={item}
+      isBlocked={blockedSet.has(item.id)}
+      colors={colors}
+      onToggle={() => handleToggle(item)}
+    />
+  ), [blockedSet, colors, handleToggle]);
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
@@ -184,8 +173,8 @@ export default function BlockedChannelsScreen() {
         <View style={{ flex: 1 }}>
           <Text style={[styles.title, { color: colors.foreground }]}>Blocked Channels</Text>
           <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
-            {blockedChannelIds.length > 0
-              ? `${blockedChannelIds.length} channel${blockedChannelIds.length === 1 ? '' : 's'} blocked`
+            {blockedChannels.length > 0
+              ? `${blockedChannels.length} channel${blockedChannels.length === 1 ? '' : 's'} blocked`
               : 'Tap a channel to block it'}
           </Text>
         </View>
@@ -226,14 +215,7 @@ export default function BlockedChannelsScreen() {
         <FlatList
           data={filtered}
           keyExtractor={(ch) => ch.id}
-          renderItem={({ item }) => (
-            <ChannelBlockRow
-              channel={item}
-              isBlocked={blockedSet.has(item.id)}
-              colors={colors}
-              onToggle={() => handleToggle(item)}
-            />
-          )}
+          renderItem={renderItem}
           getItemLayout={(_, i) => ({ length: 64, offset: 64 * i, index: i })}
           initialNumToRender={25}
           maxToRenderPerBatch={25}

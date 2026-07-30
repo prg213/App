@@ -165,7 +165,7 @@ export default function LiveTVScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { credentials, lastWatchedUrl } = useAppContext();
-  const { blockedChannelIds } = useParentalContext();
+  const { blockedChannels } = useParentalContext();
   const isWeb = Platform.OS === 'web';
 
   const isXtream = credentials?.type === 'xtream';
@@ -318,8 +318,10 @@ export default function LiveTVScreen() {
     staleTime: 5 * 60_000,
   });
 
+  const blockedSet = useMemo(() => new Set(blockedChannels), [blockedChannels]);
+
   // When Favourites is selected, use stored favourites as the channel list.
-  // Always exclude any channels the user has manually blocked.
+  // Always filter out blocked channels so they don't appear in any category.
   const channels: Channel[] = useMemo(() => {
     const base = isFavsSelected
       ? favorites.map((f) => ({
@@ -331,10 +333,8 @@ export default function LiveTVScreen() {
           epgId: f.epgId,
         }))
       : fetchedChannels;
-    if (blockedChannelIds.length === 0) return base;
-    const blockedSet = new Set(blockedChannelIds);
-    return base.filter((ch) => !blockedSet.has(ch.id));
-  }, [isFavsSelected, favorites, fetchedChannels, blockedChannelIds]);
+    return blockedSet.size > 0 ? base.filter((ch) => !blockedSet.has(ch.id)) : base;
+  }, [isFavsSelected, favorites, fetchedChannels, blockedSet]);
 
   const { data: epgMap } = useQuery<Map<string, EpgProgram[]>>({
     queryKey: ['xmltv-epg', credentials],
