@@ -443,11 +443,16 @@ export default function PlayerScreen() {
         else if (knownDurationSecs > 0) setDuration(knownDurationSecs);
       }),
     ];
-    // Also poll duration — some streams only expose it after buffering
+    // Poll duration + currentTime — some streams (e.g. catch-up timeshift HLS)
+    // fire timeUpdate events infrequently or not at all, so the scrubber thumb
+    // would stay frozen at 0. Polling player.currentTime every 500 ms keeps
+    // the thumb in sync regardless of event delivery.
     const durationPoll = setInterval(() => {
       const d = player.duration;
       if (d && isFinite(d) && d > 0) setDuration(d);
       else if (knownDurationSecs > 0) setDuration(knownDurationSecs);
+      const t = player.currentTime;
+      if (typeof t === 'number' && t > 0) setCurrentTime(t);
     }, 500);
     return () => {
       subs.forEach((s) => s.remove());
