@@ -238,12 +238,15 @@ export default function PlayerScreen() {
     logo?: string;
     /** Seconds to seek to after the player is ready. */
     startAt?: string;
+    /** Known programme duration in seconds (catch-up streams don't expose this via the player API). */
+    knownDuration?: string;
   }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const isWeb = Platform.OS === 'web';
   const isLive = params.type === 'live';
   const startAtSecs = params.startAt ? parseFloat(params.startAt) : 0;
+  const knownDurationSecs = params.knownDuration ? parseFloat(params.knownDuration) : 0;
 
   // Tracks the URL currently loaded in the player so the cast hook can
   // reload the correct stream when the user switches channels.
@@ -294,7 +297,9 @@ export default function PlayerScreen() {
   // Source-of-truth URL ref — always points to the currently loaded stream URL
   const activeUrlRef = useRef(params.url);
   const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
+  // Seed with the known programme duration so catch-up scrubber works immediately
+  // even when the timeshift stream doesn't expose its duration to expo-video.
+  const [duration, setDuration] = useState(knownDurationSecs > 0 ? knownDurationSecs : 0);
   const [showControls, setShowControls] = useState(false);
   const [showInfo, setShowInfo] = useState(true);
   const [nowTs, setNowTs] = useState(Date.now());
@@ -429,13 +434,17 @@ export default function PlayerScreen() {
       player.addListener('timeUpdate', ({ currentTime: t }: { currentTime: number }) => {
         setCurrentTime(t);
         const d = player.duration;
+        // Prefer the real player-reported duration; fall back to knownDurationSecs
+        // so catch-up timeshift streams keep a usable scrubber.
         if (d && isFinite(d) && d > 0) setDuration(d);
+        else if (knownDurationSecs > 0) setDuration(knownDurationSecs);
       }),
     ];
     // Also poll duration — some streams only expose it after buffering
     const durationPoll = setInterval(() => {
       const d = player.duration;
       if (d && isFinite(d) && d > 0) setDuration(d);
+      else if (knownDurationSecs > 0) setDuration(knownDurationSecs);
     }, 500);
     return () => {
       subs.forEach((s) => s.remove());
