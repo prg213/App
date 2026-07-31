@@ -245,6 +245,9 @@ export default function LiveTVScreen() {
   }, [player]);
 
   const goingToPlayerRef = useRef(false);
+  // Set when navigating to fullscreen so we reload the live stream on return
+  // (instead of resuming from the buffered start position).
+  const liveReloadNeededRef = useRef(false);
   const selectedChannelRef = useRef(selectedChannel);
   useEffect(() => { selectedChannelRef.current = selectedChannel; }, [selectedChannel]);
   const channelsRef = useRef(channels);
@@ -270,8 +273,14 @@ export default function LiveTVScreen() {
             try { player.play(); } catch {}
           }
         } else if (curCh) {
-          // Normal return — resume the same channel
-          try { player.play(); } catch {}
+          // Returning from fullscreen — reload stream to jump to live edge;
+          // otherwise simply resume the paused preview.
+          if (liveReloadNeededRef.current) {
+            liveReloadNeededRef.current = false;
+            try { player.replace(curCh.streamUrl); player.play(); } catch {}
+          } else {
+            try { player.play(); } catch {}
+          }
         } else if (lastUrl) {
           // Arriving at Live TV fresh after watching elsewhere — restore preview
           const found = channelsRef.current.find((ch) => ch.streamUrl === lastUrl);
@@ -468,6 +477,7 @@ export default function LiveTVScreen() {
   const handleWatch = useCallback(() => {
     if (!selectedChannel) return;
     goingToPlayerRef.current = true;
+    liveReloadNeededRef.current = true;
 
     // Pause preview player BEFORE navigating to stop double audio
     try { player.pause(); } catch {}
@@ -497,6 +507,7 @@ export default function LiveTVScreen() {
   /** Navigate directly to the fullscreen player from a recently-watched card. */
   const handleWatchChannel = useCallback((ch: Channel) => {
     goingToPlayerRef.current = true;
+    liveReloadNeededRef.current = true;
     try { player.pause(); } catch {}
 
     const chList = channels.map((c) => ({

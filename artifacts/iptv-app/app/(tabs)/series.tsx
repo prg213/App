@@ -9,7 +9,7 @@ import {
   View,
 } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
@@ -83,6 +83,16 @@ export default function SeriesScreen() {
     enabled: !!credentials && isXtream && !isFavsSelected,
     staleTime: 5 * 60_000,
   });
+
+  // Silently refresh the list whenever the user navigates to this tab so newly
+  // added provider content appears without requiring a manual pull-to-refresh.
+  useFocusEffect(
+    useCallback(() => {
+      if (credentials && isXtream && !isFavsSelected) {
+        refetch();
+      }
+    }, [credentials, isXtream, isFavsSelected, refetch]),
+  );
 
   // Sort fetched series newest first (highest series_id = most recently added)
   const sortedSeries: Series[] = useMemo(

@@ -369,27 +369,32 @@ export default function PlayerScreen() {
             didInitialSeekRef.current = true;
             try { player.currentTime = startAtSecs; } catch {}
           }
-          // Probe available audio/subtitle tracks
-          try {
-            const tracks = player.availableAudioTracks ?? [];
-            setAudioTracks(tracks);
-            setSubtitleTracks(player.availableSubtitleTracks ?? []);
-            setActiveAudioTrack(player.audioTrack ?? null);
-            setActiveSubtitleTrack(player.subtitleTrack ?? null);
-            // Auto-select preferred audio language if saved
-            if (tracks.length > 1) {
-              StorageService.getPrefAudioLanguage().then((prefLang) => {
-                if (!prefLang) return;
-                const match = tracks.find((t) => t.language === prefLang);
-                if (match) {
-                  try {
-                    player.audioTrack = match;
-                    setActiveAudioTrack(match);
-                  } catch {}
-                }
-              }).catch(() => {});
-            }
-          } catch {}
+          // Probe available audio/subtitle tracks — run immediately and again
+          // after 2 s because some HLS streams populate track lists with a delay.
+          const probeAudioTracks = () => {
+            try {
+              const tracks = player.availableAudioTracks ?? [];
+              setAudioTracks(tracks);
+              setSubtitleTracks(player.availableSubtitleTracks ?? []);
+              setActiveAudioTrack(player.audioTrack ?? null);
+              setActiveSubtitleTrack(player.subtitleTrack ?? null);
+              // Auto-select preferred audio language if saved
+              if (tracks.length > 1) {
+                StorageService.getPrefAudioLanguage().then((prefLang) => {
+                  if (!prefLang) return;
+                  const match = tracks.find((t) => t.language === prefLang);
+                  if (match) {
+                    try {
+                      player.audioTrack = match;
+                      setActiveAudioTrack(match);
+                    } catch {}
+                  }
+                }).catch(() => {});
+              }
+            } catch {}
+          };
+          probeAudioTracks();
+          setTimeout(probeAudioTracks, 2000);
         }
         if (status === 'error' || error) {
           const msg = (error as any)?.message ?? (error as any)?.localizedDescription ?? String(error ?? '');
@@ -853,6 +858,12 @@ export default function PlayerScreen() {
         <View style={[styles.settingsSheet, { paddingBottom: insets.bottom + 16 }]}>
           <View style={styles.settingsHandle} />
 
+          {/* Vertical scroll so audio/subtitle sections are reachable on small screens */}
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            bounces={false}
+            contentContainerStyle={{ gap: 8, paddingBottom: 4 }}
+          >
           <Text style={styles.settingsTitle}>Playback Speed</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
             {SPEEDS.map((s) => (
@@ -869,7 +880,7 @@ export default function PlayerScreen() {
             ))}
           </ScrollView>
 
-          <Text style={[styles.settingsTitle, { marginTop: 16 }]}>Aspect Ratio</Text>
+          <Text style={[styles.settingsTitle, { marginTop: 8 }]}>Aspect Ratio</Text>
           <View style={styles.chipRow}>
             {FITS.map((f) => (
               <TouchableOpacity
@@ -981,6 +992,7 @@ export default function PlayerScreen() {
               </ScrollView>
             </>
           )}
+          </ScrollView>
         </View>
       </Modal>
     </View>
