@@ -1020,7 +1020,14 @@ export default function PlayerScreen() {
           {/* ── Subtitle tracks — shown when stream has any subtitles; includes Off ── */}
           {subtitleTracks.length > 0 && (
             <>
-              <Text style={[styles.settingsTitle, { marginTop: 16 }]}>Subtitles</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 16 }}>
+                <Text style={styles.settingsTitle}>Subtitles</Text>
+                {activeSubtitleTrack !== null && (
+                  <View style={styles.ccActiveBadge}>
+                    <Text style={styles.ccActiveBadgeText}>ON</Text>
+                  </View>
+                )}
+              </View>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
                 {/* Off option */}
                 <TouchableOpacity
@@ -1334,6 +1341,22 @@ const styles = StyleSheet.create({
   },
   ccText: {
     fontSize: 10,
+    fontFamily: 'Inter_700Bold',
+    color: '#C4B5FD',
+    letterSpacing: 0.8,
+  },
+
+  // CC active badge on the Subtitles settings row header
+  ccActiveBadge: {
+    backgroundColor: 'rgba(124,58,237,0.30)',
+    borderWidth: 1,
+    borderColor: 'rgba(167,139,250,0.65)',
+    borderRadius: 99,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  ccActiveBadgeText: {
+    fontSize: 9,
     fontFamily: 'Inter_700Bold',
     color: '#C4B5FD',
     letterSpacing: 0.8,
