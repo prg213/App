@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useVideoPlayer, VideoView } from 'expo-video';
+import type { AudioTrack, SubtitleTrack } from 'expo-video';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
@@ -291,6 +292,12 @@ export default function PlayerScreen() {
   const [speed, setSpeed] = useState(1);
   const [contentFit, setContentFit] = useState<'contain' | 'cover' | 'fill'>('contain');
 
+  // ── Track state (populated once the stream is ready) ─────────────────────
+  const [audioTracks, setAudioTracks] = useState<AudioTrack[]>([]);
+  const [subtitleTracks, setSubtitleTracks] = useState<SubtitleTrack[]>([]);
+  const [activeAudioTrack, setActiveAudioTrack] = useState<AudioTrack | null>(null);
+  const [activeSubtitleTrack, setActiveSubtitleTrack] = useState<SubtitleTrack | null>(null);
+
   // Refs so interval / unmount callbacks can read latest values without stale closures
   const currentTimeRef = useRef(0);
   const durationRef = useRef(0);
@@ -346,6 +353,13 @@ export default function PlayerScreen() {
             didInitialSeekRef.current = true;
             try { player.currentTime = startAtSecs; } catch {}
           }
+          // Probe available audio/subtitle tracks
+          try {
+            setAudioTracks(player.availableAudioTracks ?? []);
+            setSubtitleTracks(player.availableSubtitleTracks ?? []);
+            setActiveAudioTrack(player.audioTrack ?? null);
+            setActiveSubtitleTrack(player.subtitleTrack ?? null);
+          } catch {}
         }
         if (status === 'error' || error) {
           const msg = (error as any)?.message ?? (error as any)?.localizedDescription ?? String(error ?? '');
@@ -408,6 +422,11 @@ export default function PlayerScreen() {
     setHasError(false);
     setErrorMsg('');
     setLastWatchedUrl(entry.url);
+    // Reset track lists — new stream will re-populate them on readyToPlay
+    setAudioTracks([]);
+    setSubtitleTracks([]);
+    setActiveAudioTrack(null);
+    setActiveSubtitleTrack(null);
     try {
       player.replace(entry.url);
       player.play();
@@ -789,6 +808,90 @@ export default function PlayerScreen() {
               </TouchableOpacity>
             ))}
           </View>
+
+          {/* ── Audio tracks — only shown when the stream has more than one ── */}
+          {audioTracks.length > 1 && (
+            <>
+              <Text style={[styles.settingsTitle, { marginTop: 16 }]}>Audio Track</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+                {audioTracks.map((track, idx) => {
+                  const label = track.label || track.name || track.language || `Track ${idx + 1}`;
+                  const isActive =
+                    activeAudioTrack != null &&
+                    (track.id != null
+                      ? track.id === activeAudioTrack.id
+                      : track.language === activeAudioTrack.language && track.label === activeAudioTrack.label);
+                  return (
+                    <TouchableOpacity
+                      key={track.id ?? `audio-${idx}`}
+                      style={[styles.chip, isActive && styles.chipActive]}
+                      onPress={() => {
+                        try {
+                          player.audioTrack = track;
+                          setActiveAudioTrack(track);
+                        } catch {}
+                      }}
+                      activeOpacity={0.75}
+                    >
+                      <Text style={[styles.chipText, isActive && styles.chipTextActive]}>
+                        {label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </>
+          )}
+
+          {/* ── Subtitle tracks — shown when stream has any subtitles; includes Off ── */}
+          {subtitleTracks.length > 0 && (
+            <>
+              <Text style={[styles.settingsTitle, { marginTop: 16 }]}>Subtitles</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+                {/* Off option */}
+                <TouchableOpacity
+                  style={[styles.chip, activeSubtitleTrack === null && styles.chipActive]}
+                  onPress={() => {
+                    try {
+                      player.subtitleTrack = null;
+                      setActiveSubtitleTrack(null);
+                    } catch {}
+                  }}
+                  activeOpacity={0.75}
+                >
+                  <Text style={[styles.chipText, activeSubtitleTrack === null && styles.chipTextActive]}>
+                    Off
+                  </Text>
+                </TouchableOpacity>
+
+                {subtitleTracks.map((track, idx) => {
+                  const label = track.label || track.name || track.language || `Track ${idx + 1}`;
+                  const isActive =
+                    activeSubtitleTrack != null &&
+                    (track.id != null
+                      ? track.id === activeSubtitleTrack.id
+                      : track.language === activeSubtitleTrack.language && track.label === activeSubtitleTrack.label);
+                  return (
+                    <TouchableOpacity
+                      key={track.id ?? `sub-${idx}`}
+                      style={[styles.chip, isActive && styles.chipActive]}
+                      onPress={() => {
+                        try {
+                          player.subtitleTrack = track;
+                          setActiveSubtitleTrack(track);
+                        } catch {}
+                      }}
+                      activeOpacity={0.75}
+                    >
+                      <Text style={[styles.chipText, isActive && styles.chipTextActive]}>
+                        {label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </>
+          )}
         </View>
       </Modal>
     </View>
