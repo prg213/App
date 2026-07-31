@@ -1,7 +1,6 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
-  FlatList,
   Image,
   Modal,
   Platform,
@@ -12,11 +11,10 @@ import {
   View,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
-import { useFocusEffect } from 'expo-router';
 import { useColors } from '@/hooks/useColors';
 import { useAppContext } from '@/context/AppContext';
 import { useParentalContext, isContentBlocked } from '@/context/ParentalContext';
@@ -24,6 +22,17 @@ import { PinPad } from '@/components/PinPad';
 import { StorageService } from '@/services/storage';
 import { getXtreamSeriesInfo, getXtreamSeriesUrl } from '@/services/xtreamApi';
 import type { Episode, WatchHistoryEntry } from '@/types';
+
+function StarRating({ value }: { value: number }) {
+  const filled = Math.round(value);
+  return (
+    <Text style={styles.stars}>
+      {Array.from({ length: 5 }, (_, i) =>
+        i < filled ? '★' : '☆'
+      ).join('')}
+    </Text>
+  );
+}
 
 export default function SeriesDetailScreen() {
   const colors = useColors();
@@ -55,7 +64,6 @@ export default function SeriesDetailScreen() {
     !!credentials.username &&
     !!credentials.password;
 
-  // Load favourite state + episode watch history (refresh on focus after returning from player)
   useFocusEffect(
     useCallback(() => {
       StorageService.getSeriesFavorites().then((favs) => {
@@ -86,7 +94,6 @@ export default function SeriesDetailScreen() {
   };
 
   const { data, isLoading } = useQuery({
-
     queryKey: ['series-info', params.id, credentials],
     queryFn: () =>
       getXtreamSeriesInfo(
@@ -123,7 +130,6 @@ export default function SeriesDetailScreen() {
 
   const handlePlayEpisode = (ep: Episode, startAt?: number) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    // Gate behind PIN if episode rating exceeds the parental ceiling
     const epRating = ep.info?.rating;
     if (isContentBlocked(epRating, maxRating)) {
       setPendingEpisode({ ep, startAt });
@@ -133,74 +139,159 @@ export default function SeriesDetailScreen() {
     doPlayEpisode(ep, startAt);
   };
 
+  const handlePlayFirst = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const firstEp = activeSeason?.episodes[0];
+    if (firstEp) handlePlayEpisode(firstEp);
+  };
+
+  const ratingNum = params.rating ? parseFloat(params.rating) : 0;
+  const year = data?.info?.releaseDate?.slice(0, 4) ?? '';
+  const director = params.director || data?.info?.director || '';
+  const cast = params.cast || data?.info?.cast || '';
+  const plot = params.plot || data?.info?.plot || '';
+  const genre = params.genre || data?.info?.genre || '';
+
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
+    <View style={[styles.root, { backgroundColor: colors.background }]}>
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: insets.bottom + (Platform.OS === 'web' ? 34 : 20) }}
+        contentContainerStyle={{ paddingBottom: insets.bottom + (Platform.OS === 'web' ? 34 : 24) }}
       >
-        {/* Backdrop */}
-        <View style={styles.backdrop}>
+        {/* ── Hero ── */}
+        <View style={styles.hero}>
           {params.cover ? (
             <Image source={{ uri: params.cover }} style={StyleSheet.absoluteFill} resizeMode="cover" />
           ) : (
             <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.secondary, justifyContent: 'center', alignItems: 'center' }]}>
-              <Text style={{ fontSize: 48, color: colors.mutedForeground }}>📺</Text>
+              <Text style={{ fontSize: 52, color: colors.mutedForeground }}>📺</Text>
             </View>
           )}
           <LinearGradient
-            colors={['transparent', 'rgba(10,10,15,0.6)', colors.background]}
+            colors={['rgba(0,0,0,0.25)', 'rgba(0,0,0,0.55)', colors.background]}
             style={StyleSheet.absoluteFill}
-            locations={[0.3, 0.7, 1]}
+            locations={[0, 0.55, 1]}
           />
+
+          {/* Back */}
           <TouchableOpacity
-            style={[styles.backBtn, { top: insets.top + (Platform.OS === 'web' ? 67 : 8) }]}
+            style={[styles.navBtn, { top: insets.top + (Platform.OS === 'web' ? 67 : 10), left: 14 }]}
             onPress={() => router.back()}
             activeOpacity={0.8}
           >
-            <Text style={styles.backIcon}>←</Text>
+            <Text style={styles.navIcon}>←</Text>
           </TouchableOpacity>
-          {/* Favourite button */}
+
+          {/* Fav */}
           <TouchableOpacity
-            style={[styles.favBtn, { top: insets.top + (Platform.OS === 'web' ? 67 : 8) }]}
+            style={[styles.navBtn, { top: insets.top + (Platform.OS === 'web' ? 67 : 10), right: 14 }]}
             onPress={handleToggleFav}
             activeOpacity={0.8}
           >
-            <Text style={[styles.favIcon, { color: isFav ? '#EF4444' : '#fff' }]}>
+            <Text style={[styles.navIcon, { color: isFav ? '#EF4444' : '#fff' }]}>
               {isFav ? '♥' : '♡'}
             </Text>
           </TouchableOpacity>
+
+          {/* Poster + meta row */}
+          <View style={styles.heroPosterRow}>
+            {params.cover ? (
+              <Image
+                source={{ uri: params.cover }}
+                style={[styles.poster, { borderColor: 'rgba(255,255,255,0.12)' }]}
+                resizeMode="cover"
+              />
+            ) : (
+              <View style={[styles.poster, { backgroundColor: colors.secondary, justifyContent: 'center', alignItems: 'center' }]}>
+                <Text style={{ fontSize: 32 }}>📺</Text>
+              </View>
+            )}
+
+            <View style={styles.heroMeta}>
+              <Text style={styles.heroTitle} numberOfLines={3}>{params.title}</Text>
+              {ratingNum > 0 && <StarRating value={ratingNum / 2} />}
+              <View style={styles.heroBadgeRow}>
+                {year ? <Text style={styles.heroBadge}>{year}</Text> : null}
+                {genre ? <Text style={styles.heroBadge}>{genre.split(',')[0].trim()}</Text> : null}
+              </View>
+              {director ? (
+                <Text style={styles.heroDetail} numberOfLines={2}>
+                  <Text style={styles.heroDetailLabel}>Director  </Text>{director}
+                </Text>
+              ) : null}
+            </View>
+          </View>
         </View>
 
-        {/* Content */}
-        <View style={styles.content}>
-          {/* Meta */}
-          <View style={styles.metaRow}>
-            {params.rating && parseFloat(params.rating) > 0 ? (
-              <View style={[styles.metaBadge, { backgroundColor: 'rgba(245,158,11,0.15)', borderColor: 'rgba(245,158,11,0.3)' }]}>
-                <Text style={[styles.metaText, { color: '#F59E0B' }]}>★ {parseFloat(params.rating).toFixed(1)}</Text>
-              </View>
-            ) : null}
-            {params.genre ? (
-              <View style={[styles.metaBadge, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
-                <Text style={[styles.metaText, { color: colors.mutedForeground }]}>{params.genre.split(',')[0]}</Text>
+        {/* ── Action bar ── */}
+        <View style={[styles.actionBar, { paddingHorizontal: 16 }]}>
+          <TouchableOpacity
+            style={[styles.playBtn, { opacity: !activeSeason ? 0.4 : 1 }]}
+            onPress={handlePlayFirst}
+            activeOpacity={0.85}
+            disabled={!activeSeason}
+          >
+            <Text style={styles.playIcon}>▶</Text>
+            <Text style={styles.playLabel}>
+              Play · S{(activeSeason?.seasonNumber ?? 1)}:E1
+            </Text>
+          </TouchableOpacity>
+
+          {/* Season selector */}
+          {seasons.length > 1 && (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.seasonRow}>
+              {seasons.map((season, idx) => (
+                <TouchableOpacity
+                  key={season.id}
+                  style={[
+                    styles.seasonChip,
+                    {
+                      backgroundColor: idx === selectedSeason ? colors.primary : colors.secondary,
+                      borderColor: idx === selectedSeason ? colors.primary : colors.border,
+                    },
+                  ]}
+                  onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setSelectedSeason(idx); }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.seasonChipText, { color: idx === selectedSeason ? '#fff' : colors.mutedForeground }]}>
+                    Season {season.seasonNumber}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          )}
+        </View>
+
+        {/* ── Plot ── */}
+        {plot ? (
+          <View style={styles.section}>
+            <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>SYNOPSIS</Text>
+            <Text style={[styles.plot, { color: colors.foreground }]}>{plot}</Text>
+          </View>
+        ) : null}
+
+        {/* ── Cast ── */}
+        {cast ? (
+          <View style={[styles.infoCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <View style={[styles.infoRow, { borderBottomWidth: director ? StyleSheet.hairlineWidth : 0, borderBottomColor: colors.border }]}>
+              <Text style={[styles.infoLabel, { color: colors.mutedForeground }]}>Cast</Text>
+              <Text style={[styles.infoValue, { color: colors.foreground }]} numberOfLines={3}>{cast}</Text>
+            </View>
+            {director ? (
+              <View style={styles.infoRow}>
+                <Text style={[styles.infoLabel, { color: colors.mutedForeground }]}>Director</Text>
+                <Text style={[styles.infoValue, { color: colors.foreground }]} numberOfLines={2}>{director}</Text>
               </View>
             ) : null}
           </View>
+        ) : null}
 
-          <Text style={[styles.titleText, { color: colors.foreground }]}>{params.title}</Text>
-
-          {params.plot ? (
-            <Text style={[styles.plot, { color: colors.mutedForeground }]} numberOfLines={4}>
-              {params.plot}
-            </Text>
-          ) : null}
-
-          {/* Seasons */}
+        {/* ── Episodes ── */}
+        <View style={styles.section}>
           {isLoading ? (
             <View style={styles.loadingRow}>
               <ActivityIndicator color={colors.primary} />
-              <Text style={[styles.loadingText, { color: colors.mutedForeground }]}>Loading episodes...</Text>
+              <Text style={[styles.loadingText, { color: colors.mutedForeground }]}>Loading episodes…</Text>
             </View>
           ) : seasons.length === 0 ? (
             <View style={[styles.emptyCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -208,69 +299,66 @@ export default function SeriesDetailScreen() {
             </View>
           ) : (
             <>
-              {/* Season Tabs */}
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.seasonTabs}>
-                {seasons.map((season, idx) => (
-                  <TouchableOpacity
-                    key={season.id}
-                    style={[
-                      styles.seasonTab,
-                      {
-                        backgroundColor: idx === selectedSeason ? colors.primary : colors.secondary,
-                        borderColor: idx === selectedSeason ? colors.primary : colors.border,
-                      },
-                    ]}
-                    onPress={() => setSelectedSeason(idx)}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={[styles.seasonTabText, { color: idx === selectedSeason ? '#fff' : colors.mutedForeground }]}>
-                      S{season.seasonNumber}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-
-              {/* Episodes */}
               <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>
-                {activeSeason?.name.toUpperCase()} — {activeSeason?.episodes.length ?? 0} EPISODES
+                {activeSeason?.name?.toUpperCase()} · {activeSeason?.episodes.length ?? 0} EPISODES
               </Text>
               {activeSeason?.episodes.map((ep) => {
                 const hist = episodeHistory[ep.streamId];
                 const histProgress = hist?.position && hist?.duration
                   ? hist.position / hist.duration : 0;
+                const epRating = ep.info?.rating ? parseFloat(ep.info.rating) : 0;
+
                 return (
                   <TouchableOpacity
                     key={ep.id}
-                    style={[styles.episodeRow, { backgroundColor: colors.card, borderColor: colors.border }]}
+                    style={[styles.epRow, { backgroundColor: colors.card, borderColor: colors.border }]}
                     onPress={() => handlePlayEpisode(ep)}
-                    activeOpacity={0.7}
+                    activeOpacity={0.75}
                   >
-                    <View style={[styles.epNumBox, { backgroundColor: colors.secondary }]}>
-                      <Text style={[styles.epNum, { color: colors.primary }]}>
-                        {String(ep.episodeNum).padStart(2, '0')}
-                      </Text>
-                    </View>
-                    <View style={{ flex: 1, gap: 3 }}>
-                      <Text style={[styles.epTitle, { color: colors.foreground }]} numberOfLines={2}>
-                        {ep.title}
-                      </Text>
-                      {ep.info?.duration && (
-                        <Text style={[styles.epDuration, { color: colors.mutedForeground }]}>
-                          {ep.info.duration}
-                        </Text>
+                    {/* Thumbnail */}
+                    <View style={[styles.epThumb, { backgroundColor: colors.secondary }]}>
+                      {ep.info?.cover ? (
+                        <Image source={{ uri: ep.info.cover }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+                      ) : (
+                        <Text style={{ fontSize: 20 }}>📺</Text>
                       )}
-                      {/* Progress bar for partially watched episodes */}
-                      {histProgress > 0 && (
-                        <View style={[styles.epProgressRail, { backgroundColor: colors.secondary }]}>
-                          <View
-                            style={[
-                              styles.epProgressFill,
-                              { width: `${Math.min(100, histProgress * 100)}%` as any },
-                            ]}
-                          />
+                      <View style={styles.epPlayOverlay}>
+                        <Text style={styles.epPlayIcon}>▶</Text>
+                      </View>
+                    </View>
+
+                    {/* Info */}
+                    <View style={styles.epInfo}>
+                      <Text style={[styles.epTitle, { color: colors.foreground }]} numberOfLines={2}>
+                        {`S${String(activeSeason.seasonNumber).padStart(2,'0')}E${String(ep.episodeNum).padStart(2,'0')} · ${ep.title}`}
+                      </Text>
+                      <View style={styles.epMetaRow}>
+                        {epRating > 0 && (
+                          <Text style={styles.epStars}>
+                            {'★'.repeat(Math.round(epRating / 2))}{'☆'.repeat(5 - Math.round(epRating / 2))}
+                          </Text>
+                        )}
+                        {ep.info?.duration && (
+                          <View style={[styles.durationBadge, { backgroundColor: colors.secondary }]}>
+                            <Text style={[styles.durationText, { color: colors.mutedForeground }]}>
+                              {ep.info.duration}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                      {ep.info?.plot ? (
+                        <Text style={[styles.epPlot, { color: colors.mutedForeground }]} numberOfLines={2}>
+                          {ep.info.plot}
+                        </Text>
+                      ) : null}
+                      {histProgress > 0.02 && (
+                        <View style={[styles.progressRail, { backgroundColor: colors.secondary }]}>
+                          <View style={[styles.progressFill, { width: `${Math.min(100, histProgress * 100)}%` as any }]} />
                         </View>
                       )}
                     </View>
+
+                    {/* Resume / play */}
                     {hist?.position && hist.position > 5 ? (
                       <TouchableOpacity
                         style={[styles.resumeBtn, { borderColor: colors.primary }]}
@@ -279,9 +367,7 @@ export default function SeriesDetailScreen() {
                       >
                         <Text style={[styles.resumeLabel, { color: colors.primary }]}>Resume</Text>
                       </TouchableOpacity>
-                    ) : (
-                      <Text style={{ color: colors.mutedForeground, fontSize: 18 }}>▶</Text>
-                    )}
+                    ) : null}
                   </TouchableOpacity>
                 );
               })}
@@ -290,7 +376,6 @@ export default function SeriesDetailScreen() {
         </View>
       </ScrollView>
 
-      {/* PIN gate for age-restricted episodes */}
       <Modal
         visible={showEpPinGate}
         transparent={false}
@@ -314,121 +399,122 @@ export default function SeriesDetailScreen() {
   );
 }
 
+const HERO_H = 290;
+const POSTER_W = 108;
+const POSTER_H = 152;
+
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  backdrop: { height: 180, position: 'relative' },
-  backBtn: {
+  root: { flex: 1 },
+
+  // ── Hero ──
+  hero: { height: HERO_H, position: 'relative' },
+  navBtn: {
     position: 'absolute',
-    left: 16,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    width: 38, height: 38, borderRadius: 19,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'center', alignItems: 'center',
   },
-  backIcon: { fontSize: 20, color: '#fff' },
-  favBtn: {
+  navIcon: { fontSize: 18, color: '#fff' },
+  heroPosterRow: {
     position: 'absolute',
-    right: 16,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  favIcon: { fontSize: 20, lineHeight: 24 },
-  content: { paddingHorizontal: 20, gap: 14, marginTop: -20 },
-  metaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  metaBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 6,
-    borderWidth: 1,
-  },
-  metaText: { fontSize: 12, fontFamily: 'Inter_500Medium' },
-  titleText: {
-    fontSize: 26,
-    fontFamily: 'Inter_700Bold',
-    letterSpacing: -0.5,
-    lineHeight: 32,
-  },
-  plot: {
-    fontSize: 14,
-    fontFamily: 'Inter_400Regular',
-    lineHeight: 22,
-  },
-  loadingRow: {
+    bottom: 0, left: 14, right: 14,
     flexDirection: 'row',
-    gap: 12,
-    alignItems: 'center',
-    paddingVertical: 20,
+    alignItems: 'flex-end',
+    gap: 14,
   },
-  loadingText: { fontSize: 14, fontFamily: 'Inter_400Regular' },
-  emptyCard: {
-    borderRadius: 12,
-    borderWidth: 1,
-    padding: 24,
-    alignItems: 'center',
-  },
-  emptyText: { fontSize: 14, fontFamily: 'Inter_400Regular' },
-  seasonTabs: {
-    flexDirection: 'row',
-    gap: 8,
-    paddingBottom: 4,
-  },
-  seasonTab: {
-    paddingHorizontal: 14,
-    paddingVertical: 7,
+  poster: {
+    width: POSTER_W, height: POSTER_H,
     borderRadius: 10,
     borderWidth: 1,
-  },
-  seasonTabText: { fontSize: 13, fontFamily: 'Inter_600SemiBold' },
-  sectionLabel: {
-    fontSize: 11,
-    fontFamily: 'Inter_600SemiBold',
-    letterSpacing: 1,
-    marginTop: 4,
-  },
-  episodeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    padding: 14,
-  },
-  epNumBox: {
-    width: 40,
-    height: 40,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-    flexShrink: 0,
-  },
-  epNum: { fontSize: 14, fontFamily: 'Inter_700Bold' },
-  epTitle: { fontSize: 14, fontFamily: 'Inter_500Medium', lineHeight: 20 },
-  epDuration: { fontSize: 12, fontFamily: 'Inter_400Regular' },
-  epProgressRail: {
-    height: 3,
-    borderRadius: 1.5,
     overflow: 'hidden',
-    marginTop: 4,
-  },
-  epProgressFill: {
-    height: '100%',
-    backgroundColor: '#3B82F6',
-    borderRadius: 1.5,
-  },
-  resumeBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    borderWidth: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
     flexShrink: 0,
+  },
+  heroMeta: { flex: 1, paddingBottom: 6, gap: 5 },
+  heroTitle: {
+    fontSize: 20, fontFamily: 'Inter_700Bold',
+    color: '#fff', lineHeight: 26, letterSpacing: -0.3,
+    textShadowColor: 'rgba(0,0,0,0.6)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4,
+  },
+  stars: { fontSize: 13, color: '#F59E0B', letterSpacing: 2 },
+  heroBadgeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  heroBadge: {
+    fontSize: 11, fontFamily: 'Inter_500Medium',
+    color: 'rgba(255,255,255,0.7)',
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    paddingHorizontal: 8, paddingVertical: 3,
+    borderRadius: 5,
+  },
+  heroDetail: { fontSize: 11.5, fontFamily: 'Inter_400Regular', color: 'rgba(255,255,255,0.65)', lineHeight: 16 },
+  heroDetailLabel: { fontFamily: 'Inter_600SemiBold', color: 'rgba(255,255,255,0.45)' },
+
+  // ── Action bar ──
+  actionBar: { paddingTop: 16, gap: 10 },
+  playBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 10, backgroundColor: '#3B82F6', borderRadius: 14, paddingVertical: 15,
+  },
+  playIcon: { fontSize: 16, color: '#fff' },
+  playLabel: { fontSize: 15, fontFamily: 'Inter_600SemiBold', color: '#fff' },
+  seasonRow: { flexDirection: 'row', gap: 8, paddingVertical: 2 },
+  seasonChip: {
+    paddingHorizontal: 14, paddingVertical: 8,
+    borderRadius: 10, borderWidth: 1,
+  },
+  seasonChipText: { fontSize: 13, fontFamily: 'Inter_600SemiBold' },
+
+  // ── Sections ──
+  section: { paddingHorizontal: 16, paddingTop: 20, gap: 12 },
+  sectionLabel: { fontSize: 11, fontFamily: 'Inter_600SemiBold', letterSpacing: 1.2 },
+  plot: { fontSize: 14, fontFamily: 'Inter_400Regular', lineHeight: 22 },
+
+  // ── Info card ──
+  infoCard: {
+    marginHorizontal: 16, marginTop: 20,
+    borderRadius: 12, borderWidth: 1, overflow: 'hidden',
+  },
+  infoRow: {
+    flexDirection: 'row', gap: 12,
+    paddingHorizontal: 16, paddingVertical: 12,
+  },
+  infoLabel: { fontSize: 13, fontFamily: 'Inter_500Medium', width: 68, flexShrink: 0 },
+  infoValue: { flex: 1, fontSize: 13, fontFamily: 'Inter_400Regular', lineHeight: 20 },
+
+  // ── Loading / empty ──
+  loadingRow: { flexDirection: 'row', gap: 12, alignItems: 'center', paddingVertical: 20 },
+  loadingText: { fontSize: 14, fontFamily: 'Inter_400Regular' },
+  emptyCard: { borderRadius: 12, borderWidth: 1, padding: 24, alignItems: 'center' },
+  emptyText: { fontSize: 14, fontFamily: 'Inter_400Regular' },
+
+  // ── Episode row ──
+  epRow: {
+    flexDirection: 'row', gap: 12,
+    borderRadius: 12, borderWidth: 1, overflow: 'hidden',
+    padding: 12, alignItems: 'flex-start',
+  },
+  epThumb: {
+    width: 120, height: 70, borderRadius: 8,
+    overflow: 'hidden', flexShrink: 0,
+    justifyContent: 'center', alignItems: 'center',
+  },
+  epPlayOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center', alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.3)',
+  },
+  epPlayIcon: { fontSize: 20, color: '#fff' },
+  epInfo: { flex: 1, gap: 4 },
+  epTitle: { fontSize: 13, fontFamily: 'Inter_600SemiBold', lineHeight: 18 },
+  epMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  epStars: { fontSize: 10, color: '#F59E0B', letterSpacing: 1 },
+  durationBadge: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 5 },
+  durationText: { fontSize: 11, fontFamily: 'Inter_500Medium' },
+  epPlot: { fontSize: 12, fontFamily: 'Inter_400Regular', lineHeight: 17 },
+  progressRail: { height: 3, borderRadius: 1.5, overflow: 'hidden', marginTop: 4 },
+  progressFill: { height: '100%', backgroundColor: '#3B82F6', borderRadius: 1.5 },
+  resumeBtn: {
+    paddingHorizontal: 10, paddingVertical: 6,
+    borderRadius: 8, borderWidth: 1,
+    justifyContent: 'center', alignItems: 'center', flexShrink: 0,
   },
   resumeLabel: { fontSize: 11, fontFamily: 'Inter_600SemiBold' },
 });
