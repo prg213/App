@@ -621,6 +621,39 @@ export default function PlayerScreen() {
     scheduleHide();
   }, [isCasting, currentTime, player, scheduleHide, seekRemote]);
 
+  // ── CC pill: cycle through subtitle tracks (or just turn off if single track) ──
+  const handleCcPress = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (subtitleTracks.length <= 1) {
+      // Single-track or no tracks: current behaviour — just turn off
+      try { player.subtitleTrack = null; } catch {}
+      setActiveSubtitleTrack(null);
+    } else {
+      // Multiple tracks: advance to the next one, wrapping to Off after the last
+      const currentIdx = activeSubtitleTrack
+        ? subtitleTracks.findIndex(
+            (t) => t === activeSubtitleTrack || t.language === activeSubtitleTrack.language,
+          )
+        : -1;
+      const nextIdx = currentIdx + 1;
+      if (nextIdx >= subtitleTracks.length) {
+        // Past the last track → turn off
+        try { player.subtitleTrack = null; } catch {}
+        setActiveSubtitleTrack(null);
+      } else {
+        const next = subtitleTracks[nextIdx];
+        try { player.subtitleTrack = next; } catch {}
+        setActiveSubtitleTrack(next);
+      }
+    }
+  }, [player, subtitleTracks, activeSubtitleTrack]);
+
+  // Label shown inside the CC pill — includes language code when cycling is available
+  const ccLabel =
+    subtitleTracks.length > 1 && activeSubtitleTrack?.language
+      ? `CC · ${activeSubtitleTrack.language.toUpperCase()}`
+      : 'CC';
+
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   return (
@@ -717,10 +750,10 @@ export default function PlayerScreen() {
             {activeSubtitleTrack !== null && (
               <TouchableOpacity
                 style={styles.ccPill}
-                onPress={() => { try { player.subtitleTrack = null; } catch {} setActiveSubtitleTrack(null); }}
+                onPress={handleCcPress}
                 activeOpacity={0.8}
               >
-                <Text style={styles.ccText}>CC</Text>
+                <Text style={styles.ccText}>{ccLabel}</Text>
               </TouchableOpacity>
             )}
             <TouchableOpacity style={styles.backBtn} onPress={() => { setShowSettings(true); }} activeOpacity={0.8}>
@@ -780,10 +813,10 @@ export default function PlayerScreen() {
           {activeSubtitleTrack !== null && (
             <TouchableOpacity
               style={styles.ccPill}
-              onPress={() => { try { player.subtitleTrack = null; } catch {} setActiveSubtitleTrack(null); }}
+              onPress={handleCcPress}
               activeOpacity={0.8}
             >
-              <Text style={styles.ccText}>CC</Text>
+              <Text style={styles.ccText}>{ccLabel}</Text>
             </TouchableOpacity>
           )}
         </Animated.View>
