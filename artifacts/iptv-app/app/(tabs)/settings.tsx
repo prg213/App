@@ -358,6 +358,16 @@ export default function SettingsScreen() {
           />
         </View>
 
+        <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>HISTORY</Text>
+        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <ActionRow
+            title="Watch History"
+            sub="View and remove individual watched items"
+            icon="🕐"
+            onPress={() => router.push('/watch-history')}
+          />
+        </View>
+
         {/* ── Parental Controls ── */}
         <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>PARENTAL CONTROLS</Text>
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>

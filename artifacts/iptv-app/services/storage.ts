@@ -188,6 +188,10 @@ export const StorageService = {
     await AsyncStorage.setItem(KEYS.HISTORY, JSON.stringify(updated));
   },
 
+  async clearHistory(): Promise<void> {
+    await AsyncStorage.setItem(KEYS.HISTORY, JSON.stringify([]));
+  },
+
   // ── Recently watched channels (AsyncStorage) ───────────────────────────────
 
   async getRecentChannels(): Promise<RecentChannel[]> {
