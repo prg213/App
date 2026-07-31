@@ -237,7 +237,26 @@ export default function LiveTVScreen() {
     if (isWeb || !player) return;
     const subs = [
       player.addListener('statusChange', ({ status, error }: any) => {
-        if (status === 'readyToPlay') setIsBuffering(false);
+        if (status === 'readyToPlay') {
+          setIsBuffering(false);
+          // For DVR/timeshift streams, player.replace() starts at the oldest
+          // buffered segment (beginning of the DVR window) rather than the
+          // live edge. Once ready, seek to the end of the reported duration
+          // to jump to the live edge. Pure-live streams have duration = Infinity
+          // or 0, so the seek is skipped safely.
+          if (pendingLiveEdgeSeek.current) {
+            pendingLiveEdgeSeek.current = false;
+            // Short delay — duration is often populated a tick after readyToPlay
+            setTimeout(() => {
+              try {
+                const d = player.duration;
+                if (d && isFinite(d) && d > 0) {
+                  player.currentTime = d;
+                }
+              } catch {}
+            }, 300);
+          }
+        }
         if (status === 'error' || error) { setHasError(true); setIsBuffering(false); }
       }),
     ];
@@ -248,6 +267,8 @@ export default function LiveTVScreen() {
   // Set when navigating to fullscreen so we reload the live stream on return
   // (instead of resuming from the buffered start position).
   const liveReloadNeededRef = useRef(false);
+  // After reloading for the live edge, seek to end of DVR window once ready.
+  const pendingLiveEdgeSeek = useRef(false);
   const selectedChannelRef = useRef(selectedChannel);
   useEffect(() => { selectedChannelRef.current = selectedChannel; }, [selectedChannel]);
   const channelsRef = useRef(channels);
@@ -277,6 +298,7 @@ export default function LiveTVScreen() {
           // otherwise simply resume the paused preview.
           if (liveReloadNeededRef.current) {
             liveReloadNeededRef.current = false;
+            pendingLiveEdgeSeek.current = true;
             try { player.replace(curCh.streamUrl); player.play(); } catch {}
           } else {
             try { player.play(); } catch {}
