@@ -857,6 +857,11 @@ export default function PlayerScreen() {
                 </Text>
               </View>
             )}
+            {activeSubtitleTrack !== null && (
+              <View style={styles.ccActiveBadge}>
+                <Text style={styles.ccActiveBadgeText}>CC</Text>
+              </View>
+            )}
             <Text style={styles.infoChannel} numberOfLines={1}>{activeTitle}</Text>
             {currentProg && (
               <>
