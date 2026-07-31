@@ -317,6 +317,14 @@ export default function PlayerScreen() {
   // Mirrors the persisted preferred audio language so the Auto chip can show it
   const [prefAudioLang, setPrefAudioLang] = useState<string | null>(null);
 
+  // Load the saved audio-language preference on mount so the chip label is
+  // correct as soon as the settings tray is opened (before tracks are probed).
+  useEffect(() => {
+    StorageService.getPrefAudioLanguage().then((lang) => {
+      setPrefAudioLang(lang);
+    }).catch(() => {});
+  }, []);
+
   // Refs so interval / unmount callbacks can read latest values without stale closures
   const currentTimeRef = useRef(0);
   const durationRef = useRef(0);
@@ -385,20 +393,20 @@ export default function PlayerScreen() {
               setSubtitleTracks(player.availableSubtitleTracks ?? []);
               setActiveAudioTrack(player.audioTrack ?? null);
               setActiveSubtitleTrack(player.subtitleTrack ?? null);
-              // Auto-select preferred audio language if saved
-              if (tracks.length > 1) {
-                StorageService.getPrefAudioLanguage().then((prefLang) => {
-                  setPrefAudioLang(prefLang);
-                  if (!prefLang) return;
-                  const match = tracks.find((t) => t.language === prefLang);
-                  if (match) {
-                    try {
-                      player.audioTrack = match;
-                      setActiveAudioTrack(match);
-                    } catch {}
-                  }
-                }).catch(() => {});
-              }
+              // Auto-select preferred audio language if saved.
+              // Always refresh the label; only switch the track when there are
+              // multiple tracks to choose from (no-op on single-track streams).
+              StorageService.getPrefAudioLanguage().then((prefLang) => {
+                setPrefAudioLang(prefLang);
+                if (!prefLang || tracks.length <= 1) return;
+                const match = tracks.find((t) => t.language === prefLang);
+                if (match) {
+                  try {
+                    player.audioTrack = match;
+                    setActiveAudioTrack(match);
+                  } catch {}
+                }
+              }).catch(() => {});
             } catch {}
           };
           probeAudioTracks();
@@ -967,8 +975,9 @@ export default function PlayerScreen() {
             ))}
           </View>
 
-          {/* ── Audio tracks — shown whenever the stream reports at least one track ── */}
-          {audioTracks.length > 0 && (
+          {/* ── Audio tracks — shown when any track exists OR a saved language
+               preference needs to be visible/clearable ── */}
+          {(audioTracks.length > 0 || prefAudioLang !== null) && (
             <>
               <Text style={[styles.settingsTitle, { marginTop: 16 }]}>Audio Track</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
