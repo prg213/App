@@ -764,17 +764,21 @@ export default function PlayerScreen() {
           <View style={{ position: 'absolute', top: insets.top + 8, right: 16, flexDirection: 'row', gap: 8, alignItems: 'center' }}>
             <CastButton />
             {activeSubtitleTrack !== null && (
-              <TouchableOpacity
-                style={styles.ccPill}
+              <Pressable
+                focusable
+                style={({ focused }) => [styles.ccPill, focused && styles.focusRing]}
                 onPress={handleCcPress}
-                activeOpacity={0.8}
               >
                 <Text style={styles.ccText}>{ccLabel}</Text>
-              </TouchableOpacity>
+              </Pressable>
             )}
-            <TouchableOpacity style={styles.backBtn} onPress={() => { setShowSettings(true); }} activeOpacity={0.8}>
+            <Pressable
+              focusable
+              style={({ focused }) => [styles.backBtn, focused && styles.focusRing]}
+              onPress={() => { setShowSettings(true); }}
+            >
               <Text style={{ fontSize: 18, color: '#fff' }}>⚙</Text>
-            </TouchableOpacity>
+            </Pressable>
           </View>
 
           {/* Seek + play/pause buttons — absolute centre */}
@@ -787,9 +791,13 @@ export default function PlayerScreen() {
               <Text style={styles.seekIcon}>⏮</Text>
               <Text style={styles.seekLabel}>-30s</Text>
             </Pressable>
-            <TouchableOpacity style={styles.playBtn} onPress={togglePlay} activeOpacity={0.8}>
+            <Pressable
+              focusable
+              style={({ focused }) => [styles.playBtn, focused && styles.focusRing]}
+              onPress={togglePlay}
+            >
               <Text style={styles.playIcon}>{isPlaying ? '⏸' : '▶'}</Text>
-            </TouchableOpacity>
+            </Pressable>
             <Pressable
               focusable
               style={({ focused }) => [styles.seekBtn, focused && styles.focusRing]}
@@ -951,32 +959,32 @@ export default function PlayerScreen() {
           <Text style={styles.settingsTitle}>Playback Speed</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
             {SPEEDS.map((s) => (
-              <TouchableOpacity
+              <Pressable
                 key={s}
-                style={[styles.chip, speed === s && styles.chipActive]}
+                focusable
+                style={({ focused }) => [styles.chip, speed === s && styles.chipActive, focused && styles.chipFocus]}
                 onPress={() => { setSpeed(s); player.playbackRate = s; }}
-                activeOpacity={0.75}
               >
                 <Text style={[styles.chipText, speed === s && styles.chipTextActive]}>
                   {s === 1 ? '1× Normal' : `${s}×`}
                 </Text>
-              </TouchableOpacity>
+              </Pressable>
             ))}
           </ScrollView>
 
           <Text style={[styles.settingsTitle, { marginTop: 8 }]}>Aspect Ratio</Text>
           <View style={styles.chipRow}>
             {FITS.map((f) => (
-              <TouchableOpacity
+              <Pressable
                 key={f.value}
-                style={[styles.chip, contentFit === f.value && styles.chipActive]}
+                focusable
+                style={({ focused }) => [styles.chip, contentFit === f.value && styles.chipActive, focused && styles.chipFocus]}
                 onPress={() => setContentFit(f.value)}
-                activeOpacity={0.75}
               >
                 <Text style={[styles.chipText, contentFit === f.value && styles.chipTextActive]}>
                   {f.label}
                 </Text>
-              </TouchableOpacity>
+              </Pressable>
             ))}
           </View>
 
@@ -987,18 +995,18 @@ export default function PlayerScreen() {
               <Text style={[styles.settingsTitle, { marginTop: 16 }]}>Audio Track</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
                 {/* Auto chip — shows the active preference and clears it on tap */}
-                <TouchableOpacity
-                  style={styles.chip}
+                <Pressable
+                  focusable
+                  style={({ focused }) => [styles.chip, focused && styles.chipFocus]}
                   onPress={() => {
                     StorageService.clearPrefAudioLanguage().catch(() => {});
                     setPrefAudioLang(null);
                   }}
-                  activeOpacity={0.75}
                 >
                   <Text style={styles.chipText}>
                     {prefAudioLang ? `Auto (${prefAudioLang})` : 'Auto'}
                   </Text>
-                </TouchableOpacity>
+                </Pressable>
 
                 {audioTracks.map((track, idx) => {
                   const label = track.label || track.name || track.language || `Track ${idx + 1}`;
@@ -1008,26 +1016,25 @@ export default function PlayerScreen() {
                       ? track.id === activeAudioTrack.id
                       : track.language === activeAudioTrack.language && track.label === activeAudioTrack.label);
                   return (
-                    <TouchableOpacity
+                    <Pressable
                       key={track.id ?? `audio-${idx}`}
-                      style={[styles.chip, isActive && styles.chipActive]}
+                      focusable
+                      style={({ focused }) => [styles.chip, isActive && styles.chipActive, focused && styles.chipFocus]}
                       onPress={() => {
                         try {
                           player.audioTrack = track;
                           setActiveAudioTrack(track);
-                          // Persist this language as the preferred choice
                           if (track.language) {
                             StorageService.setPrefAudioLanguage(track.language).catch(() => {});
                             setPrefAudioLang(track.language);
                           }
                         } catch {}
                       }}
-                      activeOpacity={0.75}
                     >
                       <Text style={[styles.chipText, isActive && styles.chipTextActive]}>
                         {label}
                       </Text>
-                    </TouchableOpacity>
+                    </Pressable>
                   );
                 })}
               </ScrollView>
@@ -1047,20 +1054,20 @@ export default function PlayerScreen() {
               </View>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
                 {/* Off option */}
-                <TouchableOpacity
-                  style={[styles.chip, activeSubtitleTrack === null && styles.chipActive]}
+                <Pressable
+                  focusable
+                  style={({ focused }) => [styles.chip, activeSubtitleTrack === null && styles.chipActive, focused && styles.chipFocus]}
                   onPress={() => {
                     try {
                       player.subtitleTrack = null;
                       setActiveSubtitleTrack(null);
                     } catch {}
                   }}
-                  activeOpacity={0.75}
                 >
                   <Text style={[styles.chipText, activeSubtitleTrack === null && styles.chipTextActive]}>
                     Off
                   </Text>
-                </TouchableOpacity>
+                </Pressable>
 
                 {subtitleTracks.map((track, idx) => {
                   const label = track.label || track.name || track.language || `Track ${idx + 1}`;
@@ -1070,21 +1077,21 @@ export default function PlayerScreen() {
                       ? track.id === activeSubtitleTrack.id
                       : track.language === activeSubtitleTrack.language && track.label === activeSubtitleTrack.label);
                   return (
-                    <TouchableOpacity
+                    <Pressable
                       key={track.id ?? `sub-${idx}`}
-                      style={[styles.chip, isActive && styles.chipActive]}
+                      focusable
+                      style={({ focused }) => [styles.chip, isActive && styles.chipActive, focused && styles.chipFocus]}
                       onPress={() => {
                         try {
                           player.subtitleTrack = track;
                           setActiveSubtitleTrack(track);
                         } catch {}
                       }}
-                      activeOpacity={0.75}
                     >
                       <Text style={[styles.chipText, isActive && styles.chipTextActive]}>
                         {label}
                       </Text>
-                    </TouchableOpacity>
+                    </Pressable>
                   );
                 })}
               </ScrollView>
@@ -1314,6 +1321,10 @@ const styles = StyleSheet.create({
   chipActive: {
     backgroundColor: 'rgba(59,130,246,0.25)',
     borderColor: '#3B82F6',
+  },
+  chipFocus: {
+    borderColor: '#00E5FF',
+    backgroundColor: 'rgba(0,229,255,0.1)',
   },
   chipText: {
     fontSize: 13,

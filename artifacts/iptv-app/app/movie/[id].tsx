@@ -4,6 +4,7 @@ import {
   Image,
   Modal,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -179,24 +180,24 @@ export default function MovieDetailScreen() {
           />
 
           {/* Back */}
-          <TouchableOpacity
-            style={[styles.navBtn, { top: insets.top + (Platform.OS === 'web' ? 67 : 10), left: 14 }]}
+          <Pressable
+            focusable
+            style={({ focused }) => [styles.navBtn, { top: insets.top + (Platform.OS === 'web' ? 67 : 10), left: 14 }, focused && styles.focusRing]}
             onPress={() => router.back()}
-            activeOpacity={0.8}
           >
             <Text style={styles.navIcon}>←</Text>
-          </TouchableOpacity>
+          </Pressable>
 
           {/* Fav */}
-          <TouchableOpacity
-            style={[styles.navBtn, { top: insets.top + (Platform.OS === 'web' ? 67 : 10), right: 14 }]}
+          <Pressable
+            focusable
+            style={({ focused }) => [styles.navBtn, { top: insets.top + (Platform.OS === 'web' ? 67 : 10), right: 14 }, focused && styles.focusRing]}
             onPress={handleToggleFav}
-            activeOpacity={0.8}
           >
             <Text style={[styles.navIcon, { color: isFav ? '#EF4444' : '#fff' }]}>
               {isFav ? '♥' : '♡'}
             </Text>
-          </TouchableOpacity>
+          </Pressable>
 
           {/* Poster + meta row */}
           <View style={styles.heroPosterRow}>
@@ -233,27 +234,31 @@ export default function MovieDetailScreen() {
         <View style={styles.actionBar}>
           {savedPosition ? (
             <View style={styles.btnRow}>
-              <TouchableOpacity
-                style={[styles.playBtn, { flex: 1 }]}
+              <Pressable
+                focusable
+                style={({ focused }) => [styles.playBtn, { flex: 1 }, focused && styles.focusRing]}
                 onPress={() => handlePlay(savedPosition)}
-                activeOpacity={0.85}
               >
                 <Text style={styles.playIcon}>▶</Text>
                 <Text style={styles.playLabel}>Resume · {fmtSecs(savedPosition)}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.secondaryBtn, { borderColor: colors.border }]}
+              </Pressable>
+              <Pressable
+                focusable
+                style={({ focused }) => [styles.secondaryBtn, { borderColor: focused ? '#00E5FF' : colors.border }]}
                 onPress={() => handlePlay()}
-                activeOpacity={0.85}
               >
                 <Text style={[styles.secondaryLabel, { color: colors.foreground }]}>From start</Text>
-              </TouchableOpacity>
+              </Pressable>
             </View>
           ) : (
-            <TouchableOpacity style={styles.playBtn} onPress={() => handlePlay()} activeOpacity={0.85}>
+            <Pressable
+              focusable
+              style={({ focused }) => [styles.playBtn, focused && styles.focusRing]}
+              onPress={() => handlePlay()}
+            >
               <Text style={styles.playIcon}>▶</Text>
               <Text style={styles.playLabel}>Play</Text>
-            </TouchableOpacity>
+            </Pressable>
           )}
         </View>
 
@@ -331,7 +336,9 @@ const styles = StyleSheet.create({
     width: 38, height: 38, borderRadius: 19,
     backgroundColor: 'rgba(0,0,0,0.55)',
     justifyContent: 'center', alignItems: 'center',
+    borderWidth: 2, borderColor: 'transparent',
   },
+  focusRing: { borderColor: '#00E5FF' },
   navIcon: { fontSize: 18, color: '#fff' },
   heroPosterRow: {
     position: 'absolute',
@@ -370,6 +377,7 @@ const styles = StyleSheet.create({
   playBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 10, backgroundColor: '#3B82F6', borderRadius: 14, paddingVertical: 15,
+    borderWidth: 2, borderColor: 'transparent',
   },
   playIcon: { fontSize: 16, color: '#fff' },
   playLabel: { fontSize: 15, fontFamily: 'Inter_600SemiBold', color: '#fff' },

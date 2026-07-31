@@ -4,6 +4,7 @@ import {
   Image,
   Modal,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -174,24 +175,24 @@ export default function SeriesDetailScreen() {
           />
 
           {/* Back */}
-          <TouchableOpacity
-            style={[styles.navBtn, { top: insets.top + (Platform.OS === 'web' ? 67 : 10), left: 14 }]}
+          <Pressable
+            focusable
+            style={({ focused }) => [styles.navBtn, { top: insets.top + (Platform.OS === 'web' ? 67 : 10), left: 14 }, focused && styles.focusRing]}
             onPress={() => router.back()}
-            activeOpacity={0.8}
           >
             <Text style={styles.navIcon}>←</Text>
-          </TouchableOpacity>
+          </Pressable>
 
           {/* Fav */}
-          <TouchableOpacity
-            style={[styles.navBtn, { top: insets.top + (Platform.OS === 'web' ? 67 : 10), right: 14 }]}
+          <Pressable
+            focusable
+            style={({ focused }) => [styles.navBtn, { top: insets.top + (Platform.OS === 'web' ? 67 : 10), right: 14 }, focused && styles.focusRing]}
             onPress={handleToggleFav}
-            activeOpacity={0.8}
           >
             <Text style={[styles.navIcon, { color: isFav ? '#EF4444' : '#fff' }]}>
               {isFav ? '♥' : '♡'}
             </Text>
-          </TouchableOpacity>
+          </Pressable>
 
           {/* Poster + meta row */}
           <View style={styles.heroPosterRow}>
@@ -225,38 +226,38 @@ export default function SeriesDetailScreen() {
 
         {/* ── Action bar ── */}
         <View style={[styles.actionBar, { paddingHorizontal: 16 }]}>
-          <TouchableOpacity
-            style={[styles.playBtn, { opacity: !activeSeason ? 0.4 : 1 }]}
+          <Pressable
+            focusable
+            style={({ focused }) => [styles.playBtn, { opacity: !activeSeason ? 0.4 : 1 }, focused && styles.focusRing]}
             onPress={handlePlayFirst}
-            activeOpacity={0.85}
             disabled={!activeSeason}
           >
             <Text style={styles.playIcon}>▶</Text>
             <Text style={styles.playLabel}>
               Play · S{(activeSeason?.seasonNumber ?? 1)}:E1
             </Text>
-          </TouchableOpacity>
+          </Pressable>
 
           {/* Season selector */}
           {seasons.length > 1 && (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.seasonRow}>
               {seasons.map((season, idx) => (
-                <TouchableOpacity
+                <Pressable
                   key={season.id}
-                  style={[
+                  focusable
+                  style={({ focused }) => [
                     styles.seasonChip,
                     {
                       backgroundColor: idx === selectedSeason ? colors.primary : colors.secondary,
-                      borderColor: idx === selectedSeason ? colors.primary : colors.border,
+                      borderColor: focused ? '#00E5FF' : idx === selectedSeason ? colors.primary : colors.border,
                     },
                   ]}
                   onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setSelectedSeason(idx); }}
-                  activeOpacity={0.7}
                 >
                   <Text style={[styles.seasonChipText, { color: idx === selectedSeason ? '#fff' : colors.mutedForeground }]}>
                     Season {season.seasonNumber}
                   </Text>
-                </TouchableOpacity>
+                </Pressable>
               ))}
             </ScrollView>
           )}
@@ -309,11 +310,11 @@ export default function SeriesDetailScreen() {
                 const epRating = ep.info?.rating ? parseFloat(ep.info.rating) : 0;
 
                 return (
-                  <TouchableOpacity
+                  <Pressable
                     key={ep.id}
-                    style={[styles.epRow, { backgroundColor: colors.card, borderColor: colors.border }]}
+                    focusable
+                    style={({ focused }) => [styles.epRow, { backgroundColor: colors.card, borderColor: focused ? '#00E5FF' : colors.border }]}
                     onPress={() => handlePlayEpisode(ep)}
-                    activeOpacity={0.75}
                   >
                     {/* Thumbnail */}
                     <View style={[styles.epThumb, { backgroundColor: colors.secondary }]}>
@@ -360,15 +361,15 @@ export default function SeriesDetailScreen() {
 
                     {/* Resume / play */}
                     {hist?.position && hist.position > 5 ? (
-                      <TouchableOpacity
-                        style={[styles.resumeBtn, { borderColor: colors.primary }]}
+                      <Pressable
+                        focusable
+                        style={({ focused }) => [styles.resumeBtn, { borderColor: focused ? '#00E5FF' : colors.primary }]}
                         onPress={() => handlePlayEpisode(ep, hist.position)}
-                        activeOpacity={0.8}
                       >
                         <Text style={[styles.resumeLabel, { color: colors.primary }]}>Resume</Text>
-                      </TouchableOpacity>
+                      </Pressable>
                     ) : null}
-                  </TouchableOpacity>
+                  </Pressable>
                 );
               })}
             </>
@@ -413,7 +414,9 @@ const styles = StyleSheet.create({
     width: 38, height: 38, borderRadius: 19,
     backgroundColor: 'rgba(0,0,0,0.55)',
     justifyContent: 'center', alignItems: 'center',
+    borderWidth: 2, borderColor: 'transparent',
   },
+  focusRing: { borderColor: '#00E5FF' },
   navIcon: { fontSize: 18, color: '#fff' },
   heroPosterRow: {
     position: 'absolute',
@@ -452,6 +455,7 @@ const styles = StyleSheet.create({
   playBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 10, backgroundColor: '#3B82F6', borderRadius: 14, paddingVertical: 15,
+    borderWidth: 2, borderColor: 'transparent',
   },
   playIcon: { fontSize: 16, color: '#fff' },
   playLabel: { fontSize: 15, fontFamily: 'Inter_600SemiBold', color: '#fff' },
