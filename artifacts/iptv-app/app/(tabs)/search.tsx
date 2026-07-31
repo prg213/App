@@ -485,7 +485,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     borderWidth: 1,
     paddingHorizontal: 10,
-    height: 40,
+    paddingVertical: 9,
     gap: 6,
   },
   searchIcon: { fontSize: 14 },
@@ -493,7 +493,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     fontFamily: 'Inter_400Regular',
-    paddingVertical: 0,
+    padding: 0,
   },
   clearBtn: {
     fontSize: 13,
