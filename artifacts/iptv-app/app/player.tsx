@@ -314,6 +314,8 @@ export default function PlayerScreen() {
   const [subtitleTracks, setSubtitleTracks] = useState<SubtitleTrack[]>([]);
   const [activeAudioTrack, setActiveAudioTrack] = useState<AudioTrack | null>(null);
   const [activeSubtitleTrack, setActiveSubtitleTrack] = useState<SubtitleTrack | null>(null);
+  // Mirrors the persisted preferred audio language so the Auto chip can show it
+  const [prefAudioLang, setPrefAudioLang] = useState<string | null>(null);
 
   // Refs so interval / unmount callbacks can read latest values without stale closures
   const currentTimeRef = useRef(0);
@@ -386,6 +388,7 @@ export default function PlayerScreen() {
               // Auto-select preferred audio language if saved
               if (tracks.length > 1) {
                 StorageService.getPrefAudioLanguage().then((prefLang) => {
+                  setPrefAudioLang(prefLang);
                   if (!prefLang) return;
                   const match = tracks.find((t) => t.language === prefLang);
                   if (match) {
@@ -928,13 +931,18 @@ export default function PlayerScreen() {
             <>
               <Text style={[styles.settingsTitle, { marginTop: 16 }]}>Audio Track</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-                {/* Auto chip — clears the saved language preference */}
+                {/* Auto chip — shows the active preference and clears it on tap */}
                 <TouchableOpacity
                   style={styles.chip}
-                  onPress={() => { StorageService.clearPrefAudioLanguage().catch(() => {}); }}
+                  onPress={() => {
+                    StorageService.clearPrefAudioLanguage().catch(() => {});
+                    setPrefAudioLang(null);
+                  }}
                   activeOpacity={0.75}
                 >
-                  <Text style={styles.chipText}>Auto</Text>
+                  <Text style={styles.chipText}>
+                    {prefAudioLang ? `Auto (${prefAudioLang})` : 'Auto'}
+                  </Text>
                 </TouchableOpacity>
 
                 {audioTracks.map((track, idx) => {
@@ -955,6 +963,7 @@ export default function PlayerScreen() {
                           // Persist this language as the preferred choice
                           if (track.language) {
                             StorageService.setPrefAudioLanguage(track.language).catch(() => {});
+                            setPrefAudioLang(track.language);
                           }
                         } catch {}
                       }}
