@@ -36,6 +36,7 @@ import {
 import { fetchAndParseM3U } from '@/services/m3uParser';
 import { fetchAndParseXmltv } from '@/services/epgService';
 import { RecentChannelsRail } from '@/components/RecentChannelsRail';
+import { CatchupSheet } from '@/components/CatchupSheet';
 import type { Channel, Category, EpgProgram, FavoriteChannel } from '@/types';
 
 const FAVS_CAT_ID = '__favs';
@@ -186,6 +187,9 @@ export default function LiveTVScreen() {
   const [isBuffering, setIsBuffering] = useState(false);
   const [hasError, setHasError] = useState(false);
   const [nowTs, setNowTs] = useState(Date.now());
+
+  // ── Catch-up sheet ───────────────────────────────────────────────────────
+  const [showCatchup, setShowCatchup] = useState(false);
 
   // ── Reorder mode ─────────────────────────────────────────────────────────
   const [isReordering, setIsReordering] = useState(false);
@@ -681,7 +685,18 @@ export default function LiveTVScreen() {
 
         {selectedChannel ? (
           <>
-            <Text style={[styles.epgHeader, { color: colors.mutedForeground }]}>TV GUIDE</Text>
+            {/* ── EPG header row with optional Catch-up button ── */}
+            <View style={styles.epgHeaderRow}>
+              <Text style={[styles.epgHeader, { color: colors.mutedForeground }]}>TV GUIDE</Text>
+              {selectedChannel.tvArchive === 1 && (
+                <Pressable
+                  onPress={() => setShowCatchup(true)}
+                  style={({ pressed }) => [styles.catchupBtn, pressed && { opacity: 0.7 }]}
+                >
+                  <Text style={styles.catchupBtnText}>📅 Catch-up</Text>
+                </Pressable>
+              )}
+            </View>
             {channelEpg.length > 0 ? (
               <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: insets.bottom + 8 }}>
                 {channelEpg.map((prog, i) => {
@@ -744,6 +759,18 @@ export default function LiveTVScreen() {
           </View>
         )}
       </View>
+
+      {/* ── Catch-up sheet ── */}
+      {showCatchup && selectedChannel && creds && (
+        <CatchupSheet
+          key={selectedChannel.id}
+          visible={showCatchup}
+          channel={selectedChannel}
+          creds={creds}
+          epgMap={epgMap}
+          onClose={() => setShowCatchup(false)}
+        />
+      )}
     </View>
   );
 }
@@ -906,11 +933,30 @@ const styles = StyleSheet.create({
   },
   tapHintText: { color: '#fff', fontSize: 14 },
 
+  epgHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
   epgHeader: {
     fontSize: 9,
     fontFamily: 'Inter_600SemiBold',
     letterSpacing: 1.5,
-    marginBottom: 4,
+  },
+  catchupBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#7C3AED',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  catchupBtnText: {
+    color: '#fff',
+    fontSize: 10,
+    fontFamily: 'Inter_600SemiBold',
+    letterSpacing: 0.2,
   },
   epgRow: {
     flexDirection: 'row',
