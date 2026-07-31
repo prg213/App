@@ -708,9 +708,18 @@ export default function PlayerScreen() {
             )}
           </View>
 
-          {/* Cast button + Settings ⚙ — absolute top-right */}
-          <View style={{ position: 'absolute', top: insets.top + 8, right: 16, flexDirection: 'row', gap: 8 }}>
+          {/* Cast button + CC pill + Settings ⚙ — absolute top-right */}
+          <View style={{ position: 'absolute', top: insets.top + 8, right: 16, flexDirection: 'row', gap: 8, alignItems: 'center' }}>
             <CastButton />
+            {activeSubtitleTrack !== null && (
+              <TouchableOpacity
+                style={styles.ccPill}
+                onPress={() => { try { player.subtitleTrack = null; } catch {} setActiveSubtitleTrack(null); }}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.ccText}>CC</Text>
+              </TouchableOpacity>
+            )}
             <TouchableOpacity style={styles.backBtn} onPress={() => { setShowSettings(true); }} activeOpacity={0.8}>
               <Text style={{ fontSize: 18, color: '#fff' }}>⚙</Text>
             </TouchableOpacity>
@@ -755,16 +764,25 @@ export default function PlayerScreen() {
         </Animated.View>
       )}
 
-      {/* Back button + Cast button for Live */}
+      {/* Back button + Cast button + CC pill for Live */}
       {showControls && !isWeb && isLive && (
         <Animated.View
-          style={{ opacity: controlsOpacity, position: 'absolute', top: insets.top + 8, left: 16, flexDirection: 'row', gap: 8 }}
+          style={{ opacity: controlsOpacity, position: 'absolute', top: insets.top + 8, left: 16, flexDirection: 'row', gap: 8, alignItems: 'center' }}
           pointerEvents="box-none"
         >
           <TouchableOpacity style={styles.backBtn} onPress={() => router.back()} activeOpacity={0.8}>
             <Text style={styles.backIcon}>←</Text>
           </TouchableOpacity>
           <CastButton />
+          {activeSubtitleTrack !== null && (
+            <TouchableOpacity
+              style={styles.ccPill}
+              onPress={() => { try { player.subtitleTrack = null; } catch {} setActiveSubtitleTrack(null); }}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.ccText}>CC</Text>
+            </TouchableOpacity>
+          )}
         </Animated.View>
       )}
 
@@ -1253,6 +1271,25 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_700Bold',
     color: '#60A5FA',
     letterSpacing: 0.5,
+  },
+
+  // CC subtitle-active pill
+  ccPill: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(124,58,237,0.30)',
+    borderWidth: 1,
+    borderColor: 'rgba(167,139,250,0.65)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 99,
+    flexShrink: 0,
+  },
+  ccText: {
+    fontSize: 10,
+    fontFamily: 'Inter_700Bold',
+    color: '#C4B5FD',
+    letterSpacing: 0.8,
   },
 
   // Buffering
