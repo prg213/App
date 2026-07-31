@@ -281,6 +281,18 @@ export default function PlayerScreen() {
   const [hasError, setHasError] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [isBuffering, setIsBuffering] = useState(true);
+
+  // ── Auto-reconnect state (live streams only) ──────────────────────────────
+  const MAX_RECONNECTS = 5;
+  const RECONNECT_DELAY_MS = 3000;
+  const [reconnectAttempt, setReconnectAttempt] = useState(0);
+  const [isReconnecting, setIsReconnecting] = useState(false);
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reconnectAttemptRef = useRef(0);
+  // Keep refs in sync so the statusChange closure always reads the latest values
+  useEffect(() => { reconnectAttemptRef.current = reconnectAttempt; }, [reconnectAttempt]);
+  // Source-of-truth URL ref — always points to the currently loaded stream URL
+  const activeUrlRef = useRef(params.url);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [showControls, setShowControls] = useState(false);
@@ -347,6 +359,10 @@ export default function PlayerScreen() {
       player.addListener('playingChange', ({ isPlaying: playing }) => setIsPlaying(playing)),
       player.addListener('statusChange', ({ status, error }: { status: string; error?: unknown }) => {
         if (status === 'readyToPlay') {
+          // Clear any pending reconnect when the stream comes back up
+          if (reconnectTimerRef.current) { clearTimeout(reconnectTimerRef.current); reconnectTimerRef.current = null; }
+          setIsReconnecting(false);
+          setReconnectAttempt(0);
           setIsBuffering(false);
           // Seek to saved position (only once, on first ready)
           if (!didInitialSeekRef.current && startAtSecs > 0) {
@@ -364,7 +380,31 @@ export default function PlayerScreen() {
         if (status === 'error' || error) {
           const msg = (error as any)?.message ?? (error as any)?.localizedDescription ?? String(error ?? '');
           setErrorMsg(msg);
-          setHasError(true);
+
+          // Auto-reconnect only for live streams
+          if (isLive) {
+            const attempt = reconnectAttemptRef.current + 1;
+            if (attempt <= MAX_RECONNECTS) {
+              setReconnectAttempt(attempt);
+              setIsReconnecting(true);
+              setIsBuffering(true);
+              // Clear any previously-pending retry before scheduling a new one
+              if (reconnectTimerRef.current) { clearTimeout(reconnectTimerRef.current); reconnectTimerRef.current = null; }
+              reconnectTimerRef.current = setTimeout(() => {
+                try {
+                  // Use the ref — always holds the correct URL even after channel switches
+                  player.replace(activeUrlRef.current);
+                  player.play();
+                } catch {}
+              }, RECONNECT_DELAY_MS);
+            } else {
+              // All retries exhausted — show the error screen
+              setIsReconnecting(false);
+              setHasError(true);
+            }
+          } else {
+            setHasError(true);
+          }
         }
       }),
       player.addListener('timeUpdate', ({ currentTime: t }: { currentTime: number }) => {
@@ -378,7 +418,11 @@ export default function PlayerScreen() {
       const d = player.duration;
       if (d && isFinite(d) && d > 0) setDuration(d);
     }, 500);
-    return () => { subs.forEach((s) => s.remove()); clearInterval(durationPoll); };
+    return () => {
+      subs.forEach((s) => s.remove());
+      clearInterval(durationPoll);
+      if (reconnectTimerRef.current) { clearTimeout(reconnectTimerRef.current); reconnectTimerRef.current = null; }
+    };
   }, [player, isWeb]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── History save (every 10 s for VOD/series) ─────────────────────────────
@@ -418,9 +462,15 @@ export default function PlayerScreen() {
     setActiveTitle(entry.title);
     setActiveEpgId(entry.epgId);
     setActiveUrl(entry.url);   // keeps cast hook in sync with the new stream
+    activeUrlRef.current = entry.url; // keep ref in sync so reconnect targets the right channel
     setIsBuffering(true);
     setHasError(false);
     setErrorMsg('');
+    // Reset auto-reconnect counter on manual channel switch
+    if (reconnectTimerRef.current) { clearTimeout(reconnectTimerRef.current); reconnectTimerRef.current = null; }
+    setReconnectAttempt(0);
+    reconnectAttemptRef.current = 0;  // reset ref immediately so stale closures see 0
+    setIsReconnecting(false);
     setLastWatchedUrl(entry.url);
     // Reset track lists — new stream will re-populate them on readyToPlay
     setAudioTracks([]);
@@ -586,11 +636,23 @@ export default function PlayerScreen() {
       )}
 
       {/* Buffering spinner */}
-      {isBuffering && !hasError && !isWeb && (
+      {isBuffering && !hasError && !isReconnecting && !isWeb && (
         <View style={styles.bufferWrap} pointerEvents="none">
           <View style={styles.bufferCircle}>
             <Text style={styles.bufferIcon}>▶</Text>
           </View>
+        </View>
+      )}
+
+      {/* Reconnecting overlay (live streams only) */}
+      {isReconnecting && !isWeb && (
+        <View style={styles.reconnectOverlay} pointerEvents="none">
+          <View style={styles.bufferCircle}>
+            <Text style={styles.bufferIcon}>↺</Text>
+          </View>
+          <Text style={styles.reconnectText}>
+            Reconnecting… ({reconnectAttempt}/{MAX_RECONNECTS})
+          </Text>
         </View>
       )}
 
@@ -1150,6 +1212,10 @@ const styles = StyleSheet.create({
   bufferCircle: { width: 64, height: 64, borderRadius: 32, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' },
   bufferIcon: { fontSize: 24, color: '#fff' },
   bufferText: { fontSize: 14, color: 'rgba(255,255,255,0.7)', fontFamily: 'Inter_400Regular' },
+
+  // Reconnecting overlay
+  reconnectOverlay: { ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center', gap: 14, backgroundColor: 'rgba(0,0,0,0.55)' },
+  reconnectText: { fontSize: 15, color: '#fff', fontFamily: 'Inter_600SemiBold', letterSpacing: 0.2 },
 
   // Error / web message
   msgView: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 12, paddingHorizontal: 40 },
