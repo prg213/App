@@ -269,6 +269,11 @@ export default function LiveTVScreen() {
   const liveReloadNeededRef = useRef(false);
   // After reloading for the live edge, seek to end of DVR window once ready.
   const pendingLiveEdgeSeek = useRef(false);
+  // Timestamp (ms) when the Live TV tab was last blurred — used to decide
+  // whether the preview is stale enough to warrant a live-edge reload.
+  const tabBlurredAtRef = useRef<number | null>(null);
+  // How long the tab must have been away before we reload to the live edge.
+  const LIVE_EDGE_AWAY_THRESHOLD_MS = 30_000;
   const selectedChannelRef = useRef(selectedChannel);
   useEffect(() => { selectedChannelRef.current = selectedChannel; }, [selectedChannel]);
   const channelsRef = useRef(channels);
@@ -294,9 +299,14 @@ export default function LiveTVScreen() {
             try { player.play(); } catch {}
           }
         } else if (curCh) {
-          // Returning from fullscreen — reload stream to jump to live edge;
-          // otherwise simply resume the paused preview.
-          if (liveReloadNeededRef.current) {
+          // Reload the stream to the live edge if:
+          //   (a) returning from the fullscreen player (liveReloadNeededRef), OR
+          //   (b) the tab was away for long enough that the preview is stale.
+          const blurredAt = tabBlurredAtRef.current;
+          const tabWasStale =
+            blurredAt !== null &&
+            Date.now() - blurredAt > LIVE_EDGE_AWAY_THRESHOLD_MS;
+          if (liveReloadNeededRef.current || tabWasStale) {
             liveReloadNeededRef.current = false;
             pendingLiveEdgeSeek.current = true;
             try { player.replace(curCh.streamUrl); player.play(); } catch {}
@@ -316,8 +326,13 @@ export default function LiveTVScreen() {
       return () => {
         if (goingToPlayerRef.current) {
           goingToPlayerRef.current = false;
+          // tabBlurredAtRef is intentionally NOT set here; liveReloadNeededRef
+          // is the signal used when returning from the fullscreen player.
           return;
         }
+        // Record when the tab was blurred so we can decide on return whether
+        // the preview is stale enough to warrant a live-edge reload.
+        tabBlurredAtRef.current = Date.now();
         if (!isWeb && player) {
           try { player.pause(); } catch {}
         }
