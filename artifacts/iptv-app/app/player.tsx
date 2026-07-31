@@ -403,6 +403,9 @@ export default function PlayerScreen() {
           };
           probeAudioTracks();
           setTimeout(probeAudioTracks, 2000);
+          // VOD/series streams often expose tracks later than live HLS;
+          // do an extra probe at 5 s to catch late-populated track lists.
+          if (!isLive) setTimeout(probeAudioTracks, 5000);
         }
         if (status === 'error' || error) {
           const msg = (error as any)?.message ?? (error as any)?.localizedDescription ?? String(error ?? '');
@@ -964,8 +967,8 @@ export default function PlayerScreen() {
             ))}
           </View>
 
-          {/* ── Audio tracks — only shown when the stream has more than one ── */}
-          {audioTracks.length > 1 && (
+          {/* ── Audio tracks — shown whenever the stream reports at least one track ── */}
+          {audioTracks.length > 0 && (
             <>
               <Text style={[styles.settingsTitle, { marginTop: 16 }]}>Audio Track</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
