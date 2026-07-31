@@ -20,6 +20,7 @@ const KEYS = {
   MOVIES_CACHE: 'sv_movies_cache',
   PARENTAL: 'sv_parental',
   RECENT_CHANNELS: 'sv_recent_channels',
+  PREF_AUDIO_LANG: 'sv_pref_audio_lang',
 };
 
 export const StorageService = {
@@ -212,5 +213,31 @@ export const StorageService = {
     const deduped = current.filter((c) => c.id !== ch.id);
     const updated = [{ ...ch, watchedAt: Date.now() }, ...deduped].slice(0, 20);
     await AsyncStorage.setItem(KEYS.RECENT_CHANNELS, JSON.stringify(updated));
+  },
+
+  // ── Preferred audio language (AsyncStorage) ────────────────────────────────
+
+  /**
+   * Returns the stored preferred audio language code (e.g. "en", "ar") or
+   * null if no preference has been set.
+   */
+  async getPrefAudioLanguage(): Promise<string | null> {
+    try {
+      return await AsyncStorage.getItem(KEYS.PREF_AUDIO_LANG);
+    } catch {
+      return null;
+    }
+  },
+
+  /** Persists the user's preferred audio language code. */
+  async setPrefAudioLanguage(lang: string): Promise<void> {
+    await AsyncStorage.setItem(KEYS.PREF_AUDIO_LANG, lang);
+  },
+
+  /** Clears the preferred audio language so the stream default is used. */
+  async clearPrefAudioLanguage(): Promise<void> {
+    try {
+      await AsyncStorage.removeItem(KEYS.PREF_AUDIO_LANG);
+    } catch {}
   },
 };

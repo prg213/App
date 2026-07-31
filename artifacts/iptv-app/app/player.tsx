@@ -371,10 +371,24 @@ export default function PlayerScreen() {
           }
           // Probe available audio/subtitle tracks
           try {
-            setAudioTracks(player.availableAudioTracks ?? []);
+            const tracks = player.availableAudioTracks ?? [];
+            setAudioTracks(tracks);
             setSubtitleTracks(player.availableSubtitleTracks ?? []);
             setActiveAudioTrack(player.audioTrack ?? null);
             setActiveSubtitleTrack(player.subtitleTrack ?? null);
+            // Auto-select preferred audio language if saved
+            if (tracks.length > 1) {
+              StorageService.getPrefAudioLanguage().then((prefLang) => {
+                if (!prefLang) return;
+                const match = tracks.find((t) => t.language === prefLang);
+                if (match) {
+                  try {
+                    player.audioTrack = match;
+                    setActiveAudioTrack(match);
+                  } catch {}
+                }
+              }).catch(() => {});
+            }
           } catch {}
         }
         if (status === 'error' || error) {
@@ -876,6 +890,15 @@ export default function PlayerScreen() {
             <>
               <Text style={[styles.settingsTitle, { marginTop: 16 }]}>Audio Track</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+                {/* Auto chip — clears the saved language preference */}
+                <TouchableOpacity
+                  style={styles.chip}
+                  onPress={() => { StorageService.clearPrefAudioLanguage().catch(() => {}); }}
+                  activeOpacity={0.75}
+                >
+                  <Text style={styles.chipText}>Auto</Text>
+                </TouchableOpacity>
+
                 {audioTracks.map((track, idx) => {
                   const label = track.label || track.name || track.language || `Track ${idx + 1}`;
                   const isActive =
@@ -891,6 +914,10 @@ export default function PlayerScreen() {
                         try {
                           player.audioTrack = track;
                           setActiveAudioTrack(track);
+                          // Persist this language as the preferred choice
+                          if (track.language) {
+                            StorageService.setPrefAudioLanguage(track.language).catch(() => {});
+                          }
                         } catch {}
                       }}
                       activeOpacity={0.75}
