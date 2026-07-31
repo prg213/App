@@ -17,6 +17,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { DraggableFavList } from '@/components/DraggableFavList';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useQuery } from '@tanstack/react-query';
 import { useRouter, useFocusEffect } from 'expo-router';
@@ -95,6 +96,7 @@ const ChannelRow = React.memo(function ChannelRow({
   colors,
   onPress,
   onHeartPress,
+  hideHeart = false,
 }: {
   channel: Channel;
   isSelected: boolean;
@@ -103,21 +105,22 @@ const ChannelRow = React.memo(function ChannelRow({
   colors: ReturnType<typeof useColors>;
   onPress: () => void;
   onHeartPress: () => void;
+  hideHeart?: boolean;
 }) {
   return (
     <Pressable
-      focusable
+      focusable={!hideHeart}
       style={({ focused }) => [
         styles.chRow,
-        isSelected && { backgroundColor: 'rgba(59,130,246,0.15)' },
+        isSelected && !hideHeart && { backgroundColor: 'rgba(59,130,246,0.15)' },
         { borderBottomColor: colors.border },
-        focused && styles.tvFocused,
+        focused && !hideHeart && styles.tvFocused,
       ]}
-      onPress={onPress}
+      onPress={hideHeart ? undefined : onPress}
     >
-      {isSelected && <View style={styles.selectedPip} />}
+      {isSelected && !hideHeart && <View style={styles.selectedPip} />}
       {channel.num != null && (
-        <Text style={[styles.chNum, { color: isSelected ? '#3B82F6' : colors.mutedForeground }]}>
+        <Text style={[styles.chNum, { color: isSelected && !hideHeart ? '#3B82F6' : colors.mutedForeground }]}>
           {channel.num}
         </Text>
       )}
@@ -132,30 +135,32 @@ const ChannelRow = React.memo(function ChannelRow({
       </View>
       <View style={{ flex: 1, gap: 2 }}>
         <Text
-          style={[styles.chName, { color: isSelected ? '#F2F2F2' : colors.foreground }]}
+          style={[styles.chName, { color: isSelected && !hideHeart ? '#F2F2F2' : colors.foreground }]}
           numberOfLines={1}
         >
           {channel.name}
         </Text>
         {nowPlaying ? (
           <Text
-            style={[styles.chSub, { color: isSelected ? '#93C5FD' : colors.mutedForeground }]}
+            style={[styles.chSub, { color: isSelected && !hideHeart ? '#93C5FD' : colors.mutedForeground }]}
             numberOfLines={1}
           >
             {nowPlaying}
           </Text>
         ) : null}
       </View>
-      <Pressable
-        focusable
-        onPress={onHeartPress}
-        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        style={({ focused }) => [styles.heartBtn, focused && styles.tvFocusedRound]}
-      >
-        <Text style={[styles.heartIcon, { color: isFav ? '#EF4444' : colors.mutedForeground }]}>
-          {isFav ? '♥' : '♡'}
-        </Text>
-      </Pressable>
+      {!hideHeart && (
+        <Pressable
+          focusable
+          onPress={onHeartPress}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          style={({ focused }) => [styles.heartBtn, focused && styles.tvFocusedRound]}
+        >
+          <Text style={[styles.heartIcon, { color: isFav ? '#EF4444' : colors.mutedForeground }]}>
+            {isFav ? '♥' : '♡'}
+          </Text>
+        </Pressable>
+      )}
     </Pressable>
   );
 });
@@ -181,6 +186,11 @@ export default function LiveTVScreen() {
   const [isBuffering, setIsBuffering] = useState(false);
   const [hasError, setHasError] = useState(false);
   const [nowTs, setNowTs] = useState(Date.now());
+
+  // ── Reorder mode ─────────────────────────────────────────────────────────
+  const [isReordering, setIsReordering] = useState(false);
+  // Working copy used while the edit session is open
+  const [reorderedFavs, setReorderedFavs] = useState<FavoriteChannel[]>([]);
 
   useEffect(() => {
     // Load local favourites immediately for instant UI, then merge with server.
@@ -389,7 +399,36 @@ export default function LiveTVScreen() {
     Haptics.selectionAsync();
     setSelectedCatId(catId);
     setSelectedChannel(null);
+    // Exit reorder mode whenever the user switches category
+    setIsReordering(false);
   }, []);
+
+  // ── Reorder mode handlers ─────────────────────────────────────────────────
+
+  const handleEditStart = useCallback(() => {
+    Haptics.selectionAsync();
+    // Only show non-blocked channels in reorder mode — same filter applied elsewhere
+    const visible = blockedSet.size > 0
+      ? favorites.filter((f) => !blockedSet.has(f.id))
+      : favorites;
+    setReorderedFavs(visible);
+    setIsReordering(true);
+    setSelectedChannel(null);
+  }, [favorites, blockedSet]);
+
+  const handleDone = useCallback(async () => {
+    Haptics.selectionAsync();
+    setIsReordering(false);
+    // Reordered list only contains visible channels; re-append blocked ones at the
+    // end so they stay in storage and reappear if the block is ever lifted.
+    const blockedFavs = blockedSet.size > 0
+      ? favorites.filter((f) => blockedSet.has(f.id))
+      : [];
+    const merged = [...reorderedFavs, ...blockedFavs];
+    setFavorites(merged);
+    await StorageService.saveFavorites(merged);
+    pushRemoteChannels(deviceMac, merged);
+  }, [reorderedFavs, favorites, blockedSet, deviceMac]);
 
   const handleSelectChannel = useCallback((ch: Channel) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -522,9 +561,24 @@ export default function LiveTVScreen() {
 
       {/* ══ MIDDLE: channel list ══ */}
       <View style={[styles.chPanel, { borderRightColor: colors.border, paddingTop: insets.top + 4 }]}>
-        <Text style={[styles.panelHeader, { color: colors.mutedForeground, borderBottomColor: colors.border }]}>
-          {currentCat?.name?.toUpperCase() ?? 'CHANNELS'}
-        </Text>
+        {/* Panel header — shows Edit/Done button when Favourites is active */}
+        <View style={[styles.chPanelHeader, { borderBottomColor: colors.border }]}>
+          <Text style={[styles.panelHeader, { color: colors.mutedForeground, borderBottomWidth: 0, marginBottom: 0, paddingBottom: 0 }]}>
+            {currentCat?.name?.toUpperCase() ?? 'CHANNELS'}
+          </Text>
+          {isFavsSelected && favorites.length > 1 && (
+            <Pressable
+              onPress={isReordering ? handleDone : handleEditStart}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={({ pressed }) => [styles.editBtn, pressed && { opacity: 0.6 }]}
+            >
+              <Text style={styles.editBtnText}>
+                {isReordering ? 'Done' : 'Edit'}
+              </Text>
+            </Pressable>
+          )}
+        </View>
+
         {channelsLoading && !isFavsSelected ? (
           <ActivityIndicator color={colors.primary} style={{ marginTop: 32 }} />
         ) : channels.length === 0 && isFavsSelected ? (
@@ -535,6 +589,26 @@ export default function LiveTVScreen() {
               Tap ♡ next to any channel to add it here.
             </Text>
           </View>
+        ) : isFavsSelected && isReordering ? (
+          <DraggableFavList
+            data={reorderedFavs}
+            keyExtractor={(ch) => ch.id}
+            renderItem={(ch) => (
+              <ChannelRow
+                channel={{ id: ch.id, name: ch.name, logo: ch.logo, groupTitle: ch.groupTitle, streamUrl: ch.streamUrl, epgId: ch.epgId }}
+                isSelected={false}
+                isFav
+                nowPlaying={nowPlayingMap.get(ch.epgId ?? ch.id)}
+                colors={colors}
+                onPress={() => {}}
+                onHeartPress={() => {}}
+                hideHeart
+              />
+            )}
+            onReorder={setReorderedFavs}
+            rowHeight={60}
+            colors={colors}
+          />
         ) : (
           <FlatList
             data={channels}
@@ -721,6 +795,28 @@ const styles = StyleSheet.create({
     paddingBottom: 6,
     borderBottomWidth: StyleSheet.hairlineWidth,
     marginBottom: 2,
+  },
+
+  // ── Channel panel header (title + Edit/Done button) ──
+  chPanelHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingRight: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    marginBottom: 2,
+  },
+  editBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    backgroundColor: '#3B82F6',
+    borderRadius: 6,
+    marginLeft: 'auto',
+  },
+  editBtnText: {
+    color: '#fff',
+    fontSize: 10,
+    fontFamily: 'Inter_600SemiBold',
+    letterSpacing: 0.3,
   },
 
   // ── Category panel ──
