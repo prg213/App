@@ -162,13 +162,18 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
         Animated.timing(animWidth,  { toValue: rect.width,  duration: COLLAPSE_MS, useNativeDriver: false }),
         Animated.timing(animHeight, { toValue: rect.height, duration: COLLAPSE_MS, useNativeDriver: false }),
       ]).start(() => {
-        // Navigate back — the mini-player is now revealed beneath the overlay
+        // Navigate back first so the home screen starts rendering immediately.
         onDone();
-        Animated.timing(animOpacity, {
-          toValue: 0,
-          duration: 150,
-          useNativeDriver: false,
-        }).start(() => setOverlayVisible(false));
+        // Remove the overlay in the next frame rather than fading it out over
+        // 150 ms with useNativeDriver:false.  A slow JS thread (busy with
+        // navigation re-renders + useFocusEffect) would stall that animation,
+        // leaving a plain-video overlay covering the mini-player UI for far
+        // longer than intended.  One rAF is enough for the home screen to
+        // commit its first frame; after that we snap the overlay away.
+        requestAnimationFrame(() => {
+          animOpacity.setValue(0);
+          setOverlayVisible(false);
+        });
       });
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
