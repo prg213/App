@@ -10,6 +10,8 @@ export interface ParentalSettings {
   lockEnabled: boolean;
   /** IDs of channels hidden from the Live TV list and player navigation. */
   blockedChannels: string[];
+  /** Category IDs whose channels are hidden everywhere (Live TV, Search). */
+  blockedCategories?: string[];
 }
 
 export interface Credentials {

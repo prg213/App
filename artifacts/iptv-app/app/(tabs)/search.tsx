@@ -183,7 +183,7 @@ export default function SearchScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { credentials } = useAppContext();
-  const { blockedChannelIds, maxRating } = useParentalContext();
+  const { blockedChannels: blockedChannelIds, blockedCategoryIds, maxRating } = useParentalContext();
 
   const [query, setQuery] = useState('');
   const inputRef = useRef<TextInput>(null);
@@ -229,6 +229,7 @@ export default function SearchScreen() {
   // ── Filtered results ──────────────────────────────────────────────────────
 
   const blockedSet = useMemo(() => new Set(blockedChannelIds), [blockedChannelIds]);
+  const blockedCatSet = useMemo(() => new Set(blockedCategoryIds), [blockedCategoryIds]);
 
   const { channels, movies, series } = useMemo(() => {
     if (!hasQuery) return { channels: [], movies: [], series: [] };
@@ -236,7 +237,7 @@ export default function SearchScreen() {
     const q = query.trim().toLowerCase();
 
     const channels = allChannels
-      .filter((ch) => !blockedSet.has(ch.id) && ch.name.toLowerCase().includes(q))
+      .filter((ch) => !blockedSet.has(ch.id) && !blockedCatSet.has(ch.groupTitle) && ch.name.toLowerCase().includes(q))
       .slice(0, 50);
 
     const movies = allMovies

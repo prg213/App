@@ -16,6 +16,8 @@ interface ParentalContextValue {
   lockEnabled: boolean;
   /** IDs of channels hidden from Live TV. */
   blockedChannels: string[];
+  /** IDs of categories whose channels are hidden everywhere. */
+  blockedCategoryIds: string[];
 
   /** Attempt to unlock. Returns true on success. */
   unlockApp: (pin: string) => Promise<boolean>;
@@ -35,8 +37,10 @@ interface ParentalContextValue {
   setMaxRating: (rating: MaxRating) => Promise<void>;
   /** Toggle a channel in/out of the blocked list. */
   toggleBlockedChannel: (channelId: string) => Promise<void>;
-  /** Replace the entire blocked list (used for category blocking and orphan cleanup). */
+  /** Replace the entire blocked list (used for orphan cleanup). */
   setBlockedChannelIds: (ids: string[]) => Promise<void>;
+  /** Toggle a whole category in/out of the blocked list. */
+  toggleBlockedCategory: (catId: string) => Promise<void>;
   /** Provided by the root layout — clears credentials (logout) as the forgot-PIN escape. */
   resetAndLogout: () => void;
 }
@@ -48,6 +52,7 @@ const ParentalContext = createContext<ParentalContextValue>({
   maxRating: 'all',
   lockEnabled: false,
   blockedChannels: [],
+  blockedCategoryIds: [],
   unlockApp: async () => false,
   verifyPin: async () => false,
   setPin: async () => false,
@@ -56,6 +61,7 @@ const ParentalContext = createContext<ParentalContextValue>({
   setMaxRating: async () => {},
   toggleBlockedChannel: async () => {},
   setBlockedChannelIds: async () => {},
+  toggleBlockedCategory: async () => {},
   resetAndLogout: () => {},
 });
 
@@ -72,6 +78,7 @@ export function ParentalContextProvider({
   const [maxRating, setMaxRatingState] = useState<MaxRating>('all');
   const [lockEnabled, setLockEnabledState] = useState(false);
   const [blockedChannels, setBlockedChannels] = useState<string[]>([]);
+  const [blockedCategoryIds, setBlockedCategoryIds] = useState<string[]>([]);
 
   // Timestamp when the app went to background
   const bgTimestamp = useRef<number | null>(null);
@@ -88,6 +95,7 @@ export function ParentalContextProvider({
       setMaxRatingState(settings.maxRating);
       setLockEnabledState(settings.lockEnabled);
       setBlockedChannels(settings.blockedChannels ?? []);
+      setBlockedCategoryIds(settings.blockedCategories ?? []);
       // Lock on first launch if PIN + lock are configured
       if (pinSet && settings.lockEnabled) {
         setIsLocked(true);
@@ -179,6 +187,16 @@ export function ParentalContextProvider({
     setBlockedChannels(ids);
   }, []);
 
+  const toggleBlockedCategory = useCallback(async (catId: string) => {
+    const settings = await StorageService.getParentalSettings();
+    const current = settings.blockedCategories ?? [];
+    const updated = current.includes(catId)
+      ? current.filter((id) => id !== catId)
+      : [...current, catId];
+    await StorageService.saveParentalSettings({ ...settings, blockedCategories: updated });
+    setBlockedCategoryIds(updated);
+  }, []);
+
   return (
     <ParentalContext.Provider
       value={{
@@ -188,6 +206,7 @@ export function ParentalContextProvider({
         maxRating,
         lockEnabled,
         blockedChannels,
+        blockedCategoryIds,
         unlockApp,
         verifyPin,
         setPin,
@@ -196,6 +215,7 @@ export function ParentalContextProvider({
         setMaxRating,
         toggleBlockedChannel,
         setBlockedChannelIds,
+        toggleBlockedCategory,
         resetAndLogout: onForgotPin,
       }}
     >

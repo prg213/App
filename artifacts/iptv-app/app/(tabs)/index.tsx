@@ -7,6 +7,7 @@ import React, {
 } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Animated,
   AppState,
   AppStateStatus,
@@ -61,13 +62,17 @@ function fmtTime(d: Date): string {
 const CategoryRow = React.memo(function CategoryRow({
   cat,
   isSelected,
+  isBlocked = false,
   colors,
   onPress,
+  onLongPress,
 }: {
   cat: Category;
   isSelected: boolean;
+  isBlocked?: boolean;
   colors: ReturnType<typeof useColors>;
   onPress: () => void;
+  onLongPress?: () => void;
 }) {
   return (
     <Pressable
@@ -80,12 +85,20 @@ const CategoryRow = React.memo(function CategoryRow({
         focused && styles.tvFocused,
       ]}
       onPress={onPress}
+      onLongPress={onLongPress}
+      delayLongPress={500}
     >
       <Text
-        style={[styles.catRowText, { color: isSelected ? '#fff' : colors.foreground }]}
+        style={[
+          styles.catRowText,
+          {
+            color: isSelected ? '#fff' : isBlocked ? '#EF4444' : colors.foreground,
+            opacity: isBlocked ? 0.6 : 1,
+          },
+        ]}
         numberOfLines={2}
       >
-        {cat.name}
+        {isBlocked ? '⊘ ' : ''}{cat.name}
       </Text>
     </Pressable>
   );
@@ -177,7 +190,7 @@ export default function LiveTVScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { credentials, lastWatchedUrl, deviceMac } = useAppContext();
-  const { blockedChannels } = useParentalContext();
+  const { blockedChannels, blockedCategoryIds, setBlockedChannelIds, toggleBlockedCategory } = useParentalContext();
   const isWeb = Platform.OS === 'web';
 
   const isXtream = credentials?.type === 'xtream';
@@ -228,15 +241,26 @@ export default function LiveTVScreen() {
   // ── Video player (shared from LivePlayerContext — persists across navigation) ──
   const { player, activeUrlRef: liveUrlRef } = useLivePlayer();
 
-  // ── AppState tracking (#31, #53) ─────────────────────────────────────────
+  // ── AppState tracking (#21/#31/#53) ──────────────────────────────────────
   const isAppBackgroundRef = useRef(false);
+  // Holds the last failed favourites push so it can be retried on foreground (#21)
+  const pendingFavPushRef = useRef<FavoriteChannel[] | null>(null);
   useEffect(() => {
     if (isWeb) return;
     const sub = AppState.addEventListener('change', (state: AppStateStatus) => {
+      const wasBackground = isAppBackgroundRef.current;
       isAppBackgroundRef.current = state === 'background' || state === 'inactive';
+      // Retry a failed push when the user brings the app back to the foreground
+      if (wasBackground && !isAppBackgroundRef.current && pendingFavPushRef.current) {
+        const toRetry = pendingFavPushRef.current;
+        pendingFavPushRef.current = null;
+        pushRemoteChannels(deviceMac, toRetry).then((ok) => {
+          if (!ok) pendingFavPushRef.current = toRetry; // still offline — queue again
+        });
+      }
     });
     return () => sub.remove();
-  }, [isWeb]);
+  }, [isWeb, deviceMac]);
 
   // Animated overlay that snaps to opaque synchronously (no React reconciler
   // roundtrip) before player.replace() is called, preventing the black flash
@@ -485,7 +509,24 @@ export default function LiveTVScreen() {
     staleTime: 5 * 60_000,
   });
 
+  // Task #11: remove blocked channel IDs that no longer exist in the full channel
+  // list. Runs only when the user has "All Channels" loaded (complete roster).
+  useEffect(() => {
+    if (selectedCatId !== ALL_CAT_ID || fetchedChannels.length === 0 || blockedChannels.length === 0) return;
+    const existingIds = new Set(fetchedChannels.map((c) => c.id));
+    const cleaned = blockedChannels.filter((id) => existingIds.has(id));
+    if (cleaned.length < blockedChannels.length) setBlockedChannelIds(cleaned);
+  }, [fetchedChannels, selectedCatId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const blockedSet = useMemo(() => new Set(blockedChannels), [blockedChannels]);
+
+  // Map blocked category IDs → names so both Xtream (groupTitle = name) and
+  // M3U (groupTitle = id) channels are filtered correctly.
+  const blockedCatNames = useMemo(() => {
+    const s = new Set<string>(blockedCategoryIds);
+    rawCategories.forEach((cat) => { if (blockedCategoryIds.includes(cat.id)) s.add(cat.name); });
+    return s;
+  }, [blockedCategoryIds, rawCategories]);
 
   // When Favourites is selected, use stored favourites as the channel list.
   // Always filter out blocked channels so they don't appear in any category.
@@ -500,7 +541,7 @@ export default function LiveTVScreen() {
           epgId: f.epgId,
         }))
       : fetchedChannels;
-    return blockedSet.size > 0 ? base.filter((ch) => !blockedSet.has(ch.id)) : base;
+    return base.filter((ch) => !blockedSet.has(ch.id) && !blockedCatNames.has(ch.groupTitle));
   }, [isFavsSelected, favorites, fetchedChannels, blockedSet]);
 
   const { data: epgMap } = useQuery<Map<string, EpgProgram[]>>({
@@ -602,8 +643,13 @@ export default function LiveTVScreen() {
       epgId: ch.epgId,
     });
     setFavorites(updated);
-    // Sync only channels to the server — other categories remain untouched.
-    pushRemoteChannels(deviceMac, updated);
+    // #22: show syncing indicator while the push is in flight
+    setFavSyncState('syncing');
+    const ok = await pushRemoteChannels(deviceMac, updated);
+    // #21: if the push failed (offline / server rejection), queue it for retry on foreground
+    if (!ok) pendingFavPushRef.current = updated;
+    setFavSyncState('synced');
+    setTimeout(() => setFavSyncState('idle'), 2000);
   }, [deviceMac]);
 
   const handleWatch = useCallback(() => {
@@ -660,14 +706,30 @@ export default function LiveTVScreen() {
     });
   }, [channels, player, router]);
 
-  const renderCat = useCallback(({ item }: { item: Category }) => (
-    <CategoryRow
-      cat={item}
-      isSelected={item.id === selectedCatId}
-      colors={colors}
-      onPress={() => handleSelectCat(item.id)}
-    />
-  ), [selectedCatId, colors, handleSelectCat]);
+  const renderCat = useCallback(({ item }: { item: Category }) => {
+    const isBlockable = item.id !== FAVS_CAT_ID && item.id !== ALL_CAT_ID;
+    const isBlocked = isBlockable && blockedCategoryIds.includes(item.id);
+    return (
+      <CategoryRow
+        cat={item}
+        isSelected={item.id === selectedCatId}
+        isBlocked={isBlocked}
+        colors={colors}
+        onPress={() => handleSelectCat(item.id)}
+        onLongPress={isBlockable ? () => {
+          const action = isBlocked ? 'Unblock' : 'Block';
+          Alert.alert(
+            `${action} Category`,
+            `${action} all channels in "${item.name}"?`,
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { text: action, style: isBlocked ? 'default' : 'destructive', onPress: () => toggleBlockedCategory(item.id) },
+            ],
+          );
+        } : undefined}
+      />
+    );
+  }, [selectedCatId, blockedCategoryIds, colors, handleSelectCat, toggleBlockedCategory]);
 
   const renderChannel = useCallback(({ item }: { item: Channel }) => (
     <ChannelRow

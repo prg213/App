@@ -92,11 +92,13 @@ export const StorageService = {
       const data = await AsyncStorage.getItem(KEYS.PARENTAL);
       // Spread existing data over defaults so old stored data without blockedChannels
       // still gets a valid empty array rather than undefined.
-      return data
-        ? { blockedChannels: [], ...(JSON.parse(data) as ParentalSettings) }
-        : { maxRating: 'all', lockEnabled: false, blockedChannels: [] };
+      if (data) {
+        const s = JSON.parse(data) as ParentalSettings;
+        return { blockedChannels: [], blockedCategories: [], ...s };
+      }
+      return { maxRating: 'all', lockEnabled: false, blockedChannels: [], blockedCategories: [] };
     } catch {
-      return { maxRating: 'all', lockEnabled: false, blockedChannels: [] };
+      return { maxRating: 'all', lockEnabled: false, blockedChannels: [], blockedCategories: [] };
     }
   },
 

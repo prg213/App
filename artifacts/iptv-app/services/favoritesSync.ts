@@ -46,38 +46,37 @@ export async function fetchRemoteFavourites(mac: string): Promise<RemoteFavourit
  * Push only the channel favourites for this device's account.
  * Does not touch movies or series — safe to call from the Live TV tab alone.
  */
-export async function pushRemoteChannels(mac: string, items: FavoriteChannel[]): Promise<void> {
-  await patchCategory(mac, 'channels', items);
+/** Returns true on success, false on network error or server rejection. */
+export async function pushRemoteChannels(mac: string, items: FavoriteChannel[]): Promise<boolean> {
+  try { await patchCategory(mac, 'channels', items); return true; } catch { return false; }
 }
 
 /**
  * Push only the movie favourites for this device's account.
  * Does not touch channels or series.
  */
-export async function pushRemoteMovies(mac: string, items: FavoriteMovie[]): Promise<void> {
-  await patchCategory(mac, 'movies', items);
+export async function pushRemoteMovies(mac: string, items: FavoriteMovie[]): Promise<boolean> {
+  try { await patchCategory(mac, 'movies', items); return true; } catch { return false; }
 }
 
 /**
  * Push only the series favourites for this device's account.
  * Does not touch channels or movies.
  */
-export async function pushRemoteSeries(mac: string, items: FavoriteSeries[]): Promise<void> {
-  await patchCategory(mac, 'series', items);
+export async function pushRemoteSeries(mac: string, items: FavoriteSeries[]): Promise<boolean> {
+  try { await patchCategory(mac, 'series', items); return true; } catch { return false; }
 }
 
 async function patchCategory(mac: string, kind: string, items: unknown[]): Promise<void> {
   const base = apiBase();
   if (!base || !mac) return;
-  try {
-    await fetch(`${base}/favourites/${kind}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mac, items }),
-    });
-  } catch {
-    // Offline — local state is still consistent; server will be updated next toggle.
-  }
+  // Allow network/server errors to propagate so callers can detect failures.
+  const res = await fetch(`${base}/favourites/${kind}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mac, items }),
+  });
+  if (!res.ok) throw new Error(`Server rejected ${kind} push (${res.status})`);
 }
 
 /**

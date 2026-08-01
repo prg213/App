@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
+  AppState,
+  AppStateStatus,
   Linking,
   Modal,
   Platform,
@@ -317,14 +319,38 @@ export default function PlayerScreen() {
   const [activeSubtitleTrack, setActiveSubtitleTrack] = useState<SubtitleTrack | null>(null);
   // Mirrors the persisted preferred audio language so the Auto chip can show it
   const [prefAudioLang, setPrefAudioLang] = useState<string | null>(null);
+  // Mirrors the persisted preferred subtitle language (#43)
+  const [prefSubtitleLang, setPrefSubtitleLang] = useState<string | null>(null);
 
-  // Load the saved audio-language preference on mount so the chip label is
-  // correct as soon as the settings tray is opened (before tracks are probed).
+  // Load the saved audio + subtitle language preferences on mount so the chip
+  // labels are correct as soon as the settings tray is opened.
   useEffect(() => {
-    StorageService.getPrefAudioLanguage().then((lang) => {
-      setPrefAudioLang(lang);
-    }).catch(() => {});
+    StorageService.getPrefAudioLanguage().then(setPrefAudioLang).catch(() => {});
+    StorageService.getPrefSubtitleLang().then(setPrefSubtitleLang).catch(() => {}); // #43
   }, []);
+
+  // ── AppState — background suppression (#31) + foreground retry (#30) ─────
+  const isBackgroundRef = useRef(false);
+  useEffect(() => {
+    if (isWeb) return;
+    const sub = AppState.addEventListener('change', (state: AppStateStatus) => {
+      const wasBackground = isBackgroundRef.current;
+      isBackgroundRef.current = state !== 'active';
+      // On foregrounding: if live retries were exhausted while the app was
+      // backgrounded/offline, reset the counter and try once more immediately.
+      if (wasBackground && state === 'active' && isLive) {
+        if (reconnectAttemptRef.current >= MAX_RECONNECTS) {
+          setReconnectAttempt(0);
+          reconnectAttemptRef.current = 0;
+          setHasError(false);
+          setIsReconnecting(true);
+          setIsBuffering(true);
+          try { player.replace(activeUrlRef.current); player.play(); } catch {}
+        }
+      }
+    });
+    return () => sub.remove();
+  }, [player, isLive, isWeb]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Refs so interval / unmount callbacks can read latest values without stale closures
   const currentTimeRef = useRef(0);
@@ -411,23 +437,24 @@ export default function PlayerScreen() {
           const probeAudioTracks = () => {
             try {
               const tracks = player.availableAudioTracks ?? [];
+              const subTracks = player.availableSubtitleTracks ?? [];
               setAudioTracks(tracks);
-              setSubtitleTracks(player.availableSubtitleTracks ?? []);
+              setSubtitleTracks(subTracks);
               setActiveAudioTrack(player.audioTrack ?? null);
               setActiveSubtitleTrack(player.subtitleTrack ?? null);
-              // Auto-select preferred audio language if saved.
-              // Always refresh the label; only switch the track when there are
-              // multiple tracks to choose from (no-op on single-track streams).
+              // Auto-apply saved audio language preference
               StorageService.getPrefAudioLanguage().then((prefLang) => {
                 setPrefAudioLang(prefLang);
                 if (!prefLang || tracks.length <= 1) return;
                 const match = tracks.find((t) => t.language === prefLang);
-                if (match) {
-                  try {
-                    player.audioTrack = match;
-                    setActiveAudioTrack(match);
-                  } catch {}
-                }
+                if (match) { try { player.audioTrack = match; setActiveAudioTrack(match); } catch {} }
+              }).catch(() => {});
+              // Auto-apply saved subtitle language preference (#43)
+              StorageService.getPrefSubtitleLang().then((prefLang) => {
+                setPrefSubtitleLang(prefLang);
+                if (!prefLang || subTracks.length === 0) return;
+                const match = subTracks.find((t) => t.language === prefLang);
+                if (match) { try { player.subtitleTrack = match; setActiveSubtitleTrack(match); } catch {} }
               }).catch(() => {});
             } catch {}
           };
@@ -458,12 +485,14 @@ export default function PlayerScreen() {
                 } catch {}
               }, RECONNECT_DELAY_MS);
             } else {
-              // All retries exhausted — show the error screen
+              // All retries exhausted — only show error screen if in foreground (#31)
               setIsReconnecting(false);
-              setHasError(true);
+              if (!isBackgroundRef.current) setHasError(true);
+              // If backgrounded: AppState listener resets and retries on next foreground
             }
           } else {
-            setHasError(true);
+            // VOD: only surface the error if the user can see it (#31)
+            if (!isBackgroundRef.current) setHasError(true);
           }
         }
       }),
@@ -1093,6 +1122,8 @@ export default function PlayerScreen() {
                     try {
                       player.subtitleTrack = null;
                       setActiveSubtitleTrack(null);
+                      // #43: clear saved subtitle preference when user turns subs off
+                      StorageService.clearPrefSubtitleLang().catch(() => {});
                     } catch {}
                   }}
                 >
@@ -1117,6 +1148,9 @@ export default function PlayerScreen() {
                         try {
                           player.subtitleTrack = track;
                           setActiveSubtitleTrack(track);
+                          // #43: persist subtitle language so it auto-selects next time
+                          const lang = track.language;
+                          if (lang) StorageService.setPrefSubtitleLang(lang).catch(() => {});
                         } catch {}
                       }}
                     >
