@@ -410,10 +410,28 @@ export default function PlayerScreen() {
             } catch {}
           };
           probeAudioTracks();
+          // Also probe and restore preferred subtitle on readyToPlay
+          const probeSubtitleTracks = () => {
+            try {
+              const sTracks = player.availableSubtitleTracks ?? [];
+              setSubtitleTracks(sTracks);
+              setActiveSubtitleTrack(player.subtitleTrack ?? null);
+              if (sTracks.length === 0) return;
+              StorageService.getPrefSubtitleLang().then((prefLang) => {
+                if (!prefLang) return;
+                const match = sTracks.find((t) => t.language === prefLang);
+                if (match) {
+                  try { player.subtitleTrack = match; setActiveSubtitleTrack(match); } catch {}
+                }
+              }).catch(() => {});
+            } catch {}
+          };
+          probeSubtitleTracks();
           setTimeout(probeAudioTracks, 2000);
+          setTimeout(probeSubtitleTracks, 2000);
           // VOD/series streams often expose tracks later than live HLS;
           // do an extra probe at 5 s to catch late-populated track lists.
-          if (!isLive) setTimeout(probeAudioTracks, 5000);
+          if (!isLive) { setTimeout(probeAudioTracks, 5000); setTimeout(probeSubtitleTracks, 5000); }
         }
         if (status === 'error' || error) {
           const msg = (error as any)?.message ?? (error as any)?.localizedDescription ?? String(error ?? '');
@@ -637,37 +655,41 @@ export default function PlayerScreen() {
     scheduleHide();
   }, [isCasting, currentTime, player, scheduleHide, seekRemote]);
 
-  // ── CC pill: cycle through subtitle tracks (or just turn off if single track) ──
+  // ── CC pill: turn on (first track) → cycle → off ──────────────────────────
   const handleCcPress = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    if (subtitleTracks.length <= 1) {
-      // Single-track or no tracks: current behaviour — just turn off
-      try { player.subtitleTrack = null; } catch {}
-      setActiveSubtitleTrack(null);
+    if (subtitleTracks.length === 0) return;
+    if (activeSubtitleTrack === null) {
+      // Currently off → turn on (first track)
+      const first = subtitleTracks[0];
+      try { player.subtitleTrack = first; } catch {}
+      setActiveSubtitleTrack(first);
+      if (first.language) StorageService.setPrefSubtitleLang(first.language).catch(() => {});
     } else {
-      // Multiple tracks: advance to the next one, wrapping to Off after the last
-      const currentIdx = activeSubtitleTrack
-        ? subtitleTracks.findIndex(
-            (t) => t === activeSubtitleTrack || t.language === activeSubtitleTrack.language,
-          )
-        : -1;
+      const currentIdx = subtitleTracks.findIndex(
+        (t) => t === activeSubtitleTrack || t.language === activeSubtitleTrack.language,
+      );
       const nextIdx = currentIdx + 1;
       if (nextIdx >= subtitleTracks.length) {
         // Past the last track → turn off
         try { player.subtitleTrack = null; } catch {}
         setActiveSubtitleTrack(null);
+        StorageService.clearPrefSubtitleLang().catch(() => {});
       } else {
         const next = subtitleTracks[nextIdx];
         try { player.subtitleTrack = next; } catch {}
         setActiveSubtitleTrack(next);
+        if (next.language) StorageService.setPrefSubtitleLang(next.language).catch(() => {});
       }
     }
   }, [player, subtitleTracks, activeSubtitleTrack]);
 
-  // Label shown inside the CC pill — includes language code when cycling is available
+  // Label shown inside the CC pill
   const ccLabel =
-    subtitleTracks.length > 1 && activeSubtitleTrack?.language
+    activeSubtitleTrack?.language
       ? `CC · ${activeSubtitleTrack.language.toUpperCase()}`
+      : subtitleTracks.length > 0
+      ? 'CC'
       : 'CC';
 
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
@@ -763,10 +785,14 @@ export default function PlayerScreen() {
           {/* Cast button + CC pill + Settings ⚙ — absolute top-right */}
           <View style={{ position: 'absolute', top: insets.top + 8, right: 16, flexDirection: 'row', gap: 8, alignItems: 'center' }}>
             <CastButton />
-            {activeSubtitleTrack !== null && (
+            {subtitleTracks.length > 0 && (
               <Pressable
                 focusable
-                style={({ focused }) => [styles.ccPill, focused && styles.focusRing]}
+                style={({ focused }) => [
+                  styles.ccPill,
+                  focused && styles.focusRing,
+                  activeSubtitleTrack === null && { opacity: 0.5 },
+                ]}
                 onPress={handleCcPress}
               >
                 <Text style={styles.ccText}>{ccLabel}</Text>
@@ -830,18 +856,26 @@ export default function PlayerScreen() {
           style={{ opacity: controlsOpacity, position: 'absolute', top: insets.top + 8, left: 16, flexDirection: 'row', gap: 8, alignItems: 'center' }}
           pointerEvents="box-none"
         >
-          <TouchableOpacity style={styles.backBtn} onPress={() => router.back()} activeOpacity={0.8}>
+          <Pressable
+            focusable
+            style={({ focused }) => [styles.backBtn, focused && styles.focusRing]}
+            onPress={() => router.back()}
+          >
             <Text style={styles.backIcon}>←</Text>
-          </TouchableOpacity>
+          </Pressable>
           <CastButton />
-          {activeSubtitleTrack !== null && (
-            <TouchableOpacity
-              style={styles.ccPill}
+          {subtitleTracks.length > 0 && (
+            <Pressable
+              focusable
+              style={({ focused }) => [
+                styles.ccPill,
+                focused && styles.focusRing,
+                activeSubtitleTrack === null && { opacity: 0.5 },
+              ]}
               onPress={handleCcPress}
-              activeOpacity={0.8}
             >
               <Text style={styles.ccText}>{ccLabel}</Text>
-            </TouchableOpacity>
+            </Pressable>
           )}
         </Animated.View>
       )}
@@ -865,11 +899,31 @@ export default function PlayerScreen() {
                 </Text>
               </View>
             )}
-            {activeSubtitleTrack !== null && (
-              <View style={styles.ccActiveBadge}>
-                <Text style={styles.ccActiveBadgeText}>CC</Text>
+            {activeSubtitleTrack !== null ? (
+              /* #50: tap CC badge in info bar to turn subtitles off */
+              <Pressable
+                focusable
+                style={({ focused }) => [styles.ccActiveBadge, focused && { borderColor: '#00E5FF' }]}
+                onPress={() => {
+                  try { player.subtitleTrack = null; } catch {}
+                  setActiveSubtitleTrack(null);
+                  StorageService.clearPrefSubtitleLang().catch(() => {});
+                }}
+              >
+                <Text style={styles.ccActiveBadgeText}>
+                  {activeSubtitleTrack.language
+                    ? `CC · ${activeSubtitleTrack.language.toUpperCase()}`
+                    : 'CC'}
+                </Text>
+              </Pressable>
+            ) : subtitleTracks.length > 0 ? (
+              /* #55: subtitles available but off — show dim badge listing langs */
+              <View style={[styles.ccActiveBadge, { opacity: 0.4 }]}>
+                <Text style={styles.ccActiveBadgeText}>
+                  {'CC ' + subtitleTracks.map((t) => t.language?.toUpperCase() ?? '?').slice(0, 3).join('/')}
+                </Text>
               </View>
-            )}
+            ) : null}
             <Text style={styles.infoChannel} numberOfLines={1}>{activeTitle}</Text>
             {currentProg && (
               <>

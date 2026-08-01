@@ -35,6 +35,8 @@ interface ParentalContextValue {
   setMaxRating: (rating: MaxRating) => Promise<void>;
   /** Toggle a channel in/out of the blocked list. */
   toggleBlockedChannel: (channelId: string) => Promise<void>;
+  /** Replace the entire blocked list (used for category blocking and orphan cleanup). */
+  setBlockedChannelIds: (ids: string[]) => Promise<void>;
   /** Provided by the root layout — clears credentials (logout) as the forgot-PIN escape. */
   resetAndLogout: () => void;
 }
@@ -53,6 +55,7 @@ const ParentalContext = createContext<ParentalContextValue>({
   setLockEnabled: async () => {},
   setMaxRating: async () => {},
   toggleBlockedChannel: async () => {},
+  setBlockedChannelIds: async () => {},
   resetAndLogout: () => {},
 });
 
@@ -170,6 +173,12 @@ export function ParentalContextProvider({
     setBlockedChannels(updated);
   }, []);
 
+  const setBlockedChannelIds = useCallback(async (ids: string[]) => {
+    const settings = await StorageService.getParentalSettings();
+    await StorageService.saveParentalSettings({ ...settings, blockedChannels: ids });
+    setBlockedChannels(ids);
+  }, []);
+
   return (
     <ParentalContext.Provider
       value={{
@@ -186,6 +195,7 @@ export function ParentalContextProvider({
         setLockEnabled,
         setMaxRating,
         toggleBlockedChannel,
+        setBlockedChannelIds,
         resetAndLogout: onForgotPin,
       }}
     >

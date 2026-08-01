@@ -21,6 +21,7 @@ import {
   getXtreamAccountInfo,
   parseXtreamCredsFromM3u,
 } from '@/services/xtreamApi';
+import { StorageService } from '@/services/storage';
 import type { MaxRating } from '@/types';
 
 type PinFlowKind =
@@ -153,6 +154,26 @@ export default function SettingsScreen() {
     } else {
       router.push('/blocked-channels');
     }
+  };
+
+  const handleClearHistory = () => {
+    Alert.alert('Clear Watch History', 'Remove all watched items? This cannot be undone.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Clear All', style: 'destructive',
+        onPress: () => StorageService.clearHistory().catch(() => {}),
+      },
+    ]);
+  };
+
+  const handleClearRecentChannels = () => {
+    Alert.alert('Clear Recent Channels', 'Remove all recently-watched channels?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Clear', style: 'destructive',
+        onPress: () => StorageService.clearRecentChannels().catch(() => {}),
+      },
+    ]);
   };
 
   // PIN modal success callbacks
@@ -365,6 +386,18 @@ export default function SettingsScreen() {
             sub="View and remove individual watched items"
             icon="🕐"
             onPress={() => router.push('/watch-history')}
+          />
+          <ActionRow
+            title="Clear Watch History"
+            sub="Remove all watched items"
+            icon="🗑️"
+            onPress={handleClearHistory}
+          />
+          <ActionRow
+            title="Clear Recent Channels"
+            sub="Remove the recently-watched channel rail"
+            icon="⏮"
+            onPress={handleClearRecentChannels}
           />
         </View>
 

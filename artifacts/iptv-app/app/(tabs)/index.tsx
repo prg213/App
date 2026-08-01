@@ -8,6 +8,8 @@ import React, {
 import {
   ActivityIndicator,
   Animated,
+  AppState,
+  AppStateStatus,
   FlatList,
   Image,
   Platform,
@@ -197,18 +199,27 @@ export default function LiveTVScreen() {
   // Working copy used while the edit session is open
   const [reorderedFavs, setReorderedFavs] = useState<FavoriteChannel[]>([]);
 
+  // ── Favourites sync state (#22) ──────────────────────────────────────────
+  const [favSyncState, setFavSyncState] = useState<'idle' | 'syncing' | 'synced'>('idle');
+
   useEffect(() => {
     // Load local favourites immediately for instant UI, then merge with server.
     StorageService.getFavorites().then(async (local) => {
       setFavorites(local);
+      setFavSyncState('syncing');
       const remote = await fetchRemoteFavourites(deviceMac);
       if (remote) {
         const merged = mergeFavourites(remote.channels, local);
-        // Persist merged list locally so future offline loads are up-to-date.
         await StorageService.saveFavorites(merged);
         setFavorites(merged);
+        // #21: if there were local-only items (added offline), push them back
+        if (merged.length > remote.channels.length) {
+          pushRemoteChannels(deviceMac, merged).catch(() => {});
+        }
       }
-    });
+      setFavSyncState('synced');
+      setTimeout(() => setFavSyncState('idle'), 2000);
+    }).catch(() => { setFavSyncState('idle'); });
     const t = setInterval(() => setNowTs(Date.now()), 60_000);
     return () => clearInterval(t);
   }, [deviceMac]);
@@ -216,7 +227,19 @@ export default function LiveTVScreen() {
   // ── Video player ─────────────────────────────────────────────────────────
   const player = useVideoPlayer(null, (p) => {
     p.loop = false;
+    // #53: keep audio playing when the phone screen locks
+    (p as any).staysActiveInBackground = true;
   });
+
+  // ── AppState tracking (#31, #53) ─────────────────────────────────────────
+  const isAppBackgroundRef = useRef(false);
+  useEffect(() => {
+    if (isWeb) return;
+    const sub = AppState.addEventListener('change', (state: AppStateStatus) => {
+      isAppBackgroundRef.current = state === 'background' || state === 'inactive';
+    });
+    return () => sub.remove();
+  }, [isWeb]);
 
   // Animated overlay that snaps to opaque synchronously (no React reconciler
   // roundtrip) before player.replace() is called, preventing the black flash
@@ -224,26 +247,32 @@ export default function LiveTVScreen() {
   // It fades out once the player is ready to play.
   const flashOverlayOpacity = useRef(new Animated.Value(0)).current;
 
+  // Tracks whether a load is still wanted — incremented on each new channel
+  const loadGenRef = useRef(0);
+  // Retry timer ref for #30
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
     if (isWeb || !selectedChannel?.streamUrl) return;
+    // Cancel any pending retry from a previous channel
+    if (retryTimerRef.current) { clearTimeout(retryTimerRef.current); retryTimerRef.current = null; }
     setIsBuffering(true);
     setHasError(false);
+    const gen = ++loadGenRef.current;
     const load = async () => {
       try {
+        // #54: pause immediately so the old stream goes silent before replace()
+        try { player.pause(); } catch {}
         // Snap the overlay opaque synchronously before the native surface clears.
         flashOverlayOpacity.setValue(1);
         await (player as any).replaceAsync(selectedChannel.streamUrl);
+        if (gen !== loadGenRef.current) return; // superseded
         player.play();
       } catch {
+        if (gen !== loadGenRef.current) return;
         setHasError(true);
         setIsBuffering(false);
-        // replaceAsync threw before a statusChange event could dismiss the overlay.
-        // Reset it immediately so the error UI is not hidden behind an opaque layer.
-        Animated.timing(flashOverlayOpacity, {
-          toValue: 0,
-          duration: 150,
-          useNativeDriver: true,
-        }).start();
+        Animated.timing(flashOverlayOpacity, { toValue: 0, duration: 150, useNativeDriver: true }).start();
       }
     };
     load();
@@ -280,18 +309,31 @@ export default function LiveTVScreen() {
           }
         }
         if (status === 'error' || error) {
-          setHasError(true);
           setIsBuffering(false);
-          // Dismiss the overlay on error so the error UI is visible.
-          Animated.timing(flashOverlayOpacity, {
-            toValue: 0,
-            duration: 150,
-            useNativeDriver: true,
-          }).start();
+          Animated.timing(flashOverlayOpacity, { toValue: 0, duration: 150, useNativeDriver: true }).start();
+          // #31: suppress error UI when app is in the background
+          if (!isAppBackgroundRef.current) {
+            setHasError(true);
+          }
+          // #30: auto-retry after 5 s if still on the same channel
+          const gen = loadGenRef.current;
+          if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+          retryTimerRef.current = setTimeout(() => {
+            if (gen !== loadGenRef.current || isAppBackgroundRef.current) return;
+            const url = selectedChannelRef.current?.streamUrl;
+            if (!url) return;
+            setHasError(false);
+            setIsBuffering(true);
+            flashOverlayOpacity.setValue(1);
+            try { player.replace(url); player.play(); } catch {}
+          }, 5000);
         }
       }),
     ];
-    return () => subs.forEach((s) => s.remove());
+    return () => {
+      subs.forEach((s) => s.remove());
+      if (retryTimerRef.current) { clearTimeout(retryTimerRef.current); retryTimerRef.current = null; }
+    };
   }, [player]);
 
   const goingToPlayerRef = useRef(false);
@@ -667,6 +709,12 @@ export default function LiveTVScreen() {
           <Text style={[styles.panelHeader, { color: colors.mutedForeground, borderBottomWidth: 0, marginBottom: 0, paddingBottom: 0 }]}>
             {currentCat?.name?.toUpperCase() ?? 'CHANNELS'}
           </Text>
+          {/* #22: sync indicator */}
+          {isFavsSelected && favSyncState !== 'idle' && (
+            <Text style={{ fontSize: 10, color: favSyncState === 'synced' ? '#22C55E' : colors.mutedForeground, fontFamily: 'Inter_500Medium' }}>
+              {favSyncState === 'syncing' ? '⟳' : '✓'}
+            </Text>
+          )}
           {isFavsSelected && favorites.length > 1 && (
             <Pressable
               onPress={isReordering ? handleDone : handleEditStart}

@@ -39,14 +39,40 @@ function buildCreds(c: ReturnType<typeof useAppContext>['credentials']) {
   return { host: c!.host!, username: c!.username!, password: c!.password! };
 }
 
+// ─── Highlighted text ─────────────────────────────────────────────────────────
+
+function HighlightedText({
+  text, query, style, highlightStyle,
+}: { text: string; query: string; style: any; highlightStyle: any }) {
+  if (!query) return <Text style={style} numberOfLines={1}>{text}</Text>;
+  const lower = text.toLowerCase();
+  const q = query.toLowerCase();
+  const parts: { t: string; m: boolean }[] = [];
+  let i = 0;
+  while (i < text.length) {
+    const idx = lower.indexOf(q, i);
+    if (idx === -1) { parts.push({ t: text.slice(i), m: false }); break; }
+    if (idx > i) parts.push({ t: text.slice(i, idx), m: false });
+    parts.push({ t: text.slice(idx, idx + q.length), m: true });
+    i = idx + q.length;
+  }
+  return (
+    <Text style={style} numberOfLines={1}>
+      {parts.map((p, j) => p.m ? <Text key={j} style={highlightStyle}>{p.t}</Text> : p.t)}
+    </Text>
+  );
+}
+
 // ─── Result rows ─────────────────────────────────────────────────────────────
 
 const ChannelResultRow = React.memo(function ChannelResultRow({
   channel,
+  query,
   colors,
   onPress,
 }: {
   channel: Channel;
+  query: string;
   colors: ReturnType<typeof useColors>;
   onPress: () => void;
 }) {
@@ -66,9 +92,12 @@ const ChannelResultRow = React.memo(function ChannelResultRow({
         )}
       </View>
       <View style={{ flex: 1, gap: 2 }}>
-        <Text style={[styles.rowTitle, { color: colors.foreground }]} numberOfLines={1}>
-          {channel.name}
-        </Text>
+        <HighlightedText
+          text={channel.name}
+          query={query}
+          style={[styles.rowTitle, { color: colors.foreground }]}
+          highlightStyle={{ color: colors.primary, fontFamily: 'Inter_700Bold' }}
+        />
         {channel.groupTitle ? (
           <Text style={[styles.rowSub, { color: colors.mutedForeground }]} numberOfLines={1}>
             {channel.groupTitle}
@@ -87,6 +116,7 @@ const MediaResultRow = React.memo(function MediaResultRow({
   title,
   sub,
   kind,
+  query,
   colors,
   onPress,
 }: {
@@ -94,6 +124,7 @@ const MediaResultRow = React.memo(function MediaResultRow({
   title: string;
   sub?: string;
   kind: 'movie' | 'series';
+  query: string;
   colors: ReturnType<typeof useColors>;
   onPress: () => void;
 }) {
@@ -111,9 +142,12 @@ const MediaResultRow = React.memo(function MediaResultRow({
         )}
       </View>
       <View style={{ flex: 1, gap: 2 }}>
-        <Text style={[styles.rowTitle, { color: colors.foreground }]} numberOfLines={1}>
-          {title}
-        </Text>
+        <HighlightedText
+          text={title}
+          query={query}
+          style={[styles.rowTitle, { color: colors.foreground }]}
+          highlightStyle={{ color: colors.primary, fontFamily: 'Inter_700Bold' }}
+        />
         {sub ? (
           <Text style={[styles.rowSub, { color: colors.mutedForeground }]} numberOfLines={1}>
             {sub}
@@ -308,6 +342,7 @@ export default function SearchScreen() {
         return (
           <ChannelResultRow
             channel={item.item}
+            query={query}
             colors={colors}
             onPress={() => handleChannelPress(item.item)}
           />
@@ -320,6 +355,7 @@ export default function SearchScreen() {
             cover={item.item.cover}
             title={item.item.name}
             sub={[item.item.genre, item.item.releaseDate?.slice(0, 4)].filter(Boolean).join(' · ')}
+            query={query}
             colors={colors}
             onPress={() => handleMoviePress(item.item)}
           />
@@ -332,6 +368,7 @@ export default function SearchScreen() {
             cover={item.item.cover}
             title={item.item.name}
             sub={item.item.genre}
+            query={query}
             colors={colors}
             onPress={() => handleSeriesPress(item.item)}
           />

@@ -21,6 +21,7 @@ const KEYS = {
   PARENTAL: 'sv_parental',
   RECENT_CHANNELS: 'sv_recent_channels',
   PREF_AUDIO_LANG: 'sv_pref_audio_lang',
+  PREF_SUBTITLE_LANG: 'sv_pref_subtitle_lang',
 };
 
 export const StorageService = {
@@ -54,6 +55,8 @@ export const StorageService = {
       KEYS.MOVIES_CACHE,
       KEYS.PARENTAL,
       KEYS.RECENT_CHANNELS,
+      KEYS.PREF_AUDIO_LANG,
+      KEYS.PREF_SUBTITLE_LANG,
     ]);
   },
 
@@ -239,5 +242,21 @@ export const StorageService = {
     try {
       await AsyncStorage.removeItem(KEYS.PREF_AUDIO_LANG);
     } catch {}
+  },
+
+  // ── Clear recently-watched channels ───────────────────────────────────────
+  async clearRecentChannels(): Promise<void> {
+    await AsyncStorage.setItem(KEYS.RECENT_CHANNELS, JSON.stringify([]));
+  },
+
+  // ── Preferred subtitle language (AsyncStorage) ────────────────────────────
+  async getPrefSubtitleLang(): Promise<string | null> {
+    try { return await AsyncStorage.getItem(KEYS.PREF_SUBTITLE_LANG); } catch { return null; }
+  },
+  async setPrefSubtitleLang(lang: string): Promise<void> {
+    await AsyncStorage.setItem(KEYS.PREF_SUBTITLE_LANG, lang);
+  },
+  async clearPrefSubtitleLang(): Promise<void> {
+    try { await AsyncStorage.removeItem(KEYS.PREF_SUBTITLE_LANG); } catch {}
   },
 };
