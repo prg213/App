@@ -243,6 +243,7 @@ export default function SeriesScreen() {
                 cover={item.cover}
                 rating={item.rating}
                 genre={item.genre}
+                query={search}
                 isFav={favSet.has(item.id)}
                 compact={isFavsSelected}
                 onFavPress={() => handleToggleFav(item)}

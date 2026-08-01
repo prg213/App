@@ -8,6 +8,28 @@ import {
 } from 'react-native';
 import { useColors } from '@/hooks/useColors';
 
+function HighlightedText({ text, query, style, compact }: { text: string; query: string; style: any; compact?: boolean }) {
+  const colors = useColors();
+  if (!query) return <Text style={style} numberOfLines={2}>{text}</Text>;
+  const lower = text.toLowerCase();
+  const q = query.toLowerCase();
+  const parts: { t: string; m: boolean }[] = [];
+  let i = 0;
+  while (i < text.length) {
+    const idx = lower.indexOf(q, i);
+    if (idx === -1) { parts.push({ t: text.slice(i), m: false }); break; }
+    if (idx > i) parts.push({ t: text.slice(i, idx), m: false });
+    parts.push({ t: text.slice(idx, idx + q.length), m: true });
+    i = idx + q.length;
+  }
+  const hlStyle = { color: colors.primary, fontFamily: compact ? 'Inter_500Medium' : 'Inter_700Bold' };
+  return (
+    <Text style={style} numberOfLines={2}>
+      {parts.map((p, j) => p.m ? <Text key={j} style={hlStyle}>{p.t}</Text> : p.t)}
+    </Text>
+  );
+}
+
 interface MovieCardProps {
   id: string;
   name: string;
@@ -15,13 +37,14 @@ interface MovieCardProps {
   rating?: string;
   genre?: string;
   year?: string;
+  query?: string;
   isFav?: boolean;
   compact?: boolean;
   onPress: () => void;
   onFavPress?: () => void;
 }
 
-function MovieCardComponent({ name, cover, rating, genre, isFav, compact, onPress, onFavPress }: MovieCardProps) {
+function MovieCardComponent({ name, cover, rating, genre, query = '', isFav, compact, onPress, onFavPress }: MovieCardProps) {
   const colors = useColors();
 
   return (
@@ -57,9 +80,12 @@ function MovieCardComponent({ name, cover, rating, genre, isFav, compact, onPres
 
       {/* Info */}
       <View style={[styles.info, compact && styles.infoCompact]}>
-        <Text style={[styles.title, { color: colors.foreground }, compact && styles.titleCompact]} numberOfLines={2}>
-          {name}
-        </Text>
+        <HighlightedText
+          text={name}
+          query={query}
+          compact={compact}
+          style={[styles.title, { color: colors.foreground }, compact && styles.titleCompact]}
+        />
         {!compact && genre ? (
           <Text style={[styles.genre, { color: colors.mutedForeground }]} numberOfLines={1}>
             {genre.split(',')[0]}
