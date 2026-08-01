@@ -69,6 +69,8 @@ export interface Movie {
   rating?: string;
   duration?: string;
   containerExtension: string;
+  /** Unix timestamp (seconds) when this stream was added to the server */
+  added?: number;
 }
 
 export interface Series {
@@ -83,6 +85,8 @@ export interface Series {
   rating?: string;
   categoryId: string;
   categoryName?: string;
+  /** Unix timestamp (seconds) when this series was added to the server */
+  added?: number;
 }
 
 export interface Season {

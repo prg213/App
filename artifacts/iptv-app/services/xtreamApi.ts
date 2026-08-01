@@ -210,6 +210,7 @@ export async function getXtreamVodStreams(
       genre?: string;
       releasedate?: string;
       duration?: string;
+      added?: string | number;
     }>
   >(creds, 'get_vod_streams', params);
 
@@ -227,6 +228,7 @@ export async function getXtreamVodStreams(
     rating: m.rating || undefined,
     duration: m.duration || undefined,
     containerExtension: m.container_extension || 'mp4',
+    added: m.added ? Number(m.added) : undefined,
   }));
 }
 
@@ -318,6 +320,7 @@ export async function getXtreamSeries(
       releaseDate?: string;
       rating?: string;
       category_id: string;
+      last_modified?: string | number;
     }>
   >(creds, 'get_series', params);
 
@@ -332,6 +335,7 @@ export async function getXtreamSeries(
     releaseDate: s.releaseDate || undefined,
     rating: s.rating || undefined,
     categoryId: s.category_id,
+    added: s.last_modified ? Number(s.last_modified) : undefined,
   }));
 }
 

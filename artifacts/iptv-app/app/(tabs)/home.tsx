@@ -164,38 +164,37 @@ export default function HomeScreen() {
   const isXtream = credentials?.type === 'xtream';
 
   // ── Latest movies ─────────────────────────────────────────────────────────
-  const { data: allMovies = [], isLoading: moviesLoading, refetch: refetchMovies } = useQuery<Movie[]>({
+  // staleTime: 0 so every focus triggers a fresh fetch from the server
+  const { data: allMovies = [], isLoading: moviesLoading } = useQuery<Movie[]>({
     queryKey: ['vod-streams', null, credentials],
     queryFn: () => getXtreamVodStreams(buildCreds(credentials)),
     enabled: !!credentials && isXtream,
-    staleTime: 5 * 60_000,
+    staleTime: 0,
   });
 
   // ── Latest series ─────────────────────────────────────────────────────────
-  const { data: allSeries = [], isLoading: seriesLoading, refetch: refetchSeries } = useQuery<Series[]>({
+  const { data: allSeries = [], isLoading: seriesLoading } = useQuery<Series[]>({
     queryKey: ['series-list', null, credentials],
     queryFn: () => getXtreamSeries(buildCreds(credentials)),
     enabled: !!credentials && isXtream,
-    staleTime: 5 * 60_000,
+    staleTime: 0,
   });
 
-  // Refresh both lists every time the Home tab comes into focus
-  useFocusEffect(
-    useCallback(() => {
-      if (isXtream) {
-        refetchMovies();
-        refetchSeries();
-      }
-    }, [isXtream, refetchMovies, refetchSeries]),
-  );
-
   const latestMovies = useMemo(
-    () => allMovies.filter((m) => !!m.cover).slice(0, LATEST_N),
+    () =>
+      allMovies
+        .filter((m) => !!m.cover)
+        .sort((a, b) => (b.added ?? 0) - (a.added ?? 0))
+        .slice(0, LATEST_N),
     [allMovies],
   );
 
   const latestSeries = useMemo(
-    () => allSeries.filter((s) => !!s.cover).slice(0, LATEST_N),
+    () =>
+      allSeries
+        .filter((s) => !!s.cover)
+        .sort((a, b) => (b.added ?? 0) - (a.added ?? 0))
+        .slice(0, LATEST_N),
     [allSeries],
   );
 
