@@ -248,6 +248,7 @@ export default function PlayerScreen() {
   const insets = useSafeAreaInsets();
   const isWeb = Platform.OS === 'web';
   const isLive = params.type === 'live';
+  const isCatchup = params.type === 'catchup';
   const startAtSecs = params.startAt ? parseFloat(params.startAt) : 0;
   const knownDurationSecs = params.knownDuration ? parseFloat(params.knownDuration) : 0;
 
@@ -395,7 +396,9 @@ export default function PlayerScreen() {
   // doesn't waste resources).
   const localPlayer = useVideoPlayer(isLive || isWeb ? null : params.url, (p) => {
     p.loop = false;
-    p.scrubbingModeOptions = { isEnabled: true };
+    // Disable scrubbing mode for catch-up — timeshift streams don't support
+    // seek via currentTime; we use a wall-clock timer instead.
+    p.scrubbingModeOptions = { isEnabled: !isCatchup };
     if (!isWeb) p.play();
   });
 
@@ -499,19 +502,17 @@ export default function PlayerScreen() {
         }
       }),
       player.addListener('timeUpdate', ({ currentTime: t }: { currentTime: number }) => {
+        // Catch-up: wall-clock timer owns currentTime — ignore player events
+        if (isCatchup) return;
         setCurrentTime(t);
         const d = player.duration;
-        // Prefer the real player-reported duration; fall back to knownDurationSecs
-        // so catch-up timeshift streams keep a usable scrubber.
         if (d && isFinite(d) && d > 0) setDuration(d);
         else if (knownDurationSecs > 0) setDuration(knownDurationSecs);
       }),
     ];
-    // Poll duration + currentTime — some streams (e.g. catch-up timeshift HLS)
-    // fire timeUpdate events infrequently or not at all, so the scrubber thumb
-    // would stay frozen at 0. Polling player.currentTime every 500 ms keeps
-    // the thumb in sync regardless of event delivery.
-    const durationPoll = setInterval(() => {
+    // Poll duration + currentTime for regular VOD/live streams.
+    // Catch-up uses its own wall-clock timer instead.
+    const durationPoll = isCatchup ? null : setInterval(() => {
       const d = player.duration;
       if (d && isFinite(d) && d > 0) setDuration(d);
       else if (knownDurationSecs > 0) setDuration(knownDurationSecs);
@@ -520,10 +521,35 @@ export default function PlayerScreen() {
     }, 500);
     return () => {
       subs.forEach((s) => s.remove());
-      clearInterval(durationPoll);
+      if (durationPoll) clearInterval(durationPoll);
       if (reconnectTimerRef.current) { clearTimeout(reconnectTimerRef.current); reconnectTimerRef.current = null; }
     };
   }, [player, isWeb]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Wall-clock timer for catch-up scrubber ────────────────────────────────
+  // Timeshift HLS streams don't expose currentTime or duration to expo-video.
+  // We seed duration from knownDurationSecs and advance currentTime via a
+  // 1-second interval that starts once the stream is playing.
+  const catchupWallStartRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!isCatchup || knownDurationSecs <= 0) return;
+    // Always show the known duration immediately
+    setDuration(knownDurationSecs);
+    setCurrentTime(0);
+    catchupWallStartRef.current = null;
+
+    const tick = setInterval(() => {
+      if (!isPlaying) return;
+      if (catchupWallStartRef.current === null) {
+        catchupWallStartRef.current = Date.now();
+      }
+      const elapsed = (Date.now() - catchupWallStartRef.current) / 1000;
+      const capped = Math.min(elapsed, knownDurationSecs);
+      setCurrentTime(capped);
+    }, 1000);
+
+    return () => clearInterval(tick);
+  }, [isCatchup, knownDurationSecs, isPlaying]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── History save (every 10 s for VOD/series) ─────────────────────────────
   useEffect(() => {

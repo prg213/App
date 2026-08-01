@@ -231,10 +231,10 @@ export default function CatchupScreen() {
       params: {
         url,
         title: `${prog.title} — ${selectedChannel.name}`,
-        type: 'vod',
+        type: 'catchup',
         logo: selectedChannel.logo ?? '',
         // Pass the known programme duration so the scrubber can show a progress
-        // bar even if the timeshift stream doesn't expose its duration to expo-video.
+        // bar — timeshift HLS streams don't expose duration to expo-video.
         knownDuration: String(durationMin * 60),
       },
     });
