@@ -637,30 +637,32 @@ export default function PlayerScreen() {
     scheduleHide();
   }, [isCasting, currentTime, player, scheduleHide, seekRemote]);
 
-  // ── CC pill: cycle through subtitle tracks (or just turn off if single track) ──
+  // ── CC pill: off → first track → next → … → off ─────────────────────────
   const handleCcPress = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    if (subtitleTracks.length <= 1) {
-      // Single-track or no tracks: current behaviour — just turn off
+    if (subtitleTracks.length === 0) return;
+    // Currently off → turn on the first (or only) track
+    if (activeSubtitleTrack === null) {
+      const first = subtitleTracks[0];
+      try { player.subtitleTrack = first; } catch {}
+      setActiveSubtitleTrack(first);
+      if (first.language) StorageService.setPrefSubtitleLang(first.language).catch(() => {});
+      return;
+    }
+    // Currently on → advance to next, wrap to off after last
+    const currentIdx = subtitleTracks.findIndex(
+      (t) => t === activeSubtitleTrack || t.language === activeSubtitleTrack.language,
+    );
+    const nextIdx = currentIdx + 1;
+    if (nextIdx >= subtitleTracks.length) {
       try { player.subtitleTrack = null; } catch {}
       setActiveSubtitleTrack(null);
+      StorageService.clearPrefSubtitleLang().catch(() => {});
     } else {
-      // Multiple tracks: advance to the next one, wrapping to Off after the last
-      const currentIdx = activeSubtitleTrack
-        ? subtitleTracks.findIndex(
-            (t) => t === activeSubtitleTrack || t.language === activeSubtitleTrack.language,
-          )
-        : -1;
-      const nextIdx = currentIdx + 1;
-      if (nextIdx >= subtitleTracks.length) {
-        // Past the last track → turn off
-        try { player.subtitleTrack = null; } catch {}
-        setActiveSubtitleTrack(null);
-      } else {
-        const next = subtitleTracks[nextIdx];
-        try { player.subtitleTrack = next; } catch {}
-        setActiveSubtitleTrack(next);
-      }
+      const next = subtitleTracks[nextIdx];
+      try { player.subtitleTrack = next; } catch {}
+      setActiveSubtitleTrack(next);
+      if (next.language) StorageService.setPrefSubtitleLang(next.language).catch(() => {});
     }
   }, [player, subtitleTracks, activeSubtitleTrack]);
 
@@ -763,10 +765,10 @@ export default function PlayerScreen() {
           {/* Cast button + CC pill + Settings ⚙ — absolute top-right */}
           <View style={{ position: 'absolute', top: insets.top + 8, right: 16, flexDirection: 'row', gap: 8, alignItems: 'center' }}>
             <CastButton />
-            {activeSubtitleTrack !== null && (
+            {subtitleTracks.length > 0 && (
               <Pressable
                 focusable
-                style={({ focused }) => [styles.ccPill, focused && styles.focusRing]}
+                style={({ focused }) => [styles.ccPill, activeSubtitleTrack === null && { opacity: 0.45 }, focused && styles.focusRing]}
                 onPress={handleCcPress}
               >
                 <Text style={styles.ccText}>{ccLabel}</Text>
@@ -1039,6 +1041,13 @@ export default function PlayerScreen() {
                 })}
               </ScrollView>
             </>
+          )}
+
+          {/* No-tracks notice for VOD streams that don't expose tracks (e.g. plain MP4) */}
+          {!isLive && audioTracks.length === 0 && subtitleTracks.length === 0 && (
+            <Text style={[styles.settingsTitle, { marginTop: 12, opacity: 0.45, fontSize: 12 }]}>
+              No audio or subtitle tracks detected for this stream.
+            </Text>
           )}
 
           {/* ── Subtitle tracks — shown when stream has any subtitles; includes Off ── */}
