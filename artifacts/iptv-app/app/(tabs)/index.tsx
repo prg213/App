@@ -21,7 +21,8 @@ import {
   View,
 } from 'react-native';
 import { DraggableFavList } from '@/components/DraggableFavList';
-import { useVideoPlayer, VideoView } from 'expo-video';
+import { VideoView } from 'expo-video';
+import { useLivePlayer } from '@/context/LivePlayerContext';
 import { useQuery } from '@tanstack/react-query';
 import { useRouter, useFocusEffect } from 'expo-router';
 import * as Haptics from 'expo-haptics';
@@ -224,12 +225,8 @@ export default function LiveTVScreen() {
     return () => clearInterval(t);
   }, [deviceMac]);
 
-  // ── Video player ─────────────────────────────────────────────────────────
-  const player = useVideoPlayer(null, (p) => {
-    p.loop = false;
-    // #53: keep audio playing when the phone screen locks
-    (p as any).staysActiveInBackground = true;
-  });
+  // ── Video player (shared from LivePlayerContext — persists across navigation) ──
+  const { player, activeUrlRef: liveUrlRef } = useLivePlayer();
 
   // ── AppState tracking (#31, #53) ─────────────────────────────────────────
   const isAppBackgroundRef = useRef(false);
@@ -254,18 +251,29 @@ export default function LiveTVScreen() {
 
   useEffect(() => {
     if (isWeb || !selectedChannel?.streamUrl) return;
-    // Cancel any pending retry from a previous channel
+    const url = selectedChannel.streamUrl;
+
+    // If the shared player already has this URL loaded (e.g. returning from
+    // the fullscreen player on the same channel), just ensure it's playing —
+    // no replaceAsync, no buffering gap.
+    if (liveUrlRef.current === url) {
+      setIsBuffering(false);
+      setHasError(false);
+      try { if (!player.playing) player.play(); } catch {}
+      return;
+    }
+
+    // Different channel — load it.
     if (retryTimerRef.current) { clearTimeout(retryTimerRef.current); retryTimerRef.current = null; }
     setIsBuffering(true);
     setHasError(false);
     const gen = ++loadGenRef.current;
     const load = async () => {
       try {
-        // #54: pause immediately so the old stream goes silent before replace()
         try { player.pause(); } catch {}
-        // Snap the overlay opaque synchronously before the native surface clears.
         flashOverlayOpacity.setValue(1);
-        await (player as any).replaceAsync(selectedChannel.streamUrl);
+        liveUrlRef.current = url;
+        await (player as any).replaceAsync(url);
         if (gen !== loadGenRef.current) return; // superseded
         player.play();
       } catch {
@@ -337,9 +345,6 @@ export default function LiveTVScreen() {
   }, [player]);
 
   const goingToPlayerRef = useRef(false);
-  // Set when navigating to fullscreen so we reload the live stream on return
-  // (instead of resuming from the buffered start position).
-  const liveReloadNeededRef = useRef(false);
   // After reloading for the live edge, seek to end of DVR window once ready.
   const pendingLiveEdgeSeek = useRef(false);
   // Timestamp (ms) when the Live TV tab was last blurred — used to decide
@@ -379,8 +384,7 @@ export default function LiveTVScreen() {
           const tabWasStale =
             blurredAt !== null &&
             Date.now() - blurredAt > LIVE_EDGE_AWAY_THRESHOLD_MS;
-          if (liveReloadNeededRef.current || tabWasStale) {
-            liveReloadNeededRef.current = false;
+          if (tabWasStale) {
             pendingLiveEdgeSeek.current = true;
             // Show the buffering spinner and snap overlay opaque BEFORE replace()
             // so the black flash on the VideoView surface is hidden from the start.
@@ -605,10 +609,7 @@ export default function LiveTVScreen() {
   const handleWatch = useCallback(() => {
     if (!selectedChannel) return;
     goingToPlayerRef.current = true;
-    liveReloadNeededRef.current = true;
-
-    // Pause preview player BEFORE navigating to stop double audio
-    try { player.pause(); } catch {}
+    // Shared player keeps streaming — no pause needed before going fullscreen.
 
     // Build a lean channel list for prev/next navigation in fullscreen
     const chList = channels.map((ch) => ({
@@ -635,8 +636,7 @@ export default function LiveTVScreen() {
   /** Navigate directly to the fullscreen player from a recently-watched card. */
   const handleWatchChannel = useCallback((ch: Channel) => {
     goingToPlayerRef.current = true;
-    liveReloadNeededRef.current = true;
-    try { player.pause(); } catch {}
+    // Shared player keeps streaming — no pause needed.
 
     const chList = channels.map((c) => ({
       url: c.streamUrl,

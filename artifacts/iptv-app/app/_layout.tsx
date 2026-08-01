@@ -16,6 +16,7 @@ import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { AppContextProvider, useAppContext } from '@/context/AppContext';
 import { ParentalContextProvider, useParentalContext } from '@/context/ParentalContext';
+import { LivePlayerProvider } from '@/context/LivePlayerContext';
 import { PinPad } from '@/components/PinPad';
 
 // setBaseUrl inlined — @workspace/api-client-react is not available in EAS builds
@@ -132,7 +133,9 @@ export default function RootLayout() {
             <KeyboardProvider>
               <AppContextProvider>
                 <ParentalWrapper>
-                  <RootLayoutNav />
+                  <LivePlayerProvider>
+                    <RootLayoutNav />
+                  </LivePlayerProvider>
                 </ParentalWrapper>
               </AppContextProvider>
             </KeyboardProvider>

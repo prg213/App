@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useVideoPlayer, VideoView } from 'expo-video';
+import { useLivePlayer } from '@/context/LivePlayerContext';
 import type { AudioTrack, SubtitleTrack } from 'expo-video';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -362,11 +363,32 @@ export default function PlayerScreen() {
   }, [epgMap, activeEpgId, nowTs]);
 
   // ── Video player ─────────────────────────────────────────────────────────
-  const player = useVideoPlayer(isWeb ? null : params.url, (p) => {
-    p.loop = isLive;
+  // For VOD/series: a local player created here (null source when live so it
+  // doesn't waste resources).
+  const localPlayer = useVideoPlayer(isLive || isWeb ? null : params.url, (p) => {
+    p.loop = false;
     p.scrubbingModeOptions = { isEnabled: true };
-    p.play();
+    if (!isWeb) p.play();
   });
+
+  // For live TV: the shared player from context (already streaming from the
+  // mini-player — reusing it means zero buffering gap on fullscreen entry).
+  const { player: sharedPlayer, activeUrlRef: liveUrlRef } = useLivePlayer();
+
+  // The player this screen actually uses:
+  const player = isLive ? sharedPlayer : localPlayer;
+
+  // Ensure the correct URL is loaded in the shared player when opening fullscreen.
+  // If liveUrlRef matches params.url the stream is already running — don't restart.
+  useEffect(() => {
+    if (!isLive || isWeb) return;
+    if (liveUrlRef.current === params.url) {
+      try { if (!player.playing) player.play(); } catch {}
+    } else {
+      liveUrlRef.current = params.url;
+      try { player.replace(params.url); player.play(); } catch {}
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (isWeb || !player) return;
@@ -525,10 +547,11 @@ export default function PlayerScreen() {
     setActiveAudioTrack(null);
     setActiveSubtitleTrack(null);
     try {
+      if (isLive) liveUrlRef.current = entry.url; // keep shared ref in sync
       player.replace(entry.url);
       player.play();
     } catch {}
-  }, [player, setLastWatchedUrl]);
+  }, [isLive, liveUrlRef, player, setLastWatchedUrl]);
 
   const handlePrevChannel = useCallback(() => {
     if (!prevChannel) return;
