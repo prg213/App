@@ -239,7 +239,7 @@ export default function LiveTVScreen() {
   }, [deviceMac]);
 
   // ── Video player (shared from LivePlayerContext — persists across navigation) ──
-  const { player, activeUrlRef: liveUrlRef } = useLivePlayer();
+  const { player, activeUrlRef: liveUrlRef, miniPlayerRef, triggerExpand } = useLivePlayer();
 
   // Animated overlay that snaps to opaque synchronously (no React reconciler
   // roundtrip) before player.replace() is called, preventing the black flash
@@ -680,7 +680,7 @@ export default function LiveTVScreen() {
     }));
     const idx = channels.findIndex((ch) => ch.id === selectedChannel.id);
 
-    router.push({
+    const navigate = () => router.push({
       pathname: '/player',
       params: {
         url: selectedChannel.streamUrl,
@@ -692,7 +692,10 @@ export default function LiveTVScreen() {
         channelIndex: String(idx),
       },
     });
-  }, [selectedChannel, channels, player, router]);
+
+    // Animate the mini-player expanding to fullscreen, then navigate.
+    triggerExpand(navigate);
+  }, [selectedChannel, channels, player, router, triggerExpand]);
 
   /** Navigate directly to the fullscreen player from a recently-watched card. */
   const handleWatchChannel = useCallback((ch: Channel) => {
@@ -855,42 +858,50 @@ export default function LiveTVScreen() {
 
         {!isWeb && (
           <>
-            <TouchableOpacity
+            {/* collapsable={false} ensures the native view is created immediately
+                so measureInWindow() works correctly when the user taps Watch Fullscreen. */}
+            <View
+              ref={miniPlayerRef}
+              collapsable={false}
               style={[styles.videoWrap, !playingChannel && { display: 'none' }]}
-              onPress={handleWatch}
-              activeOpacity={0.85}
-              focusable={false}
             >
-              <VideoView
-                key={videoKey}
-                player={player}
+              <TouchableOpacity
                 style={StyleSheet.absoluteFill}
-                nativeControls={false}
-                contentFit="contain"
-              />
-              {/* Flash-prevention overlay — always rendered so setValue(1) takes
-                  effect in the same native frame as player.replace(), before
-                  the VideoView surface can show a black frame. Fades out once
-                  the player signals readyToPlay. */}
-              <Animated.View
-                style={[StyleSheet.absoluteFill, styles.flashOverlay, { opacity: flashOverlayOpacity }]}
-                pointerEvents="none"
-              />
-              {(isBuffering && !hasError) && (
-                <View style={styles.videoOverlay}>
-                  <ActivityIndicator color="#fff" size="large" />
+                onPress={handleWatch}
+                activeOpacity={0.85}
+                focusable={false}
+              >
+                <VideoView
+                  key={videoKey}
+                  player={player}
+                  style={StyleSheet.absoluteFill}
+                  nativeControls={false}
+                  contentFit="contain"
+                />
+                {/* Flash-prevention overlay — always rendered so setValue(1) takes
+                    effect in the same native frame as player.replace(), before
+                    the VideoView surface can show a black frame. Fades out once
+                    the player signals readyToPlay. */}
+                <Animated.View
+                  style={[StyleSheet.absoluteFill, styles.flashOverlay, { opacity: flashOverlayOpacity }]}
+                  pointerEvents="none"
+                />
+                {(isBuffering && !hasError) && (
+                  <View style={styles.videoOverlay}>
+                    <ActivityIndicator color="#fff" size="large" />
+                  </View>
+                )}
+                {hasError && (
+                  <View style={styles.videoOverlay}>
+                    <Text style={styles.errText}>Stream unavailable</Text>
+                  </View>
+                )}
+                <View style={styles.livePill}>
+                  <View style={styles.liveDot} />
+                  <Text style={styles.liveText}>LIVE</Text>
                 </View>
-              )}
-              {hasError && (
-                <View style={styles.videoOverlay}>
-                  <Text style={styles.errText}>Stream unavailable</Text>
-                </View>
-              )}
-              <View style={styles.livePill}>
-                <View style={styles.liveDot} />
-                <Text style={styles.liveText}>LIVE</Text>
-              </View>
-            </TouchableOpacity>
+              </TouchableOpacity>
+            </View>
             {playingChannel && (
               <Pressable
                 focusable

@@ -77,7 +77,7 @@ function RootLayoutNav() {
     <Stack screenOptions={{ headerShown: false, animation: 'fade' }}>
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="activation" options={{ headerShown: false, gestureEnabled: false }} />
-      <Stack.Screen name="player" options={{ headerShown: false, presentation: 'fullScreenModal' }} />
+      <Stack.Screen name="player" options={{ headerShown: false, presentation: 'fullScreenModal', animation: 'none' }} />
       <Stack.Screen name="movie/[id]" options={{ headerShown: false }} />
       <Stack.Screen name="series/[id]" options={{ headerShown: false }} />
     </Stack>

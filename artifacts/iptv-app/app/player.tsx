@@ -404,7 +404,7 @@ export default function PlayerScreen() {
 
   // For live TV: the shared player from context (already streaming from the
   // mini-player — reusing it means zero buffering gap on fullscreen entry).
-  const { player: sharedPlayer, activeUrlRef: liveUrlRef } = useLivePlayer();
+  const { player: sharedPlayer, activeUrlRef: liveUrlRef, triggerCollapse } = useLivePlayer();
 
   // The player this screen actually uses:
   const player = isLive ? sharedPlayer : localPlayer;
@@ -619,6 +619,13 @@ export default function PlayerScreen() {
     if (!nextChannel) return;
     switchChannel(nextChannel, channelIdx + 1);
   }, [nextChannel, channelIdx, switchChannel]);
+
+  // ── Animated collapse back (live TV only) ────────────────────────────────
+  // Plays the reverse mini-player animation before navigating back so the
+  // user sees the fullscreen view shrink back down to the preview box.
+  const handleBackLive = useCallback(() => {
+    triggerCollapse(() => router.back());
+  }, [triggerCollapse, router]);
 
   // ── Save history on exit and navigate back ────────────────────────────────
   const handleBack = useCallback(async () => {
@@ -923,7 +930,7 @@ export default function PlayerScreen() {
           style={{ opacity: controlsOpacity, position: 'absolute', top: insets.top + 8, left: 0, right: 0, flexDirection: 'row', gap: 8, alignItems: 'center', paddingHorizontal: 16 }}
           pointerEvents="box-none"
         >
-          <TouchableOpacity style={styles.backBtn} onPress={() => router.back()} activeOpacity={0.8}>
+          <TouchableOpacity style={styles.backBtn} onPress={handleBackLive} activeOpacity={0.8}>
             <Text style={styles.backIcon}>←</Text>
           </TouchableOpacity>
           <CastButton />
@@ -986,7 +993,7 @@ export default function PlayerScreen() {
                 </Text>
               </>
             )}
-            <TouchableOpacity onPress={() => router.back()} style={styles.backBtnSmall} activeOpacity={0.8}>
+            <TouchableOpacity onPress={handleBackLive} style={styles.backBtnSmall} activeOpacity={0.8}>
               <Text style={styles.backIcon}>←</Text>
             </TouchableOpacity>
           </View>
