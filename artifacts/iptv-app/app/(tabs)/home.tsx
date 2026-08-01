@@ -184,7 +184,7 @@ export default function HomeScreen() {
     () =>
       allMovies
         .filter((m) => !!m.cover)
-        .sort((a, b) => (b.added ?? 0) - (a.added ?? 0))
+        .sort((a, b) => parseInt(b.id) - parseInt(a.id))
         .slice(0, LATEST_N),
     [allMovies],
   );
@@ -193,7 +193,7 @@ export default function HomeScreen() {
     () =>
       allSeries
         .filter((s) => !!s.cover)
-        .sort((a, b) => (b.added ?? 0) - (a.added ?? 0))
+        .sort((a, b) => parseInt(b.id) - parseInt(a.id))
         .slice(0, LATEST_N),
     [allSeries],
   );
