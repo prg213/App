@@ -309,6 +309,8 @@ export default function PlayerScreen() {
 
   // ── Settings state ────────────────────────────────────────────────────────
   const [showSettings, setShowSettings] = useState(false);
+  const [showAudioPicker, setShowAudioPicker] = useState(false);
+  const [showSubPicker, setShowSubPicker] = useState(false);
   const [speed, setSpeed] = useState(1);
   const [contentFit, setContentFit] = useState<'contain' | 'cover' | 'fill'>('contain');
 
@@ -814,18 +816,29 @@ export default function PlayerScreen() {
             )}
           </View>
 
-          {/* Cast button + CC pill + Settings ⚙ — absolute top-right */}
+          {/* Cast button + Audio + CC + Settings ⚙ — absolute top-right */}
           <View style={{ position: 'absolute', top: insets.top + 8, right: 16, flexDirection: 'row', gap: 8, alignItems: 'center' }}>
             <CastButton />
-            {subtitleTracks.length > 0 && (
-              <Pressable
-                focusable
-                style={({ focused }) => [styles.ccPill, activeSubtitleTrack === null && { opacity: 0.45 }, focused && styles.focusRing]}
-                onPress={handleCcPress}
-              >
-                <Text style={styles.ccText}>{ccLabel}</Text>
-              </Pressable>
-            )}
+            {/* Audio track button — always visible */}
+            <Pressable
+              focusable
+              style={({ focused }) => [styles.trackPill, audioTracks.length === 0 && { opacity: 0.35 }, focused && styles.focusRing]}
+              onPress={() => setShowAudioPicker(true)}
+            >
+              <Text style={styles.trackPillText}>
+                🎵 {activeAudioTrack?.label || activeAudioTrack?.language || 'Audio'}
+              </Text>
+            </Pressable>
+            {/* CC / Subtitle button — always visible */}
+            <Pressable
+              focusable
+              style={({ focused }) => [styles.trackPill, subtitleTracks.length === 0 && { opacity: 0.35 }, activeSubtitleTrack !== null && styles.trackPillActive, focused && styles.focusRing]}
+              onPress={() => setShowSubPicker(true)}
+            >
+              <Text style={[styles.trackPillText, activeSubtitleTrack !== null && styles.trackPillTextActive]}>
+                CC {activeSubtitleTrack ? `· ${(activeSubtitleTrack.language || '').toUpperCase()}` : ''}
+              </Text>
+            </Pressable>
             <Pressable
               focusable
               style={({ focused }) => [styles.backBtn, focused && styles.focusRing]}
@@ -878,25 +891,37 @@ export default function PlayerScreen() {
         </Animated.View>
       )}
 
-      {/* Back button + Cast button + CC pill for Live */}
+      {/* Back button + Cast button + Audio + CC for Live */}
       {showControls && !isWeb && isLive && (
         <Animated.View
-          style={{ opacity: controlsOpacity, position: 'absolute', top: insets.top + 8, left: 16, flexDirection: 'row', gap: 8, alignItems: 'center' }}
+          style={{ opacity: controlsOpacity, position: 'absolute', top: insets.top + 8, left: 0, right: 0, flexDirection: 'row', gap: 8, alignItems: 'center', paddingHorizontal: 16 }}
           pointerEvents="box-none"
         >
           <TouchableOpacity style={styles.backBtn} onPress={() => router.back()} activeOpacity={0.8}>
             <Text style={styles.backIcon}>←</Text>
           </TouchableOpacity>
           <CastButton />
-          {activeSubtitleTrack !== null && (
-            <TouchableOpacity
-              style={styles.ccPill}
-              onPress={handleCcPress}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.ccText}>{ccLabel}</Text>
-            </TouchableOpacity>
-          )}
+          <View style={{ flex: 1 }} />
+          {/* Audio track button */}
+          <TouchableOpacity
+            style={[styles.trackPill, audioTracks.length === 0 && { opacity: 0.35 }]}
+            onPress={() => setShowAudioPicker(true)}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.trackPillText}>
+              🎵 {activeAudioTrack?.label || activeAudioTrack?.language || 'Audio'}
+            </Text>
+          </TouchableOpacity>
+          {/* CC / Subtitle button */}
+          <TouchableOpacity
+            style={[styles.trackPill, activeSubtitleTrack !== null && styles.trackPillActive]}
+            onPress={() => setShowSubPicker(true)}
+            activeOpacity={0.8}
+          >
+            <Text style={[styles.trackPillText, activeSubtitleTrack !== null && styles.trackPillTextActive]}>
+              CC {activeSubtitleTrack ? `· ${(activeSubtitleTrack.language || '').toUpperCase()}` : ''}
+            </Text>
+          </TouchableOpacity>
         </Animated.View>
       )}
 
@@ -989,6 +1014,117 @@ export default function PlayerScreen() {
         </TouchableOpacity>
       )}
 
+      {/* ── Audio Track picker ── */}
+      <Modal
+        visible={showAudioPicker}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowAudioPicker(false)}
+      >
+        <TouchableOpacity style={styles.settingsBackdrop} activeOpacity={1} onPress={() => setShowAudioPicker(false)} />
+        <View style={[styles.settingsSheet, { paddingBottom: insets.bottom + 16 }]}>
+          <View style={styles.settingsHandle} />
+          <Text style={styles.settingsTitle}>Audio Track</Text>
+          {audioTracks.length === 0 ? (
+            <Text style={{ color: 'rgba(255,255,255,0.45)', fontSize: 13, fontFamily: 'Inter_400Regular', marginBottom: 12 }}>
+              No audio tracks detected yet — they appear once the stream has loaded.
+            </Text>
+          ) : (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+              {audioTracks.map((track, idx) => {
+                const label = track.label || track.name || track.language || `Track ${idx + 1}`;
+                const isActive =
+                  activeAudioTrack != null &&
+                  (track.id != null
+                    ? track.id === activeAudioTrack.id
+                    : track.language === activeAudioTrack.language && track.label === activeAudioTrack.label);
+                return (
+                  <Pressable
+                    key={track.id ?? `audio-${idx}`}
+                    focusable
+                    style={({ focused }) => [styles.chip, isActive && styles.chipActive, focused && styles.chipFocus]}
+                    onPress={() => {
+                      try {
+                        player.audioTrack = track;
+                        setActiveAudioTrack(track);
+                        if (track.language) {
+                          StorageService.setPrefAudioLanguage(track.language).catch(() => {});
+                          setPrefAudioLang(track.language);
+                        }
+                      } catch {}
+                      setShowAudioPicker(false);
+                    }}
+                  >
+                    <Text style={[styles.chipText, isActive && styles.chipTextActive]}>{label}</Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          )}
+        </View>
+      </Modal>
+
+      {/* ── Subtitle / CC picker ── */}
+      <Modal
+        visible={showSubPicker}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowSubPicker(false)}
+      >
+        <TouchableOpacity style={styles.settingsBackdrop} activeOpacity={1} onPress={() => setShowSubPicker(false)} />
+        <View style={[styles.settingsSheet, { paddingBottom: insets.bottom + 16 }]}>
+          <View style={styles.settingsHandle} />
+          <Text style={styles.settingsTitle}>Subtitles / CC</Text>
+          {subtitleTracks.length === 0 ? (
+            <Text style={{ color: 'rgba(255,255,255,0.45)', fontSize: 13, fontFamily: 'Inter_400Regular', marginBottom: 12 }}>
+              No subtitle tracks detected for this stream.
+            </Text>
+          ) : (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+              <Pressable
+                focusable
+                style={({ focused }) => [styles.chip, activeSubtitleTrack === null && styles.chipActive, focused && styles.chipFocus]}
+                onPress={() => {
+                  try {
+                    player.subtitleTrack = null;
+                    setActiveSubtitleTrack(null);
+                    StorageService.clearPrefSubtitleLang().catch(() => {});
+                  } catch {}
+                  setShowSubPicker(false);
+                }}
+              >
+                <Text style={[styles.chipText, activeSubtitleTrack === null && styles.chipTextActive]}>Off</Text>
+              </Pressable>
+              {subtitleTracks.map((track, idx) => {
+                const label = track.label || track.name || track.language || `Track ${idx + 1}`;
+                const isActive =
+                  activeSubtitleTrack != null &&
+                  (track.id != null
+                    ? track.id === activeSubtitleTrack.id
+                    : track.language === activeSubtitleTrack.language && track.label === activeSubtitleTrack.label);
+                return (
+                  <Pressable
+                    key={track.id ?? `sub-${idx}`}
+                    focusable
+                    style={({ focused }) => [styles.chip, isActive && styles.chipActive, focused && styles.chipFocus]}
+                    onPress={() => {
+                      try {
+                        player.subtitleTrack = track;
+                        setActiveSubtitleTrack(track);
+                        if (track.language) StorageService.setPrefSubtitleLang(track.language).catch(() => {});
+                      } catch {}
+                      setShowSubPicker(false);
+                    }}
+                  >
+                    <Text style={[styles.chipText, isActive && styles.chipTextActive]}>{label}</Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          )}
+        </View>
+      </Modal>
+
       {/* ── Settings tray ── */}
       <Modal
         visible={showSettings}
@@ -1042,127 +1178,6 @@ export default function PlayerScreen() {
             ))}
           </View>
 
-          {/* ── Audio tracks — shown when any track exists OR a saved language
-               preference needs to be visible/clearable ── */}
-          {(audioTracks.length > 0 || prefAudioLang !== null) && (
-            <>
-              <Text style={[styles.settingsTitle, { marginTop: 16 }]}>Audio Track</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-                {/* Auto chip — shows the active preference and clears it on tap */}
-                <Pressable
-                  focusable
-                  style={({ focused }) => [styles.chip, focused && styles.chipFocus]}
-                  onPress={() => {
-                    StorageService.clearPrefAudioLanguage().catch(() => {});
-                    setPrefAudioLang(null);
-                  }}
-                >
-                  <Text style={styles.chipText}>
-                    {prefAudioLang ? `Auto (${prefAudioLang})` : 'Auto'}
-                  </Text>
-                </Pressable>
-
-                {audioTracks.map((track, idx) => {
-                  const label = track.label || track.name || track.language || `Track ${idx + 1}`;
-                  const isActive =
-                    activeAudioTrack != null &&
-                    (track.id != null
-                      ? track.id === activeAudioTrack.id
-                      : track.language === activeAudioTrack.language && track.label === activeAudioTrack.label);
-                  return (
-                    <Pressable
-                      key={track.id ?? `audio-${idx}`}
-                      focusable
-                      style={({ focused }) => [styles.chip, isActive && styles.chipActive, focused && styles.chipFocus]}
-                      onPress={() => {
-                        try {
-                          player.audioTrack = track;
-                          setActiveAudioTrack(track);
-                          if (track.language) {
-                            StorageService.setPrefAudioLanguage(track.language).catch(() => {});
-                            setPrefAudioLang(track.language);
-                          }
-                        } catch {}
-                      }}
-                    >
-                      <Text style={[styles.chipText, isActive && styles.chipTextActive]}>
-                        {label}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </ScrollView>
-            </>
-          )}
-
-          {/* No-tracks notice for VOD streams that don't expose tracks (e.g. plain MP4) */}
-          {!isLive && audioTracks.length === 0 && subtitleTracks.length === 0 && (
-            <Text style={[styles.settingsTitle, { marginTop: 12, opacity: 0.45, fontSize: 12 }]}>
-              No audio or subtitle tracks detected for this stream.
-            </Text>
-          )}
-
-          {/* ── Subtitle tracks — shown when stream has any subtitles; includes Off ── */}
-          {subtitleTracks.length > 0 && (
-            <>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 16 }}>
-                <Text style={styles.settingsTitle}>Subtitles</Text>
-                {activeSubtitleTrack !== null && (
-                  <View style={styles.ccActiveBadge}>
-                    <Text style={styles.ccActiveBadgeText}>ON</Text>
-                  </View>
-                )}
-              </View>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-                {/* Off option */}
-                <Pressable
-                  focusable
-                  style={({ focused }) => [styles.chip, activeSubtitleTrack === null && styles.chipActive, focused && styles.chipFocus]}
-                  onPress={() => {
-                    try {
-                      player.subtitleTrack = null;
-                      setActiveSubtitleTrack(null);
-                      // #43: clear saved subtitle preference when user turns subs off
-                      StorageService.clearPrefSubtitleLang().catch(() => {});
-                    } catch {}
-                  }}
-                >
-                  <Text style={[styles.chipText, activeSubtitleTrack === null && styles.chipTextActive]}>
-                    Off
-                  </Text>
-                </Pressable>
-
-                {subtitleTracks.map((track, idx) => {
-                  const label = track.label || track.name || track.language || `Track ${idx + 1}`;
-                  const isActive =
-                    activeSubtitleTrack != null &&
-                    (track.id != null
-                      ? track.id === activeSubtitleTrack.id
-                      : track.language === activeSubtitleTrack.language && track.label === activeSubtitleTrack.label);
-                  return (
-                    <Pressable
-                      key={track.id ?? `sub-${idx}`}
-                      focusable
-                      style={({ focused }) => [styles.chip, isActive && styles.chipActive, focused && styles.chipFocus]}
-                      onPress={() => {
-                        try {
-                          player.subtitleTrack = track;
-                          setActiveSubtitleTrack(track);
-                          // #43: persist subtitle language so it auto-selects next time
-                          const lang = track.language;
-                          if (lang) StorageService.setPrefSubtitleLang(lang).catch(() => {});
-                        } catch {}
-                      }}
-                    >
-                      <Text style={[styles.chipText, isActive && styles.chipTextActive]}>
-                        {label}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </ScrollView>
-            </>
-          )}
           </ScrollView>
         </View>
       </Modal>
@@ -1400,6 +1415,31 @@ const styles = StyleSheet.create({
   chipTextActive: {
     color: '#60A5FA',
     fontFamily: 'Inter_600SemiBold',
+  },
+
+  // ── Audio / CC track pills ──
+  trackPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 99,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.25)',
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  trackPillActive: {
+    backgroundColor: 'rgba(59,130,246,0.3)',
+    borderColor: '#3B82F6',
+  },
+  trackPillText: {
+    fontSize: 11,
+    fontFamily: 'Inter_600SemiBold',
+    color: 'rgba(255,255,255,0.9)',
+    letterSpacing: 0.3,
+  },
+  trackPillTextActive: {
+    color: '#60A5FA',
   },
 
   // ── Casting pill ──
