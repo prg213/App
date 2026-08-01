@@ -241,6 +241,27 @@ export default function LiveTVScreen() {
   // ── Video player (shared from LivePlayerContext — persists across navigation) ──
   const { player, activeUrlRef: liveUrlRef } = useLivePlayer();
 
+  // Animated overlay that snaps to opaque synchronously (no React reconciler
+  // roundtrip) before player.replace() is called, preventing the black flash
+  // that appears when the VideoView surface clears before buffering starts.
+  // Also used when remounting VideoView on focus return. Fades out on readyToPlay.
+  const flashOverlayOpacity = useRef(new Animated.Value(0)).current;
+
+  // On Android the video Surface goes black when returning from the fullscreen
+  // player because the native TextureView loses its binding to the shared player.
+  // Incrementing this key forces VideoView to remount, re-binding the Surface.
+  // The flash overlay hides any single-frame black during the remount.
+  const [videoKey, setVideoKey] = useState(0);
+  const isFirstFocusRef = useRef(true);
+  useFocusEffect(useCallback(() => {
+    if (isFirstFocusRef.current) {
+      isFirstFocusRef.current = false;
+      return;
+    }
+    flashOverlayOpacity.setValue(1);
+    setVideoKey((k) => k + 1);
+  }, [flashOverlayOpacity]));
+
   // ── AppState tracking (#21/#31/#53) ──────────────────────────────────────
   const isAppBackgroundRef = useRef(false);
   // Holds the last failed favourites push so it can be retried on foreground (#21)
@@ -261,12 +282,6 @@ export default function LiveTVScreen() {
     });
     return () => sub.remove();
   }, [isWeb, deviceMac]);
-
-  // Animated overlay that snaps to opaque synchronously (no React reconciler
-  // roundtrip) before player.replace() is called, preventing the black flash
-  // that appears when the VideoView surface clears before buffering starts.
-  // It fades out once the player is ready to play.
-  const flashOverlayOpacity = useRef(new Animated.Value(0)).current;
 
   // Tracks whether a load is still wanted — incremented on each new channel
   const loadGenRef = useRef(0);
@@ -847,6 +862,7 @@ export default function LiveTVScreen() {
               focusable={false}
             >
               <VideoView
+                key={videoKey}
                 player={player}
                 style={StyleSheet.absoluteFill}
                 nativeControls={false}
