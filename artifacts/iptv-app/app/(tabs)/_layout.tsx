@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -9,6 +9,7 @@ import {
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { Tabs } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useAppContext } from '@/context/AppContext';
 
 export const SIDEBAR_W = 220;
 
@@ -23,8 +24,55 @@ const NAV = [
   { name: 'settings', label: 'Settings',icon: '⚙'  },
 ];
 
+type ServerStatus = 'checking' | 'ok' | 'error' | 'unconfigured';
+
+function useServerStatus(): ServerStatus {
+  const { credentials, isActivated } = useAppContext();
+  const [status, setStatus] = useState<ServerStatus>('checking');
+
+  useEffect(() => {
+    if (!isActivated || !credentials) { setStatus('unconfigured'); return; }
+
+    let cancelled = false;
+    const check = async () => {
+      try {
+        if (credentials.type === 'xtream') {
+          const host = credentials.host.replace(/\/$/, '');
+          const url = `${host}/player_api.php?username=${encodeURIComponent(credentials.username)}&password=${encodeURIComponent(credentials.password)}&action=get_live_categories`;
+          const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+          if (!cancelled) setStatus(res.ok ? 'ok' : 'error');
+        } else {
+          // M3U — just try fetching the first byte
+          const res = await fetch(credentials.m3uUrl ?? '', { signal: AbortSignal.timeout(8000) });
+          if (!cancelled) setStatus(res.ok ? 'ok' : 'error');
+        }
+      } catch {
+        if (!cancelled) setStatus('error');
+      }
+    };
+    setStatus('checking');
+    check();
+    // Re-check every 2 minutes
+    const t = setInterval(check, 120_000);
+    return () => { cancelled = true; clearInterval(t); };
+  }, [isActivated, credentials]);
+
+  return status;
+}
+
 function Sidebar({ state, descriptors, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
+  const serverStatus = useServerStatus();
+
+  const dotColor = serverStatus === 'ok' ? '#22C55E'
+    : serverStatus === 'error' ? '#EF4444'
+    : serverStatus === 'unconfigured' ? '#6B7280'
+    : '#F59E0B'; // checking = amber
+
+  const statusLabel = serverStatus === 'ok' ? 'Connected'
+    : serverStatus === 'error' ? 'Server error'
+    : serverStatus === 'unconfigured' ? 'Not configured'
+    : 'Checking…';
 
   return (
     <View style={[styles.sidebar, { paddingTop: insets.top + 16, paddingLeft: insets.left }]}>
@@ -74,10 +122,10 @@ function Sidebar({ state, descriptors, navigation }: BottomTabBarProps) {
         })}
       </ScrollView>
 
-      {/* Footer */}
+      {/* Footer — real server health indicator */}
       <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
-        <View style={styles.footerDot} />
-        <Text style={styles.footerText}>Connected</Text>
+        <View style={[styles.footerDot, { backgroundColor: dotColor }]} />
+        <Text style={styles.footerText}>{statusLabel}</Text>
       </View>
     </View>
   );
