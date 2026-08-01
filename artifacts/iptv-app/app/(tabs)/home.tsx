@@ -164,8 +164,7 @@ export default function HomeScreen() {
   const isXtream = credentials?.type === 'xtream';
 
   // ── Latest movies ─────────────────────────────────────────────────────────
-  // staleTime: 0 so every focus triggers a fresh fetch from the server
-  const { data: allMovies = [], isLoading: moviesLoading } = useQuery<Movie[]>({
+  const { data: allMovies = [], isLoading: moviesLoading, refetch: refetchMovies } = useQuery<Movie[]>({
     queryKey: ['vod-streams', null, credentials],
     queryFn: () => getXtreamVodStreams(buildCreds(credentials)),
     enabled: !!credentials && isXtream,
@@ -173,12 +172,20 @@ export default function HomeScreen() {
   });
 
   // ── Latest series ─────────────────────────────────────────────────────────
-  const { data: allSeries = [], isLoading: seriesLoading } = useQuery<Series[]>({
+  const { data: allSeries = [], isLoading: seriesLoading, refetch: refetchSeries } = useQuery<Series[]>({
     queryKey: ['series-list', null, credentials],
     queryFn: () => getXtreamSeries(buildCreds(credentials)),
     enabled: !!credentials && isXtream,
     staleTime: 0,
   });
+
+  // Refetch whenever the Home tab comes into focus — tab components stay
+  // mounted so React Query's refetchOnMount never fires on re-navigation.
+  useFocusEffect(useCallback(() => {
+    if (!credentials || !isXtream) return;
+    refetchMovies();
+    refetchSeries();
+  }, [credentials, isXtream, refetchMovies, refetchSeries]));
 
   const latestMovies = useMemo(
     () =>
