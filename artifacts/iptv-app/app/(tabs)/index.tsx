@@ -7,6 +7,7 @@ import React, {
 } from 'react';
 import {
   ActivityIndicator,
+  Animated,
   FlatList,
   Image,
   Platform,
@@ -217,17 +218,32 @@ export default function LiveTVScreen() {
     p.loop = false;
   });
 
+  // Animated overlay that snaps to opaque synchronously (no React reconciler
+  // roundtrip) before player.replace() is called, preventing the black flash
+  // that appears when the VideoView surface clears before buffering starts.
+  // It fades out once the player is ready to play.
+  const flashOverlayOpacity = useRef(new Animated.Value(0)).current;
+
   useEffect(() => {
     if (isWeb || !selectedChannel?.streamUrl) return;
     setIsBuffering(true);
     setHasError(false);
     const load = async () => {
       try {
+        // Snap the overlay opaque synchronously before the native surface clears.
+        flashOverlayOpacity.setValue(1);
         await (player as any).replaceAsync(selectedChannel.streamUrl);
         player.play();
       } catch {
         setHasError(true);
         setIsBuffering(false);
+        // replaceAsync threw before a statusChange event could dismiss the overlay.
+        // Reset it immediately so the error UI is not hidden behind an opaque layer.
+        Animated.timing(flashOverlayOpacity, {
+          toValue: 0,
+          duration: 150,
+          useNativeDriver: true,
+        }).start();
       }
     };
     load();
@@ -239,6 +255,12 @@ export default function LiveTVScreen() {
       player.addListener('statusChange', ({ status, error }: any) => {
         if (status === 'readyToPlay') {
           setIsBuffering(false);
+          // Fade the flash overlay out smoothly once a frame is available.
+          Animated.timing(flashOverlayOpacity, {
+            toValue: 0,
+            duration: 200,
+            useNativeDriver: true,
+          }).start();
           // For DVR/timeshift streams, player.replace() starts at the oldest
           // buffered segment (beginning of the DVR window) rather than the
           // live edge. Once ready, seek to the end of the reported duration
@@ -257,7 +279,16 @@ export default function LiveTVScreen() {
             }, 300);
           }
         }
-        if (status === 'error' || error) { setHasError(true); setIsBuffering(false); }
+        if (status === 'error' || error) {
+          setHasError(true);
+          setIsBuffering(false);
+          // Dismiss the overlay on error so the error UI is visible.
+          Animated.timing(flashOverlayOpacity, {
+            toValue: 0,
+            duration: 150,
+            useNativeDriver: true,
+          }).start();
+        }
       }),
     ];
     return () => subs.forEach((s) => s.remove());
@@ -309,7 +340,25 @@ export default function LiveTVScreen() {
           if (liveReloadNeededRef.current || tabWasStale) {
             liveReloadNeededRef.current = false;
             pendingLiveEdgeSeek.current = true;
-            try { player.replace(curCh.streamUrl); player.play(); } catch {}
+            // Show the buffering spinner and snap overlay opaque BEFORE replace()
+            // so the black flash on the VideoView surface is hidden from the start.
+            setIsBuffering(true);
+            setHasError(false);
+            flashOverlayOpacity.setValue(1);
+            try {
+              player.replace(curCh.streamUrl);
+              player.play();
+            } catch {
+              // replace() threw synchronously before a statusChange error event.
+              // Dismiss the overlay immediately so the error UI is not hidden.
+              setHasError(true);
+              setIsBuffering(false);
+              Animated.timing(flashOverlayOpacity, {
+                toValue: 0,
+                duration: 150,
+                useNativeDriver: true,
+              }).start();
+            }
           } else {
             try { player.play(); } catch {}
           }
@@ -693,6 +742,14 @@ export default function LiveTVScreen() {
                 nativeControls={false}
                 contentFit="contain"
               />
+              {/* Flash-prevention overlay — always rendered so setValue(1) takes
+                  effect in the same native frame as player.replace(), before
+                  the VideoView surface can show a black frame. Fades out once
+                  the player signals readyToPlay. */}
+              <Animated.View
+                style={[StyleSheet.absoluteFill, styles.flashOverlay, { opacity: flashOverlayOpacity }]}
+                pointerEvents="none"
+              />
               {(isBuffering && !hasError) && (
                 <View style={styles.videoOverlay}>
                   <ActivityIndicator color="#fff" size="large" />
@@ -954,6 +1011,12 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.55)',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  // Solid black overlay used to hide the black-flash on player.replace().
+  // Rendered at opacity 0 normally; snapped to 1 before replace() via
+  // Animated.Value.setValue() (synchronous, no React reconciler delay).
+  flashOverlay: {
+    backgroundColor: '#000',
   },
   errText: { color: '#fff', fontSize: 12, textAlign: 'center' },
   livePill: {
