@@ -268,7 +268,12 @@ export default function LiveTVScreen() {
       // surface.  flashOverlayOpacity.setValue(1) in the callback is a native-
       // driver call so it commits immediately and covers any single-frame gap.
       onCollapseCompleteRef.current = () => {
-        flashOverlayOpacity.setValue(1);
+        // Do NOT set flashOverlayOpacity=1 here.  ExoPlayer stays in
+        // STATE_READY when re-attaching an already-playing stream to a new
+        // surface, so readyToPlay never re-fires and the overlay would stay
+        // black permanently.  The 200 ms collapse overlay already covers the
+        // mini-player while the new TextureView surface binds — no extra
+        // black overlay is needed.
         setVideoKey((k) => k + 1);
       };
       return;
