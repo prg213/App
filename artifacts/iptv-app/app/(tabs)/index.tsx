@@ -258,16 +258,16 @@ export default function LiveTVScreen() {
       isFirstFocusRef.current = false;
       return;
     }
-    // During a collapse the overlay VideoView is still covering the mini-player
-    // and is the sole renderer of the shared player.  Remounting the mini-player
-    // VideoView here would attach a second VideoView to the same player and
-    // cause a black flash.  Skip the remount — the overlay's double-rAF teardown
-    // in triggerCollapse gives the existing VideoView surface time to re-attach
-    // cleanly before it disappears.
-    if (isCollapsingRef.current) return;
+    // Remount the VideoView to reattach the player's native rendering surface.
+    // On Android the TextureView loses its binding to the shared player when the
+    // fullscreen screen is on top.  The flashOverlayOpacity covers the brief
+    // black initialisation frame.  During a collapse the overlay (already shrunk
+    // to mini-player size) sits on top of this area so the remount black frame
+    // is hidden; the overlay then disappears once the double-rAF teardown
+    // completes, revealing the freshly-bound VideoView with the stream live.
     flashOverlayOpacity.setValue(1);
     setVideoKey((k) => k + 1);
-  }, [flashOverlayOpacity, isCollapsingRef]));
+  }, [flashOverlayOpacity]));
 
   // ── AppState tracking (#21/#31/#53) ──────────────────────────────────────
   const isAppBackgroundRef = useRef(false);
