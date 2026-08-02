@@ -285,7 +285,11 @@ export default function MovieDetailScreen() {
               const query = encodeURIComponent(`${params.title} official trailer`);
               await WebBrowser.openBrowserAsync(
                 `https://www.youtube.com/results?search_query=${query}`,
-                { toolbarColor: '#0A0A0F', controlsColor: '#3B82F6' },
+                {
+                  presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET,
+                  toolbarColor: '#0A0A0F',
+                  controlsColor: '#3B82F6',
+                },
               );
             }}
           >
