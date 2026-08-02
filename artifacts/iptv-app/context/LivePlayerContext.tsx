@@ -14,6 +14,19 @@
  *                      expanding to fullscreen before navigating.
  * `triggerCollapse`  – call with a done callback to animate the fullscreen view
  *                      collapsing back to the mini-player position before going back.
+ *
+ * Animation approach: the overlay is a fixed fullscreen view (top:0, left:0,
+ * width:screenW, height:screenH) whose position/size is driven entirely by
+ * transform: [translateX, translateY, scaleX, scaleY].  This lets every
+ * Animated.timing call use useNativeDriver:true, pushing the animation onto
+ * the native UI thread for guaranteed-smooth 60 fps on slower devices.
+ *
+ * Transform math to make the overlay appear at rect (x, y, w, h):
+ *   scaleX     = w / screenW
+ *   scaleY     = h / screenH
+ *   translateX = x + w/2 - screenW/2
+ *   translateY = y + h/2 - screenH/2
+ * Fullscreen state: scaleX=1, scaleY=1, translateX=0, translateY=0.
  */
 import React, { createContext, useCallback, useContext, useRef, useState } from 'react';
 import { Animated, Easing, StyleSheet, useWindowDimensions, View } from 'react-native';
@@ -82,23 +95,42 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
 
   // ── Animation timing constants ────────────────────────────────────────────
   // Co-located so future tweaks are one-line changes.
-  const EXPAND_MS       = 300;  // rect growth (expand direction)
-  const COLLAPSE_MS     = 300;  // rect shrink (collapse direction)
+  const EXPAND_MS       = 300;  // transform growth (expand direction)
+  const COLLAPSE_MS     = 300;  // transform shrink (collapse direction)
   const FADE_IN_MS      =  60;  // overlay snap-in before expansion
   const FADE_OUT_MS     = 200;  // overlay fade-out after navigation
   // Shared easing curve — out-cubic gives a natural deceleration on both
   // expand and collapse so the two directions feel like a matched pair.
-  const RECT_EASING = Easing.out(Easing.cubic);
+  const TRANSFORM_EASING = Easing.out(Easing.cubic);
 
   // ── Animated overlay state ────────────────────────────────────────────────
+  // The overlay is a fixed fullscreen View.  Its apparent position and size
+  // are driven entirely by transform, allowing useNativeDriver: true on all
+  // animated values.
   const { width: screenW, height: screenH } = useWindowDimensions();
 
-  const animTop     = useRef(new Animated.Value(0)).current;
-  const animLeft    = useRef(new Animated.Value(0)).current;
-  const animWidth   = useRef(new Animated.Value(screenW)).current;
-  const animHeight  = useRef(new Animated.Value(screenH)).current;
-  const animOpacity = useRef(new Animated.Value(0)).current;
+  // Transform animated values — fullscreen "at rest" values are 0/0/1/1.
+  const animTranslateX = useRef(new Animated.Value(0)).current;
+  const animTranslateY = useRef(new Animated.Value(0)).current;
+  const animScaleX     = useRef(new Animated.Value(1)).current;
+  const animScaleY     = useRef(new Animated.Value(1)).current;
+  const animOpacity    = useRef(new Animated.Value(0)).current;
   const [overlayVisible, setOverlayVisible] = useState(false);
+
+  // ── Transform helpers ─────────────────────────────────────────────────────
+  /**
+   * Compute transform values that make the fullscreen overlay appear to occupy
+   * the given page-absolute rect.
+   */
+  const rectToTransform = useCallback(
+    (rect: { x: number; y: number; width: number; height: number }) => ({
+      scaleX:     rect.width  / screenW,
+      scaleY:     rect.height / screenH,
+      translateX: rect.x + rect.width  / 2 - screenW / 2,
+      translateY: rect.y + rect.height / 2 - screenH / 2,
+    }),
+    [screenW, screenH],
+  );
 
   // ── _runExpandAnimation ───────────────────────────────────────────────────
   // Single source of truth for the expand animation sequence.
@@ -109,11 +141,13 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
       miniRectRef.current = rect;
       wasExpandedRef.current = true;
 
-      // Position overlay exactly over the source view, start transparent
-      animTop.setValue(rect.y);
-      animLeft.setValue(rect.x);
-      animWidth.setValue(rect.width);
-      animHeight.setValue(rect.height);
+      const { scaleX, scaleY, translateX, translateY } = rectToTransform(rect);
+
+      // Snap transform to source rect, start transparent
+      animTranslateX.setValue(translateX);
+      animTranslateY.setValue(translateY);
+      animScaleX.setValue(scaleX);
+      animScaleY.setValue(scaleY);
       animOpacity.setValue(0);
       setOverlayVisible(true);
 
@@ -122,14 +156,14 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
         Animated.timing(animOpacity, {
           toValue: 1,
           duration: FADE_IN_MS,
-          useNativeDriver: false,
+          useNativeDriver: true,
         }),
-        // Expand rect to fill the screen
+        // Expand transforms to fullscreen (translate → 0,0 ; scale → 1,1)
         Animated.parallel([
-          Animated.timing(animTop,    { toValue: 0,       duration: EXPAND_MS, easing: RECT_EASING, useNativeDriver: false }),
-          Animated.timing(animLeft,   { toValue: 0,       duration: EXPAND_MS, easing: RECT_EASING, useNativeDriver: false }),
-          Animated.timing(animWidth,  { toValue: screenW, duration: EXPAND_MS, easing: RECT_EASING, useNativeDriver: false }),
-          Animated.timing(animHeight, { toValue: screenH, duration: EXPAND_MS, easing: RECT_EASING, useNativeDriver: false }),
+          Animated.timing(animTranslateX, { toValue: 0, duration: EXPAND_MS, easing: TRANSFORM_EASING, useNativeDriver: true }),
+          Animated.timing(animTranslateY, { toValue: 0, duration: EXPAND_MS, easing: TRANSFORM_EASING, useNativeDriver: true }),
+          Animated.timing(animScaleX,     { toValue: 1, duration: EXPAND_MS, easing: TRANSFORM_EASING, useNativeDriver: true }),
+          Animated.timing(animScaleY,     { toValue: 1, duration: EXPAND_MS, easing: TRANSFORM_EASING, useNativeDriver: true }),
         ]),
       ]).start(() => {
         // Navigate — the player screen mounts beneath the overlay
@@ -139,13 +173,13 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
           Animated.timing(animOpacity, {
             toValue: 0,
             duration: FADE_OUT_MS,
-            useNativeDriver: false,
+            useNativeDriver: true,
           }).start(() => setOverlayVisible(false));
         });
       });
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [animTop, animLeft, animWidth, animHeight, animOpacity, screenW, screenH],
+    [animTranslateX, animTranslateY, animScaleX, animScaleY, animOpacity, rectToTransform],
   );
 
   // ── triggerExpand ─────────────────────────────────────────────────────────
@@ -204,24 +238,26 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
       isCollapsingRef.current = true;
 
       const startAnimation = (rect: { x: number; y: number; width: number; height: number }) => {
+        const { scaleX, scaleY, translateX, translateY } = rectToTransform(rect);
+
         // Snap the overlay to full screen, fully opaque — this covers the
         // player screen.  The caller should have already unmounted its own
         // VideoView (via setVideoMounted(false)) so the overlay VideoView is
         // now the sole renderer.  Having two VideoViews share the same player
         // simultaneously causes one of them to go black on Android.
-        animTop.setValue(0);
-        animLeft.setValue(0);
-        animWidth.setValue(screenW);
-        animHeight.setValue(screenH);
+        animTranslateX.setValue(0);
+        animTranslateY.setValue(0);
+        animScaleX.setValue(1);
+        animScaleY.setValue(1);
         animOpacity.setValue(1);
         setOverlayVisible(true);
 
-        // Shrink back to the mini-player position.
+        // Shrink transforms back to the mini-player position.
         Animated.parallel([
-          Animated.timing(animTop,    { toValue: rect.y,      duration: COLLAPSE_MS, easing: RECT_EASING, useNativeDriver: false }),
-          Animated.timing(animLeft,   { toValue: rect.x,      duration: COLLAPSE_MS, easing: RECT_EASING, useNativeDriver: false }),
-          Animated.timing(animWidth,  { toValue: rect.width,  duration: COLLAPSE_MS, easing: RECT_EASING, useNativeDriver: false }),
-          Animated.timing(animHeight, { toValue: rect.height, duration: COLLAPSE_MS, easing: RECT_EASING, useNativeDriver: false }),
+          Animated.timing(animTranslateX, { toValue: translateX, duration: COLLAPSE_MS, easing: TRANSFORM_EASING, useNativeDriver: true }),
+          Animated.timing(animTranslateY, { toValue: translateY, duration: COLLAPSE_MS, easing: TRANSFORM_EASING, useNativeDriver: true }),
+          Animated.timing(animScaleX,     { toValue: scaleX,     duration: COLLAPSE_MS, easing: TRANSFORM_EASING, useNativeDriver: true }),
+          Animated.timing(animScaleY,     { toValue: scaleY,     duration: COLLAPSE_MS, easing: TRANSFORM_EASING, useNativeDriver: true }),
         ]).start(() => {
           // Navigate back — home screen is already rendered beneath us.
           onDone();
@@ -267,7 +303,7 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
       );
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [animTop, animLeft, animWidth, animHeight, animOpacity, screenW, screenH],
+    [animTranslateX, animTranslateY, animScaleX, animScaleY, animOpacity, rectToTransform],
   );
 
   return (
@@ -276,18 +312,22 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
     >
       {children}
       {/* Expanding/collapsing VideoView overlay — rendered on top of everything.
-          position: absolute with explicit width/height covers the screen regardless
-          of what view hierarchy the provider sits in. */}
+          Fixed fullscreen size; apparent position driven by transform so that
+          all animations run on the native UI thread (useNativeDriver: true). */}
       {overlayVisible && (
         <Animated.View
           style={[
             styles.overlay,
             {
+              width: screenW,
+              height: screenH,
               opacity: animOpacity,
-              top: animTop,
-              left: animLeft,
-              width: animWidth,
-              height: animHeight,
+              transform: [
+                { translateX: animTranslateX },
+                { translateY: animTranslateY },
+                { scaleX: animScaleX },
+                { scaleY: animScaleY },
+              ],
             },
           ]}
           pointerEvents="none"
@@ -314,8 +354,9 @@ export function useLivePlayer(): LivePlayerContextValue {
 const styles = StyleSheet.create({
   overlay: {
     position: 'absolute',
+    top: 0,
+    left: 0,
     backgroundColor: '#000',
-    overflow: 'hidden',
     zIndex: 9999,
     elevation: 9999, // Android: ensure it's above everything
   },
