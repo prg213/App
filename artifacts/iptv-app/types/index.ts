@@ -181,6 +181,8 @@ export interface WatchHistoryEntry {
   /** For series episodes: the parent series ID so the rail can navigate to the series page. */
   parentId?: string;
   title: string;
+  /** For series episodes: the parent series name, used to label the card on the Recently Watched list. */
+  parentTitle?: string;
   cover?: string;
   type: 'movie' | 'series';
   position?: number;

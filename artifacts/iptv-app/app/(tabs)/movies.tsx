@@ -21,10 +21,11 @@ import { ContinueWatchingRail } from '@/components/ContinueWatchingRail';
 import { getXtreamVodCategories, getXtreamVodStreams } from '@/services/xtreamApi';
 import { StorageService } from '@/services/storage';
 import { fetchRemoteFavourites, pushRemoteMovies, mergeFavourites } from '@/services/favoritesSync';
-import type { Movie, Category, FavoriteMovie } from '@/types';
+import type { Movie, Category, FavoriteMovie, WatchHistoryEntry } from '@/types';
 
 const ALL_CAT_ID = '__all';
 const FAVS_CAT_ID = '__favs';
+const RECENT_CAT_ID = '__recent';
 
 function buildCreds(c: ReturnType<typeof useAppContext>['credentials']) {
   return { host: c!.host!, username: c!.username!, password: c!.password! };
@@ -40,6 +41,7 @@ export default function MoviesScreen() {
   const [selectedCat, setSelectedCat] = useState<string>(ALL_CAT_ID);
   const [search, setSearch] = useState('');
   const [favMovies, setFavMovies] = useState<FavoriteMovie[]>([]);
+  const [watchHistory, setWatchHistory] = useState<WatchHistoryEntry[]>([]);
   const isXtream = credentials?.type === 'xtream';
 
   useEffect(() => {
@@ -57,6 +59,7 @@ export default function MoviesScreen() {
   const favSet = useMemo(() => new Set(favMovies.map((f) => f.id)), [favMovies]);
   const isFavsSelected = selectedCat === FAVS_CAT_ID;
   const isAllSelected = selectedCat === ALL_CAT_ID;
+  const isRecentSelected = selectedCat === RECENT_CAT_ID;
 
   const { data: rawCategories = [] } = useQuery<Category[]>({
     queryKey: ['vod-categories', credentials],
@@ -69,29 +72,32 @@ export default function MoviesScreen() {
     () => [
       { id: ALL_CAT_ID, name: '◈ All' },
       { id: FAVS_CAT_ID, name: '♥ Favourites' },
+      { id: RECENT_CAT_ID, name: '🕒 Recently Watched' },
       ...rawCategories,
     ],
     [rawCategories],
   );
 
   // Pass undefined when All is selected so the API returns everything
-  const queryCategory = isAllSelected || isFavsSelected ? undefined : selectedCat;
+  const queryCategory = isAllSelected || isFavsSelected || isRecentSelected ? undefined : selectedCat;
 
   const { data: fetchedMovies = [], isLoading, refetch, isRefetching } = useQuery<Movie[]>({
     queryKey: ['vod-streams', queryCategory, credentials],
     queryFn: () => getXtreamVodStreams(buildCreds(credentials), queryCategory),
-    enabled: !!credentials && isXtream && !isFavsSelected,
+    enabled: !!credentials && isXtream && !isFavsSelected && !isRecentSelected,
     staleTime: 5 * 60_000,
   });
 
-  // Silently refresh the list whenever the user navigates to this tab so newly
-  // added provider content appears without requiring a manual pull-to-refresh.
+  // Silently refresh the list + reload history whenever the user navigates here.
   useFocusEffect(
     useCallback(() => {
-      if (credentials && isXtream && !isFavsSelected) {
+      StorageService.getWatchHistory().then((h) =>
+        setWatchHistory(h.filter((e) => e.type === 'movie')),
+      );
+      if (credentials && isXtream && !isFavsSelected && !isRecentSelected) {
         refetch();
       }
-    }, [credentials, isXtream, isFavsSelected, refetch]),
+    }, [credentials, isXtream, isFavsSelected, isRecentSelected, refetch]),
   );
 
   // Sort fetched movies newest first (highest stream_id = most recently added)
@@ -118,8 +124,20 @@ export default function MoviesScreen() {
         duration: f.duration,
       }));
     }
+    if (isRecentSelected) {
+      return [...watchHistory]
+        .sort((a, b) => b.timestamp - a.timestamp)
+        .map((e) => ({
+          id: e.id,
+          name: e.title,
+          cover: e.cover,
+          categoryId: '',
+          streamId: e.id,
+          containerExtension: 'mp4',
+        } as Movie));
+    }
     return sortedMovies;
-  }, [isFavsSelected, favMovies, sortedMovies]);
+  }, [isFavsSelected, isRecentSelected, favMovies, watchHistory, sortedMovies]);
 
   const filtered = useMemo(() => {
     let list = movies;
@@ -231,13 +249,22 @@ export default function MoviesScreen() {
           />
         ) : filtered.length === 0 ? (
           <View style={styles.empty}>
-            <Text style={{ fontSize: 36, color: colors.mutedForeground }}>{isFavsSelected ? '♡' : '🎬'}</Text>
+            <Text style={{ fontSize: 36, color: colors.mutedForeground }}>
+              {isFavsSelected ? '♡' : isRecentSelected ? '🕒' : '🎬'}
+            </Text>
             <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
-              {isFavsSelected ? 'No favourite movies yet' : 'No movies found'}
+              {isFavsSelected ? 'No favourite movies yet'
+                : isRecentSelected ? 'No recently watched movies'
+                : 'No movies found'}
             </Text>
             {isFavsSelected && (
               <Text style={[styles.emptySub, { color: colors.mutedForeground }]}>
                 Tap ♡ on any movie poster to save it here.
+              </Text>
+            )}
+            {isRecentSelected && (
+              <Text style={[styles.emptySub, { color: colors.mutedForeground }]}>
+                Movies you watch will appear here automatically.
               </Text>
             )}
           </View>

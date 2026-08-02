@@ -41,7 +41,6 @@ import {
 } from '@/services/xtreamApi';
 import { fetchAndParseM3U } from '@/services/m3uParser';
 import { fetchAndParseXmltv } from '@/services/epgService';
-import { RecentChannelsRail } from '@/components/RecentChannelsRail';
 import { CatchupSheet } from '@/components/CatchupSheet';
 import type { Channel, Category, EpgProgram, FavoriteChannel } from '@/types';
 
@@ -853,22 +852,8 @@ export default function LiveTVScreen() {
         />
       </View>
 
-      {/* ══ MIDDLE + RIGHT wrapper — column so the rail sits above both panels ══ */}
-      <View style={styles.contentColumn}>
-
-        {/* ── Recently Watched Rail — own row above channels & EPG ── */}
-        <RecentChannelsRail
-          blockedIds={blockedSet}
-          nowPlayingMap={nowPlayingMap}
-          onWatchFullscreen={handleWatchChannel}
-          topInset={insets.top}
-        />
-
-        {/* ── Inner row: channel list + preview ── */}
-        <View style={styles.contentRow}>
-
       {/* ══ MIDDLE: channel list ══ */}
-      <View style={[styles.chPanel, { borderRightColor: colors.border }]}>
+      <View style={[styles.chPanel, { borderRightColor: colors.border, paddingTop: insets.top + 4 }]}>
         {/* Panel header — shows Edit/Done button when Favourites is active */}
         <View style={[styles.chPanelHeader, { borderBottomColor: colors.border }]}>
           <Text style={[styles.panelHeader, { color: colors.mutedForeground, borderBottomWidth: 0, marginBottom: 0, paddingBottom: 0 }]}>
@@ -939,7 +924,7 @@ export default function LiveTVScreen() {
       </View>
 
       {/* ══ RIGHT: preview + EPG ══ */}
-      <View style={[styles.previewPanel, { paddingRight: insets.right + 8 }]}>
+      <View style={[styles.previewPanel, { paddingTop: insets.top + 4, paddingRight: insets.right + 8 }]}>
 
         {!isWeb && (
           <>
@@ -1078,8 +1063,6 @@ export default function LiveTVScreen() {
           </View>
         )}
       </View>{/* end previewPanel */}
-        </View>{/* end contentRow */}
-      </View>{/* end contentColumn */}
 
       {/* ── Catch-up sheet ── */}
       {showCatchup && selectedChannel && creds && (
@@ -1100,11 +1083,6 @@ export default function LiveTVScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, flexDirection: 'row' },
-
-  // Wraps the channel-list + preview columns so the recently-watched rail
-  // can sit above both in its own full-width row.
-  contentColumn: { flex: 1, flexDirection: 'column' },
-  contentRow: { flex: 1, flexDirection: 'row' },
 
   // ── TV / D-pad focus rings ──
   tvFocused: {
@@ -1183,12 +1161,14 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   catSearchInput: {
-    height: 30,
+    height: 34,
     borderRadius: 6,
     paddingHorizontal: 8,
+    paddingVertical: 4,
     fontSize: 12,
     fontFamily: 'Inter_400Regular',
-  },
+    includeFontPadding: false,
+  } as any,
   catRow: {
     height: 52,
     justifyContent: 'center',

@@ -249,6 +249,8 @@ export default function PlayerScreen() {
     contentId?: string;
     /** For series episodes: the parent series ID, used by the Continue Watching rail. */
     parentId?: string;
+    /** For series episodes: the parent series name, stored in watch history for the Recently Watched list. */
+    parentTitle?: string;
     /** Logo/cover used as the history thumbnail. */
     logo?: string;
     /** Seconds to seek to after the player is ready. */
@@ -604,6 +606,7 @@ export default function PlayerScreen() {
         await StorageService.addToHistory({
           id: params.contentId!,
           parentId: params.parentId,
+          parentTitle: params.parentTitle,
           title: params.title,
           cover: params.logo,
           type: params.type === 'series' ? 'series' : 'movie',
@@ -714,6 +717,7 @@ export default function PlayerScreen() {
           StorageService.addToHistory({
             id: params.contentId,
             parentId: params.parentId,
+            parentTitle: params.parentTitle,
             title: params.title,
             cover: params.logo,
             type: params.type === 'series' ? 'series' : 'movie',

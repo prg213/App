@@ -21,10 +21,11 @@ import { ContinueWatchingRail } from '@/components/ContinueWatchingRail';
 import { getXtreamSeriesCategories, getXtreamSeries } from '@/services/xtreamApi';
 import { StorageService } from '@/services/storage';
 import { fetchRemoteFavourites, pushRemoteSeries, mergeFavourites } from '@/services/favoritesSync';
-import type { Series, Category, FavoriteSeries } from '@/types';
+import type { Series, Category, FavoriteSeries, WatchHistoryEntry } from '@/types';
 
 const ALL_CAT_ID = '__all';
 const FAVS_CAT_ID = '__favs';
+const RECENT_CAT_ID = '__recent';
 
 function buildCreds(c: ReturnType<typeof useAppContext>['credentials']) {
   return { host: c!.host!, username: c!.username!, password: c!.password! };
@@ -40,6 +41,7 @@ export default function SeriesScreen() {
   const [selectedCat, setSelectedCat] = useState<string>(ALL_CAT_ID);
   const [search, setSearch] = useState('');
   const [favSeries, setFavSeries] = useState<FavoriteSeries[]>([]);
+  const [watchHistory, setWatchHistory] = useState<WatchHistoryEntry[]>([]);
   const isXtream = credentials?.type === 'xtream';
 
   useEffect(() => {
@@ -57,6 +59,7 @@ export default function SeriesScreen() {
   const favSet = useMemo(() => new Set(favSeries.map((f) => f.id)), [favSeries]);
   const isFavsSelected = selectedCat === FAVS_CAT_ID;
   const isAllSelected = selectedCat === ALL_CAT_ID;
+  const isRecentSelected = selectedCat === RECENT_CAT_ID;
 
   const { data: rawCategories = [] } = useQuery<Category[]>({
     queryKey: ['series-categories', credentials],
@@ -69,29 +72,32 @@ export default function SeriesScreen() {
     () => [
       { id: ALL_CAT_ID, name: '◈ All' },
       { id: FAVS_CAT_ID, name: '♥ Favourites' },
+      { id: RECENT_CAT_ID, name: '🕒 Recently Watched' },
       ...rawCategories,
     ],
     [rawCategories],
   );
 
   // Pass undefined when All is selected so the API returns everything
-  const queryCategory = isAllSelected || isFavsSelected ? undefined : selectedCat;
+  const queryCategory = isAllSelected || isFavsSelected || isRecentSelected ? undefined : selectedCat;
 
   const { data: fetchedSeries = [], isLoading, refetch, isRefetching } = useQuery<Series[]>({
     queryKey: ['series-list', queryCategory, credentials],
     queryFn: () => getXtreamSeries(buildCreds(credentials), queryCategory),
-    enabled: !!credentials && isXtream && !isFavsSelected,
+    enabled: !!credentials && isXtream && !isFavsSelected && !isRecentSelected,
     staleTime: 5 * 60_000,
   });
 
-  // Silently refresh the list whenever the user navigates to this tab so newly
-  // added provider content appears without requiring a manual pull-to-refresh.
+  // Silently refresh the list + reload history whenever the user navigates here.
   useFocusEffect(
     useCallback(() => {
-      if (credentials && isXtream && !isFavsSelected) {
+      StorageService.getWatchHistory().then((h) =>
+        setWatchHistory(h.filter((e) => e.type === 'series')),
+      );
+      if (credentials && isXtream && !isFavsSelected && !isRecentSelected) {
         refetch();
       }
-    }, [credentials, isXtream, isFavsSelected, refetch]),
+    }, [credentials, isXtream, isFavsSelected, isRecentSelected, refetch]),
   );
 
   // Sort fetched series newest first (highest series_id = most recently added)
@@ -114,8 +120,27 @@ export default function SeriesScreen() {
         director: f.director,
       }));
     }
+    if (isRecentSelected) {
+      // Deduplicate by parentId — show each series only once, most recently watched first.
+      const seen = new Set<string>();
+      return [...watchHistory]
+        .sort((a, b) => b.timestamp - a.timestamp)
+        .reduce<Series[]>((acc, e) => {
+          const key = e.parentId ?? e.id;
+          if (!seen.has(key)) {
+            seen.add(key);
+            acc.push({
+              id: e.parentId ?? e.id,
+              name: e.parentTitle ?? e.title,
+              cover: e.cover,
+              categoryId: '',
+            } as Series);
+          }
+          return acc;
+        }, []);
+    }
     return sortedSeries;
-  }, [isFavsSelected, favSeries, sortedSeries]);
+  }, [isFavsSelected, isRecentSelected, favSeries, watchHistory, sortedSeries]);
 
   const filtered = useMemo(() => {
     let list = seriesList;
@@ -221,13 +246,22 @@ export default function SeriesScreen() {
           />
         ) : filtered.length === 0 ? (
           <View style={styles.empty}>
-            <Text style={{ fontSize: 36, color: colors.mutedForeground }}>{isFavsSelected ? '♡' : '📺'}</Text>
+            <Text style={{ fontSize: 36, color: colors.mutedForeground }}>
+              {isFavsSelected ? '♡' : isRecentSelected ? '🕒' : '📺'}
+            </Text>
             <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
-              {isFavsSelected ? 'No favourite series yet' : 'No series found'}
+              {isFavsSelected ? 'No favourite series yet'
+                : isRecentSelected ? 'No recently watched series'
+                : 'No series found'}
             </Text>
             {isFavsSelected && (
               <Text style={[styles.emptySub, { color: colors.mutedForeground }]}>
                 Tap ♡ on any series poster to save it here.
+              </Text>
+            )}
+            {isRecentSelected && (
+              <Text style={[styles.emptySub, { color: colors.mutedForeground }]}>
+                Series you watch will appear here automatically.
               </Text>
             )}
           </View>

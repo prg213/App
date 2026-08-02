@@ -143,7 +143,7 @@ export default function SeriesDetailScreen() {
     router.push({
       pathname: '/player',
       params: {
-        url, title: `${params.title} - ${ep.title}`, type: 'series',
+        url, title: `${params.title} - ${ep.title}`, type: 'series', parentTitle: params.title,
         logo: ep.info?.cover ?? params.cover ?? '', contentId: ep.streamId,
         parentId: params.id,
         ...(startAt !== undefined ? { startAt: String(startAt) } : {}),
