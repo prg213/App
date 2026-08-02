@@ -138,43 +138,67 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
   // ── triggerCollapse ───────────────────────────────────────────────────────
   const triggerCollapse = useCallback(
     (onDone: () => void) => {
-      if (!wasExpandedRef.current) {
+      // Always clear the expand flag.
+      wasExpandedRef.current = false;
+
+      const COLLAPSE_MS = 300;
+
+      const startAnimation = (rect: { x: number; y: number; width: number; height: number }) => {
+        // Snap the overlay to full screen, fully opaque — this covers the
+        // player screen.  The caller should have already hidden its own UI
+        // (controls / info bar) via setValue so the switch is seamless.
+        animTop.setValue(0);
+        animLeft.setValue(0);
+        animWidth.setValue(screenW);
+        animHeight.setValue(screenH);
+        animOpacity.setValue(1);
+        setOverlayVisible(true);
+
+        // Shrink back to the mini-player position.
+        Animated.parallel([
+          Animated.timing(animTop,    { toValue: rect.y,      duration: COLLAPSE_MS, useNativeDriver: false }),
+          Animated.timing(animLeft,   { toValue: rect.x,      duration: COLLAPSE_MS, useNativeDriver: false }),
+          Animated.timing(animWidth,  { toValue: rect.width,  duration: COLLAPSE_MS, useNativeDriver: false }),
+          Animated.timing(animHeight, { toValue: rect.height, duration: COLLAPSE_MS, useNativeDriver: false }),
+        ]).start(() => {
+          // Navigate back — home screen starts rendering immediately.
+          onDone();
+          // Remove the overlay in the next frame (snap, no fade) so the
+          // home-screen mini-player is revealed as soon as possible without
+          // a JS-thread-blocked 150 ms fade leaving plain video behind.
+          requestAnimationFrame(() => {
+            animOpacity.setValue(0);
+            setOverlayVisible(false);
+          });
+        });
+      };
+
+      // Measure the mini-player's current on-screen position.  We do this
+      // live every time so the endpoint is accurate even when the player was
+      // opened without going through triggerExpand (e.g. recently-watched
+      // rail).  Fall back to the last recorded rect if the view returns 0.
+      const ref = miniPlayerRef.current;
+      if (!ref) {
         onDone();
         return;
       }
-      wasExpandedRef.current = false;
 
-      const rect = miniRectRef.current;
-      const COLLAPSE_MS = 300;
-
-      // Overlay covers the entire screen instantly, hiding the player screen
-      animTop.setValue(0);
-      animLeft.setValue(0);
-      animWidth.setValue(screenW);
-      animHeight.setValue(screenH);
-      animOpacity.setValue(1);
-      setOverlayVisible(true);
-
-      // Shrink back to the mini-player position
-      Animated.parallel([
-        Animated.timing(animTop,    { toValue: rect.y,      duration: COLLAPSE_MS, useNativeDriver: false }),
-        Animated.timing(animLeft,   { toValue: rect.x,      duration: COLLAPSE_MS, useNativeDriver: false }),
-        Animated.timing(animWidth,  { toValue: rect.width,  duration: COLLAPSE_MS, useNativeDriver: false }),
-        Animated.timing(animHeight, { toValue: rect.height, duration: COLLAPSE_MS, useNativeDriver: false }),
-      ]).start(() => {
-        // Navigate back first so the home screen starts rendering immediately.
-        onDone();
-        // Remove the overlay in the next frame rather than fading it out over
-        // 150 ms with useNativeDriver:false.  A slow JS thread (busy with
-        // navigation re-renders + useFocusEffect) would stall that animation,
-        // leaving a plain-video overlay covering the mini-player UI for far
-        // longer than intended.  One rAF is enough for the home screen to
-        // commit its first frame; after that we snap the overlay away.
-        requestAnimationFrame(() => {
-          animOpacity.setValue(0);
-          setOverlayVisible(false);
-        });
-      });
+      (ref as any).measureInWindow(
+        (x: number, y: number, width: number, height: number) => {
+          if (width && height) {
+            miniRectRef.current = { x, y, width, height };
+          }
+          const rect = miniRectRef.current;
+          if (!rect.width || !rect.height) {
+            onDone();
+            return;
+          }
+          // One rAF so the caller's synchronous setValue(0) calls (hiding
+          // controls / info bar) have been committed to the native layer
+          // before the overlay snaps over the full screen.
+          requestAnimationFrame(() => startAnimation(rect));
+        },
+      );
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [animTop, animLeft, animWidth, animHeight, animOpacity, screenW, screenH],

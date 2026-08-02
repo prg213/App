@@ -3,6 +3,7 @@ import {
   Animated,
   AppState,
   AppStateStatus,
+  BackHandler,
   Linking,
   Modal,
   Platform,
@@ -624,8 +625,28 @@ export default function PlayerScreen() {
   // Plays the reverse mini-player animation before navigating back so the
   // user sees the fullscreen view shrink back down to the preview box.
   const handleBackLive = useCallback(() => {
+    // Immediately zero-out the controls and info bar via setValue so their
+    // native opacity updates in the same frame — before the collapse overlay
+    // snaps to full screen.  This makes the handoff seamless: the overlay
+    // covers a plain-video surface rather than a surface still showing UI.
+    controlsOpacity.setValue(0);
+    infoOpacity.setValue(0);
+    setShowControls(false);
+    setShowInfo(false);
     triggerCollapse(() => router.back());
-  }, [triggerCollapse, router]);
+  }, [triggerCollapse, router, controlsOpacity, infoOpacity]);
+
+  // ── Android hardware back button (live TV only) ───────────────────────────
+  // The system back gesture bypasses handleBackLive by default. Intercept it
+  // so the collapse animation always plays regardless of how the user exits.
+  useEffect(() => {
+    if (!isLive || isWeb || Platform.OS !== 'android') return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      handleBackLive();
+      return true; // prevent default instant-dismiss
+    });
+    return () => sub.remove();
+  }, [isLive, isWeb, handleBackLive]);
 
   // ── Save history on exit and navigate back ────────────────────────────────
   const handleBack = useCallback(async () => {
