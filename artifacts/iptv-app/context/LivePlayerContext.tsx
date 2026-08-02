@@ -16,7 +16,7 @@
  *                      collapsing back to the mini-player position before going back.
  */
 import React, { createContext, useCallback, useContext, useRef, useState } from 'react';
-import { Animated, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { Animated, Easing, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import type { VideoPlayer } from 'expo-video';
 
@@ -80,6 +80,16 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
   // Last measured mini-player rect (page-absolute coordinates).
   const miniRectRef = useRef({ x: 0, y: 0, width: 200, height: 112 });
 
+  // ── Animation timing constants ────────────────────────────────────────────
+  // Co-located so future tweaks are one-line changes.
+  const EXPAND_MS       = 300;  // rect growth (expand direction)
+  const COLLAPSE_MS     = 300;  // rect shrink (collapse direction)
+  const FADE_IN_MS      =  60;  // overlay snap-in before expansion
+  const FADE_OUT_MS     = 200;  // overlay fade-out after navigation
+  // Shared easing curve — out-cubic gives a natural deceleration on both
+  // expand and collapse so the two directions feel like a matched pair.
+  const RECT_EASING = Easing.out(Easing.cubic);
+
   // ── Animated overlay state ────────────────────────────────────────────────
   const { width: screenW, height: screenH } = useWindowDimensions();
 
@@ -107,21 +117,19 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
       animOpacity.setValue(0);
       setOverlayVisible(true);
 
-      const EXPAND_MS = 320;
-
       Animated.sequence([
         // Quick fade-in so the overlay snaps visibly before expanding
         Animated.timing(animOpacity, {
           toValue: 1,
-          duration: 60,
+          duration: FADE_IN_MS,
           useNativeDriver: false,
         }),
         // Expand rect to fill the screen
         Animated.parallel([
-          Animated.timing(animTop,    { toValue: 0,       duration: EXPAND_MS, useNativeDriver: false }),
-          Animated.timing(animLeft,   { toValue: 0,       duration: EXPAND_MS, useNativeDriver: false }),
-          Animated.timing(animWidth,  { toValue: screenW, duration: EXPAND_MS, useNativeDriver: false }),
-          Animated.timing(animHeight, { toValue: screenH, duration: EXPAND_MS, useNativeDriver: false }),
+          Animated.timing(animTop,    { toValue: 0,       duration: EXPAND_MS, easing: RECT_EASING, useNativeDriver: false }),
+          Animated.timing(animLeft,   { toValue: 0,       duration: EXPAND_MS, easing: RECT_EASING, useNativeDriver: false }),
+          Animated.timing(animWidth,  { toValue: screenW, duration: EXPAND_MS, easing: RECT_EASING, useNativeDriver: false }),
+          Animated.timing(animHeight, { toValue: screenH, duration: EXPAND_MS, easing: RECT_EASING, useNativeDriver: false }),
         ]),
       ]).start(() => {
         // Navigate — the player screen mounts beneath the overlay
@@ -130,7 +138,7 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
         requestAnimationFrame(() => {
           Animated.timing(animOpacity, {
             toValue: 0,
-            duration: 220,
+            duration: FADE_OUT_MS,
             useNativeDriver: false,
           }).start(() => setOverlayVisible(false));
         });
@@ -195,8 +203,6 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
       // VideoView remount (videoKey++) that would cause a black flash.
       isCollapsingRef.current = true;
 
-      const COLLAPSE_MS = 300;
-
       const startAnimation = (rect: { x: number; y: number; width: number; height: number }) => {
         // Snap the overlay to full screen, fully opaque — this covers the
         // player screen.  The caller should have already unmounted its own
@@ -212,10 +218,10 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
 
         // Shrink back to the mini-player position.
         Animated.parallel([
-          Animated.timing(animTop,    { toValue: rect.y,      duration: COLLAPSE_MS, useNativeDriver: false }),
-          Animated.timing(animLeft,   { toValue: rect.x,      duration: COLLAPSE_MS, useNativeDriver: false }),
-          Animated.timing(animWidth,  { toValue: rect.width,  duration: COLLAPSE_MS, useNativeDriver: false }),
-          Animated.timing(animHeight, { toValue: rect.height, duration: COLLAPSE_MS, useNativeDriver: false }),
+          Animated.timing(animTop,    { toValue: rect.y,      duration: COLLAPSE_MS, easing: RECT_EASING, useNativeDriver: false }),
+          Animated.timing(animLeft,   { toValue: rect.x,      duration: COLLAPSE_MS, easing: RECT_EASING, useNativeDriver: false }),
+          Animated.timing(animWidth,  { toValue: rect.width,  duration: COLLAPSE_MS, easing: RECT_EASING, useNativeDriver: false }),
+          Animated.timing(animHeight, { toValue: rect.height, duration: COLLAPSE_MS, easing: RECT_EASING, useNativeDriver: false }),
         ]).start(() => {
           // Navigate back — home screen is already rendered beneath us.
           onDone();
