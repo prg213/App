@@ -431,6 +431,12 @@ export default function PlayerScreen() {
   // mini-player — reusing it means zero buffering gap on fullscreen entry).
   const { player: sharedPlayer, activeUrlRef: liveUrlRef, triggerCollapse } = useLivePlayer();
 
+  // Controls whether the fullscreen VideoView is mounted.  We unmount it
+  // before calling triggerCollapse so that the overlay VideoView in
+  // LivePlayerContext becomes the sole renderer — having two VideoViews share
+  // the same player simultaneously causes one of them to go black on Android.
+  const [videoMounted, setVideoMounted] = useState(true);
+
   // The player this screen actually uses:
   const player = isLive ? sharedPlayer : localPlayer;
 
@@ -664,6 +670,12 @@ export default function PlayerScreen() {
     infoOpacity.setValue(0);
     setShowControls(false);
     setShowInfo(false);
+    // Unmount our VideoView BEFORE the overlay mounts.  expo-video only
+    // renders cleanly to one VideoView at a time; if both are mounted
+    // simultaneously one of them goes black.  By the time triggerCollapse's
+    // measureInWindow + rAF chain runs and setOverlayVisible(true) fires,
+    // this state update will already have committed to the native layer.
+    setVideoMounted(false);
     triggerCollapse(() => router.back());
   }, [triggerCollapse, router, controlsOpacity, infoOpacity]);
 
@@ -845,7 +857,7 @@ export default function PlayerScreen() {
             <Text style={styles.actionBtnText}>Retry</Text>
           </TouchableOpacity>
         </View>
-      ) : (
+      ) : videoMounted ? (
         <VideoView
           player={player}
           style={StyleSheet.absoluteFill}
@@ -854,7 +866,7 @@ export default function PlayerScreen() {
           allowsPictureInPicture
           nativeControls={false}
         />
-      )}
+      ) : null}
 
       {/* Buffering spinner */}
       {isBuffering && !hasError && !isReconnecting && !isWeb && (

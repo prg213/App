@@ -239,7 +239,7 @@ export default function LiveTVScreen() {
   }, [deviceMac]);
 
   // ── Video player (shared from LivePlayerContext — persists across navigation) ──
-  const { player, activeUrlRef: liveUrlRef, miniPlayerRef, triggerExpand, triggerExpandFromRef } = useLivePlayer();
+  const { player, activeUrlRef: liveUrlRef, miniPlayerRef, isCollapsingRef, triggerExpand, triggerExpandFromRef } = useLivePlayer();
 
   // Animated overlay that snaps to opaque synchronously (no React reconciler
   // roundtrip) before player.replace() is called, preventing the black flash
@@ -258,9 +258,16 @@ export default function LiveTVScreen() {
       isFirstFocusRef.current = false;
       return;
     }
+    // During a collapse the overlay VideoView is still covering the mini-player
+    // and is the sole renderer of the shared player.  Remounting the mini-player
+    // VideoView here would attach a second VideoView to the same player and
+    // cause a black flash.  Skip the remount — the overlay's double-rAF teardown
+    // in triggerCollapse gives the existing VideoView surface time to re-attach
+    // cleanly before it disappears.
+    if (isCollapsingRef.current) return;
     flashOverlayOpacity.setValue(1);
     setVideoKey((k) => k + 1);
-  }, [flashOverlayOpacity]));
+  }, [flashOverlayOpacity, isCollapsingRef]));
 
   // ── AppState tracking (#21/#31/#53) ──────────────────────────────────────
   const isAppBackgroundRef = useRef(false);

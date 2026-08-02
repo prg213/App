@@ -27,6 +27,13 @@ interface LivePlayerContextValue {
   /** Attach to the mini-player container View for position measurement. */
   miniPlayerRef: React.RefObject<View>;
   /**
+   * True while the collapse animation is running. index.tsx reads this to
+   * skip the VideoView remount (videoKey++) that would cause a black flash —
+   * the overlay is still covering the mini-player position at that moment so
+   * no remount is needed.
+   */
+  isCollapsingRef: React.MutableRefObject<boolean>;
+  /**
    * Measure the mini-player, animate it expanding to fullscreen, then call
    * `onNavigate`. Falls back to calling `onNavigate` immediately when the
    * ref is unavailable (e.g. recently-watched rail shortcuts).
@@ -64,6 +71,11 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
   // Whether the last navigation to the player used the expand animation.
   // Used to decide whether triggerCollapse should animate or just call onDone.
   const wasExpandedRef = useRef(false);
+
+  // True while the collapse animation is in flight.  index.tsx skips its
+  // VideoView remount (videoKey++) when this is set so that the existing
+  // mini-player surface is live and ready the instant the overlay disappears.
+  const isCollapsingRef = useRef(false);
 
   // Last measured mini-player rect (page-absolute coordinates).
   const miniRectRef = useRef({ x: 0, y: 0, width: 200, height: 112 });
@@ -204,13 +216,18 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
     (onDone: () => void) => {
       // Always clear the expand flag.
       wasExpandedRef.current = false;
+      // Signal to index.tsx that a collapse is in flight so it can skip the
+      // VideoView remount (videoKey++) that would cause a black flash.
+      isCollapsingRef.current = true;
 
       const COLLAPSE_MS = 300;
 
       const startAnimation = (rect: { x: number; y: number; width: number; height: number }) => {
         // Snap the overlay to full screen, fully opaque — this covers the
-        // player screen.  The caller should have already hidden its own UI
-        // (controls / info bar) via setValue so the switch is seamless.
+        // player screen.  The caller should have already unmounted its own
+        // VideoView (via setVideoMounted(false)) so the overlay VideoView is
+        // now the sole renderer.  Having two VideoViews share the same player
+        // simultaneously causes one of them to go black on Android.
         animTop.setValue(0);
         animLeft.setValue(0);
         animWidth.setValue(screenW);
@@ -225,14 +242,18 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
           Animated.timing(animWidth,  { toValue: rect.width,  duration: COLLAPSE_MS, useNativeDriver: false }),
           Animated.timing(animHeight, { toValue: rect.height, duration: COLLAPSE_MS, useNativeDriver: false }),
         ]).start(() => {
-          // Navigate back — home screen starts rendering immediately.
+          // Navigate back — home screen is already rendered beneath us.
           onDone();
-          // Remove the overlay in the next frame (snap, no fade) so the
-          // home-screen mini-player is revealed as soon as possible without
-          // a JS-thread-blocked 150 ms fade leaving plain video behind.
+          // Give the home screen's mini-player VideoView two frames to
+          // re-attach the player before we remove the overlay.  One rAF is
+          // enough on most devices but two provides a safety margin for
+          // slower JS-to-native commit cycles.
           requestAnimationFrame(() => {
-            animOpacity.setValue(0);
-            setOverlayVisible(false);
+            requestAnimationFrame(() => {
+              animOpacity.setValue(0);
+              setOverlayVisible(false);
+              isCollapsingRef.current = false;
+            });
           });
         });
       };
@@ -270,7 +291,7 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
 
   return (
     <LivePlayerContext.Provider
-      value={{ player, activeUrlRef, miniPlayerRef, triggerExpand, triggerExpandFromRef, triggerCollapse }}
+      value={{ player, activeUrlRef, miniPlayerRef, isCollapsingRef, triggerExpand, triggerExpandFromRef, triggerCollapse }}
     >
       {children}
       {/* Expanding/collapsing VideoView overlay — rendered on top of everything.
