@@ -239,7 +239,7 @@ export default function LiveTVScreen() {
   }, [deviceMac]);
 
   // ── Video player (shared from LivePlayerContext — persists across navigation) ──
-  const { player, activeUrlRef: liveUrlRef, miniPlayerRef, triggerExpand } = useLivePlayer();
+  const { player, activeUrlRef: liveUrlRef, miniPlayerRef, triggerExpand, triggerExpandFromRef } = useLivePlayer();
 
   // Animated overlay that snaps to opaque synchronously (no React reconciler
   // roundtrip) before player.replace() is called, preventing the black flash
@@ -698,7 +698,7 @@ export default function LiveTVScreen() {
   }, [selectedChannel, channels, player, router, triggerExpand]);
 
   /** Navigate directly to the fullscreen player from a recently-watched card. */
-  const handleWatchChannel = useCallback((ch: Channel) => {
+  const handleWatchChannel = useCallback((ch: Channel, cardRef?: React.RefObject<View | null>) => {
     goingToPlayerRef.current = true;
     // Shared player keeps streaming — no pause needed.
 
@@ -709,7 +709,7 @@ export default function LiveTVScreen() {
     }));
     const idx = channels.findIndex((c) => c.id === ch.id);
 
-    router.push({
+    const navigate = () => router.push({
       pathname: '/player',
       params: {
         url: ch.streamUrl,
@@ -722,7 +722,15 @@ export default function LiveTVScreen() {
         channelIndex: String(idx),
       },
     });
-  }, [channels, player, router]);
+
+    // Animate from the tapped card's position if a ref was provided,
+    // otherwise fall back to the mini-player expand (or immediate navigation).
+    if (cardRef) {
+      triggerExpandFromRef(cardRef, navigate);
+    } else {
+      triggerExpand(navigate);
+    }
+  }, [channels, router, triggerExpandFromRef, triggerExpand]);
 
   const renderCat = useCallback(({ item }: { item: Category }) => {
     const isBlockable = item.id !== FAVS_CAT_ID && item.id !== ALL_CAT_ID;
@@ -921,7 +929,6 @@ export default function LiveTVScreen() {
         <RecentChannelsRail
           blockedIds={blockedSet}
           nowPlayingMap={nowPlayingMap}
-          onSelectChannel={handleSelectChannel}
           onWatchFullscreen={handleWatchChannel}
         />
 

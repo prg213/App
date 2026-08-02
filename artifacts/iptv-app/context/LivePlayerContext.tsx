@@ -33,6 +33,12 @@ interface LivePlayerContextValue {
    */
   triggerExpand: (onNavigate: () => void) => void;
   /**
+   * Like `triggerExpand` but measures from `sourceRef` instead of the
+   * mini-player. Use when opening fullscreen from a card whose position
+   * you already have a ref for (e.g. recently-watched rail cards).
+   */
+  triggerExpandFromRef: (sourceRef: React.RefObject<View | null>, onNavigate: () => void) => void;
+  /**
    * Animate the fullscreen view collapsing to the mini-player position, then
    * call `onDone`. If no prior expand was recorded the callback fires immediately.
    */
@@ -135,6 +141,64 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
     [animTop, animLeft, animWidth, animHeight, animOpacity, screenW, screenH],
   );
 
+  // ── triggerExpandFromRef ──────────────────────────────────────────────────
+  const triggerExpandFromRef = useCallback(
+    (sourceRef: React.RefObject<View | null>, onNavigate: () => void) => {
+      const ref = sourceRef.current;
+      if (!ref) {
+        onNavigate();
+        return;
+      }
+
+      (ref as any).measureInWindow(
+        (x: number, y: number, width: number, height: number) => {
+          if (!width || !height) {
+            onNavigate();
+            return;
+          }
+
+          const rect = { x, y, width, height };
+          miniRectRef.current = rect;
+          wasExpandedRef.current = true;
+
+          animTop.setValue(rect.y);
+          animLeft.setValue(rect.x);
+          animWidth.setValue(rect.width);
+          animHeight.setValue(rect.height);
+          animOpacity.setValue(0);
+          setOverlayVisible(true);
+
+          const EXPAND_MS = 320;
+
+          Animated.sequence([
+            Animated.timing(animOpacity, {
+              toValue: 1,
+              duration: 60,
+              useNativeDriver: false,
+            }),
+            Animated.parallel([
+              Animated.timing(animTop,    { toValue: 0,       duration: EXPAND_MS, useNativeDriver: false }),
+              Animated.timing(animLeft,   { toValue: 0,       duration: EXPAND_MS, useNativeDriver: false }),
+              Animated.timing(animWidth,  { toValue: screenW, duration: EXPAND_MS, useNativeDriver: false }),
+              Animated.timing(animHeight, { toValue: screenH, duration: EXPAND_MS, useNativeDriver: false }),
+            ]),
+          ]).start(() => {
+            onNavigate();
+            requestAnimationFrame(() => {
+              Animated.timing(animOpacity, {
+                toValue: 0,
+                duration: 220,
+                useNativeDriver: false,
+              }).start(() => setOverlayVisible(false));
+            });
+          });
+        },
+      );
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [animTop, animLeft, animWidth, animHeight, animOpacity, screenW, screenH],
+  );
+
   // ── triggerCollapse ───────────────────────────────────────────────────────
   const triggerCollapse = useCallback(
     (onDone: () => void) => {
@@ -206,7 +270,7 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
 
   return (
     <LivePlayerContext.Provider
-      value={{ player, activeUrlRef, miniPlayerRef, triggerExpand, triggerCollapse }}
+      value={{ player, activeUrlRef, miniPlayerRef, triggerExpand, triggerExpandFromRef, triggerCollapse }}
     >
       {children}
       {/* Expanding/collapsing VideoView overlay — rendered on top of everything.

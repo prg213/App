@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import {
   FlatList,
   Image,
@@ -29,16 +29,64 @@ interface Props {
   blockedIds: Set<string>;
   /** Map from EPG channel ID → currently airing programme title. */
   nowPlayingMap: Map<string, string>;
-  /** Called when the user taps a card (selects + previews the channel). */
-  onSelectChannel: (ch: Channel) => void;
-  /** Called when the user long-presses a card (goes straight to fullscreen). */
-  onWatchFullscreen: (ch: Channel) => void;
+  /** Called when the user taps a card — goes straight to fullscreen with expand animation. */
+  onWatchFullscreen: (ch: Channel, cardRef: React.RefObject<View | null>) => void;
+}
+
+// ── Per-card component so each card has its own measured ref ──────────────────
+
+interface CardProps {
+  item: RecentChannel;
+  nowTitle: string | undefined;
+  colors: ReturnType<typeof useColors>;
+  onWatchFullscreen: (ch: Channel, cardRef: React.RefObject<View | null>) => void;
+}
+
+function RecentCard({ item, nowTitle, colors, onWatchFullscreen }: CardProps) {
+  const cardRef = useRef<View>(null);
+  const ch = toChannel(item);
+
+  return (
+    <TouchableOpacity
+      ref={cardRef as any}
+      style={styles.card}
+      onPress={() => onWatchFullscreen(ch, cardRef)}
+      activeOpacity={0.75}
+    >
+      {/* Logo area — 16:9 crop */}
+      <View style={[styles.logoWrap, { backgroundColor: colors.secondary }]}>
+        {item.logo ? (
+          <Image
+            source={{ uri: item.logo }}
+            style={StyleSheet.absoluteFill}
+            resizeMode="contain"
+          />
+        ) : (
+          <Text style={[styles.initials, { color: colors.primary }]}>
+            {item.name.slice(0, 2).toUpperCase()}
+          </Text>
+        )}
+        {/* Live badge */}
+        <View style={styles.liveBadge}>
+          <View style={styles.liveDot} />
+        </View>
+      </View>
+
+      <Text style={[styles.chName, { color: colors.foreground }]} numberOfLines={1}>
+        {item.name}
+      </Text>
+      {nowTitle ? (
+        <Text style={[styles.epgTitle, { color: colors.mutedForeground }]} numberOfLines={1}>
+          {nowTitle}
+        </Text>
+      ) : null}
+    </TouchableOpacity>
+  );
 }
 
 export function RecentChannelsRail({
   blockedIds,
   nowPlayingMap,
-  onSelectChannel,
   onWatchFullscreen,
 }: Props) {
   const colors = useColors();
@@ -71,44 +119,13 @@ export function RecentChannelsRail({
         renderItem={({ item }) => {
           const epgKey = item.epgId ?? item.id;
           const nowTitle = nowPlayingMap.get(epgKey);
-          const ch = toChannel(item);
-
           return (
-            <TouchableOpacity
-              style={styles.card}
-              onPress={() => onSelectChannel(ch)}
-              onLongPress={() => onWatchFullscreen(ch)}
-              activeOpacity={0.75}
-              delayLongPress={400}
-            >
-              {/* Logo area — 16:9 crop */}
-              <View style={[styles.logoWrap, { backgroundColor: colors.secondary }]}>
-                {item.logo ? (
-                  <Image
-                    source={{ uri: item.logo }}
-                    style={StyleSheet.absoluteFill}
-                    resizeMode="contain"
-                  />
-                ) : (
-                  <Text style={[styles.initials, { color: colors.primary }]}>
-                    {item.name.slice(0, 2).toUpperCase()}
-                  </Text>
-                )}
-                {/* Live badge */}
-                <View style={styles.liveBadge}>
-                  <View style={styles.liveDot} />
-                </View>
-              </View>
-
-              <Text style={[styles.chName, { color: colors.foreground }]} numberOfLines={1}>
-                {item.name}
-              </Text>
-              {nowTitle ? (
-                <Text style={[styles.epgTitle, { color: colors.mutedForeground }]} numberOfLines={1}>
-                  {nowTitle}
-                </Text>
-              ) : null}
-            </TouchableOpacity>
+            <RecentCard
+              item={item}
+              nowTitle={nowTitle}
+              colors={colors}
+              onWatchFullscreen={onWatchFullscreen}
+            />
           );
         }}
       />
