@@ -178,6 +178,15 @@ function SectionHeader({ label, count, colors }: { label: string; count: number;
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
+type SearchType = 'all' | 'live' | 'movies' | 'series';
+
+const SEARCH_TYPES: { id: SearchType; label: string; icon: string }[] = [
+  { id: 'all',     label: 'All',     icon: '🔍' },
+  { id: 'live',    label: 'Live TV', icon: '📡' },
+  { id: 'movies',  label: 'Movies',  icon: '🎬' },
+  { id: 'series',  label: 'Series',  icon: '📺' },
+];
+
 export default function SearchScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -186,11 +195,16 @@ export default function SearchScreen() {
   const { blockedChannels: blockedChannelIds, blockedCategoryIds, maxRating } = useParentalContext();
 
   const [query, setQuery] = useState('');
+  const [searchType, setSearchType] = useState<SearchType>('all');
   const inputRef = useRef<TextInput>(null);
 
   const isXtream = credentials?.type === 'xtream';
   const creds = isXtream ? buildCreds(credentials) : null;
   const hasQuery = query.trim().length > 0;
+
+  const showLive    = searchType === 'all' || searchType === 'live';
+  const showMovies  = searchType === 'all' || searchType === 'movies';
+  const showSeries  = searchType === 'all' || searchType === 'series';
 
   // ── Data queries ─────────────────────────────────────────────────────────
 
@@ -199,32 +213,32 @@ export default function SearchScreen() {
     queryFn: async () => {
       if (!credentials) return [];
       if (credentials.type === 'xtream' && creds) {
-        return getXtreamLiveStreams(creds); // no categoryId = all channels
+        return getXtreamLiveStreams(creds);
       }
       if (credentials.type === 'm3u' && credentials.m3uUrl) {
         return (await fetchAndParseM3U(credentials.m3uUrl)).channels;
       }
       return [];
     },
-    enabled: !!credentials,
+    enabled: !!credentials && showLive,
     staleTime: 5 * 60_000,
   });
 
   const { data: allMovies = [], isLoading: movLoading } = useQuery<Movie[]>({
     queryKey: ['vod-streams', undefined, credentials],
     queryFn: () => getXtreamVodStreams(creds!),
-    enabled: !!credentials && isXtream,
+    enabled: !!credentials && isXtream && showMovies,
     staleTime: 5 * 60_000,
   });
 
   const { data: allSeries = [], isLoading: serLoading } = useQuery<Series[]>({
     queryKey: ['series-list', undefined, credentials],
     queryFn: () => getXtreamSeries(creds!),
-    enabled: !!credentials && isXtream,
+    enabled: !!credentials && isXtream && showSeries,
     staleTime: 5 * 60_000,
   });
 
-  const isLoading = chLoading || movLoading || serLoading;
+  const isLoading = (showLive && chLoading) || (showMovies && movLoading) || (showSeries && serLoading);
 
   // ── Filtered results ──────────────────────────────────────────────────────
 
@@ -236,20 +250,26 @@ export default function SearchScreen() {
 
     const q = query.trim().toLowerCase();
 
-    const channels = allChannels
-      .filter((ch) => !blockedSet.has(ch.id) && !blockedCatSet.has(ch.groupTitle) && ch.name.toLowerCase().includes(q))
-      .slice(0, 50);
+    const channels = showLive
+      ? allChannels
+          .filter((ch) => !blockedSet.has(ch.id) && !blockedCatSet.has(ch.groupTitle) && ch.name.toLowerCase().includes(q))
+          .slice(0, 50)
+      : [];
 
-    const movies = allMovies
-      .filter((m) => !isContentBlocked(m.rating, maxRating) && m.name.toLowerCase().includes(q))
-      .slice(0, 50);
+    const movies = showMovies
+      ? allMovies
+          .filter((m) => !isContentBlocked(m.rating, maxRating) && m.name.toLowerCase().includes(q))
+          .slice(0, 50)
+      : [];
 
-    const series = allSeries
-      .filter((s) => !isContentBlocked(s.rating, maxRating) && s.name.toLowerCase().includes(q))
-      .slice(0, 50);
+    const series = showSeries
+      ? allSeries
+          .filter((s) => !isContentBlocked(s.rating, maxRating) && s.name.toLowerCase().includes(q))
+          .slice(0, 50)
+      : [];
 
     return { channels, movies, series };
-  }, [hasQuery, query, allChannels, allMovies, allSeries, blockedSet, maxRating]);
+  }, [hasQuery, query, showLive, showMovies, showSeries, allChannels, allMovies, allSeries, blockedSet, blockedCatSet, maxRating]);
 
   // ── Build flat list data ──────────────────────────────────────────────────
 
@@ -445,7 +465,12 @@ export default function SearchScreen() {
             style={[styles.input, { color: colors.foreground }]}
             value={query}
             onChangeText={setQuery}
-            placeholder="Channels, movies, series…"
+            placeholder={
+              searchType === 'live' ? 'Search live channels…'
+              : searchType === 'movies' ? 'Search movies…'
+              : searchType === 'series' ? 'Search series…'
+              : 'Channels, movies, series…'
+            }
             placeholderTextColor={colors.mutedForeground}
             autoCorrect={false}
             autoCapitalize="none"
@@ -458,6 +483,30 @@ export default function SearchScreen() {
             </TouchableOpacity>
           )}
         </View>
+        {/* Type filter pills */}
+        <View style={styles.pillRow}>
+          {SEARCH_TYPES.map((t) => {
+            const active = searchType === t.id;
+            return (
+              <TouchableOpacity
+                key={t.id}
+                style={[
+                  styles.pill,
+                  { borderColor: active ? colors.primary : colors.border,
+                    backgroundColor: active ? 'rgba(59,130,246,0.15)' : colors.secondary },
+                ]}
+                onPress={() => setSearchType(t.id)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.pillIcon}>{t.icon}</Text>
+                <Text style={[styles.pillLabel, { color: active ? colors.primary : colors.mutedForeground }]}>
+                  {t.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
         {/* Live result count */}
         {hasQuery && !isLoading && (
           <Text style={[styles.resultCount, { color: colors.mutedForeground }]}>
@@ -625,6 +674,24 @@ const styles = StyleSheet.create({
   },
   emptyTitle: { fontSize: 17, fontFamily: 'Inter_700Bold', marginBottom: 8, textAlign: 'center' },
   emptySub: { fontSize: 13, fontFamily: 'Inter_400Regular', textAlign: 'center', lineHeight: 19 },
+
+  // ── Type filter pills ──
+  pillRow: {
+    flexDirection: 'row',
+    gap: 6,
+    flexWrap: 'wrap',
+  },
+  pill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  pillIcon: { fontSize: 12 },
+  pillLabel: { fontSize: 12, fontFamily: 'Inter_500Medium' },
 
   // ── Stat chips ──
   statRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap', justifyContent: 'center' },
