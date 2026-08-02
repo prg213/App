@@ -132,17 +132,21 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
   // ── Player-ready gating (expand direction) ────────────────────────────────
   // After navigate() fires in _runExpandAnimation we register doFadeOut here.
   // The destination screen calls notifyPlayerReady() via onFirstFrameRender,
-  // which fires this callback immediately.  A timeout fallback ensures the
-  // overlay always fades out even if onFirstFrameRender never arrives (e.g.
-  // web, or a device that doesn't fire the event).
+  // which fires this callback immediately.  A statusChange → readyToPlay
+  // listener on the shared player acts as a second trigger so that very slow
+  // networks (where the first frame takes longer than the hard timeout) still
+  // hold the overlay until the stream is truly renderable.  A long timeout
+  // (READY_TIMEOUT_MS) remains as the absolute last-resort safety net so the
+  // overlay can never get stuck permanently.
   //
   // expandGenRef is incremented each time a new expand ready-gate is armed
   // and also when collapse takes over the overlay.  doFadeOut captures the
   // generation at arm-time and becomes a no-op if the generation has since
   // advanced (i.e. the user backed out before the first frame arrived).
-  const playerReadyCallbackRef = useRef<(() => void) | null>(null);
-  const playerReadyTimeoutRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const expandGenRef           = useRef(0);
+  const playerReadyCallbackRef        = useRef<(() => void) | null>(null);
+  const playerReadyTimeoutRef         = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const playerReadyStatusListenerRef  = useRef<{ remove: () => void } | null>(null);
+  const expandGenRef                  = useRef(0);
 
   const notifyPlayerReady = useCallback(() => {
     const cb = playerReadyCallbackRef.current;
@@ -155,6 +159,10 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
     if (playerReadyTimeoutRef.current) {
       clearTimeout(playerReadyTimeoutRef.current);
       playerReadyTimeoutRef.current = null;
+    }
+    if (playerReadyStatusListenerRef.current) {
+      playerReadyStatusListenerRef.current.remove();
+      playerReadyStatusListenerRef.current = null;
     }
     playerReadyCallbackRef.current = null;
     expandGenRef.current++;           // invalidate any in-flight doFadeOut closure
@@ -345,15 +353,19 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
         // first frame (notifyPlayerReady → onFirstFrameRender).  This prevents
         // the white/black flash that occurs on slow devices when the overlay
         // disappears before the native video surface has attached to the player.
-        // A timeout fallback ensures the overlay always fades out even when
-        // onFirstFrameRender never fires (web, already-buffered same URL, etc.).
+        //
+        // Three triggers fire doFadeOut — whichever arrives first wins:
+        //   1. notifyPlayerReady() called from onFirstFrameRender (player.tsx)
+        //   2. player statusChange → readyToPlay (catches slow-network cases
+        //      where the first frame takes longer than the hard timeout)
+        //   3. READY_TIMEOUT_MS hard timeout — absolute last resort so the
+        //      overlay can never get permanently stuck
         //
         // A generation counter guards against stale invocation: if the user
         // exits fullscreen before the first frame arrives, _runCollapseAnimation
         // calls _cancelReadyGate() which clears the timeout AND bumps the
-        // generation, so any in-flight closure (from notifyPlayerReady or the
-        // timeout) becomes a no-op.
-        const READY_TIMEOUT_MS = 800;
+        // generation, so any in-flight closure becomes a no-op.
+        const READY_TIMEOUT_MS = 4000;
         const myGen = ++expandGenRef.current;
         const doFadeOut = () => {
           // Stale invocation — collapse has already taken ownership of the overlay.
@@ -361,6 +373,10 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
           if (playerReadyTimeoutRef.current) {
             clearTimeout(playerReadyTimeoutRef.current);
             playerReadyTimeoutRef.current = null;
+          }
+          if (playerReadyStatusListenerRef.current) {
+            playerReadyStatusListenerRef.current.remove();
+            playerReadyStatusListenerRef.current = null;
           }
           playerReadyCallbackRef.current = null;
           Animated.timing(animOpacity, {
@@ -371,6 +387,16 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
         };
         playerReadyCallbackRef.current = doFadeOut;
         playerReadyTimeoutRef.current  = setTimeout(doFadeOut, READY_TIMEOUT_MS);
+        // Subscribe to readyToPlay so congested-network streams don't have to
+        // wait for the full timeout before the overlay fades out.
+        try {
+          const sub = player.addListener('statusChange', ({ status }: { status: string }) => {
+            if (status === 'readyToPlay') doFadeOut();
+          });
+          playerReadyStatusListenerRef.current = sub;
+        } catch {
+          // addListener not available (e.g. web) — timeout fallback covers this.
+        }
       });
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
