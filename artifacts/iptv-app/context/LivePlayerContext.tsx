@@ -44,6 +44,13 @@ interface LivePlayerContextValue {
    */
   isCollapsingRef: React.MutableRefObject<boolean>;
   /**
+   * Call this when the destination VideoView has rendered its first frame after
+   * an expand navigation.  It triggers (or accelerates) the overlay fade-out so
+   * the overlay never disappears before the player surface is live.
+   * Safe to call even when no expand is in progress — it is a no-op in that case.
+   */
+  notifyPlayerReady: () => void;
+  /**
    * index.tsx sets this during a collapse so triggerCollapse can fire it at
    * exactly the right moment: after the overlay turns transparent but in the
    * same React batch as setOverlayVisible(false).  The callback should call
@@ -102,6 +109,37 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
   // batches both state updates together, guaranteeing the new mini-player
   // VideoView mounts in the same commit as the overlay unmounts.
   const onCollapseCompleteRef = useRef<(() => void) | null>(null);
+
+  // ── Player-ready gating (expand direction) ────────────────────────────────
+  // After navigate() fires in _runExpandAnimation we register doFadeOut here.
+  // The destination screen calls notifyPlayerReady() via onFirstFrameRender,
+  // which fires this callback immediately.  A timeout fallback ensures the
+  // overlay always fades out even if onFirstFrameRender never arrives (e.g.
+  // web, or a device that doesn't fire the event).
+  //
+  // expandGenRef is incremented each time a new expand ready-gate is armed
+  // and also when collapse takes over the overlay.  doFadeOut captures the
+  // generation at arm-time and becomes a no-op if the generation has since
+  // advanced (i.e. the user backed out before the first frame arrived).
+  const playerReadyCallbackRef = useRef<(() => void) | null>(null);
+  const playerReadyTimeoutRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const expandGenRef           = useRef(0);
+
+  const notifyPlayerReady = useCallback(() => {
+    const cb = playerReadyCallbackRef.current;
+    if (cb) cb();
+  }, []);
+
+  /** Cancel any pending expand-phase ready-gate.  Call before collapse takes
+   *  ownership of the overlay so the expand timeout cannot interfere. */
+  const _cancelReadyGate = useCallback(() => {
+    if (playerReadyTimeoutRef.current) {
+      clearTimeout(playerReadyTimeoutRef.current);
+      playerReadyTimeoutRef.current = null;
+    }
+    playerReadyCallbackRef.current = null;
+    expandGenRef.current++;           // invalidate any in-flight doFadeOut closure
+  }, []);
 
   // Last measured mini-player rect (page-absolute coordinates).
   const miniRectRef = useRef({ x: 0, y: 0, width: 200, height: 112 });
@@ -270,21 +308,50 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
       ]).start(({ finished }) => {
         if (!finished) {
           // Interrupted by stopAnimation() — the rotation handler will restart us.
+          // Clear any pending ready-gate so the restarted animation sets its own.
+          if (playerReadyTimeoutRef.current) {
+            clearTimeout(playerReadyTimeoutRef.current);
+            playerReadyTimeoutRef.current = null;
+          }
+          playerReadyCallbackRef.current = null;
           return;
         }
         animPhaseRef.current         = 'idle';
         pendingOnNavigateRef.current = null;
 
-        // Navigate — the player screen mounts beneath the overlay
+        // Navigate — the player screen mounts beneath the overlay.
         onNavigate();
-        // Give the player screen one frame to render, then fade out the overlay
-        requestAnimationFrame(() => {
+
+        // Gate the overlay fade-out on the destination VideoView rendering its
+        // first frame (notifyPlayerReady → onFirstFrameRender).  This prevents
+        // the white/black flash that occurs on slow devices when the overlay
+        // disappears before the native video surface has attached to the player.
+        // A timeout fallback ensures the overlay always fades out even when
+        // onFirstFrameRender never fires (web, already-buffered same URL, etc.).
+        //
+        // A generation counter guards against stale invocation: if the user
+        // exits fullscreen before the first frame arrives, _runCollapseAnimation
+        // calls _cancelReadyGate() which clears the timeout AND bumps the
+        // generation, so any in-flight closure (from notifyPlayerReady or the
+        // timeout) becomes a no-op.
+        const READY_TIMEOUT_MS = 800;
+        const myGen = ++expandGenRef.current;
+        const doFadeOut = () => {
+          // Stale invocation — collapse has already taken ownership of the overlay.
+          if (expandGenRef.current !== myGen) return;
+          if (playerReadyTimeoutRef.current) {
+            clearTimeout(playerReadyTimeoutRef.current);
+            playerReadyTimeoutRef.current = null;
+          }
+          playerReadyCallbackRef.current = null;
           Animated.timing(animOpacity, {
             toValue: 0,
             duration: FADE_OUT_MS,
             useNativeDriver: true,
           }).start(() => setOverlayVisible(false));
-        });
+        };
+        playerReadyCallbackRef.current = doFadeOut;
+        playerReadyTimeoutRef.current  = setTimeout(doFadeOut, READY_TIMEOUT_MS);
       });
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -347,6 +414,12 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
   // when a rotation interrupts a collapse in progress.
   const _runCollapseAnimation = useCallback(
     (rect: { x: number; y: number; width: number; height: number }, onDone: () => void) => {
+      // Cancel any pending expand-phase ready-gate before collapse takes
+      // ownership of the overlay.  Without this, the 800 ms fallback timeout
+      // set by _runExpandAnimation can fire mid-collapse and call
+      // setOverlayVisible(false), conflicting with the collapse sequencing.
+      _cancelReadyGate();
+
       // Register phase + callback so a mid-flight rotation can restart us.
       animPhaseRef.current      = 'collapsing';
       pendingOnDoneRef.current  = onDone;
@@ -408,7 +481,7 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
       });
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [animTranslateX, animTranslateY, animScaleX, animScaleY, animOpacity, rectToTransform],
+    [animTranslateX, animTranslateY, animScaleX, animScaleY, animOpacity, rectToTransform, _cancelReadyGate],
   );
 
   // Keep the forward ref in sync.
@@ -456,7 +529,7 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
 
   return (
     <LivePlayerContext.Provider
-      value={{ player, activeUrlRef, miniPlayerRef, isCollapsingRef, onCollapseCompleteRef, triggerExpand, triggerExpandFromRef, triggerCollapse }}
+      value={{ player, activeUrlRef, miniPlayerRef, isCollapsingRef, onCollapseCompleteRef, notifyPlayerReady, triggerExpand, triggerExpandFromRef, triggerCollapse }}
     >
       {children}
       {/* Expanding/collapsing VideoView overlay — rendered on top of everything.

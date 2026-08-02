@@ -429,7 +429,7 @@ export default function PlayerScreen() {
 
   // For live TV: the shared player from context (already streaming from the
   // mini-player — reusing it means zero buffering gap on fullscreen entry).
-  const { player: sharedPlayer, activeUrlRef: liveUrlRef, triggerCollapse } = useLivePlayer();
+  const { player: sharedPlayer, activeUrlRef: liveUrlRef, triggerCollapse, notifyPlayerReady } = useLivePlayer();
 
   // Controls whether the fullscreen VideoView is mounted.  We unmount it
   // before calling triggerCollapse so that the overlay VideoView in
@@ -865,6 +865,11 @@ export default function PlayerScreen() {
           allowsFullscreen={false}
           allowsPictureInPicture
           nativeControls={false}
+          // For live streams, signal the context overlay to fade out as soon as
+          // the native video surface has rendered its first frame.  This prevents
+          // the white/black flash that appears on slow devices when the overlay
+          // disappears before the VideoView has attached to the shared player.
+          onFirstFrameRender={isLive ? notifyPlayerReady : undefined}
         />
       ) : null}
 
