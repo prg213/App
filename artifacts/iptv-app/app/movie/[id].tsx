@@ -2,7 +2,6 @@ import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
-  Linking,
   Modal,
   Platform,
   Pressable,
@@ -11,6 +10,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import * as WebBrowser from 'expo-web-browser';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -281,9 +281,12 @@ export default function MovieDetailScreen() {
           <Pressable
             focusable
             style={({ focused }) => [styles.outlineBtn, { borderColor: 'rgba(255,255,255,0.15)' }, focused && styles.focusRing]}
-            onPress={() => {
+            onPress={async () => {
               const query = encodeURIComponent(`${params.title} official trailer`);
-              Linking.openURL(`https://www.youtube.com/results?search_query=${query}`);
+              await WebBrowser.openBrowserAsync(
+                `https://www.youtube.com/results?search_query=${query}`,
+                { toolbarColor: '#0A0A0F', controlsColor: '#3B82F6' },
+              );
             }}
           >
             <Text style={styles.outlineBtnText}>▶  Watch Trailer</Text>
