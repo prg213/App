@@ -261,17 +261,17 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
         ]).start(() => {
           // Navigate back — home screen is already rendered beneath us.
           onDone();
-          // Give the home screen's mini-player VideoView two frames to
-          // re-attach the player before we remove the overlay.  One rAF is
-          // enough on most devices but two provides a safety margin for
-          // slower JS-to-native commit cycles.
-          requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
-              animOpacity.setValue(0);
-              setOverlayVisible(false);
-              isCollapsingRef.current = false;
-            });
-          });
+          // Keep the overlay visible for 200 ms after navigation so the
+          // mini-player VideoView has time to remount (videoKey++) and its
+          // native TextureView surface has time to re-bind to the player.
+          // Two rAFs (~32 ms) was not enough on slower devices — the surface
+          // hadn't rendered its first frame yet, leaving the mini-player black
+          // the instant the overlay disappeared.
+          setTimeout(() => {
+            animOpacity.setValue(0);
+            setOverlayVisible(false);
+            isCollapsingRef.current = false;
+          }, 200);
         });
       };
 

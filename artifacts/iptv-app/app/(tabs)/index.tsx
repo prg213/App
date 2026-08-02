@@ -258,16 +258,23 @@ export default function LiveTVScreen() {
       isFirstFocusRef.current = false;
       return;
     }
-    // Remount the VideoView to reattach the player's native rendering surface.
+    // Always remount the VideoView to reattach the player's native surface.
     // On Android the TextureView loses its binding to the shared player when the
-    // fullscreen screen is on top.  The flashOverlayOpacity covers the brief
-    // black initialisation frame.  During a collapse the overlay (already shrunk
-    // to mini-player size) sits on top of this area so the remount black frame
-    // is hidden; the overlay then disappears once the double-rAF teardown
-    // completes, revealing the freshly-bound VideoView with the stream live.
-    flashOverlayOpacity.setValue(1);
+    // fullscreen screen is on top; a remount reconnects it.
+    //
+    // During a collapse the overlay (already shrunk to mini-player size and held
+    // for 200 ms after navigation) covers this area while the surface re-binds,
+    // so we do NOT set flashOverlayOpacity here — doing so would leave a
+    // permanent black overlay because readyToPlay never re-fires for an already-
+    // playing stream, and the flash overlay would never be cleared.
+    //
+    // For all other focus returns (tab switches, etc.) the flash overlay is shown
+    // and cleared normally by the readyToPlay / statusChange listener.
+    if (!isCollapsingRef.current) {
+      flashOverlayOpacity.setValue(1);
+    }
     setVideoKey((k) => k + 1);
-  }, [flashOverlayOpacity]));
+  }, [flashOverlayOpacity, isCollapsingRef]));
 
   // ── AppState tracking (#21/#31/#53) ──────────────────────────────────────
   const isAppBackgroundRef = useRef(false);
