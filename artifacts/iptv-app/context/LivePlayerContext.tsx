@@ -90,6 +90,56 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
   const animOpacity = useRef(new Animated.Value(0)).current;
   const [overlayVisible, setOverlayVisible] = useState(false);
 
+  // ── _runExpandAnimation ───────────────────────────────────────────────────
+  // Single source of truth for the expand animation sequence.
+  // Both triggerExpand and triggerExpandFromRef delegate here after measuring
+  // their respective source views.
+  const _runExpandAnimation = useCallback(
+    (rect: { x: number; y: number; width: number; height: number }, onNavigate: () => void) => {
+      miniRectRef.current = rect;
+      wasExpandedRef.current = true;
+
+      // Position overlay exactly over the source view, start transparent
+      animTop.setValue(rect.y);
+      animLeft.setValue(rect.x);
+      animWidth.setValue(rect.width);
+      animHeight.setValue(rect.height);
+      animOpacity.setValue(0);
+      setOverlayVisible(true);
+
+      const EXPAND_MS = 320;
+
+      Animated.sequence([
+        // Quick fade-in so the overlay snaps visibly before expanding
+        Animated.timing(animOpacity, {
+          toValue: 1,
+          duration: 60,
+          useNativeDriver: false,
+        }),
+        // Expand rect to fill the screen
+        Animated.parallel([
+          Animated.timing(animTop,    { toValue: 0,       duration: EXPAND_MS, useNativeDriver: false }),
+          Animated.timing(animLeft,   { toValue: 0,       duration: EXPAND_MS, useNativeDriver: false }),
+          Animated.timing(animWidth,  { toValue: screenW, duration: EXPAND_MS, useNativeDriver: false }),
+          Animated.timing(animHeight, { toValue: screenH, duration: EXPAND_MS, useNativeDriver: false }),
+        ]),
+      ]).start(() => {
+        // Navigate — the player screen mounts beneath the overlay
+        onNavigate();
+        // Give the player screen one frame to render, then fade out the overlay
+        requestAnimationFrame(() => {
+          Animated.timing(animOpacity, {
+            toValue: 0,
+            duration: 220,
+            useNativeDriver: false,
+          }).start(() => setOverlayVisible(false));
+        });
+      });
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [animTop, animLeft, animWidth, animHeight, animOpacity, screenW, screenH],
+  );
+
   // ── triggerExpand ─────────────────────────────────────────────────────────
   const triggerExpand = useCallback(
     (onNavigate: () => void) => {
@@ -105,52 +155,12 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
             onNavigate();
             return;
           }
-
-          const rect = { x, y, width, height };
-          miniRectRef.current = rect;
-          wasExpandedRef.current = true;
-
-          // Position overlay exactly over the mini-player, start transparent
-          animTop.setValue(rect.y);
-          animLeft.setValue(rect.x);
-          animWidth.setValue(rect.width);
-          animHeight.setValue(rect.height);
-          animOpacity.setValue(0);
-          setOverlayVisible(true);
-
-          const EXPAND_MS = 320;
-
-          Animated.sequence([
-            // Quick fade-in so the overlay snaps visibly before expanding
-            Animated.timing(animOpacity, {
-              toValue: 1,
-              duration: 60,
-              useNativeDriver: false,
-            }),
-            // Expand rect to fill the screen
-            Animated.parallel([
-              Animated.timing(animTop,    { toValue: 0,       duration: EXPAND_MS, useNativeDriver: false }),
-              Animated.timing(animLeft,   { toValue: 0,       duration: EXPAND_MS, useNativeDriver: false }),
-              Animated.timing(animWidth,  { toValue: screenW, duration: EXPAND_MS, useNativeDriver: false }),
-              Animated.timing(animHeight, { toValue: screenH, duration: EXPAND_MS, useNativeDriver: false }),
-            ]),
-          ]).start(() => {
-            // Navigate — the player screen mounts beneath the overlay
-            onNavigate();
-            // Give the player screen one frame to render, then fade out the overlay
-            requestAnimationFrame(() => {
-              Animated.timing(animOpacity, {
-                toValue: 0,
-                duration: 220,
-                useNativeDriver: false,
-              }).start(() => setOverlayVisible(false));
-            });
-          });
+          _runExpandAnimation({ x, y, width, height }, onNavigate);
         },
       );
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [animTop, animLeft, animWidth, animHeight, animOpacity, screenW, screenH],
+    [_runExpandAnimation],
   );
 
   // ── triggerExpandFromRef ──────────────────────────────────────────────────
@@ -168,47 +178,12 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
             onNavigate();
             return;
           }
-
-          const rect = { x, y, width, height };
-          miniRectRef.current = rect;
-          wasExpandedRef.current = true;
-
-          animTop.setValue(rect.y);
-          animLeft.setValue(rect.x);
-          animWidth.setValue(rect.width);
-          animHeight.setValue(rect.height);
-          animOpacity.setValue(0);
-          setOverlayVisible(true);
-
-          const EXPAND_MS = 320;
-
-          Animated.sequence([
-            Animated.timing(animOpacity, {
-              toValue: 1,
-              duration: 60,
-              useNativeDriver: false,
-            }),
-            Animated.parallel([
-              Animated.timing(animTop,    { toValue: 0,       duration: EXPAND_MS, useNativeDriver: false }),
-              Animated.timing(animLeft,   { toValue: 0,       duration: EXPAND_MS, useNativeDriver: false }),
-              Animated.timing(animWidth,  { toValue: screenW, duration: EXPAND_MS, useNativeDriver: false }),
-              Animated.timing(animHeight, { toValue: screenH, duration: EXPAND_MS, useNativeDriver: false }),
-            ]),
-          ]).start(() => {
-            onNavigate();
-            requestAnimationFrame(() => {
-              Animated.timing(animOpacity, {
-                toValue: 0,
-                duration: 220,
-                useNativeDriver: false,
-              }).start(() => setOverlayVisible(false));
-            });
-          });
+          _runExpandAnimation({ x, y, width, height }, onNavigate);
         },
       );
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [animTop, animLeft, animWidth, animHeight, animOpacity, screenW, screenH],
+    [_runExpandAnimation],
   );
 
   // ── triggerCollapse ───────────────────────────────────────────────────────
