@@ -239,7 +239,7 @@ export default function LiveTVScreen() {
   }, [deviceMac]);
 
   // ── Video player (shared from LivePlayerContext — persists across navigation) ──
-  const { player, activeUrlRef: liveUrlRef, miniPlayerRef, isCollapsingRef, onCollapseCompleteRef, triggerExpand, triggerExpandFromRef } = useLivePlayer();
+  const { player, activeUrlRef: liveUrlRef, miniPlayerRef, isCollapsingRef, collapseRestorePendingRef, pendingCollapseRemountRef, onCollapseCompleteRef, triggerExpand, triggerExpandFromRef } = useLivePlayer();
 
   // Animated overlay that snaps to opaque synchronously (no React reconciler
   // roundtrip) before player.replace() is called, preventing the black flash
@@ -258,31 +258,36 @@ export default function LiveTVScreen() {
       isFirstFocusRef.current = false;
       return;
     }
-    if (isCollapsingRef.current) {
-      // During a collapse triggerCollapse fires our callback at exactly the right
-      // moment — after the overlay turns transparent but in the same React batch
-      // as setOverlayVisible(false).  Batching means the new mini-player VideoView
-      // mounts in the same commit as the overlay unmounts so
-      // player.setVideoSurface(miniPlayerSurface) runs after (not before) the
-      // overlay's player.setVideoSurface(null), leaving the player with a live
-      // surface.  flashOverlayOpacity.setValue(1) in the callback is a native-
-      // driver call so it commits immediately and covers any single-frame gap.
-      onCollapseCompleteRef.current = () => {
-        // Do NOT set flashOverlayOpacity=1 here.  ExoPlayer stays in
-        // STATE_READY when re-attaching an already-playing stream to a new
-        // surface, so readyToPlay never re-fires and the overlay would stay
-        // black permanently.  The 200 ms collapse overlay already covers the
-        // mini-player while the new TextureView surface binds — no extra
-        // black overlay is needed.
+    if (collapseRestorePendingRef.current) {
+      // This focus return is from a fullscreen collapse.  We must NOT set
+      // flashOverlayOpacity=1 here because ExoPlayer stays in STATE_READY
+      // when re-attaching to a new surface, so readyToPlay never re-fires
+      // and the overlay would stay permanently black.
+      //
+      // Two timing scenarios depending on navigation speed:
+      //
+      // Fast navigation (< 200 ms): the 200 ms timeout hasn't fired yet.
+      //   pendingCollapseRemountRef is still true.  Register the callback so
+      //   the rAF handler calls setVideoKey AFTER setOverlayVisible(false)
+      //   has committed (guaranteeing overlay unmount before mini-player mount).
+      //
+      // Slow navigation (> 200 ms + 2 rAFs): the rAF handler already ran with
+      //   no callback registered, and cleared pendingCollapseRemountRef.
+      //   setOverlayVisible(false) has already committed, so the overlay is
+      //   gone.  Call setVideoKey directly — it's safe to mount now.
+      collapseRestorePendingRef.current = false;
+      if (pendingCollapseRemountRef.current) {
+        onCollapseCompleteRef.current = () => setVideoKey((k) => k + 1);
+      } else {
         setVideoKey((k) => k + 1);
-      };
+      }
       return;
     }
     // Normal focus return (tab switch, etc.) — show flash overlay to cover the
     // single-frame black while the VideoView remounts and re-binds the surface.
     flashOverlayOpacity.setValue(1);
     setVideoKey((k) => k + 1);
-  }, [flashOverlayOpacity, isCollapsingRef, onCollapseCompleteRef]));
+  }, [flashOverlayOpacity, isCollapsingRef, collapseRestorePendingRef, pendingCollapseRemountRef, onCollapseCompleteRef]));
 
   // ── AppState tracking (#21/#31/#53) ──────────────────────────────────────
   const isAppBackgroundRef = useRef(false);

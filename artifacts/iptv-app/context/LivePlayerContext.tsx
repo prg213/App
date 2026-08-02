@@ -44,6 +44,19 @@ interface LivePlayerContextValue {
    */
   isCollapsingRef: React.MutableRefObject<boolean>;
   /**
+   * Set true at the start of a collapse and cleared only by useFocusEffect
+   * (never by the timeout).  This lets useFocusEffect always identify a
+   * collapse focus-return regardless of whether the 200 ms timeout fired first.
+   */
+  collapseRestorePendingRef: React.MutableRefObject<boolean>;
+  /**
+   * Set true at collapse start.  The rAF handler inside the 200 ms timeout
+   * clears it after calling onCollapseCompleteRef.  useFocusEffect checks this
+   * to decide whether to register the callback (still pending) or call
+   * setVideoKey directly (rAF already fired without a registered callback).
+   */
+  pendingCollapseRemountRef: React.MutableRefObject<boolean>;
+  /**
    * Call this when the destination VideoView has rendered its first frame after
    * an expand navigation.  It triggers (or accelerates) the overlay fade-out so
    * the overlay never disappears before the player surface is live.
@@ -51,15 +64,13 @@ interface LivePlayerContextValue {
    */
   notifyPlayerReady: () => void;
   /**
-   * index.tsx sets this during a collapse so triggerCollapse can fire it at
-   * exactly the right moment: after the overlay turns transparent but in the
-   * same React batch as setOverlayVisible(false).  The callback should call
-   * flashOverlayOpacity.setValue(1) (native, immediate) and setVideoKey(k+1)
-   * (state, batched).  Firing both in the same batch means the new mini-player
-   * VideoView mounts in the same commit as the overlay unmount, so
-   * player.setVideoSurface(miniPlayerSurface) runs after — not before — the
-   * overlay's player.setVideoSurface(null), leaving the player with a live
-   * surface rather than null.
+   * index.tsx registers this during a collapse.  The rAF handler in the 200 ms
+   * timeout calls it after setOverlayVisible(false) has had a chance to commit
+   * (so the overlay VideoView's setVideoSurface(null) always runs before the
+   * new mini-player VideoView mounts).  The callback should call
+   * setVideoKey(k+1) — do NOT set flashOverlayOpacity=1 because ExoPlayer
+   * stays in STATE_READY when re-attaching to a new surface, so readyToPlay
+   * never re-fires and the overlay would stay permanently black.
    */
   onCollapseCompleteRef: React.MutableRefObject<(() => void) | null>;
   /**
@@ -104,10 +115,18 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
   // True while the collapse animation is in flight.
   const isCollapsingRef = useRef(false);
 
-  // Callback registered by index.tsx during a collapse.  triggerCollapse fires
-  // it synchronously inside the same call as setOverlayVisible(false) so React
-  // batches both state updates together, guaranteeing the new mini-player
-  // VideoView mounts in the same commit as the overlay unmounts.
+  // Set true at collapse start, cleared only by useFocusEffect.
+  // Ensures useFocusEffect always identifies a collapse focus-return regardless
+  // of whether the 200 ms timeout fired first.
+  const collapseRestorePendingRef = useRef(false);
+
+  // Set true at collapse start, cleared by the rAF handler inside the timeout.
+  // useFocusEffect checks this to know whether the rAF handler has already run.
+  const pendingCollapseRemountRef = useRef(false);
+
+  // Callback registered by index.tsx during a collapse.  The rAF handler inside
+  // the 200 ms timeout calls it after setOverlayVisible(false) has committed so
+  // the overlay's setVideoSurface(null) always precedes the mini-player remount.
   const onCollapseCompleteRef = useRef<(() => void) | null>(null);
 
   // ── Player-ready gating (expand direction) ────────────────────────────────
@@ -461,22 +480,30 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
         // hadn't rendered its first frame yet, leaving the mini-player black
         // the instant the overlay disappeared.
         setTimeout(() => {
-          // 1. Make overlay transparent on the native layer immediately —
-          //    the user sees this as the overlay disappearing.
+          // 1. Make overlay transparent on the native layer immediately.
           animOpacity.setValue(0);
-          // 2. Fire index.tsx's callback synchronously.  It calls
-          //    flashOverlayOpacity.setValue(1) (native, covers the mini-player
-          //    instantly) and setVideoKey(k+1) (React state).
-          onCollapseCompleteRef.current?.();
-          onCollapseCompleteRef.current = null;
-          // 3. React batches setVideoKey(k+1) from the callback above with
-          //    setOverlayVisible(false) here into a single commit, so the
-          //    new mini-player VideoView mounts in the same render as the
-          //    overlay unmounts.  player.setVideoSurface(miniPlayerSurface)
-          //    therefore runs AFTER player.setVideoSurface(null) from the
-          //    overlay unmount, leaving the player with a live surface.
+          // 2. Unmount the overlay in its own React commit so the overlay
+          //    VideoView's setVideoSurface(null) native call is guaranteed to
+          //    run BEFORE the mini-player VideoView remounts and calls
+          //    setVideoSurface(miniSurface).  If both happen in the same commit
+          //    the unmount/mount order is implementation-defined and on some
+          //    devices the mount runs first, letting the overlay's null-surface
+          //    call win and leaving the player with no output surface.
           setOverlayVisible(false);
           isCollapsingRef.current = false;
+          // 3. Two rAFs (~32 ms) give the overlay's native unmount effect time
+          //    to complete before the mini-player VideoView remounts.
+          //    If useFocusEffect has already registered onCollapseCompleteRef
+          //    we call it here.  If useFocusEffect fires later (slow navigation)
+          //    collapseRestorePendingRef is still true so it will call
+          //    setVideoKey directly (no flashOverlayOpacity — readyToPlay never
+          //    re-fires for an already-playing stream so setting it would be
+          //    permanently black).
+          requestAnimationFrame(() => requestAnimationFrame(() => {
+            pendingCollapseRemountRef.current = false;
+            onCollapseCompleteRef.current?.();
+            onCollapseCompleteRef.current = null;
+          }));
         }, 200);
       });
     },
@@ -492,9 +519,13 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
     (onDone: () => void) => {
       // Always clear the expand flag.
       wasExpandedRef.current = false;
-      // Signal to index.tsx that a collapse is in flight so it can skip the
-      // VideoView remount (videoKey++) that would cause a black flash.
+      // Signal to index.tsx that a collapse is in flight.
       isCollapsingRef.current = true;
+      // These two refs are checked by useFocusEffect to take the correct branch
+      // regardless of whether navigation completes before or after the 200 ms
+      // timeout (see comment on collapseRestorePendingRef in the interface).
+      collapseRestorePendingRef.current = true;
+      pendingCollapseRemountRef.current = true;
 
       // Measure the mini-player's current on-screen position.  We do this
       // live every time so the endpoint is accurate even when the player was
@@ -529,7 +560,7 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
 
   return (
     <LivePlayerContext.Provider
-      value={{ player, activeUrlRef, miniPlayerRef, isCollapsingRef, onCollapseCompleteRef, notifyPlayerReady, triggerExpand, triggerExpandFromRef, triggerCollapse }}
+      value={{ player, activeUrlRef, miniPlayerRef, isCollapsingRef, collapseRestorePendingRef, pendingCollapseRemountRef, onCollapseCompleteRef, notifyPlayerReady, triggerExpand, triggerExpandFromRef, triggerCollapse }}
     >
       {children}
       {/* Expanding/collapsing VideoView overlay — rendered on top of everything.

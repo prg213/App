@@ -1,2 +1,3 @@
 - [StreamVault IPTV Architecture](streamvault-architecture.md) — Expo + Express monorepo IPTV app; credentials in AsyncStorage, pseudo-MAC generation, polling activation flow, Xtream Codes + M3U support.
 - [StreamVault Build Policy](streamvault-build-policy.md) — Only one GitHub Actions build per session; batch all changes before triggering.
+- [Collapse surface race fix](collapse-surface-race.md) — Mini-player black after collapse: timing race (navigation > 200 ms) + surface ordering; fix uses collapseRestorePendingRef + pendingCollapseRemountRef.
