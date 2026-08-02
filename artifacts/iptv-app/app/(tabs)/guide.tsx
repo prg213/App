@@ -27,6 +27,7 @@ import { useAppContext } from '@/context/AppContext';
 import { getXtreamLiveCategories, getXtreamLiveStreams, getXtreamXmltvUrl } from '@/services/xtreamApi';
 import { SIDEBAR_W } from './_layout';
 import { fetchAndParseXmltv } from '@/services/epgService';
+import { StorageService } from '@/services/storage';
 import type { Channel, EpgProgram } from '@/types';
 
 // ─── Guide constants ────────────────────────────────────────────────────────
@@ -225,7 +226,37 @@ function ProgramModal({ program, channel, onClose, onWatch, colors }: {
   onWatch: () => void; colors: any;
 }) {
   const durationMins = Math.round((program.end.getTime() - program.start.getTime()) / 60_000);
-  const isNow = program.start <= new Date() && new Date() < program.end;
+  const now = new Date();
+  const isNow = program.start <= now && now < program.end;
+  const isFuture = program.start > now;
+  const reminderId = `${channel.id}_${program.start.toISOString()}`;
+  const [hasReminder, setHasReminder] = React.useState(false);
+
+  React.useEffect(() => {
+    if (isFuture) {
+      StorageService.hasReminder(reminderId).then(setHasReminder);
+    }
+  }, [reminderId, isFuture]);
+
+  const handleToggleReminder = async () => {
+    if (hasReminder) {
+      await StorageService.removeReminder(reminderId);
+      setHasReminder(false);
+    } else {
+      await StorageService.addReminder({
+        id: reminderId,
+        channelId: channel.id,
+        channelName: channel.name,
+        channelLogo: channel.logo,
+        programTitle: program.title,
+        programDescription: program.description,
+        start: program.start.toISOString(),
+        end: program.end.toISOString(),
+        createdAt: new Date().toISOString(),
+      });
+      setHasReminder(true);
+    }
+  };
 
   return (
     <Modal transparent animationType="fade" onRequestClose={onClose}>
@@ -289,6 +320,17 @@ function ProgramModal({ program, channel, onClose, onWatch, colors }: {
             >
               <Text style={[styles.closeBtnText, { color: colors.foreground }]}>Close</Text>
             </TouchableOpacity>
+            {isFuture && (
+              <TouchableOpacity
+                style={[styles.watchBtn, hasReminder && { backgroundColor: '#6B7280' }]}
+                onPress={handleToggleReminder}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.watchBtnText}>
+                  {hasReminder ? '🔔 Remove Reminder' : '🔔 Set Reminder'}
+                </Text>
+              </TouchableOpacity>
+            )}
             {isNow && (
               <TouchableOpacity style={styles.watchBtn} onPress={onWatch} activeOpacity={0.8}>
                 <Text style={styles.watchBtnText}>▶  Watch Live</Text>

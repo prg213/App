@@ -261,6 +261,8 @@ export default function PlayerScreen() {
     catchupServerStart?: string;
     /** Catch-up: unix-seconds start timestamp of the original programme. */
     catchupStartTimestamp?: string;
+    /** When 'true', backing out of live TV stops the stream instead of collapsing to mini-player. */
+    stopOnBack?: string;
   }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -662,6 +664,15 @@ export default function PlayerScreen() {
   // Plays the reverse mini-player animation before navigating back so the
   // user sees the fullscreen view shrink back down to the preview box.
   const handleBackLive = useCallback(() => {
+    // When launched from recently-watched with stopOnBack=true, just pause and
+    // go back — no mini-player collapse animation.  The Live TV tab's
+    // useFocusEffect will clear the playing channel so audio stops completely.
+    if (params.stopOnBack === 'true') {
+      try { sharedPlayer?.pause(); } catch {}
+      setVideoMounted(false);
+      router.back();
+      return;
+    }
     // Immediately zero-out the controls and info bar via setValue so their
     // native opacity updates in the same frame — before the collapse overlay
     // snaps to full screen.  This makes the handoff seamless: the overlay
@@ -677,7 +688,7 @@ export default function PlayerScreen() {
     // this state update will already have committed to the native layer.
     setVideoMounted(false);
     triggerCollapse(() => router.back());
-  }, [triggerCollapse, router, controlsOpacity, infoOpacity]);
+  }, [params.stopOnBack, sharedPlayer, triggerCollapse, router, controlsOpacity, infoOpacity]);
 
   // ── Android hardware back button (live TV only) ───────────────────────────
   // The system back gesture bypasses handleBackLive by default. Intercept it

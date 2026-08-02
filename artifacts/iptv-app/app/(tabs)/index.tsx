@@ -18,6 +18,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -198,6 +199,7 @@ export default function LiveTVScreen() {
   const xmltvUrl = creds ? getXtreamXmltvUrl(creds) : null;
 
   const [selectedCatId, setSelectedCatId] = useState<string>(FAVS_CAT_ID);
+  const [catSearch, setCatSearch] = useState('');
   const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null);
   const [playingChannel, setPlayingChannel] = useState<Channel | null>(null);
   const [favorites, setFavorites] = useState<FavoriteChannel[]>([]);
@@ -256,6 +258,16 @@ export default function LiveTVScreen() {
   useFocusEffect(useCallback(() => {
     if (isFirstFocusRef.current) {
       isFirstFocusRef.current = false;
+      return;
+    }
+    // Returning from a fullscreen session started via recently-watched — the
+    // player was paused in handleBackLive; just clear the playing channel so
+    // the mini-player hides and no audio continues in the background.
+    if (clearChannelOnReturnRef.current) {
+      clearChannelOnReturnRef.current = false;
+      try { player?.pause(); } catch {}
+      setPlayingChannel(null);
+      setSelectedChannel(null);
       return;
     }
     if (collapseRestorePendingRef.current) {
@@ -411,6 +423,9 @@ export default function LiveTVScreen() {
   }, [player]);
 
   const goingToPlayerRef = useRef(false);
+  /** Set when navigating to fullscreen from recently-watched so that backing
+   *  out stops the stream rather than leaving it playing in the mini-player. */
+  const clearChannelOnReturnRef = useRef(false);
   // After reloading for the live edge, seek to end of DVR window once ready.
   const pendingLiveEdgeSeek = useRef(false);
   // Timestamp (ms) when the Live TV tab was last blurred — used to decide
@@ -525,6 +540,12 @@ export default function LiveTVScreen() {
     ],
     [rawCategories],
   );
+
+  const filteredCategories = useMemo(() => {
+    const q = catSearch.trim().toLowerCase();
+    if (!q) return allCategories;
+    return allCategories.filter((c) => c.name.toLowerCase().includes(q));
+  }, [allCategories, catSearch]);
 
   const currentCat = useMemo(
     () => allCategories.find((c) => c.id === selectedCatId) ?? allCategories[0],
@@ -727,7 +748,9 @@ export default function LiveTVScreen() {
   /** Navigate directly to the fullscreen player from a recently-watched card. */
   const handleWatchChannel = useCallback((ch: Channel, cardRef?: React.RefObject<View | null>) => {
     goingToPlayerRef.current = true;
-    // Shared player keeps streaming — no pause needed.
+    // Mark that we came from recently-watched so backing out stops the stream
+    // rather than leaving it playing silently in the mini-player.
+    clearChannelOnReturnRef.current = true;
 
     const chList = channels.map((c) => ({
       url: c.streamUrl,
@@ -744,6 +767,7 @@ export default function LiveTVScreen() {
         type: 'live',
         logo: ch.logo ?? '',
         epgId: ch.epgId ?? ch.id,
+        stopOnBack: 'true',
         // If the channel isn't in the current category list, skip nav arrows
         channelsJson: idx >= 0 ? JSON.stringify(chList) : '[]',
         channelIndex: String(idx),
@@ -806,8 +830,20 @@ export default function LiveTVScreen() {
         <Text style={[styles.panelHeader, { color: colors.mutedForeground, borderBottomColor: colors.border }]}>
           CATEGORIES
         </Text>
+        {/* Category search box */}
+        <View style={[styles.catSearchWrap, { borderBottomColor: colors.border }]}>
+          <TextInput
+            style={[styles.catSearchInput, { color: colors.foreground, backgroundColor: colors.secondary }]}
+            placeholder="Search…"
+            placeholderTextColor={colors.mutedForeground}
+            value={catSearch}
+            onChangeText={setCatSearch}
+            clearButtonMode="while-editing"
+            returnKeyType="search"
+          />
+        </View>
         <FlatList
-          data={allCategories}
+          data={filteredCategories}
           keyExtractor={(c) => c.id}
           renderItem={renderCat}
           showsVerticalScrollIndicator={false}
@@ -1140,6 +1176,18 @@ const styles = StyleSheet.create({
   catPanel: {
     width: 140,
     borderRightWidth: StyleSheet.hairlineWidth,
+  },
+  catSearchWrap: {
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  catSearchInput: {
+    height: 30,
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    fontSize: 12,
+    fontFamily: 'Inter_400Regular',
   },
   catRow: {
     height: 52,

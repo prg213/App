@@ -2,6 +2,7 @@ import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
+  Linking,
   Modal,
   Platform,
   Pressable,
@@ -277,8 +278,15 @@ export default function MovieDetailScreen() {
               <Text style={styles.playBtnText}>▶  Play</Text>
             </Pressable>
           )}
-          <Pressable style={[styles.outlineBtn, { borderColor: 'rgba(255,255,255,0.15)', opacity: 0.5 }]} disabled>
-            <Text style={styles.outlineBtnText}>Watch Trailer</Text>
+          <Pressable
+            focusable
+            style={({ focused }) => [styles.outlineBtn, { borderColor: 'rgba(255,255,255,0.15)' }, focused && styles.focusRing]}
+            onPress={() => {
+              const query = encodeURIComponent(`${params.title} official trailer`);
+              Linking.openURL(`https://www.youtube.com/results?search_query=${query}`);
+            }}
+          >
+            <Text style={styles.outlineBtnText}>▶  Watch Trailer</Text>
           </Pressable>
         </View>
       </ScrollView>

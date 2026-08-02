@@ -1,5 +1,20 @@
 export type ConnectionType = 'xtream' | 'm3u';
 
+export interface Reminder {
+  /** Unique key — channelId + ISO start time */
+  id: string;
+  channelId: string;
+  channelName: string;
+  channelLogo?: string;
+  programTitle: string;
+  programDescription?: string;
+  /** ISO 8601 */
+  start: string;
+  /** ISO 8601 */
+  end: string;
+  createdAt: string;
+}
+
 /** Age-rating ceiling for parental content filter.
  *  Numeric strings map to European/international content age bands.
  *  'all' means no restriction. */

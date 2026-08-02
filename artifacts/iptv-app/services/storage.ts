@@ -1,6 +1,6 @@
 import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { Credentials, FavoriteChannel, FavoriteMovie, FavoriteSeries, ParentalSettings, RecentChannel, WatchHistoryEntry } from '@/types';
+import type { Credentials, FavoriteChannel, FavoriteMovie, FavoriteSeries, ParentalSettings, RecentChannel, Reminder, WatchHistoryEntry } from '@/types';
 
 // Credentials live in SecureStore (Android Keystore / iOS Keychain).
 // This survives Expo Go bundle reloads and Metro restarts — unlike AsyncStorage
@@ -20,6 +20,7 @@ const KEYS = {
   MOVIES_CACHE: 'sv_movies_cache',
   PARENTAL: 'sv_parental',
   RECENT_CHANNELS: 'sv_recent_channels',
+  REMINDERS: 'sv_reminders',
   PREF_AUDIO_LANG: 'sv_pref_audio_lang',
   PREF_SUBTITLE_LANG: 'sv_pref_subtitle_lang',
 };
@@ -218,6 +219,31 @@ export const StorageService = {
     const deduped = current.filter((c) => c.id !== ch.id);
     const updated = [{ ...ch, watchedAt: Date.now() }, ...deduped].slice(0, 20);
     await AsyncStorage.setItem(KEYS.RECENT_CHANNELS, JSON.stringify(updated));
+  },
+
+  // ── Reminders (AsyncStorage) ──────────────────────────────────────────────
+
+  async getReminders(): Promise<Reminder[]> {
+    try {
+      const data = await AsyncStorage.getItem(KEYS.REMINDERS);
+      return data ? (JSON.parse(data) as Reminder[]) : [];
+    } catch { return []; }
+  },
+
+  async addReminder(reminder: Reminder): Promise<void> {
+    const current = await StorageService.getReminders();
+    const deduped = current.filter((r) => r.id !== reminder.id);
+    await AsyncStorage.setItem(KEYS.REMINDERS, JSON.stringify([reminder, ...deduped]));
+  },
+
+  async removeReminder(id: string): Promise<void> {
+    const current = await StorageService.getReminders();
+    await AsyncStorage.setItem(KEYS.REMINDERS, JSON.stringify(current.filter((r) => r.id !== id)));
+  },
+
+  async hasReminder(id: string): Promise<boolean> {
+    const current = await StorageService.getReminders();
+    return current.some((r) => r.id === id);
   },
 
   // ── Preferred audio language (AsyncStorage) ────────────────────────────────
