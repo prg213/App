@@ -28,7 +28,7 @@
  *   translateY = y + h/2 - screenH/2
  * Fullscreen state: scaleX=1, scaleY=1, translateX=0, translateY=0.
  */
-import React, { createContext, useCallback, useContext, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { Animated, Easing, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import type { VideoPlayer } from 'expo-video';
@@ -122,6 +122,13 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
   // animated values.
   const { width: screenW, height: screenH } = useWindowDimensions();
 
+  // Mirror screen dimensions into refs so animation callbacks always read the
+  // latest values even when called from a stale closure mid-animation.
+  const screenWRef = useRef(screenW);
+  const screenHRef = useRef(screenH);
+  screenWRef.current = screenW;
+  screenHRef.current = screenH;
+
   // Transform animated values — fullscreen "at rest" values are 0/0/1/1.
   const animTranslateX = useRef(new Animated.Value(0)).current;
   const animTranslateY = useRef(new Animated.Value(0)).current;
@@ -130,20 +137,98 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
   const animOpacity    = useRef(new Animated.Value(0)).current;
   const [overlayVisible, setOverlayVisible] = useState(false);
 
+  // ── Rotation-during-animation tracking ───────────────────────────────────
+  // Track which animation phase is currently running so that a mid-flight
+  // rotation can stop the animation and restart it with corrected dimensions.
+  type AnimPhase = 'idle' | 'expanding' | 'collapsing';
+  const animPhaseRef          = useRef<AnimPhase>('idle');
+  // Stored callbacks allow the restart to fire the same navigate/done
+  // functions when it re-runs the animation after a rotation.
+  const pendingOnNavigateRef  = useRef<(() => void) | null>(null);
+  const pendingOnDoneRef      = useRef<(() => void) | null>(null);
+
   // ── Transform helpers ─────────────────────────────────────────────────────
   /**
    * Compute transform values that make the fullscreen overlay appear to occupy
    * the given page-absolute rect.
+   * Uses refs so the result is always based on the current screen size, even
+   * when called from a closure that was created before a rotation.
    */
   const rectToTransform = useCallback(
-    (rect: { x: number; y: number; width: number; height: number }) => ({
-      scaleX:     rect.width  / screenW,
-      scaleY:     rect.height / screenH,
-      translateX: rect.x + rect.width  / 2 - screenW / 2,
-      translateY: rect.y + rect.height / 2 - screenH / 2,
-    }),
-    [screenW, screenH],
+    (rect: { x: number; y: number; width: number; height: number }) => {
+      const w = screenWRef.current;
+      const h = screenHRef.current;
+      return {
+        scaleX:     rect.width  / w,
+        scaleY:     rect.height / h,
+        translateX: rect.x + rect.width  / 2 - w / 2,
+        translateY: rect.y + rect.height / 2 - h / 2,
+      };
+    },
+    // Intentionally empty deps — always reads from refs, never from stale closure values.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
   );
+
+  /**
+   * Stop any in-flight animation and restart it with the new screen dimensions
+   * so the overlay covers the full screen after rotation.
+   */
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const _handleDimensionChange = useCallback(() => {
+    const phase = animPhaseRef.current;
+    if (phase === 'idle') return;
+
+    // Stop every animated value immediately.
+    animTranslateX.stopAnimation();
+    animTranslateY.stopAnimation();
+    animScaleX.stopAnimation();
+    animScaleY.stopAnimation();
+    animOpacity.stopAnimation();
+
+    if (phase === 'expanding') {
+      const onNavigate = pendingOnNavigateRef.current;
+      if (onNavigate) {
+        // Restart expand from the stored source rect with corrected dimensions.
+        _runExpandAnimationRef.current(miniRectRef.current, onNavigate);
+      }
+    } else if (phase === 'collapsing') {
+      const onDone = pendingOnDoneRef.current;
+      if (!onDone) return;
+
+      // Re-measure the mini-player so the collapse endpoint is fresh.
+      const ref = miniPlayerRef.current;
+      const restart = (rect: { x: number; y: number; width: number; height: number }) => {
+        _runCollapseAnimationRef.current(rect, onDone);
+      };
+
+      if (ref) {
+        (ref as any).measureInWindow(
+          (x: number, y: number, width: number, height: number) => {
+            if (width && height) miniRectRef.current = { x, y, width, height };
+            restart(miniRectRef.current);
+          },
+        );
+      } else {
+        restart(miniRectRef.current);
+      }
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Detect screen-dimension changes (rotation) and fix any in-flight animation.
+  useEffect(() => {
+    _handleDimensionChange();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [screenW, screenH]);
+
+  // Forward refs for the inner animation runners so _handleDimensionChange
+  // can call them without capturing stale closures.
+  const _runExpandAnimationRef  = useRef<
+    (rect: { x: number; y: number; width: number; height: number }, onNavigate: () => void) => void
+  >(() => {});
+  const _runCollapseAnimationRef = useRef<
+    (rect: { x: number; y: number; width: number; height: number }, onDone: () => void) => void
+  >(() => {});
 
   // ── _runExpandAnimation ───────────────────────────────────────────────────
   // Single source of truth for the expand animation sequence.
@@ -153,6 +238,10 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
     (rect: { x: number; y: number; width: number; height: number }, onNavigate: () => void) => {
       miniRectRef.current = rect;
       wasExpandedRef.current = true;
+
+      // Register phase + callback so a mid-flight rotation can restart us.
+      animPhaseRef.current         = 'expanding';
+      pendingOnNavigateRef.current = onNavigate;
 
       const { scaleX, scaleY, translateX, translateY } = rectToTransform(rect);
 
@@ -178,7 +267,14 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
           Animated.timing(animScaleX,     { toValue: 1, duration: EXPAND_MS, easing: TRANSFORM_EASING, useNativeDriver: true }),
           Animated.timing(animScaleY,     { toValue: 1, duration: EXPAND_MS, easing: TRANSFORM_EASING, useNativeDriver: true }),
         ]),
-      ]).start(() => {
+      ]).start(({ finished }) => {
+        if (!finished) {
+          // Interrupted by stopAnimation() — the rotation handler will restart us.
+          return;
+        }
+        animPhaseRef.current         = 'idle';
+        pendingOnNavigateRef.current = null;
+
         // Navigate — the player screen mounts beneath the overlay
         onNavigate();
         // Give the player screen one frame to render, then fade out the overlay
@@ -194,6 +290,10 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [animTranslateX, animTranslateY, animScaleX, animScaleY, animOpacity, rectToTransform],
   );
+
+  // Keep the forward ref in sync so _handleDimensionChange always calls the
+  // latest version of the runner (avoids stale-closure capture).
+  _runExpandAnimationRef.current = _runExpandAnimation;
 
   // ── triggerExpand ─────────────────────────────────────────────────────────
   const triggerExpand = useCallback(
@@ -241,6 +341,79 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
     [_runExpandAnimation],
   );
 
+  // ── _runCollapseAnimation ─────────────────────────────────────────────────
+  // Single source of truth for the collapse animation sequence.
+  // Called by triggerCollapse after measuring, and also by _handleDimensionChange
+  // when a rotation interrupts a collapse in progress.
+  const _runCollapseAnimation = useCallback(
+    (rect: { x: number; y: number; width: number; height: number }, onDone: () => void) => {
+      // Register phase + callback so a mid-flight rotation can restart us.
+      animPhaseRef.current      = 'collapsing';
+      pendingOnDoneRef.current  = onDone;
+
+      const { scaleX, scaleY, translateX, translateY } = rectToTransform(rect);
+
+      // Snap the overlay to full screen, fully opaque — this covers the
+      // player screen.  The caller should have already unmounted its own
+      // VideoView (via setVideoMounted(false)) so the overlay VideoView is
+      // now the sole renderer.  Having two VideoViews share the same player
+      // simultaneously causes one of them to go black on Android.
+      animTranslateX.setValue(0);
+      animTranslateY.setValue(0);
+      animScaleX.setValue(1);
+      animScaleY.setValue(1);
+      animOpacity.setValue(1);
+      setOverlayVisible(true);
+
+      // Shrink transforms back to the mini-player position.
+      Animated.parallel([
+        Animated.timing(animTranslateX, { toValue: translateX, duration: COLLAPSE_MS, easing: TRANSFORM_EASING, useNativeDriver: true }),
+        Animated.timing(animTranslateY, { toValue: translateY, duration: COLLAPSE_MS, easing: TRANSFORM_EASING, useNativeDriver: true }),
+        Animated.timing(animScaleX,     { toValue: scaleX,     duration: COLLAPSE_MS, easing: TRANSFORM_EASING, useNativeDriver: true }),
+        Animated.timing(animScaleY,     { toValue: scaleY,     duration: COLLAPSE_MS, easing: TRANSFORM_EASING, useNativeDriver: true }),
+      ]).start(({ finished }) => {
+        if (!finished) {
+          // Interrupted by stopAnimation() — the rotation handler will restart us.
+          return;
+        }
+        animPhaseRef.current     = 'idle';
+        pendingOnDoneRef.current = null;
+
+        // Navigate back — home screen is already rendered beneath us.
+        onDone();
+        // Keep the overlay visible for 200 ms after navigation so the
+        // mini-player VideoView has time to remount (videoKey++) and its
+        // native TextureView surface has time to re-bind to the player.
+        // Two rAFs (~32 ms) was not enough on slower devices — the surface
+        // hadn't rendered its first frame yet, leaving the mini-player black
+        // the instant the overlay disappeared.
+        setTimeout(() => {
+          // 1. Make overlay transparent on the native layer immediately —
+          //    the user sees this as the overlay disappearing.
+          animOpacity.setValue(0);
+          // 2. Fire index.tsx's callback synchronously.  It calls
+          //    flashOverlayOpacity.setValue(1) (native, covers the mini-player
+          //    instantly) and setVideoKey(k+1) (React state).
+          onCollapseCompleteRef.current?.();
+          onCollapseCompleteRef.current = null;
+          // 3. React batches setVideoKey(k+1) from the callback above with
+          //    setOverlayVisible(false) here into a single commit, so the
+          //    new mini-player VideoView mounts in the same render as the
+          //    overlay unmounts.  player.setVideoSurface(miniPlayerSurface)
+          //    therefore runs AFTER player.setVideoSurface(null) from the
+          //    overlay unmount, leaving the player with a live surface.
+          setOverlayVisible(false);
+          isCollapsingRef.current = false;
+        }, 200);
+      });
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [animTranslateX, animTranslateY, animScaleX, animScaleY, animOpacity, rectToTransform],
+  );
+
+  // Keep the forward ref in sync.
+  _runCollapseAnimationRef.current = _runCollapseAnimation;
+
   // ── triggerCollapse ───────────────────────────────────────────────────────
   const triggerCollapse = useCallback(
     (onDone: () => void) => {
@@ -249,57 +422,6 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
       // Signal to index.tsx that a collapse is in flight so it can skip the
       // VideoView remount (videoKey++) that would cause a black flash.
       isCollapsingRef.current = true;
-
-      const startAnimation = (rect: { x: number; y: number; width: number; height: number }) => {
-        const { scaleX, scaleY, translateX, translateY } = rectToTransform(rect);
-
-        // Snap the overlay to full screen, fully opaque — this covers the
-        // player screen.  The caller should have already unmounted its own
-        // VideoView (via setVideoMounted(false)) so the overlay VideoView is
-        // now the sole renderer.  Having two VideoViews share the same player
-        // simultaneously causes one of them to go black on Android.
-        animTranslateX.setValue(0);
-        animTranslateY.setValue(0);
-        animScaleX.setValue(1);
-        animScaleY.setValue(1);
-        animOpacity.setValue(1);
-        setOverlayVisible(true);
-
-        // Shrink transforms back to the mini-player position.
-        Animated.parallel([
-          Animated.timing(animTranslateX, { toValue: translateX, duration: COLLAPSE_MS, easing: TRANSFORM_EASING, useNativeDriver: true }),
-          Animated.timing(animTranslateY, { toValue: translateY, duration: COLLAPSE_MS, easing: TRANSFORM_EASING, useNativeDriver: true }),
-          Animated.timing(animScaleX,     { toValue: scaleX,     duration: COLLAPSE_MS, easing: TRANSFORM_EASING, useNativeDriver: true }),
-          Animated.timing(animScaleY,     { toValue: scaleY,     duration: COLLAPSE_MS, easing: TRANSFORM_EASING, useNativeDriver: true }),
-        ]).start(() => {
-          // Navigate back — home screen is already rendered beneath us.
-          onDone();
-          // Keep the overlay visible for 200 ms after navigation so the
-          // mini-player VideoView has time to remount (videoKey++) and its
-          // native TextureView surface has time to re-bind to the player.
-          // Two rAFs (~32 ms) was not enough on slower devices — the surface
-          // hadn't rendered its first frame yet, leaving the mini-player black
-          // the instant the overlay disappeared.
-          setTimeout(() => {
-            // 1. Make overlay transparent on the native layer immediately —
-            //    the user sees this as the overlay disappearing.
-            animOpacity.setValue(0);
-            // 2. Fire index.tsx's callback synchronously.  It calls
-            //    flashOverlayOpacity.setValue(1) (native, covers the mini-player
-            //    instantly) and setVideoKey(k+1) (React state).
-            onCollapseCompleteRef.current?.();
-            onCollapseCompleteRef.current = null;
-            // 3. React batches setVideoKey(k+1) from the callback above with
-            //    setOverlayVisible(false) here into a single commit, so the
-            //    new mini-player VideoView mounts in the same render as the
-            //    overlay unmounts.  player.setVideoSurface(miniPlayerSurface)
-            //    therefore runs AFTER player.setVideoSurface(null) from the
-            //    overlay unmount, leaving the player with a live surface.
-            setOverlayVisible(false);
-            isCollapsingRef.current = false;
-          }, 200);
-        });
-      };
 
       // Measure the mini-player's current on-screen position.  We do this
       // live every time so the endpoint is accurate even when the player was
@@ -324,12 +446,12 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
           // One rAF so the caller's synchronous setValue(0) calls (hiding
           // controls / info bar) have been committed to the native layer
           // before the overlay snaps over the full screen.
-          requestAnimationFrame(() => startAnimation(rect));
+          requestAnimationFrame(() => _runCollapseAnimation(rect, onDone));
         },
       );
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [animTranslateX, animTranslateY, animScaleX, animScaleY, animOpacity, rectToTransform],
+    [_runCollapseAnimation],
   );
 
   return (
