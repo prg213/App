@@ -40,12 +40,21 @@ interface LivePlayerContextValue {
   /** Attach to the mini-player container View for position measurement. */
   miniPlayerRef: React.RefObject<View>;
   /**
-   * True while the collapse animation is running. index.tsx reads this to
-   * skip the VideoView remount (videoKey++) that would cause a black flash —
-   * the overlay is still covering the mini-player position at that moment so
-   * no remount is needed.
+   * True while the collapse animation is running.
    */
   isCollapsingRef: React.MutableRefObject<boolean>;
+  /**
+   * index.tsx sets this during a collapse so triggerCollapse can fire it at
+   * exactly the right moment: after the overlay turns transparent but in the
+   * same React batch as setOverlayVisible(false).  The callback should call
+   * flashOverlayOpacity.setValue(1) (native, immediate) and setVideoKey(k+1)
+   * (state, batched).  Firing both in the same batch means the new mini-player
+   * VideoView mounts in the same commit as the overlay unmount, so
+   * player.setVideoSurface(miniPlayerSurface) runs after — not before — the
+   * overlay's player.setVideoSurface(null), leaving the player with a live
+   * surface rather than null.
+   */
+  onCollapseCompleteRef: React.MutableRefObject<(() => void) | null>;
   /**
    * Measure the mini-player, animate it expanding to fullscreen, then call
    * `onNavigate`. Falls back to calling `onNavigate` immediately when the
@@ -85,10 +94,14 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
   // Used to decide whether triggerCollapse should animate or just call onDone.
   const wasExpandedRef = useRef(false);
 
-  // True while the collapse animation is in flight.  index.tsx skips its
-  // VideoView remount (videoKey++) when this is set so that the existing
-  // mini-player surface is live and ready the instant the overlay disappears.
+  // True while the collapse animation is in flight.
   const isCollapsingRef = useRef(false);
+
+  // Callback registered by index.tsx during a collapse.  triggerCollapse fires
+  // it synchronously inside the same call as setOverlayVisible(false) so React
+  // batches both state updates together, guaranteeing the new mini-player
+  // VideoView mounts in the same commit as the overlay unmounts.
+  const onCollapseCompleteRef = useRef<(() => void) | null>(null);
 
   // Last measured mini-player rect (page-absolute coordinates).
   const miniRectRef = useRef({ x: 0, y: 0, width: 200, height: 112 });
@@ -268,7 +281,20 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
           // hadn't rendered its first frame yet, leaving the mini-player black
           // the instant the overlay disappeared.
           setTimeout(() => {
+            // 1. Make overlay transparent on the native layer immediately —
+            //    the user sees this as the overlay disappearing.
             animOpacity.setValue(0);
+            // 2. Fire index.tsx's callback synchronously.  It calls
+            //    flashOverlayOpacity.setValue(1) (native, covers the mini-player
+            //    instantly) and setVideoKey(k+1) (React state).
+            onCollapseCompleteRef.current?.();
+            onCollapseCompleteRef.current = null;
+            // 3. React batches setVideoKey(k+1) from the callback above with
+            //    setOverlayVisible(false) here into a single commit, so the
+            //    new mini-player VideoView mounts in the same render as the
+            //    overlay unmounts.  player.setVideoSurface(miniPlayerSurface)
+            //    therefore runs AFTER player.setVideoSurface(null) from the
+            //    overlay unmount, leaving the player with a live surface.
             setOverlayVisible(false);
             isCollapsingRef.current = false;
           }, 200);
@@ -308,7 +334,7 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
 
   return (
     <LivePlayerContext.Provider
-      value={{ player, activeUrlRef, miniPlayerRef, isCollapsingRef, triggerExpand, triggerExpandFromRef, triggerCollapse }}
+      value={{ player, activeUrlRef, miniPlayerRef, isCollapsingRef, onCollapseCompleteRef, triggerExpand, triggerExpandFromRef, triggerCollapse }}
     >
       {children}
       {/* Expanding/collapsing VideoView overlay — rendered on top of everything.

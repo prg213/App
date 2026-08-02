@@ -239,7 +239,7 @@ export default function LiveTVScreen() {
   }, [deviceMac]);
 
   // ── Video player (shared from LivePlayerContext — persists across navigation) ──
-  const { player, activeUrlRef: liveUrlRef, miniPlayerRef, isCollapsingRef, triggerExpand, triggerExpandFromRef } = useLivePlayer();
+  const { player, activeUrlRef: liveUrlRef, miniPlayerRef, isCollapsingRef, onCollapseCompleteRef, triggerExpand, triggerExpandFromRef } = useLivePlayer();
 
   // Animated overlay that snaps to opaque synchronously (no React reconciler
   // roundtrip) before player.replace() is called, preventing the black flash
@@ -258,23 +258,26 @@ export default function LiveTVScreen() {
       isFirstFocusRef.current = false;
       return;
     }
-    // Always remount the VideoView to reattach the player's native surface.
-    // On Android the TextureView loses its binding to the shared player when the
-    // fullscreen screen is on top; a remount reconnects it.
-    //
-    // During a collapse the overlay (already shrunk to mini-player size and held
-    // for 200 ms after navigation) covers this area while the surface re-binds,
-    // so we do NOT set flashOverlayOpacity here — doing so would leave a
-    // permanent black overlay because readyToPlay never re-fires for an already-
-    // playing stream, and the flash overlay would never be cleared.
-    //
-    // For all other focus returns (tab switches, etc.) the flash overlay is shown
-    // and cleared normally by the readyToPlay / statusChange listener.
-    if (!isCollapsingRef.current) {
-      flashOverlayOpacity.setValue(1);
+    if (isCollapsingRef.current) {
+      // During a collapse triggerCollapse fires our callback at exactly the right
+      // moment — after the overlay turns transparent but in the same React batch
+      // as setOverlayVisible(false).  Batching means the new mini-player VideoView
+      // mounts in the same commit as the overlay unmounts so
+      // player.setVideoSurface(miniPlayerSurface) runs after (not before) the
+      // overlay's player.setVideoSurface(null), leaving the player with a live
+      // surface.  flashOverlayOpacity.setValue(1) in the callback is a native-
+      // driver call so it commits immediately and covers any single-frame gap.
+      onCollapseCompleteRef.current = () => {
+        flashOverlayOpacity.setValue(1);
+        setVideoKey((k) => k + 1);
+      };
+      return;
     }
+    // Normal focus return (tab switch, etc.) — show flash overlay to cover the
+    // single-frame black while the VideoView remounts and re-binds the surface.
+    flashOverlayOpacity.setValue(1);
     setVideoKey((k) => k + 1);
-  }, [flashOverlayOpacity, isCollapsingRef]));
+  }, [flashOverlayOpacity, isCollapsingRef, onCollapseCompleteRef]));
 
   // ── AppState tracking (#21/#31/#53) ──────────────────────────────────────
   const isAppBackgroundRef = useRef(false);
