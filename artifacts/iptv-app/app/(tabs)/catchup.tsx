@@ -236,6 +236,10 @@ export default function CatchupScreen() {
         // Pass the known programme duration so the scrubber can show a progress
         // bar — timeshift HLS streams don't expose duration to expo-video.
         knownDuration: String(durationMin * 60),
+        // Extra fields needed to regenerate the timeshift URL when the user seeks
+        catchupStreamId: selectedChannel.id,
+        catchupServerStart: prog.serverStart,
+        catchupStartTimestamp: String(prog.startTimestamp),
       },
     });
   }, [creds, selectedChannel, router]);

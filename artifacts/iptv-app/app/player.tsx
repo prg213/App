@@ -26,7 +26,7 @@ import { useQuery } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
 import { useAppContext } from '@/context/AppContext';
 import { StorageService } from '@/services/storage';
-import { getXtreamXmltvUrl } from '@/services/xtreamApi';
+import { getXtreamXmltvUrl, getXtreamCatchupUrls } from '@/services/xtreamApi';
 import { fetchAndParseXmltv } from '@/services/epgService';
 import type { EpgProgram } from '@/types';
 import { useCast } from '@/hooks/useCast';
@@ -49,6 +49,17 @@ function fmtTime(d: Date): string {
   const h = d.getHours(), m = d.getMinutes();
   const ampm = h >= 12 ? 'pm' : 'am';
   return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${ampm}`;
+}
+
+/**
+ * Add `seconds` to a server-local datetime string ("YYYY-MM-DD HH:MM:SS").
+ * The string is treated as UTC so JS timezone never distorts the arithmetic.
+ */
+function addSecondsToServerTime(serverStart: string, seconds: number): string {
+  const iso = serverStart.replace(' ', 'T') + 'Z';
+  const d = new Date(new Date(iso).getTime() + seconds * 1000);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`;
 }
 
 function fmtSecs(secs: number) {
@@ -244,6 +255,12 @@ export default function PlayerScreen() {
     startAt?: string;
     /** Known programme duration in seconds (catch-up streams don't expose this via the player API). */
     knownDuration?: string;
+    /** Catch-up: stream ID used to regenerate the timeshift URL after a seek. */
+    catchupStreamId?: string;
+    /** Catch-up: server-local start time "YYYY-MM-DD HH:MM:SS" of the original programme. */
+    catchupServerStart?: string;
+    /** Catch-up: unix-seconds start timestamp of the original programme. */
+    catchupStartTimestamp?: string;
   }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -252,6 +269,10 @@ export default function PlayerScreen() {
   const isCatchup = params.type === 'catchup';
   const startAtSecs = params.startAt ? parseFloat(params.startAt) : 0;
   const knownDurationSecs = params.knownDuration ? parseFloat(params.knownDuration) : 0;
+  // Catch-up seek regeneration fields (undefined for non-catch-up streams)
+  const catchupStreamId = params.catchupStreamId ?? '';
+  const catchupServerStart = params.catchupServerStart ?? '';
+  const catchupStartTimestamp = params.catchupStartTimestamp ? parseInt(params.catchupStartTimestamp, 10) : 0;
 
   // Tracks the URL currently loaded in the player so the cast hook can
   // reload the correct stream when the user switches channels.
@@ -360,6 +381,9 @@ export default function PlayerScreen() {
   const currentTimeRef = useRef(0);
   const durationRef = useRef(0);
   const didInitialSeekRef = useRef(false);
+  // Stores the programme offset (seconds) that the catch-up wall-clock timer should
+  // count from.  Updated on every seek so the timer survives isPlaying re-runs.
+  const catchupSeekOffsetRef = useRef(0);
   useEffect(() => { currentTimeRef.current = currentTime; }, [currentTime]);
   useEffect(() => { durationRef.current = duration; }, [duration]);
 
@@ -531,18 +555,25 @@ export default function PlayerScreen() {
   // Timeshift HLS streams don't expose currentTime or duration to expo-video.
   // We seed duration from knownDurationSecs and advance currentTime via a
   // 1-second interval that starts once the stream is playing.
+  //
+  // catchupSeekOffsetRef persists the seek position across effect re-runs
+  // (which happen when isPlaying changes during buffering after a seek).
   const catchupWallStartRef = useRef<number | null>(null);
+  const isPlayingRef = useRef(isPlaying);
+  useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
   useEffect(() => {
     if (!isCatchup || knownDurationSecs <= 0) return;
     // Always show the known duration immediately
     setDuration(knownDurationSecs);
-    setCurrentTime(0);
+    // Resume from the last seek offset (0 on first load)
+    setCurrentTime(catchupSeekOffsetRef.current);
     catchupWallStartRef.current = null;
 
     const tick = setInterval(() => {
-      if (!isPlaying) return;
+      if (!isPlayingRef.current) return;
       if (catchupWallStartRef.current === null) {
-        catchupWallStartRef.current = Date.now();
+        // Offset the wall-clock start so elapsed begins at the seek offset
+        catchupWallStartRef.current = Date.now() - catchupSeekOffsetRef.current * 1000;
       }
       const elapsed = (Date.now() - catchupWallStartRef.current) / 1000;
       const capped = Math.min(elapsed, knownDurationSecs);
@@ -550,7 +581,7 @@ export default function PlayerScreen() {
     }, 1000);
 
     return () => clearInterval(tick);
-  }, [isCatchup, knownDurationSecs, isPlaying]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isCatchup, knownDurationSecs]); // isPlaying intentionally excluded — see isPlayingRef
 
   // ── History save (every 10 s for VOD/series) ─────────────────────────────
   useEffect(() => {
@@ -937,9 +968,28 @@ export default function PlayerScreen() {
             onSeek={(t) => {
               // Optimistic update so the scrubber stays at the dragged position
               setCurrentTime(t);
-              if (isCasting) { seekRemote(t); }
-              else           { player.currentTime = t; }
               scheduleHide();
+
+              if (isCatchup && catchupStreamId && catchupServerStart && catchupStartTimestamp > 0 && credentials?.type === 'xtream') {
+                // Timeshift HLS can't be seeked via currentTime — regenerate the
+                // URL with a new start offset and reload the stream.
+                const seekSecs = Math.floor(t);
+                const remainingSecs = Math.max(60, knownDurationSecs - seekSecs);
+                const newDurationMins = Math.ceil(remainingSecs / 60);
+                const newStartTs = catchupStartTimestamp + seekSecs;
+                const newServerStart = addSecondsToServerTime(catchupServerStart, seekSecs);
+                const creds = { host: credentials.host!, username: credentials.username!, password: credentials.password! };
+                const newUrl = getXtreamCatchupUrls(creds, catchupStreamId, newServerStart, newDurationMins, newStartTs)[0];
+                // Update the wall-clock timer offset so it resumes from seek position
+                catchupSeekOffsetRef.current = seekSecs;
+                catchupWallStartRef.current = Date.now() - seekSecs * 1000;
+                setIsBuffering(true);
+                try { player.replace(newUrl); player.play(); } catch {}
+              } else if (isCasting) {
+                seekRemote(t);
+              } else {
+                player.currentTime = t;
+              }
             }}
           />
         </Animated.View>
