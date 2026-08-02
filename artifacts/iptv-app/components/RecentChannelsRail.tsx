@@ -31,6 +31,8 @@ interface Props {
   nowPlayingMap: Map<string, string>;
   /** Called when the user taps a card — goes straight to fullscreen with expand animation. */
   onWatchFullscreen: (ch: Channel, cardRef: React.RefObject<View | null>) => void;
+  /** Safe-area top inset — applied as paddingTop so the rail clears the status bar. */
+  topInset?: number;
 }
 
 // ── Per-card component so each card has its own measured ref ──────────────────
@@ -88,6 +90,7 @@ export function RecentChannelsRail({
   blockedIds,
   nowPlayingMap,
   onWatchFullscreen,
+  topInset = 0,
 }: Props) {
   const colors = useColors();
   const [recent, setRecent] = useState<RecentChannel[]>([]);
@@ -106,7 +109,7 @@ export function RecentChannelsRail({
   if (recent.length === 0) return null;
 
   return (
-    <View style={[styles.container, { borderBottomColor: colors.border }]}>
+    <View style={[styles.container, { borderBottomColor: colors.border, paddingTop: topInset + 8 }]}>
       <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>
         RECENTLY WATCHED
       </Text>
