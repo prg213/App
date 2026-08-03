@@ -19,6 +19,10 @@ export interface Reminder {
   /** Expo local-notification identifier — present when a notification was
    *  successfully scheduled for this reminder. */
   notificationId?: string;
+  /** How many minutes before the programme starts the notification fires.
+   *  Stored per-reminder so rescheduling a single reminder doesn't affect
+   *  others that still use the global default. */
+  leadMins?: number;
 }
 
 /** Age-rating ceiling for parental content filter.

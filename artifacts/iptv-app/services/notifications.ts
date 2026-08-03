@@ -69,9 +69,10 @@ export async function requestNotificationPermissions(): Promise<boolean> {
  */
 export async function scheduleReminderNotification(
   reminder: Reminder,
+  overrideLeadMins?: number,
 ): Promise<string | null> {
   try {
-    const leadMins = await StorageService.getReminderLeadMins();
+    const leadMins = overrideLeadMins ?? await StorageService.getReminderLeadMins();
     const triggerMs = new Date(reminder.start).getTime() - leadMins * 60_000;
     if (triggerMs <= Date.now()) return null;          // already past lead time
 

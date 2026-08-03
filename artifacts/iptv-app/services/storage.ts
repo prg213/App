@@ -252,6 +252,16 @@ export const StorageService = {
     await AsyncStorage.setItem(KEYS.REMINDERS, JSON.stringify(current.filter((r) => r.id !== id)));
   },
 
+  /**
+   * Partially updates a stored reminder by merging the given patch into the
+   * existing entry.  No-ops silently if the id is not found.
+   */
+  async updateReminder(id: string, patch: Partial<Reminder>): Promise<void> {
+    const current = await StorageService.getReminders();
+    const updated = current.map((r) => (r.id === id ? { ...r, ...patch } : r));
+    await AsyncStorage.setItem(KEYS.REMINDERS, JSON.stringify(updated));
+  },
+
   async hasReminder(id: string): Promise<boolean> {
     const current = await StorageService.getReminders();
     return current.some((r) => r.id === id);

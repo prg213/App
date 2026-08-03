@@ -4,6 +4,8 @@ import {
   DeviceEventEmitter,
   FlatList,
   Image,
+  Modal,
+  Pressable,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -14,7 +16,10 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { StorageService } from '@/services/storage';
-import { cancelReminderNotification } from '@/services/notifications';
+import {
+  cancelReminderNotification,
+  scheduleReminderNotification,
+} from '@/services/notifications';
 import { useAppContext } from '@/context/AppContext';
 import { getXtreamLiveStreams } from '@/services/xtreamApi';
 import { fetchAndParseM3U } from '@/services/m3uParser';
@@ -54,12 +59,81 @@ function timeUntil(iso: string, nowTs: number): string {
   return rem > 0 ? `in ${hrs}h ${rem}m` : `in ${hrs}h`;
 }
 
+const LEAD_OPTIONS: { label: string; value: number }[] = [
+  { label: '5 min before', value: 5 },
+  { label: '10 min before', value: 10 },
+  { label: '15 min before', value: 15 },
+  { label: '30 min before', value: 30 },
+];
+
+function RescheduleModal({
+  reminder,
+  colors,
+  visible,
+  onClose,
+  onSelect,
+}: {
+  reminder: Reminder | null;
+  colors: any;
+  visible: boolean;
+  onClose: () => void;
+  onSelect: (leadMins: number) => void;
+}) {
+  if (!reminder) return null;
+  const currentLeadMins = reminder.leadMins ?? null;
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+    >
+      <Pressable style={styles.modalOverlay} onPress={onClose}>
+        <Pressable style={[styles.modalSheet, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Text style={[styles.modalTitle, { color: colors.foreground }]}>
+            ⏰  Reschedule Reminder
+          </Text>
+          <Text style={[styles.modalSub, { color: colors.mutedForeground }]} numberOfLines={1}>
+            {reminder.programTitle}
+          </Text>
+          <View style={[styles.modalDivider, { backgroundColor: colors.border }]} />
+          {LEAD_OPTIONS.map((opt) => {
+            const isCurrent = currentLeadMins === opt.value;
+            return (
+              <TouchableOpacity
+                key={opt.value}
+                style={[
+                  styles.modalOption,
+                  isCurrent && { backgroundColor: colors.secondary },
+                ]}
+                onPress={() => onSelect(opt.value)}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.modalOptionText, { color: isCurrent ? colors.primary : colors.foreground }]}>
+                  {opt.label}
+                </Text>
+                {isCurrent && (
+                  <Text style={[styles.modalOptionCheck, { color: colors.primary }]}>✓</Text>
+                )}
+              </TouchableOpacity>
+            );
+          })}
+          <TouchableOpacity style={styles.modalCancel} onPress={onClose} activeOpacity={0.7}>
+            <Text style={[styles.modalCancelText, { color: colors.mutedForeground }]}>Cancel</Text>
+          </TouchableOpacity>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
 function ReminderCard({
   reminder,
   colors,
   nowTs,
   leadMins,
   onDelete,
+  onReschedule,
   onWatchLive,
 }: {
   reminder: Reminder;
@@ -68,6 +142,7 @@ function ReminderCard({
   /** #100: current global notification lead time to display on the card */
   leadMins: number;
   onDelete: () => void;
+  onReschedule: () => void;
   onWatchLive?: () => void;
 }) {
   const startMs = new Date(reminder.start).getTime();
@@ -107,7 +182,7 @@ function ReminderCard({
         {/* #100: show when the notification will fire */}
         {!isPast && !isOnAir && leadMins > 0 && (
           <Text style={[styles.leadBadge, { color: colors.mutedForeground }]}>
-            ⏰ Notifies {leadMins}min before
+            ⏰ Notifies {reminder.leadMins ?? leadMins}min before
           </Text>
         )}
         {reminder.programDescription ? (
@@ -134,14 +209,25 @@ function ReminderCard({
         )}
       </View>
 
-      {/* Right: delete button */}
-      <TouchableOpacity
-        style={[styles.deleteBtn, { borderColor: colors.border }]}
-        onPress={onDelete}
-        activeOpacity={0.7}
-      >
-        <Text style={styles.deleteBtnText}>✕</Text>
-      </TouchableOpacity>
+      {/* Right: edit + delete buttons */}
+      <View style={styles.actions}>
+        {!isPast && (
+          <TouchableOpacity
+            style={[styles.actionBtn, { borderColor: colors.border }]}
+            onPress={onReschedule}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.actionBtnText}>✎</Text>
+          </TouchableOpacity>
+        )}
+        <TouchableOpacity
+          style={[styles.actionBtn, { borderColor: colors.border }]}
+          onPress={onDelete}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.actionBtnText}>✕</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
@@ -153,7 +239,8 @@ export default function RemindersScreen() {
   const { credentials } = useAppContext();
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [nowTs, setNowTs] = useState(() => Date.now());
-  // #100: load the global lead time so cards can display "Notifies Xmin before"
+  const [rescheduleTarget, setRescheduleTarget] = useState<Reminder | null>(null);
+  // #100: load the global lead time so cards can display "Notifies X min before"
   const [reminderLeadMins, setReminderLeadMins] = useState(5);
   useEffect(() => {
     StorageService.getReminderLeadMins().then(setReminderLeadMins);
@@ -306,6 +393,23 @@ export default function RemindersScreen() {
     ]);
   };
 
+  const handleReschedule = useCallback(async (leadMins: number) => {
+    const reminder = rescheduleTarget;
+    if (!reminder) return;
+    setRescheduleTarget(null);
+
+    // Cancel the existing notification
+    await cancelReminderNotification(reminder.notificationId);
+
+    // Schedule a new notification at the chosen lead time
+    const newNotificationId = await scheduleReminderNotification(reminder, leadMins) ?? undefined;
+
+    // Persist the updated leadMins and new notificationId
+    await StorageService.updateReminder(reminder.id, { leadMins, notificationId: newNotificationId });
+
+    load();
+  }, [rescheduleTarget, load]);
+
   const handleWatchLive = useCallback((reminder: Reminder) => {
     if (!reminder.streamUrl) return;
     router.push({
@@ -359,6 +463,7 @@ export default function RemindersScreen() {
               nowTs={nowTs}
               leadMins={reminderLeadMins}
               onDelete={() => handleDelete(item)}
+              onReschedule={() => setRescheduleTarget(item)}
               onWatchLive={() => handleWatchLive(item)}
             />
           )}
@@ -371,6 +476,14 @@ export default function RemindersScreen() {
           }
         />
       )}
+
+      <RescheduleModal
+        reminder={rescheduleTarget}
+        colors={colors}
+        visible={rescheduleTarget !== null}
+        onClose={() => setRescheduleTarget(null)}
+        onSelect={handleReschedule}
+      />
     </View>
   );
 }
@@ -439,13 +552,62 @@ const styles = StyleSheet.create({
   watchLiveBtnTextDisabled: {
     color: '#6B7280',
   },
-  deleteBtn: {
+  actions: {
+    flexShrink: 0,
+    gap: 6,
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  actionBtn: {
     width: 28, height: 28, borderRadius: 99,
     borderWidth: 1,
     justifyContent: 'center', alignItems: 'center',
-    flexShrink: 0, marginTop: 2,
   },
-  deleteBtnText: { fontSize: 11, color: '#9CA3AF' },
+  actionBtnText: { fontSize: 11, color: '#9CA3AF' },
+  // ── Reschedule modal ──────────────────────────────────────────────────────
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 32,
+  },
+  modalSheet: {
+    width: '100%',
+    borderRadius: 16,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  modalTitle: {
+    fontSize: 15,
+    fontFamily: 'Inter_700Bold',
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 4,
+  },
+  modalSub: {
+    fontSize: 12,
+    fontFamily: 'Inter_400Regular',
+    paddingHorizontal: 20,
+    paddingBottom: 12,
+  },
+  modalDivider: { height: 1 },
+  modalOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+  },
+  modalOptionText: { fontSize: 14, fontFamily: 'Inter_500Medium' },
+  modalOptionCheck: { fontSize: 14, fontFamily: 'Inter_700Bold' },
+  modalCancel: {
+    alignItems: 'center',
+    paddingVertical: 14,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.08)',
+  },
+  modalCancelText: { fontSize: 13, fontFamily: 'Inter_500Medium' },
   empty: {
     flex: 1, justifyContent: 'center', alignItems: 'center',
     padding: 40, gap: 12,
