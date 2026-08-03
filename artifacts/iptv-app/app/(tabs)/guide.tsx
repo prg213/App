@@ -7,6 +7,7 @@ import React, {
 } from 'react';
 import {
   ActivityIndicator,
+  DeviceEventEmitter,
   FlatList,
   Image,
   Modal,
@@ -249,6 +250,7 @@ function ProgramModal({ program, channel, onClose, onWatch, colors }: {
       await cancelReminderNotification(nid);
       await StorageService.removeReminder(reminderId);
       setHasReminder(false);
+      DeviceEventEmitter.emit('reminders:changed');
     } else {
       // Read lead time once so it is stored on the reminder (card can display it)
       const leadMins = await StorageService.getReminderLeadMins();
@@ -269,6 +271,7 @@ function ProgramModal({ program, channel, onClose, onWatch, colors }: {
       const notificationId = await scheduleReminderNotification(reminder, leadMins) ?? undefined;
       await StorageService.addReminder({ ...reminder, notificationId });
       setHasReminder(true);
+      DeviceEventEmitter.emit('reminders:changed');
     }
   };
 
