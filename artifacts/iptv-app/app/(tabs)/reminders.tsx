@@ -122,7 +122,10 @@ export default function RemindersScreen() {
   const [reminders, setReminders] = useState<Reminder[]>([]);
 
   const load = useCallback(() => {
-    StorageService.getReminders().then((r) => {
+    // #95: silently prune reminders older than 24 h before loading the list
+    StorageService.pruneExpiredReminders().then(() =>
+      StorageService.getReminders()
+    ).then((r) => {
       // Sort: upcoming first, then past
       const sorted = [...r].sort(
         (a, b) => new Date(a.start).getTime() - new Date(b.start).getTime(),
