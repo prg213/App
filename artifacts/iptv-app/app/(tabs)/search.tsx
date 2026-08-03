@@ -17,6 +17,7 @@ import * as WebBrowser from 'expo-web-browser';
 import { Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
+import { useIsOnline } from '@/hooks/useIsOnline';
 import { useAppContext } from '@/context/AppContext';
 import { useParentalContext, isContentBlocked } from '@/context/ParentalContext';
 import { StorageService } from '@/services/storage';
@@ -131,9 +132,10 @@ const MediaResultRow = React.memo(function MediaResultRow({
   query: string;
   colors: ReturnType<typeof useColors>;
   onPress: () => void;
-  // #106: optional trailer shortcut shown on series rows
+  // #106/#123: optional trailer shortcut shown on movie and series rows
   onTrailer?: () => void;
 }) {
+  const isOnline = useIsOnline(); // #129
   return (
     <TouchableOpacity
       style={[styles.row, { borderBottomColor: colors.border }]}
@@ -160,15 +162,17 @@ const MediaResultRow = React.memo(function MediaResultRow({
           </Text>
         ) : null}
       </View>
-      {/* #106/#123: trailer shortcut for movie and series rows */}
+      {/* #106/#123/#129: trailer shortcut — greyed out when offline */}
       {onTrailer && (
         <TouchableOpacity
-          style={styles.trailerPill}
+          style={[styles.trailerPill, !isOnline && styles.trailerPillOffline]}
           onPress={(e) => { (e as any).stopPropagation?.(); onTrailer(); }}
           activeOpacity={0.7}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
-          <Text style={styles.trailerPillText}>▶ Trailer</Text>
+          <Text style={[styles.trailerPillText, !isOnline && styles.trailerPillTextOffline]}>
+            {isOnline ? '▶ Trailer' : '✕ Offline'}
+          </Text>
         </TouchableOpacity>
       )}
       <View style={[styles.typePill, kind === 'series' && styles.typePillSeries]}>
@@ -745,6 +749,12 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_600SemiBold',
     color: '#8B5CF6',
     letterSpacing: 0.3,
+  },
+  trailerPillOffline: {
+    backgroundColor: 'rgba(75,85,99,0.18)',
+  },
+  trailerPillTextOffline: {
+    color: '#6B7280',
   },
 
   // ── Empty / placeholder ──

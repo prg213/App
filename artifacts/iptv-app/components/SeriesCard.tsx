@@ -7,6 +7,7 @@ import {
   View,
 } from 'react-native';
 import { useColors } from '@/hooks/useColors';
+import { useIsOnline } from '@/hooks/useIsOnline';
 
 function HighlightedText({ text, query, style, compact }: { text: string; query: string; style: any; compact?: boolean }) {
   const colors = useColors();
@@ -47,6 +48,7 @@ interface SeriesCardProps {
 
 function SeriesCardComponent({ name, cover, rating, genre, query = '', isFav, compact, onPress, onFavPress, onTrailerPress }: SeriesCardProps) {
   const colors = useColors();
+  const isOnline = useIsOnline();
 
   return (
     <TouchableOpacity style={[styles.card, compact && styles.cardCompact]} onPress={onPress} activeOpacity={0.75}>
@@ -84,15 +86,15 @@ function SeriesCardComponent({ name, cover, rating, genre, query = '', isFav, co
           </TouchableOpacity>
         )}
 
-        {/* #106: Trailer shortcut button */}
+        {/* #106/#129: Trailer shortcut — dimmed when offline */}
         {onTrailerPress && !compact && (
           <TouchableOpacity
-            style={styles.trailerBtn}
+            style={[styles.trailerBtn, !isOnline && styles.trailerBtnOffline]}
             onPress={(e) => { e.stopPropagation(); onTrailerPress(); }}
             hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
             activeOpacity={0.7}
           >
-            <Text style={styles.trailerIcon}>▶</Text>
+            <Text style={styles.trailerIcon}>{isOnline ? '▶' : '✕'}</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -188,6 +190,9 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     paddingHorizontal: 6,
     paddingVertical: 3,
+  },
+  trailerBtnOffline: {
+    backgroundColor: 'rgba(75,85,99,0.75)',
   },
   trailerIcon: {
     color: '#fff',
