@@ -927,20 +927,23 @@ export default function LiveTVScreen() {
       <View style={[styles.previewPanel, { paddingTop: insets.top + 4, paddingRight: insets.right + 8 }]}>
 
         {!isWeb && (
-          <>
-            {/* collapsable={false} ensures the native view is created immediately
-                so measureInWindow() works correctly when the user taps Watch Fullscreen. */}
-            <View
-              ref={miniPlayerRef}
-              collapsable={false}
-              style={[styles.videoWrap, !playingChannel && { display: 'none' }]}
-            >
-              <TouchableOpacity
-                style={StyleSheet.absoluteFill}
-                onPress={handleWatch}
-                activeOpacity={0.85}
-                focusable={false}
-              >
+          /* collapsable={false} ensures the native view is created immediately
+             so measureInWindow() works correctly for the expand animation.
+             focusable lets D-pad / remote users highlight the box and press
+             Select to open fullscreen — no separate button needed. */
+          <Pressable
+            ref={miniPlayerRef as any}
+            collapsable={false}
+            focusable
+            onPress={handleWatch}
+            style={({ focused }) => [
+              styles.videoWrap,
+              !playingChannel && { display: 'none' },
+              focused && styles.videoWrapFocused,
+            ]}
+          >
+            {({ focused }: { focused: boolean }) => (
+              <>
                 <VideoView
                   key={videoKey}
                   player={player}
@@ -966,25 +969,19 @@ export default function LiveTVScreen() {
                     <Text style={styles.errText}>Stream unavailable</Text>
                   </View>
                 )}
+                {/* Expand hint — bottom-right corner; brightens on D-pad focus */}
+                {!isBuffering && !hasError && (
+                  <View style={[styles.expandHint, focused && styles.expandHintFocused]}>
+                    <Text style={styles.expandHintIcon}>⛶</Text>
+                  </View>
+                )}
                 <View style={styles.livePill}>
                   <View style={styles.liveDot} />
                   <Text style={styles.liveText}>LIVE</Text>
                 </View>
-              </TouchableOpacity>
-            </View>
-            {playingChannel && (
-              <Pressable
-                focusable
-                onPress={handleWatch}
-                style={({ focused }) => [
-                  styles.watchBtn,
-                  focused && styles.watchBtnFocused,
-                ]}
-              >
-                <Text style={styles.watchBtnText}>▶  Watch Fullscreen</Text>
-              </Pressable>
+              </>
             )}
-          </>
+          </Pressable>
         )}
 
         {selectedChannel ? (
@@ -1095,29 +1092,6 @@ const styles = StyleSheet.create({
     borderRadius: 99,
   },
 
-  // ── Watch fullscreen button ──
-  watchBtn: {
-    marginTop: 6,
-    marginBottom: 4,
-    backgroundColor: '#3B82F6',
-    borderRadius: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  watchBtnFocused: {
-    borderColor: '#00E5FF',
-    backgroundColor: '#2563EB',
-  },
-  watchBtnText: {
-    color: '#fff',
-    fontSize: 13,
-    fontFamily: 'Inter_700Bold',
-    letterSpacing: 0.3,
-  },
-
   panelHeader: {
     fontSize: 9,
     fontFamily: 'Inter_600SemiBold',
@@ -1218,6 +1192,29 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     position: 'relative',
     marginBottom: 8,
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  videoWrapFocused: {
+    borderColor: '#00E5FF',
+  },
+  expandHint: {
+    position: 'absolute',
+    bottom: 8,
+    right: 8,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 5,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    opacity: 0.7,
+  },
+  expandHintFocused: {
+    backgroundColor: 'rgba(0,229,255,0.25)',
+    opacity: 1,
+  },
+  expandHintIcon: {
+    color: '#fff',
+    fontSize: 13,
   },
   videoOverlay: {
     ...StyleSheet.absoluteFillObject,
