@@ -44,19 +44,20 @@ function timeUntil(iso: string): string {
 function ReminderCard({
   reminder,
   colors,
+  nowTs,
   onDelete,
   onWatchLive,
 }: {
   reminder: Reminder;
   colors: any;
+  nowTs: number;
   onDelete: () => void;
   onWatchLive?: () => void;
 }) {
-  const now = Date.now();
   const startMs = new Date(reminder.start).getTime();
   const endMs = new Date(reminder.end).getTime();
-  const isPast = startMs < now;
-  const isOnAir = startMs <= now && now < endMs && !!reminder.streamUrl;
+  const isPast = startMs < nowTs;
+  const isOnAir = startMs <= nowTs && nowTs < endMs && !!reminder.streamUrl;
 
   return (
     <View style={[styles.card, { backgroundColor: colors.card, borderColor: isOnAir ? '#3B82F6' : colors.border, opacity: isPast && !isOnAir ? 0.5 : 1 }]}>
@@ -120,6 +121,16 @@ export default function RemindersScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const [reminders, setReminders] = useState<Reminder[]>([]);
+  const [nowTs, setNowTs] = useState(() => Date.now());
+
+  // Ticker: re-evaluate on-air status every 30 s while screen is focused
+  useFocusEffect(
+    useCallback(() => {
+      setNowTs(Date.now());
+      const id = setInterval(() => setNowTs(Date.now()), 30_000);
+      return () => clearInterval(id);
+    }, []),
+  );
 
   const load = useCallback(() => {
     // #95/#101: prune reminders older than 24 h, then notify if any were removed
@@ -223,6 +234,7 @@ export default function RemindersScreen() {
             <ReminderCard
               reminder={item}
               colors={colors}
+              nowTs={nowTs}
               onDelete={() => handleDelete(item)}
               onWatchLive={() => handleWatchLive(item)}
             />
