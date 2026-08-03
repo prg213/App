@@ -362,6 +362,12 @@ export default function RemindersScreen() {
         } else if (credentials.m3uUrl) {
           const parsed = await fetchAndParseM3U(credentials.m3uUrl);
           channels = parsed.channels;
+          // Seed the React Query cache so the next Reminders focus (and Live TV)
+          // can read a warm cache without another network round-trip.
+          // Key matches the Xtream/Catch-Up convention: category = null means "all".
+          if (channels.length > 0) {
+            queryClient.setQueryData(['live-channels', null, credentials], channels);
+          }
         }
         const map = new Map<string, string>();
         for (const ch of channels) map.set(ch.id, ch.streamUrl);
