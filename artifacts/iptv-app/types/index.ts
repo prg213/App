@@ -13,6 +13,9 @@ export interface Reminder {
   /** ISO 8601 */
   end: string;
   createdAt: string;
+  /** Expo local-notification identifier — present when a notification was
+   *  successfully scheduled for this reminder. */
+  notificationId?: string;
 }
 
 /** Age-rating ceiling for parental content filter.

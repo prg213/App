@@ -246,6 +246,12 @@ export const StorageService = {
     return current.some((r) => r.id === id);
   },
 
+  /** Returns the notificationId stored for the given reminder, or null. */
+  async getReminderNotificationId(id: string): Promise<string | null> {
+    const current = await StorageService.getReminders();
+    return current.find((r) => r.id === id)?.notificationId ?? null;
+  },
+
   // ── Preferred audio language (AsyncStorage) ────────────────────────────────
 
   /**

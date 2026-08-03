@@ -28,6 +28,10 @@ import { getXtreamLiveCategories, getXtreamLiveStreams, getXtreamXmltvUrl } from
 import { SIDEBAR_W } from './_layout';
 import { fetchAndParseXmltv } from '@/services/epgService';
 import { StorageService } from '@/services/storage';
+import {
+  cancelReminderNotification,
+  scheduleReminderNotification,
+} from '@/services/notifications';
 import type { Channel, EpgProgram } from '@/types';
 
 // ─── Guide constants ────────────────────────────────────────────────────────
@@ -240,10 +244,13 @@ function ProgramModal({ program, channel, onClose, onWatch, colors }: {
 
   const handleToggleReminder = async () => {
     if (hasReminder) {
+      // Cancel the scheduled notification before removing the reminder
+      const nid = await StorageService.getReminderNotificationId(reminderId);
+      await cancelReminderNotification(nid);
       await StorageService.removeReminder(reminderId);
       setHasReminder(false);
     } else {
-      await StorageService.addReminder({
+      const reminder = {
         id: reminderId,
         channelId: channel.id,
         channelName: channel.name,
@@ -253,7 +260,10 @@ function ProgramModal({ program, channel, onClose, onWatch, colors }: {
         start: program.start.toISOString(),
         end: program.end.toISOString(),
         createdAt: new Date().toISOString(),
-      });
+      };
+      // Schedule notification first so we can attach the id to the stored reminder
+      const notificationId = await scheduleReminderNotification(reminder) ?? undefined;
+      await StorageService.addReminder({ ...reminder, notificationId });
       setHasReminder(true);
     }
   };

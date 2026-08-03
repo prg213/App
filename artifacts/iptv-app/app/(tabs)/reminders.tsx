@@ -12,6 +12,7 @@ import { useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { StorageService } from '@/services/storage';
+import { cancelReminderNotification } from '@/services/notifications';
 import type { Reminder } from '@/types';
 import { SIDEBAR_W } from './_layout';
 
@@ -111,12 +112,13 @@ export default function RemindersScreen() {
 
   useFocusEffect(load);
 
-  const handleDelete = (id: string) => {
+  const handleDelete = (reminder: Reminder) => {
     Alert.alert('Remove Reminder', 'Remove this reminder?', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Remove', style: 'destructive', onPress: async () => {
-          await StorageService.removeReminder(id);
+          await cancelReminderNotification(reminder.notificationId);
+          await StorageService.removeReminder(reminder.id);
           load();
         },
       },
@@ -130,7 +132,10 @@ export default function RemindersScreen() {
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Clear', style: 'destructive', onPress: async () => {
-          for (const r of past) await StorageService.removeReminder(r.id);
+          for (const r of past) {
+            await cancelReminderNotification(r.notificationId);
+            await StorageService.removeReminder(r.id);
+          }
           load();
         },
       },
@@ -170,7 +175,7 @@ export default function RemindersScreen() {
             <ReminderCard
               reminder={item}
               colors={colors}
-              onDelete={() => handleDelete(item.id)}
+              onDelete={() => handleDelete(item)}
             />
           )}
           ListHeaderComponent={

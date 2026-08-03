@@ -1,5 +1,10 @@
 import React, { useCallback, useEffect } from 'react';
 import { ActivityIndicator, Alert, View } from 'react-native';
+import {
+  addNotificationTapListener,
+  requestNotificationPermissions,
+  setupNotifications,
+} from '@/services/notifications';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
@@ -29,6 +34,9 @@ if (process.env.EXPO_PUBLIC_DOMAIN) {
 
 SplashScreen.preventAutoHideAsync();
 
+// Configure notification handler and Android channel once at module load
+setupNotifications();
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: { retry: 1, staleTime: 2 * 60_000 },
@@ -51,6 +59,18 @@ function RootLayoutNav() {
       router.replace('/(tabs)');
     }
   }, [isLoading, isActivated, segments]);
+
+  // Request notification permissions and listen for taps once the app is ready
+  useEffect(() => {
+    if (!isActivated) return;
+    requestNotificationPermissions();
+    return addNotificationTapListener(({ channelId, start }) => {
+      // Navigate to the TV Guide tab; the deep-link carries channelId + start
+      // so the guide can highlight the right programme when task #85 lands.
+      // For now we navigate to guide which is sufficient.
+      router.push('/(tabs)/guide');
+    });
+  }, [isActivated, router]);
 
   if (isLoading || !parentalReady) {
     return (
