@@ -10,6 +10,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import * as WebBrowser from 'expo-web-browser';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -267,8 +268,22 @@ export default function SeriesDetailScreen() {
             </Pressable>
           )}
 
-          <Pressable style={[styles.outlineBtn, { borderColor: 'rgba(255,255,255,0.15)', opacity: 0.5 }]} disabled>
-            <Text style={styles.outlineBtnText}>Watch Trailer</Text>
+          <Pressable
+            focusable
+            style={({ focused }) => [styles.outlineBtn, { borderColor: focused ? '#00E5FF' : 'rgba(255,255,255,0.15)' }, focused && styles.focusRing]}
+            onPress={async () => {
+              const query = encodeURIComponent(`${params.title} official trailer`);
+              await WebBrowser.openBrowserAsync(
+                `https://www.youtube.com/results?search_query=${query}`,
+                {
+                  presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET,
+                  toolbarColor: '#0A0A0F',
+                  controlsColor: '#3B82F6',
+                },
+              );
+            }}
+          >
+            <Text style={styles.outlineBtnText}>▶  Watch Trailer</Text>
           </Pressable>
         </View>
 

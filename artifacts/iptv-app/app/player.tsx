@@ -322,6 +322,8 @@ export default function PlayerScreen() {
   const [isReconnecting, setIsReconnecting] = useState(false);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectAttemptRef = useRef(0);
+  // #69: which catchup URL format is currently being tried (0 = Format B, 1 = Format A fallback)
+  const catchupFormatRef = useRef(0);
   // Keep refs in sync so the statusChange closure always reads the latest values
   useEffect(() => { reconnectAttemptRef.current = reconnectAttempt; }, [reconnectAttempt]);
   // Source-of-truth URL ref — always points to the currently loaded stream URL
@@ -380,6 +382,23 @@ export default function PlayerScreen() {
     });
     return () => sub.remove();
   }, [player, isLive, isWeb]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // #30: While the error screen is showing for a live stream, retry every 10 s
+  // so the stream auto-recovers when the network returns while already foregrounded
+  // (the AppState handler covers the foreground-transition case; this covers the
+  // "network came back silently while the app was already open" case).
+  useEffect(() => {
+    if (!isLive || !hasError || isWeb) return;
+    const t = setInterval(() => {
+      setHasError(false);
+      setIsBuffering(true);
+      setIsReconnecting(true);
+      setReconnectAttempt(0);
+      reconnectAttemptRef.current = 0;
+      try { player.replace(activeUrlRef.current); player.play(); } catch {}
+    }, 10_000);
+    return () => clearInterval(t);
+  }, [isLive, hasError, isWeb, player]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Refs so interval / unmount callbacks can read latest values without stale closures
   const currentTimeRef = useRef(0);
@@ -508,6 +527,22 @@ export default function PlayerScreen() {
           const msg = (error as any)?.message ?? (error as any)?.localizedDescription ?? String(error ?? '');
           setErrorMsg(msg);
 
+          // #69: Catchup format fallback — Format B (index 0) failed, try Format A (index 1)
+          if (isCatchup && catchupFormatRef.current === 0 && catchupStreamId && catchupServerStart && catchupStartTimestamp > 0 && credentials?.type === 'xtream') {
+            catchupFormatRef.current = 1;
+            const seekSecs = Math.floor(catchupSeekOffsetRef.current);
+            const remainingSecs = Math.max(60, knownDurationSecs - seekSecs);
+            const newDurationMins = Math.ceil(remainingSecs / 60);
+            const newStartTs = catchupStartTimestamp + seekSecs;
+            const newServerStart = addSecondsToServerTime(catchupServerStart, seekSecs);
+            const creds69 = { host: credentials.host!, username: credentials.username!, password: credentials.password! };
+            const urls = getXtreamCatchupUrls(creds69, catchupStreamId, newServerStart, newDurationMins, newStartTs);
+            setIsBuffering(true);
+            setHasError(false);
+            try { player.replace(urls[1]); player.play(); } catch {}
+            return;
+          }
+
           // Auto-reconnect only for live streams
           if (isLive) {
             const attempt = reconnectAttemptRef.current + 1;
@@ -580,10 +615,18 @@ export default function PlayerScreen() {
     catchupWallStartRef.current = null;
 
     const tick = setInterval(() => {
-      if (!isPlayingRef.current) return;
+      if (!isPlayingRef.current) {
+        // #70: Park the clock during buffering pauses so elapsed doesn't
+        // accumulate while the player is stalled, preventing a forward jump
+        // when playback resumes.  On the next tick where playing is true the
+        // clock is re-anchored from the last-displayed scrubber position.
+        catchupWallStartRef.current = null;
+        return;
+      }
       if (catchupWallStartRef.current === null) {
-        // Offset the wall-clock start so elapsed begins at the seek offset
-        catchupWallStartRef.current = Date.now() - catchupSeekOffsetRef.current * 1000;
+        // Anchor from the current scrubber position — handles both the initial
+        // start (currentTimeRef = 0 or seek offset) and resume-after-buffer.
+        catchupWallStartRef.current = Date.now() - currentTimeRef.current * 1000;
       }
       const elapsed = (Date.now() - catchupWallStartRef.current) / 1000;
       const capped = Math.min(elapsed, knownDurationSecs);
@@ -1011,7 +1054,8 @@ export default function PlayerScreen() {
                 const newStartTs = catchupStartTimestamp + seekSecs;
                 const newServerStart = addSecondsToServerTime(catchupServerStart, seekSecs);
                 const creds = { host: credentials.host!, username: credentials.username!, password: credentials.password! };
-                const newUrl = getXtreamCatchupUrls(creds, catchupStreamId, newServerStart, newDurationMins, newStartTs)[0];
+                // Use whichever format index succeeded on first load (#69)
+                const newUrl = getXtreamCatchupUrls(creds, catchupStreamId, newServerStart, newDurationMins, newStartTs)[catchupFormatRef.current];
                 // Update the wall-clock timer offset so it resumes from seek position
                 catchupSeekOffsetRef.current = seekSecs;
                 catchupWallStartRef.current = Date.now() - seekSecs * 1000;

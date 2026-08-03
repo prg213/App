@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   FlatList,
   RefreshControl,
@@ -42,18 +42,36 @@ export default function MoviesScreen() {
   const [search, setSearch] = useState('');
   const [favMovies, setFavMovies] = useState<FavoriteMovie[]>([]);
   const [watchHistory, setWatchHistory] = useState<WatchHistoryEntry[]>([]);
+  const [favSyncState, setFavSyncState] = useState<'idle' | 'syncing' | 'synced'>('idle');
+  // #23: queue a failed push so it retries next time this screen mounts
+  const pendingFavPushRef = useRef<FavoriteMovie[] | null>(null);
   const isXtream = credentials?.type === 'xtream';
 
   useEffect(() => {
     StorageService.getMovieFavorites().then(async (local) => {
       setFavMovies(local);
+      setFavSyncState('syncing');
       const remote = await fetchRemoteFavourites(deviceMac);
       if (remote) {
         const merged = mergeFavourites(remote.movies, local);
         await StorageService.saveMovieFavorites(merged);
         setFavMovies(merged);
+        // #21: push back any items added while offline
+        if (merged.length > remote.movies.length) {
+          pushRemoteMovies(deviceMac, merged).then((ok) => {
+            if (!ok) pendingFavPushRef.current = merged;
+          });
+        }
+      } else if (pendingFavPushRef.current) {
+        // Retry previously-queued push now that we have connectivity
+        const toRetry = pendingFavPushRef.current;
+        pushRemoteMovies(deviceMac, toRetry).then((ok) => {
+          if (ok) pendingFavPushRef.current = null;
+        });
       }
-    });
+      setFavSyncState('synced');
+      setTimeout(() => setFavSyncState('idle'), 2000);
+    }).catch(() => setFavSyncState('idle'));
   }, [deviceMac]);
 
   const favSet = useMemo(() => new Set(favMovies.map((f) => f.id)), [favMovies]);
@@ -165,8 +183,13 @@ export default function MoviesScreen() {
       duration: item.duration,
     });
     setFavMovies(updated);
-    // Sync only movies to the server — other categories remain untouched.
-    pushRemoteMovies(deviceMac, updated);
+    setFavSyncState('syncing');
+    // #22/#23: show indicator + queue for retry if server rejects
+    pushRemoteMovies(deviceMac, updated).then((ok) => {
+      if (!ok) pendingFavPushRef.current = updated;
+      setFavSyncState('synced');
+      setTimeout(() => setFavSyncState('idle'), 2000);
+    });
   }, [deviceMac]);
 
   const handleRefresh = () => {
@@ -218,7 +241,14 @@ export default function MoviesScreen() {
       <View style={[styles.content, { paddingRight: insets.right }]}>
         {/* Header */}
         <View style={[styles.header, { borderBottomColor: colors.border, paddingTop: insets.top + 6 }]}>
-          <Text style={[styles.screenTitle, { color: colors.foreground }]}>Movies</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Text style={[styles.screenTitle, { color: colors.foreground }]}>Movies</Text>
+            {isFavsSelected && favSyncState !== 'idle' && (
+              <Text style={{ fontSize: 12, fontFamily: 'Inter_500Medium', color: favSyncState === 'synced' ? '#22C55E' : colors.mutedForeground }}>
+                {favSyncState === 'synced' ? '✓ Saved' : '⟳'}
+              </Text>
+            )}
+          </View>
           <TextInput
             style={[styles.searchInput, { backgroundColor: colors.secondary, color: colors.foreground, borderColor: colors.border }]}
             placeholder="Search movies..."
