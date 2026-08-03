@@ -41,9 +41,11 @@ interface SeriesCardProps {
   compact?: boolean;
   onPress: () => void;
   onFavPress?: () => void;
+  /** #106: quick trailer shortcut shown as a small button on the poster */
+  onTrailerPress?: () => void;
 }
 
-function SeriesCardComponent({ name, cover, rating, genre, query = '', isFav, compact, onPress, onFavPress }: SeriesCardProps) {
+function SeriesCardComponent({ name, cover, rating, genre, query = '', isFav, compact, onPress, onFavPress, onTrailerPress }: SeriesCardProps) {
   const colors = useColors();
 
   return (
@@ -79,6 +81,18 @@ function SeriesCardComponent({ name, cover, rating, genre, query = '', isFav, co
             <Text style={[styles.heartIcon, { color: isFav ? '#EF4444' : 'rgba(255,255,255,0.7)' }]}>
               {isFav ? '♥' : '♡'}
             </Text>
+          </TouchableOpacity>
+        )}
+
+        {/* #106: Trailer shortcut button */}
+        {onTrailerPress && !compact && (
+          <TouchableOpacity
+            style={styles.trailerBtn}
+            onPress={(e) => { e.stopPropagation(); onTrailerPress(); }}
+            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.trailerIcon}>▶</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -165,6 +179,20 @@ const styles = StyleSheet.create({
   heartIcon: {
     fontSize: 14,
     lineHeight: 16,
+  },
+  trailerBtn: {
+    position: 'absolute',
+    bottom: 6,
+    right: 6,
+    backgroundColor: 'rgba(139,92,246,0.85)',
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+  },
+  trailerIcon: {
+    color: '#fff',
+    fontSize: 10,
+    fontFamily: 'Inter_700Bold',
   },
   info: {
     marginTop: 7,

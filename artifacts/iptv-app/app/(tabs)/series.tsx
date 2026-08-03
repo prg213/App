@@ -11,6 +11,8 @@ import {
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter, useFocusEffect } from 'expo-router';
 import * as Haptics from 'expo-haptics';
+import * as WebBrowser from 'expo-web-browser';
+import { Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { useAppContext } from '@/context/AppContext';
@@ -314,6 +316,17 @@ export default function SeriesScreen() {
                 onPress={() => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                   router.push({ pathname: '/series/[id]', params: { id: item.id, title: item.name, cover: item.cover ?? '', rating: item.rating ?? '', genre: item.genre ?? '', plot: item.plot ?? '', cast: item.cast ?? '', director: item.director ?? '' } });
+                }}
+                onTrailerPress={async () => {
+                  const q = encodeURIComponent(`${item.name} official trailer`);
+                  try {
+                    await WebBrowser.openBrowserAsync(
+                      `https://www.youtube.com/results?search_query=${q}`,
+                      { presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET, toolbarColor: '#0A0A0F', controlsColor: '#3B82F6' },
+                    );
+                  } catch {
+                    Alert.alert('No Internet', "Couldn't open the trailer. Check your connection and try again.", [{ text: 'OK' }]);
+                  }
                 }}
               />
             )}
