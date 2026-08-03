@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Alert,
   Modal,
@@ -23,6 +23,12 @@ import {
 } from '@/services/xtreamApi';
 import { StorageService } from '@/services/storage';
 import type { MaxRating } from '@/types';
+
+const LEAD_TIME_OPTIONS: { value: 5 | 10 | 15; label: string }[] = [
+  { value: 5,  label: '5 minutes before' },
+  { value: 10, label: '10 minutes before' },
+  { value: 15, label: '15 minutes before' },
+];
 
 type PinFlowKind =
   | 'set-first'   // no existing PIN — set a new one
@@ -52,6 +58,19 @@ export default function SettingsScreen() {
     setMaxRating,
   } = useParentalContext();
   const [loggingOut, setLoggingOut] = useState(false);
+  const [reminderLeadMins, setReminderLeadMins] = useState<5 | 10 | 15>(5);
+  const [showLeadTimeSheet, setShowLeadTimeSheet] = useState(false);
+
+  useEffect(() => {
+    StorageService.getReminderLeadMins().then((v) => setReminderLeadMins(v as 5 | 10 | 15));
+  }, []);
+
+  const handleLeadTimeSelect = async (value: 5 | 10 | 15) => {
+    Haptics.selectionAsync();
+    await StorageService.setReminderLeadMins(value);
+    setReminderLeadMins(value);
+    setShowLeadTimeSheet(false);
+  };
 
   // PIN modal state
   const [pinFlow, setPinFlow] = useState<PinFlowKind>(null);
@@ -401,6 +420,24 @@ export default function SettingsScreen() {
           />
         </View>
 
+        {/* ── Notifications ── */}
+        <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>NOTIFICATIONS</Text>
+        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <TouchableOpacity
+            style={[styles.actionRow, { borderBottomWidth: 0 }]}
+            onPress={() => setShowLeadTimeSheet(true)}
+            activeOpacity={0.7}
+          >
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.actionTitle, { color: colors.foreground }]}>Reminder Lead Time</Text>
+              <Text style={[styles.actionSub, { color: colors.mutedForeground }]}>
+                {LEAD_TIME_OPTIONS.find((o) => o.value === reminderLeadMins)?.label ?? '5 minutes before'}
+              </Text>
+            </View>
+            <Text style={{ color: colors.mutedForeground, fontSize: 18 }}>⏰</Text>
+          </TouchableOpacity>
+        </View>
+
         {/* ── Parental Controls ── */}
         <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>PARENTAL CONTROLS</Text>
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -498,6 +535,35 @@ export default function SettingsScreen() {
           </TouchableOpacity>
         </View>
       </ScrollView>
+
+      {/* ── Reminder lead time picker sheet ── */}
+      <Modal
+        visible={showLeadTimeSheet}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowLeadTimeSheet(false)}
+      >
+        <TouchableOpacity
+          style={styles.sheetBackdrop}
+          activeOpacity={1}
+          onPress={() => setShowLeadTimeSheet(false)}
+        />
+        <View style={[styles.sheet, { backgroundColor: colors.card, paddingBottom: insets.bottom + 16 }]}>
+          <View style={styles.sheetHandle} />
+          <Text style={[styles.sheetTitle, { color: colors.mutedForeground }]}>REMINDER LEAD TIME</Text>
+          {LEAD_TIME_OPTIONS.map((opt) => (
+            <TouchableOpacity
+              key={opt.value}
+              style={[styles.sheetRow, { borderBottomColor: colors.border }]}
+              onPress={() => handleLeadTimeSelect(opt.value)}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.sheetRowText, { color: colors.foreground }]}>{opt.label}</Text>
+              {reminderLeadMins === opt.value && <Text style={{ color: '#3B82F6', fontSize: 18 }}>✓</Text>}
+            </TouchableOpacity>
+          ))}
+        </View>
+      </Modal>
 
       {/* ── Rating picker sheet ── */}
       <Modal

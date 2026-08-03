@@ -23,6 +23,7 @@ const KEYS = {
   REMINDERS: 'sv_reminders',
   PREF_AUDIO_LANG: 'sv_pref_audio_lang',
   PREF_SUBTITLE_LANG: 'sv_pref_subtitle_lang',
+  PREF_REMINDER_LEAD_MINS: 'sv_pref_reminder_lead_mins',
 };
 
 export const StorageService = {
@@ -308,5 +309,27 @@ export const StorageService = {
   },
   async clearPrefSubtitleLang(): Promise<void> {
     try { await AsyncStorage.removeItem(KEYS.PREF_SUBTITLE_LANG); } catch {}
+  },
+
+  // ── Reminder lead time preference (AsyncStorage) ───────────────────────────
+
+  /**
+   * Returns the stored reminder lead time in minutes (5, 10, or 15).
+   * Defaults to 5 if no preference has been saved yet.
+   */
+  async getReminderLeadMins(): Promise<number> {
+    try {
+      const val = await AsyncStorage.getItem(KEYS.PREF_REMINDER_LEAD_MINS);
+      if (val) {
+        const n = parseInt(val, 10);
+        if ([5, 10, 15].includes(n)) return n;
+      }
+    } catch {}
+    return 5;
+  },
+
+  /** Persists the user's chosen reminder lead time (5, 10, or 15 minutes). */
+  async setReminderLeadMins(mins: 5 | 10 | 15): Promise<void> {
+    await AsyncStorage.setItem(KEYS.PREF_REMINDER_LEAD_MINS, String(mins));
   },
 };

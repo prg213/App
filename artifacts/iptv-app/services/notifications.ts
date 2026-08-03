@@ -11,8 +11,8 @@ import { Platform } from 'react-native';
 import type { Reminder } from '@/types';
 import { StorageService } from '@/services/storage';
 
-/** How many minutes before the programme starts the notification fires. */
-const LEAD_MINS = 5;
+/** Default lead time (minutes) before the programme starts the notification fires. */
+const DEFAULT_LEAD_MINS = 5;
 
 // ─── One-time setup ──────────────────────────────────────────────────────────
 
@@ -71,7 +71,8 @@ export async function scheduleReminderNotification(
   reminder: Reminder,
 ): Promise<string | null> {
   try {
-    const triggerMs = new Date(reminder.start).getTime() - LEAD_MINS * 60_000;
+    const leadMins = await StorageService.getReminderLeadMins();
+    const triggerMs = new Date(reminder.start).getTime() - leadMins * 60_000;
     if (triggerMs <= Date.now()) return null;          // already past lead time
 
     const granted = await requestNotificationPermissions();
@@ -79,7 +80,7 @@ export async function scheduleReminderNotification(
 
     const id = await Notifications.scheduleNotificationAsync({
       content: {
-        title: `📺 Starting in ${LEAD_MINS} mins`,
+        title: `📺 Starting in ${leadMins} min${leadMins === 1 ? '' : 's'}`,
         body: `${reminder.programTitle} on ${reminder.channelName}`,
         data: {
           reminderId: reminder.id,
@@ -118,6 +119,7 @@ export async function rescheduleStaleReminders(): Promise<void> {
     if (reminders.length === 0) return;
 
     const now = Date.now();
+    const leadMins = await StorageService.getReminderLeadMins();
 
     // Fetch the identifiers of all currently-pending notifications once so we
     // can do O(1) lookups without hitting the native layer per reminder.
@@ -125,7 +127,7 @@ export async function rescheduleStaleReminders(): Promise<void> {
     const scheduledIds = new Set(scheduled.map((n) => n.identifier));
 
     for (const reminder of reminders) {
-      const triggerMs = new Date(reminder.start).getTime() - LEAD_MINS * 60_000;
+      const triggerMs = new Date(reminder.start).getTime() - leadMins * 60_000;
 
       // Skip reminders whose lead time has already passed — they can't fire.
       if (triggerMs <= now) continue;
