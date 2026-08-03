@@ -14,8 +14,19 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { StorageService } from '@/services/storage';
 import { cancelReminderNotification } from '@/services/notifications';
-import type { Reminder } from '@/types';
+import { useAppContext } from '@/context/AppContext';
+import { getXtreamLiveStreams } from '@/services/xtreamApi';
+import { fetchAndParseM3U } from '@/services/m3uParser';
+import type { Reminder, Channel } from '@/types';
 import { SIDEBAR_W } from './_layout';
+
+function buildCreds(c: ReturnType<typeof useAppContext>['credentials']) {
+  return {
+    host: c?.host ?? '',
+    username: c?.username ?? '',
+    password: c?.password ?? '',
+  };
+}
 
 function fmtDate(iso: string): string {
   const d = new Date(iso);
@@ -57,7 +68,9 @@ function ReminderCard({
   const startMs = new Date(reminder.start).getTime();
   const endMs = new Date(reminder.end).getTime();
   const isPast = startMs < nowTs;
-  const isOnAir = startMs <= nowTs && nowTs < endMs && !!reminder.streamUrl;
+  // isOnAir is decoupled from streamUrl so the "On now" badge and blue border
+  // show even when we are still backfilling the stream URL for old reminders.
+  const isOnAir = startMs <= nowTs && nowTs < endMs;
 
   return (
     <View style={[styles.card, { backgroundColor: colors.card, borderColor: isOnAir ? '#3B82F6' : colors.border, opacity: isPast && !isOnAir ? 0.5 : 1 }]}>
@@ -92,8 +105,8 @@ function ReminderCard({
           </Text>
         ) : null}
 
-        {/* Watch Live button — only shown when programme is currently airing */}
-        {isOnAir && onWatchLive && (
+        {/* Watch Live button — shown when programme is currently airing */}
+        {isOnAir && reminder.streamUrl && onWatchLive && (
           <TouchableOpacity
             style={styles.watchLiveBtn}
             onPress={onWatchLive}
@@ -101,6 +114,12 @@ function ReminderCard({
           >
             <Text style={styles.watchLiveBtnText}>▶  Watch Live</Text>
           </TouchableOpacity>
+        )}
+        {/* Graceful fallback when on-air but channel URL could not be resolved */}
+        {isOnAir && !reminder.streamUrl && (
+          <View style={[styles.watchLiveBtn, styles.watchLiveBtnDisabled]}>
+            <Text style={[styles.watchLiveBtnText, styles.watchLiveBtnTextDisabled]}>▶  Watch Live</Text>
+          </View>
         )}
       </View>
 
@@ -120,6 +139,7 @@ export default function RemindersScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { credentials } = useAppContext();
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [nowTs, setNowTs] = useState(() => Date.now());
 
@@ -130,6 +150,69 @@ export default function RemindersScreen() {
       const id = setInterval(() => setNowTs(Date.now()), 30_000);
       return () => clearInterval(id);
     }, []),
+  );
+
+  /**
+   * Fetch all channels once (Xtream or M3U) and return a map of channelId → streamUrl.
+   * Returns null if credentials are unavailable or the fetch fails.
+   */
+  const fetchChannelUrlMap = useCallback(async (): Promise<Map<string, string> | null> => {
+    if (!credentials) return null;
+    try {
+      let channels: Channel[] = [];
+      if (credentials.type === 'xtream') {
+        channels = await getXtreamLiveStreams(buildCreds(credentials));
+      } else if (credentials.m3uUrl) {
+        const parsed = await fetchAndParseM3U(credentials.m3uUrl);
+        channels = parsed.channels;
+      }
+      const map = new Map<string, string>();
+      for (const ch of channels) {
+        map.set(ch.id, ch.streamUrl);
+      }
+      return map;
+    } catch {
+      return null;
+    }
+  }, [credentials]);
+
+  /**
+   * For any reminders that are currently on-air but missing a streamUrl,
+   * fetch the channel list once and backfill + persist the URL.
+   * Returns the (possibly updated) reminders array.
+   */
+  const backfillOnAirStreamUrls = useCallback(
+    async (loaded: Reminder[]): Promise<Reminder[]> => {
+      const now = Date.now();
+      const needsBackfill = loaded.filter(
+        (r) =>
+          !r.streamUrl &&
+          new Date(r.start).getTime() <= now &&
+          now < new Date(r.end).getTime(),
+      );
+      if (needsBackfill.length === 0) return loaded;
+
+      const urlMap = await fetchChannelUrlMap();
+      if (!urlMap) return loaded;
+
+      let anyUpdated = false;
+      const updated = loaded.map((r) => {
+        if (!r.streamUrl && urlMap.has(r.channelId)) {
+          anyUpdated = true;
+          return { ...r, streamUrl: urlMap.get(r.channelId)! };
+        }
+        return r;
+      });
+
+      if (anyUpdated) {
+        // Single atomic write — avoids read-modify-write races that concurrent
+        // addReminder() calls would cause when backfilling multiple reminders.
+        await StorageService.saveReminders(updated);
+      }
+
+      return updated;
+    },
+    [fetchChannelUrlMap],
   );
 
   const load = useCallback(() => {
@@ -144,14 +227,16 @@ export default function RemindersScreen() {
         );
       }
       return StorageService.getReminders();
-    }).then((r) => {
+    }).then(async (r) => {
+      // Backfill streamUrl for any on-air reminders that pre-date this feature
+      const backfilled = await backfillOnAirStreamUrls(r);
       // Sort: upcoming first, then past
-      const sorted = [...r].sort(
+      const sorted = [...backfilled].sort(
         (a, b) => new Date(a.start).getTime() - new Date(b.start).getTime(),
       );
       setReminders(sorted);
     });
-  }, []);
+  }, [backfillOnAirStreamUrls]);
 
   useFocusEffect(load);
 
@@ -308,6 +393,12 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 12,
     fontFamily: 'Inter_600SemiBold',
+  },
+  watchLiveBtnDisabled: {
+    backgroundColor: '#374151',
+  },
+  watchLiveBtnTextDisabled: {
+    color: '#6B7280',
   },
   deleteBtn: {
     width: 28, height: 28, borderRadius: 99,

@@ -237,6 +237,14 @@ export const StorageService = {
     await AsyncStorage.setItem(KEYS.REMINDERS, JSON.stringify([reminder, ...deduped]));
   },
 
+  /**
+   * Atomically replaces the entire reminders list in storage.
+   * Use this when updating multiple reminders at once to avoid read-modify-write races.
+   */
+  async saveReminders(reminders: Reminder[]): Promise<void> {
+    await AsyncStorage.setItem(KEYS.REMINDERS, JSON.stringify(reminders));
+  },
+
   async removeReminder(id: string): Promise<void> {
     const current = await StorageService.getReminders();
     await AsyncStorage.setItem(KEYS.REMINDERS, JSON.stringify(current.filter((r) => r.id !== id)));
