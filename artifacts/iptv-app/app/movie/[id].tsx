@@ -12,6 +12,7 @@ import {
   View,
 } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
+import * as Network from 'expo-network';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -286,6 +287,11 @@ export default function MovieDetailScreen() {
             focusable
             style={({ focused }) => [styles.outlineBtn, { borderColor: 'rgba(255,255,255,0.15)' }, focused && styles.focusRing]}
             onPress={async () => {
+              const netState = await Network.getNetworkStateAsync();
+              if (!netState.isConnected || !netState.isInternetReachable) {
+                Alert.alert('No Internet', 'No internet connection — trailer unavailable.', [{ text: 'OK' }]);
+                return;
+              }
               const rawTrailer = vodInfo?.trailerUrl;
               let trailerUrl: string;
               if (rawTrailer) {
@@ -297,16 +303,11 @@ export default function MovieDetailScreen() {
                 const query = encodeURIComponent(`${params.title} official trailer`);
                 trailerUrl = `https://www.youtube.com/results?search_query=${query}`;
               }
-              // #107: Catch network errors so the button doesn't silently fail offline
-              try {
-                await WebBrowser.openBrowserAsync(trailerUrl, {
-                  presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET,
-                  toolbarColor: '#0A0A0F',
-                  controlsColor: '#3B82F6',
-                });
-              } catch {
-                Alert.alert('No Internet', "Couldn't open the trailer. Check your connection and try again.", [{ text: 'OK' }]);
-              }
+              await WebBrowser.openBrowserAsync(trailerUrl, {
+                presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET,
+                toolbarColor: '#0A0A0F',
+                controlsColor: '#3B82F6',
+              });
             }}
           >
             <Text style={styles.outlineBtnText}>▶  Watch Trailer</Text>
