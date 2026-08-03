@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   Alert,
+  DeviceEventEmitter,
   Modal,
   ScrollView,
   StyleSheet,
@@ -74,6 +75,11 @@ export default function SettingsScreen() {
 
     // #99: Re-schedule all future reminders with the new lead time
     const { tooSoon } = await rescheduleRemindersForLeadTime();
+
+    // #114: Tell the Reminders tab to re-render cards with the new lead time.
+    // This is a no-op when the tab is not mounted; when it is mounted (e.g. on
+    // a tablet split-view) useFocusEffect(load) will pick up the signal.
+    DeviceEventEmitter.emit('reminders:changed');
 
     // #110: Warn if any reminders start too soon to fire at the new lead time
     if (tooSoon > 0) {

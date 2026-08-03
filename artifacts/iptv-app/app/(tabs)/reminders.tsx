@@ -260,10 +260,14 @@ export default function RemindersScreen() {
   const [nowTs, setNowTs] = useState(() => Date.now());
   const [rescheduleTarget, setRescheduleTarget] = useState<Reminder | null>(null);
   // #100: load the global lead time so cards can display "Notifies X min before"
+  // #114: reload on every focus so the badge reflects a lead-time change made
+  // in Settings without requiring a full screen remount.
   const [reminderLeadMins, setReminderLeadMins] = useState(5);
-  useEffect(() => {
-    StorageService.getReminderLeadMins().then(setReminderLeadMins);
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      StorageService.getReminderLeadMins().then(setReminderLeadMins);
+    }, []),
+  );
 
   // Ticker: re-evaluate on-air status every 30 s while screen is focused.
   // #103: also auto-remove reminders whose programme has now ended.

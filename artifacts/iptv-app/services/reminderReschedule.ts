@@ -28,13 +28,19 @@ export async function rescheduleRemindersForLeadTime(): Promise<{ tooSoon: numbe
   const upcoming = all.filter((r) => new Date(r.start).getTime() > now);
   if (upcoming.length === 0) return { tooSoon: 0 };
 
+  // Read the current global lead-time preference so we can stamp it on every
+  // rescheduled reminder.  This keeps reminder.leadMins in sync with the
+  // global setting so the badge on reminder cards shows the correct value
+  // even before the Reminders screen regains focus.
+  const newLeadMins = await StorageService.getReminderLeadMins();
+
   let tooSoon = 0;
   const updated = await Promise.all(
     upcoming.map(async (r) => {
       await cancelReminderNotification(r.notificationId);
       const newId = (await scheduleReminderNotification(r)) ?? undefined;
       if (!newId) tooSoon++;
-      return { ...r, notificationId: newId };
+      return { ...r, notificationId: newId, leadMins: newLeadMins };
     }),
   );
 
