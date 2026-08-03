@@ -250,6 +250,8 @@ function ProgramModal({ program, channel, onClose, onWatch, colors }: {
       await StorageService.removeReminder(reminderId);
       setHasReminder(false);
     } else {
+      // Read lead time once so it is stored on the reminder (card can display it)
+      const leadMins = await StorageService.getReminderLeadMins();
       const reminder = {
         id: reminderId,
         channelId: channel.id,
@@ -261,9 +263,10 @@ function ProgramModal({ program, channel, onClose, onWatch, colors }: {
         start: program.start.toISOString(),
         end: program.end.toISOString(),
         createdAt: new Date().toISOString(),
+        leadMins,
       };
       // Schedule notification first so we can attach the id to the stored reminder
-      const notificationId = await scheduleReminderNotification(reminder) ?? undefined;
+      const notificationId = await scheduleReminderNotification(reminder, leadMins) ?? undefined;
       await StorageService.addReminder({ ...reminder, notificationId });
       setHasReminder(true);
     }
