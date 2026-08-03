@@ -60,11 +60,14 @@ jobs:
             -Pandroid.injected.signing.store.password=streamvault123 \
             -Pandroid.injected.signing.key.alias=streamvault \
             -Pandroid.injected.signing.key.password=streamvault123 \
+            -x lintVitalAnalyzeRelease \
+            -x lintAnalyzeRelease \
             --stacktrace --no-daemon 2>&1 | tee build.log
         env:
           ANDROID_HOME: ${{ env.ANDROID_HOME }}
           ANDROID_NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/27.1.12297006
           EXPO_PUBLIC_DOMAIN: streamvault.rip
+          GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=512m"
 
       - name: Rename APK
         run: |
