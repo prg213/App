@@ -255,6 +255,7 @@ function ProgramModal({ program, channel, onClose, onWatch, colors }: {
         channelId: channel.id,
         channelName: channel.name,
         channelLogo: channel.logo,
+        streamUrl: channel.streamUrl,
         programTitle: program.title,
         programDescription: program.description,
         start: program.start.toISOString(),

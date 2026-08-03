@@ -6,6 +6,9 @@ export interface Reminder {
   channelId: string;
   channelName: string;
   channelLogo?: string;
+  /** Stream URL for the channel — stored at creation time so the Reminders
+   *  screen can open the player without fetching the full channel list. */
+  streamUrl?: string;
   programTitle: string;
   programDescription?: string;
   /** ISO 8601 */

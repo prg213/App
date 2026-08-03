@@ -9,6 +9,7 @@ import {
   View,
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { StorageService } from '@/services/storage';
@@ -44,14 +45,21 @@ function ReminderCard({
   reminder,
   colors,
   onDelete,
+  onWatchLive,
 }: {
   reminder: Reminder;
   colors: any;
   onDelete: () => void;
+  onWatchLive?: () => void;
 }) {
-  const isPast = new Date(reminder.start) < new Date();
+  const now = Date.now();
+  const startMs = new Date(reminder.start).getTime();
+  const endMs = new Date(reminder.end).getTime();
+  const isPast = startMs < now;
+  const isOnAir = startMs <= now && now < endMs && !!reminder.streamUrl;
+
   return (
-    <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border, opacity: isPast ? 0.5 : 1 }]}>
+    <View style={[styles.card, { backgroundColor: colors.card, borderColor: isOnAir ? '#3B82F6' : colors.border, opacity: isPast && !isOnAir ? 0.5 : 1 }]}>
       {/* Left: channel logo */}
       <View style={[styles.logoWrap, { backgroundColor: colors.secondary }]}>
         {reminder.channelLogo ? (
@@ -74,13 +82,25 @@ function ReminderCard({
           {!isPast && (
             <Text style={[styles.badge, { color: '#22C55E' }]}>  {timeUntil(reminder.start)}</Text>
           )}
-          {isPast && <Text style={{ color: '#EF4444' }}>  Past</Text>}
+          {isPast && !isOnAir && <Text style={{ color: '#EF4444' }}>  Past</Text>}
+          {isOnAir && <Text style={{ color: '#3B82F6' }}>  On now</Text>}
         </Text>
         {reminder.programDescription ? (
           <Text style={[styles.desc, { color: colors.mutedForeground }]} numberOfLines={2}>
             {reminder.programDescription}
           </Text>
         ) : null}
+
+        {/* Watch Live button — only shown when programme is currently airing */}
+        {isOnAir && onWatchLive && (
+          <TouchableOpacity
+            style={styles.watchLiveBtn}
+            onPress={onWatchLive}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.watchLiveBtnText}>▶  Watch Live</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Right: delete button */}
@@ -98,6 +118,7 @@ function ReminderCard({
 export default function RemindersScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const [reminders, setReminders] = useState<Reminder[]>([]);
 
   const load = useCallback(() => {
@@ -142,6 +163,22 @@ export default function RemindersScreen() {
     ]);
   };
 
+  const handleWatchLive = useCallback((reminder: Reminder) => {
+    if (!reminder.streamUrl) return;
+    router.push({
+      pathname: '/player',
+      params: {
+        url: reminder.streamUrl,
+        title: reminder.channelName,
+        type: 'live',
+        logo: reminder.channelLogo ?? '',
+        epgId: reminder.channelId,
+        channelsJson: '[]',
+        channelIndex: '-1',
+      },
+    });
+  }, [router]);
+
   const upcoming = reminders.filter((r) => new Date(r.start) >= new Date());
   const past = reminders.filter((r) => new Date(r.start) < new Date());
   const hasPast = past.length > 0;
@@ -176,6 +213,7 @@ export default function RemindersScreen() {
               reminder={item}
               colors={colors}
               onDelete={() => handleDelete(item)}
+              onWatchLive={() => handleWatchLive(item)}
             />
           )}
           ListHeaderComponent={
@@ -235,6 +273,19 @@ const styles = StyleSheet.create({
   time: { fontSize: 11, fontFamily: 'Inter_400Regular', marginTop: 2 },
   badge: { fontSize: 11, fontFamily: 'Inter_600SemiBold' },
   desc: { fontSize: 11, fontFamily: 'Inter_400Regular', marginTop: 4, lineHeight: 16 },
+  watchLiveBtn: {
+    marginTop: 8,
+    alignSelf: 'flex-start',
+    backgroundColor: '#3B82F6',
+    borderRadius: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+  },
+  watchLiveBtnText: {
+    color: '#fff',
+    fontSize: 12,
+    fontFamily: 'Inter_600SemiBold',
+  },
   deleteBtn: {
     width: 28, height: 28, borderRadius: 99,
     borderWidth: 1,
