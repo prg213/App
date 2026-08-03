@@ -1,5 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
+  AppState,
+  type AppStateStatus,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -10,6 +12,7 @@ import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { Tabs } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppContext } from '@/context/AppContext';
+import { StorageService } from '@/services/storage';
 
 export const SIDEBAR_W = 220;
 
@@ -24,6 +27,46 @@ const NAV = [
   { name: 'search',    label: 'Search',    icon: '🔍' },
   { name: 'settings',  label: 'Settings',  icon: '⚙'  },
 ];
+
+// ── Upcoming reminder badge ────────────────────────────────────────────────
+
+/** Returns the count of reminders whose programme has not yet ended. */
+function useUpcomingReminderCount(): number {
+  const [count, setCount] = useState(0);
+
+  const refresh = useCallback(async () => {
+    try {
+      const reminders = await StorageService.getReminders();
+      const now = Date.now();
+      setCount(reminders.filter((r) => new Date(r.end).getTime() > now).length);
+    } catch {
+      setCount(0);
+    }
+  }, []);
+
+  useEffect(() => {
+    refresh();
+    // Re-check every 60 seconds so the badge clears as programmes end
+    const interval = setInterval(refresh, 60_000);
+
+    // Also refresh when the app comes back to the foreground
+    const subscription = AppState.addEventListener(
+      'change',
+      (nextState: AppStateStatus) => {
+        if (nextState === 'active') refresh();
+      },
+    );
+
+    return () => {
+      clearInterval(interval);
+      subscription.remove();
+    };
+  }, [refresh]);
+
+  return count;
+}
+
+// ── Server status ──────────────────────────────────────────────────────────
 
 type ServerStatus = 'checking' | 'ok' | 'error' | 'unconfigured';
 
@@ -64,6 +107,7 @@ function useServerStatus(): ServerStatus {
 function Sidebar({ state, descriptors, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const serverStatus = useServerStatus();
+  const upcomingReminderCount = useUpcomingReminderCount();
 
   const dotColor = serverStatus === 'ok' ? '#22C55E'
     : serverStatus === 'error' ? '#EF4444'
@@ -98,6 +142,8 @@ function Sidebar({ state, descriptors, navigation }: BottomTabBarProps) {
           const item = NAV.find((n) => n.name === route.name);
           if (!item) return null;
 
+          const badgeCount = item.name === 'reminders' ? upcomingReminderCount : 0;
+
           return (
             <Pressable
               key={route.key}
@@ -113,7 +159,16 @@ function Sidebar({ state, descriptors, navigation }: BottomTabBarProps) {
                 if (!event.defaultPrevented) navigation.navigate(route.name);
               }}
             >
-              <Text style={styles.navIcon}>{item.icon}</Text>
+              <View style={styles.navIconWrapper}>
+                <Text style={styles.navIcon}>{item.icon}</Text>
+                {badgeCount > 0 && (
+                  <View style={styles.badge}>
+                    <Text style={styles.badgeText}>
+                      {badgeCount > 99 ? '99+' : String(badgeCount)}
+                    </Text>
+                  </View>
+                )}
+              </View>
               <Text style={[styles.navLabel, active && styles.navLabelActive]}>
                 {item.label}
               </Text>
@@ -198,7 +253,28 @@ const styles = StyleSheet.create({
     borderColor: '#00E5FF',
     backgroundColor: 'rgba(0,229,255,0.08)',
   },
-  navIcon: { fontSize: 15, width: 22, textAlign: 'center' },
+  navIconWrapper: { width: 22, alignItems: 'center', justifyContent: 'center', position: 'relative' },
+  navIcon: { fontSize: 15, textAlign: 'center' },
+  badge: {
+    position: 'absolute',
+    top: -5,
+    right: -6,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: '#EF4444',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 3,
+    borderWidth: 1.5,
+    borderColor: '#0E0E1A',
+  },
+  badgeText: {
+    fontSize: 9,
+    fontFamily: 'Inter_700Bold',
+    color: '#FFFFFF',
+    lineHeight: 12,
+  },
   navLabel: { fontSize: 13, fontFamily: 'Inter_500Medium', color: '#6B7280' },
   navLabelActive: { fontFamily: 'Inter_600SemiBold', color: '#F2F2F2' },
   activePip: {
