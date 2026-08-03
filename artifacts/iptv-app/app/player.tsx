@@ -324,6 +324,7 @@ export default function PlayerScreen() {
   const RECONNECT_DELAY_MS = 3000;
   const [reconnectAttempt, setReconnectAttempt] = useState(0);
   const [isReconnecting, setIsReconnecting] = useState(false);
+  const [isResolvingUrl, setIsResolvingUrl] = useState(false); // #137: silent URL re-resolve in progress
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectAttemptRef = useRef(0);
   // #69: which catchup URL format is currently being tried (0 = Format B, 1 = Format A fallback)
@@ -513,6 +514,7 @@ export default function PlayerScreen() {
           // Clear any pending reconnect when the stream comes back up
           if (reconnectTimerRef.current) { clearTimeout(reconnectTimerRef.current); reconnectTimerRef.current = null; }
           setIsReconnecting(false);
+          setIsResolvingUrl(false); // #137
           setReconnectAttempt(0);
           setIsBuffering(false);
           // #131: stream is healthy — allow a fresh re-resolve attempt if it
@@ -589,6 +591,7 @@ export default function PlayerScreen() {
             // path missed when the cache was cold.
             if (activeChannelIdRef.current && !didResolveStaleUrlRef.current) {
               didResolveStaleUrlRef.current = true;
+              setIsResolvingUrl(true); // #137: show "Refreshing stream…" during silent re-resolve
               setIsReconnecting(true);
               setIsBuffering(true);
               // Capture ref values synchronously before yielding to async so
@@ -619,6 +622,7 @@ export default function PlayerScreen() {
                     setActiveUrl(freshUrl);
                     setHasError(false);
                     setIsBuffering(true);
+                    setIsResolvingUrl(false); // #137: hint clears as we hand off to player
                     setReconnectAttempt(0);
                     reconnectAttemptRef.current = 0;
                     try { player.replace(freshUrl); player.play(); } catch {}
@@ -629,6 +633,7 @@ export default function PlayerScreen() {
                 }
                 // Bail if superseded (channel switch / recovery happened while fetching)
                 if (resolveSession !== resolveSessionRef.current) return;
+                setIsResolvingUrl(false); // #137: re-resolve done; switching to normal reconnect
                 // Fresh URL unavailable or same as current — use normal reconnect
                 const attempt = reconnectAttemptRef.current + 1;
                 if (attempt <= MAX_RECONNECTS) {
@@ -786,6 +791,7 @@ export default function PlayerScreen() {
     setReconnectAttempt(0);
     reconnectAttemptRef.current = 0;  // reset ref immediately so stale closures see 0
     setIsReconnecting(false);
+    setIsResolvingUrl(false); // #137
     // #131: allow a fresh re-resolve attempt on the new channel; bump the
     // session token so any in-flight re-resolve for the previous channel
     // is discarded when it eventually completes.
@@ -1051,8 +1057,18 @@ export default function PlayerScreen() {
         </View>
       )}
 
+      {/* Refreshing stream overlay — shown during silent URL re-resolve (#137) */}
+      {isResolvingUrl && !isWeb && (
+        <View style={styles.reconnectOverlay} pointerEvents="none">
+          <View style={styles.bufferCircle}>
+            <Text style={styles.bufferIcon}>⟳</Text>
+          </View>
+          <Text style={styles.reconnectText}>Refreshing stream…</Text>
+        </View>
+      )}
+
       {/* Reconnecting overlay (live streams only) */}
-      {isReconnecting && !isWeb && (
+      {isReconnecting && !isResolvingUrl && !isWeb && (
         <View style={styles.reconnectOverlay} pointerEvents="none">
           <View style={styles.bufferCircle}>
             <Text style={styles.bufferIcon}>↺</Text>
