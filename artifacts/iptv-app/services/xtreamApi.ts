@@ -248,6 +248,7 @@ export async function getXtreamVodInfo(
         releasedate?: string;
         rating?: string;
         duration_secs?: number;
+        youtube_trailer?: string;
       };
       movie_data?: {
         stream_id: number;
@@ -276,6 +277,7 @@ export async function getXtreamVodInfo(
         ? `${Math.floor(info.duration_secs / 60)} min`
         : undefined,
       containerExtension: movie_data.container_extension || 'mp4',
+      trailerUrl: info?.youtube_trailer || undefined,
     };
   } catch {
     return null;

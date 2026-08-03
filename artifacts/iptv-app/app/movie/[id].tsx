@@ -122,14 +122,17 @@ export default function MovieDetailScreen() {
     }, [params.id]),
   );
 
+  // needsInfo: true when metadata (plot/cast) isn't already in route params
   const needsInfo = isXtream && (!params.plot || !params.cast);
+  // Always fetch VOD info for Xtream content — even when metadata is pre-populated —
+  // so we can use the provider-supplied trailer URL when available.
   const { data: vodInfo, isLoading: infoLoading } = useQuery({
     queryKey: ['vod-info', params.id, credentials],
     queryFn: () => getXtreamVodInfo(
       { host: credentials!.host!, username: credentials!.username!, password: credentials!.password! },
       params.id,
     ),
-    enabled: needsInfo,
+    enabled: isXtream,
     staleTime: 15 * 60_000,
   });
 
@@ -282,15 +285,22 @@ export default function MovieDetailScreen() {
             focusable
             style={({ focused }) => [styles.outlineBtn, { borderColor: 'rgba(255,255,255,0.15)' }, focused && styles.focusRing]}
             onPress={async () => {
-              const query = encodeURIComponent(`${params.title} official trailer`);
-              await WebBrowser.openBrowserAsync(
-                `https://www.youtube.com/results?search_query=${query}`,
-                {
-                  presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET,
-                  toolbarColor: '#0A0A0F',
-                  controlsColor: '#3B82F6',
-                },
-              );
+              const rawTrailer = vodInfo?.trailerUrl;
+              let trailerUrl: string;
+              if (rawTrailer) {
+                // Full URL provided by the server — use as-is; otherwise treat as a YouTube video ID
+                trailerUrl = rawTrailer.startsWith('http')
+                  ? rawTrailer
+                  : `https://www.youtube.com/watch?v=${rawTrailer}`;
+              } else {
+                const query = encodeURIComponent(`${params.title} official trailer`);
+                trailerUrl = `https://www.youtube.com/results?search_query=${query}`;
+              }
+              await WebBrowser.openBrowserAsync(trailerUrl, {
+                presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET,
+                toolbarColor: '#0A0A0F',
+                controlsColor: '#3B82F6',
+              });
             }}
           >
             <Text style={styles.outlineBtnText}>▶  Watch Trailer</Text>

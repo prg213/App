@@ -94,6 +94,8 @@ export interface Movie {
   containerExtension: string;
   /** Unix timestamp (seconds) when this stream was added to the server */
   added?: number;
+  /** YouTube video ID or full URL from the provider's VOD info */
+  trailerUrl?: string;
 }
 
 export interface Series {
