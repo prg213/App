@@ -1,5 +1,6 @@
-import React, { useCallback, useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, View } from 'react-native';
+import { Toast } from '@/components/Toast';
 import {
   addNotificationTapListener,
   cancelAndPruneExpiredReminders,
@@ -51,6 +52,7 @@ function RootLayoutNav() {
   const { isLocked, parentalReady, unlockApp, resetAndLogout } = useParentalContext();
   const router = useRouter();
   const segments = useSegments();
+  const [expiredToast, setExpiredToast] = useState<string | null>(null);
 
   useEffect(() => {
     if (isLoading) return;
@@ -69,7 +71,12 @@ function RootLayoutNav() {
     requestNotificationPermissions();
     // Cancel notifications and remove reminders whose programme has already
     // ended (handles clock drift and long app-closed periods).
-    cancelAndPruneExpiredReminders();
+    cancelAndPruneExpiredReminders().then((expiredCount) => {
+      if (expiredCount > 0) {
+        const label = expiredCount === 1 ? 'reminder' : 'reminders';
+        setExpiredToast(`${expiredCount} ${label} removed — programme already ended`);
+      }
+    });
     // Fire-and-forget: restores reminders lost when Android cancelled all
     // alarms at device reboot.
     rescheduleStaleReminders();
@@ -103,13 +110,22 @@ function RootLayoutNav() {
   }
 
   return (
-    <Stack screenOptions={{ headerShown: false, animation: 'fade' }}>
-      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      <Stack.Screen name="activation" options={{ headerShown: false, gestureEnabled: false }} />
-      <Stack.Screen name="player" options={{ headerShown: false, presentation: 'fullScreenModal', animation: 'none' }} />
-      <Stack.Screen name="movie/[id]" options={{ headerShown: false }} />
-      <Stack.Screen name="series/[id]" options={{ headerShown: false }} />
-    </Stack>
+    <View style={{ flex: 1 }}>
+      <Stack screenOptions={{ headerShown: false, animation: 'fade' }}>
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="activation" options={{ headerShown: false, gestureEnabled: false }} />
+        <Stack.Screen name="player" options={{ headerShown: false, presentation: 'fullScreenModal', animation: 'none' }} />
+        <Stack.Screen name="movie/[id]" options={{ headerShown: false }} />
+        <Stack.Screen name="series/[id]" options={{ headerShown: false }} />
+      </Stack>
+      {expiredToast !== null && (
+        <Toast
+          message={expiredToast}
+          visible
+          onHide={() => setExpiredToast(null)}
+        />
+      )}
+    </View>
   );
 }
 

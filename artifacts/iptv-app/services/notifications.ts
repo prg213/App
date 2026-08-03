@@ -158,12 +158,15 @@ export async function rescheduleStaleReminders(): Promise<void> {
  *   2. User tuned to the channel during the programme window before the
  *      notification had a chance to fire.
  *
+ * Returns the number of reminders removed because their programme already ended
+ * (case 1 only) so the caller can notify the user if needed.
+ *
  * Safe to call multiple times.
  */
-export async function cancelAndPruneExpiredReminders(): Promise<void> {
+export async function cancelAndPruneExpiredReminders(): Promise<number> {
   try {
     const reminders = await StorageService.getReminders();
-    if (reminders.length === 0) return;
+    if (reminders.length === 0) return 0;
 
     const now = Date.now();
 
@@ -176,12 +179,18 @@ export async function cancelAndPruneExpiredReminders(): Promise<void> {
       if (ch.id) recentWatchedAt.set(ch.id, ch.watchedAt);
     }
 
+    // Track how many are pruned because the programme ended (not user-watched).
+    let expiredCount = 0;
+
     const toPrune = reminders.filter((r) => {
       const startMs = new Date(r.start).getTime();
       const endMs   = new Date(r.end).getTime();
 
       // Case 1: programme has already ended.
-      if (endMs <= now) return true;
+      if (endMs <= now) {
+        expiredCount++;
+        return true;
+      }
 
       // Case 2: user watched this channel during the programme's time window.
       const watchedAt = recentWatchedAt.get(r.channelId);
@@ -190,15 +199,18 @@ export async function cancelAndPruneExpiredReminders(): Promise<void> {
       return false;
     });
 
-    if (toPrune.length === 0) return;
+    if (toPrune.length === 0) return 0;
 
     // Cancel any lingering scheduled notifications, then remove from storage.
     await Promise.all(toPrune.map((r) => cancelReminderNotification(r.notificationId)));
     for (const r of toPrune) {
       await StorageService.removeReminder(r.id);
     }
+
+    return expiredCount;
   } catch (err) {
     console.warn('[notifications] cancelAndPruneExpiredReminders failed', err);
+    return 0;
   }
 }
 
