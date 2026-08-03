@@ -236,9 +236,11 @@ function ProgramModal({ program, channel, onClose, onWatch, colors }: {
   const isFuture = program.start > now;
   const reminderId = `${channel.id}_${program.start.toISOString()}`;
   const [hasReminder, setHasReminder] = React.useState(false);
+  const [leadMins, setLeadMins] = React.useState<number>(10);
 
   // Initial load
   React.useEffect(() => {
+    StorageService.getReminderLeadMins().then(setLeadMins);
     if (isFuture) {
       StorageService.hasReminder(reminderId).then(setHasReminder);
     }
@@ -354,7 +356,7 @@ function ProgramModal({ program, channel, onClose, onWatch, colors }: {
                 activeOpacity={0.8}
               >
                 <Text style={styles.watchBtnText}>
-                  {hasReminder ? '🔔 Remove Reminder' : '🔔 Set Reminder'}
+                  {hasReminder ? '🔔 Remove Reminder' : `🔔 Set Reminder · ${leadMins} min before`}
                 </Text>
               </TouchableOpacity>
             )}
