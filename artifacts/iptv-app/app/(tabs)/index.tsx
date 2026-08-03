@@ -724,6 +724,7 @@ export default function LiveTVScreen() {
       url: ch.streamUrl,
       title: ch.name,
       epgId: ch.epgId ?? ch.id,
+      channelId: ch.id,
     }));
     const idx = channels.findIndex((ch) => ch.id === selectedChannel.id);
 
@@ -735,6 +736,7 @@ export default function LiveTVScreen() {
         type: 'live',
         logo: selectedChannel.logo ?? '',
         epgId: selectedChannel.epgId ?? selectedChannel.id,
+        channelId: selectedChannel.id,
         channelsJson: JSON.stringify(chList),
         channelIndex: String(idx),
       },
@@ -755,6 +757,7 @@ export default function LiveTVScreen() {
       url: c.streamUrl,
       title: c.name,
       epgId: c.epgId ?? c.id,
+      channelId: c.id,
     }));
     const idx = channels.findIndex((c) => c.id === ch.id);
 
@@ -766,6 +769,7 @@ export default function LiveTVScreen() {
         type: 'live',
         logo: ch.logo ?? '',
         epgId: ch.epgId ?? ch.id,
+        channelId: ch.id,
         stopOnBack: 'true',
         // If the channel isn't in the current category list, skip nav arrows
         channelsJson: idx >= 0 ? JSON.stringify(chList) : '[]',

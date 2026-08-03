@@ -148,6 +148,107 @@ export async function rescheduleStaleReminders(): Promise<void> {
 }
 
 /**
+ * On app start, cancel any pending notification for reminders whose programme
+ * has already ended OR that the user already watched (detected via the
+ * recently-watched channel list), then remove those reminders from AsyncStorage.
+ *
+ * Handles two cases:
+ *   1. Device clock drift / long app-closed period — programme end has passed.
+ *   2. User tuned to the channel during the programme window before the
+ *      notification had a chance to fire.
+ *
+ * Safe to call multiple times.
+ */
+export async function cancelAndPruneExpiredReminders(): Promise<void> {
+  try {
+    const reminders = await StorageService.getReminders();
+    if (reminders.length === 0) return;
+
+    const now = Date.now();
+
+    // Build a quick-lookup map of recently-watched channel timestamps so we
+    // can check O(1) per reminder whether the user tuned in during the window.
+    const recentChannels = await StorageService.getRecentChannels();
+    // Map channelId → watchedAt (Unix ms) for all recently-watched channels
+    const recentWatchedAt = new Map<string, number>();
+    for (const ch of recentChannels) {
+      if (ch.id) recentWatchedAt.set(ch.id, ch.watchedAt);
+    }
+
+    const toPrune = reminders.filter((r) => {
+      const startMs = new Date(r.start).getTime();
+      const endMs   = new Date(r.end).getTime();
+
+      // Case 1: programme has already ended.
+      if (endMs <= now) return true;
+
+      // Case 2: user watched this channel during the programme's time window.
+      const watchedAt = recentWatchedAt.get(r.channelId);
+      if (watchedAt !== undefined && watchedAt >= startMs && watchedAt <= endMs) return true;
+
+      return false;
+    });
+
+    if (toPrune.length === 0) return;
+
+    // Cancel any lingering scheduled notifications, then remove from storage.
+    await Promise.all(toPrune.map((r) => cancelReminderNotification(r.notificationId)));
+    for (const r of toPrune) {
+      await StorageService.removeReminder(r.id);
+    }
+  } catch (err) {
+    console.warn('[notifications] cancelAndPruneExpiredReminders failed', err);
+  }
+}
+
+/**
+ * When the user opens a live channel in the player, cancel and remove any
+ * reminder for a programme currently airing on that channel.  This prevents
+ * a "Starting soon" notification from firing for a programme the user is
+ * already watching.
+ *
+ * Accepts both the raw channel ID (stored on the Reminder) and the EPG ID
+ * (which may differ on some providers) so reminders are found regardless of
+ * which identifier the player exposes.  Safe to call with all-undefined args
+ * (no-op).
+ */
+export async function cancelRemindersForActiveChannel(opts: {
+  channelId?: string | null;
+  epgId?: string | null;
+}): Promise<void> {
+  const { channelId, epgId } = opts;
+  if (!channelId && !epgId) return;
+  try {
+    const reminders = await StorageService.getReminders();
+    const now = Date.now();
+
+    // Build a set of identifiers to match against for O(1) lookups.
+    const ids = new Set<string>();
+    if (channelId) ids.add(channelId);
+    if (epgId) ids.add(epgId);
+
+    // Match reminders for this channel whose programme window overlaps now —
+    // i.e. the user is watching the programme the reminder was set for.
+    const active = reminders.filter((r) => {
+      if (!ids.has(r.channelId)) return false;
+      const startMs = new Date(r.start).getTime();
+      const endMs   = new Date(r.end).getTime();
+      // Programme is currently airing (or just ended — belt-and-suspenders)
+      return now >= startMs && now <= endMs + 60_000; // 1-min grace window
+    });
+
+    if (active.length === 0) return;
+
+    await Promise.all(active.map((r) => cancelReminderNotification(r.notificationId)));
+    for (const r of active) {
+      await StorageService.removeReminder(r.id);
+    }
+  } catch (err) {
+    console.warn('[notifications] cancelRemindersForActiveChannel failed', err);
+  }
+}
+
+/**
  * Cancel a previously scheduled notification.  Safe to call with a null /
  * undefined id (no-op).
  */

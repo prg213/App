@@ -2,6 +2,7 @@ import React, { useCallback, useEffect } from 'react';
 import { ActivityIndicator, Alert, View } from 'react-native';
 import {
   addNotificationTapListener,
+  cancelAndPruneExpiredReminders,
   requestNotificationPermissions,
   rescheduleStaleReminders,
   setupNotifications,
@@ -66,6 +67,9 @@ function RootLayoutNav() {
   useEffect(() => {
     if (!isActivated) return;
     requestNotificationPermissions();
+    // Cancel notifications and remove reminders whose programme has already
+    // ended (handles clock drift and long app-closed periods).
+    cancelAndPruneExpiredReminders();
     // Fire-and-forget: restores reminders lost when Android cancelled all
     // alarms at device reboot.
     rescheduleStaleReminders();

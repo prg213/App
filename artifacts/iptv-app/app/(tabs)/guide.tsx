@@ -695,6 +695,7 @@ function FullGuide({
               url: ch.streamUrl,
               title: ch.name,
               epgId: ch.epgId ?? ch.id,
+              channelId: ch.id,
             }));
             const idx = channels.findIndex((ch) => ch.id === selected!.channel.id);
             setSelected(null);
@@ -706,6 +707,7 @@ function FullGuide({
                 type: 'live',
                 logo: selected!.channel.logo ?? '',
                 epgId: selected!.channel.epgId ?? selected!.channel.id,
+                channelId: selected!.channel.id,
                 channelsJson: JSON.stringify(chList),
                 channelIndex: String(idx),
               },

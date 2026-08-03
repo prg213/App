@@ -309,6 +309,7 @@ export default function SearchScreen() {
         type: 'live',
         logo: ch.logo ?? '',
         epgId: ch.epgId ?? ch.id,
+        channelId: ch.id,
         channelsJson: JSON.stringify([]),
         channelIndex: '0',
       },

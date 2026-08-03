@@ -26,6 +26,7 @@ import { useQuery } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
 import { useAppContext } from '@/context/AppContext';
 import { StorageService } from '@/services/storage';
+import { cancelRemindersForActiveChannel } from '@/services/notifications';
 import { getXtreamXmltvUrl, getXtreamCatchupUrls } from '@/services/xtreamApi';
 import { fetchAndParseXmltv } from '@/services/epgService';
 import type { EpgProgram } from '@/types';
@@ -39,7 +40,7 @@ const FITS = [
   { value: 'fill' as const, label: 'Stretch' },
 ];
 
-type ChannelEntry = { url: string; title: string; epgId: string };
+type ChannelEntry = { url: string; title: string; epgId: string; channelId?: string };
 
 function buildCreds(c: ReturnType<typeof useAppContext>['credentials']) {
   return { host: c!.host!, username: c!.username!, password: c!.password! };
@@ -243,6 +244,8 @@ export default function PlayerScreen() {
     title: string;
     type: 'live' | 'vod' | 'series';
     epgId?: string;
+    /** Raw channel ID (may differ from epgId on some providers). Used for reminder matching. */
+    channelId?: string;
     channelsJson?: string;
     channelIndex?: string;
     /** Stable content ID used as the history key (movie stream ID or episode stream ID). */
@@ -473,6 +476,10 @@ export default function PlayerScreen() {
       liveUrlRef.current = params.url;
       try { player.replace(params.url); player.play(); } catch {}
     }
+    // Cancel any reminder whose programme is currently airing on this channel —
+    // the user is already watching, so the notification would be redundant.
+    // Pass both channelId and epgId: they can differ on some providers.
+    cancelRemindersForActiveChannel({ channelId: params.channelId, epgId: params.epgId });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -684,6 +691,8 @@ export default function PlayerScreen() {
     reconnectAttemptRef.current = 0;  // reset ref immediately so stale closures see 0
     setIsReconnecting(false);
     setLastWatchedUrl(entry.url);
+    // Cancel any currently-airing reminder for the channel we're switching to.
+    cancelRemindersForActiveChannel({ channelId: entry.channelId, epgId: entry.epgId });
     // Reset track lists — new stream will re-populate them on readyToPlay
     setAudioTracks([]);
     setSubtitleTracks([]);
