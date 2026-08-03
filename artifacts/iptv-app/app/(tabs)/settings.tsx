@@ -21,11 +21,8 @@ import {
   getXtreamAccountInfo,
   parseXtreamCredsFromM3u,
 } from '@/services/xtreamApi';
-import {
-  scheduleReminderNotification,
-  cancelReminderNotification,
-} from '@/services/notifications';
 import { StorageService } from '@/services/storage';
+import { rescheduleRemindersForLeadTime } from '@/services/reminderReschedule';
 import type { MaxRating } from '@/types';
 
 const LEAD_TIME_OPTIONS: { value: 5 | 10 | 15; label: string }[] = [
@@ -76,24 +73,7 @@ export default function SettingsScreen() {
     setShowLeadTimeSheet(false);
 
     // #99: Re-schedule all future reminders with the new lead time
-    const all = await StorageService.getReminders();
-    const now = Date.now();
-    const upcoming = all.filter((r) => new Date(r.start).getTime() > now);
-    if (upcoming.length === 0) return;
-
-    let tooSoon = 0;
-    const updated = await Promise.all(
-      upcoming.map(async (r) => {
-        await cancelReminderNotification(r.notificationId);
-        const newId = (await scheduleReminderNotification(r)) ?? undefined;
-        if (!newId) tooSoon++;
-        return { ...r, notificationId: newId };
-      }),
-    );
-    await StorageService.saveReminders([
-      ...all.filter((r) => new Date(r.start).getTime() <= now),
-      ...updated,
-    ]);
+    const { tooSoon } = await rescheduleRemindersForLeadTime();
 
     // #110: Warn if any reminders start too soon to fire at the new lead time
     if (tooSoon > 0) {
