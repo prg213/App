@@ -26,6 +26,7 @@ const KEYS = {
   PREF_REMINDER_LEAD_MINS: 'sv_pref_reminder_lead_mins',
   PREF_SEARCH_TYPE: 'sv_pref_search_type',
   PREF_SEARCH_QUERY: 'sv_pref_search_query',
+  BACKFILL_TS: 'sv_backfill_ts',
 };
 
 export const StorageService = {
@@ -394,5 +395,25 @@ export const StorageService = {
         await AsyncStorage.removeItem(KEYS.PREF_SEARCH_QUERY);
       }
     } catch {}
+  },
+
+  // ── Backfill timestamp (AsyncStorage) ─────────────────────────────────────
+
+  /**
+   * Returns the epoch-ms timestamp of the last successful stream-URL backfill,
+   * or 0 if none has been recorded yet.
+   */
+  async getLastBackfillTs(): Promise<number> {
+    try {
+      const val = await AsyncStorage.getItem(KEYS.BACKFILL_TS);
+      return val ? parseInt(val, 10) : 0;
+    } catch {
+      return 0;
+    }
+  },
+
+  /** Persists the current time as the last backfill timestamp. */
+  async setLastBackfillTs(ts: number): Promise<void> {
+    await AsyncStorage.setItem(KEYS.BACKFILL_TS, String(ts));
   },
 };
