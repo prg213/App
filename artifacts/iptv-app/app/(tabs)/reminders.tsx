@@ -6,20 +6,13 @@ import {
   Image,
   LayoutAnimation,
   Modal,
-  Platform,
   Pressable,
   RefreshControl,
   StyleSheet,
   Text,
   TouchableOpacity,
-  UIManager,
   View,
 } from 'react-native';
-
-// Enable LayoutAnimation on Android (#120)
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
 import { useFocusEffect } from 'expo-router';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -33,15 +26,9 @@ import {
 import { useAppContext } from '@/context/AppContext';
 import { getXtreamLiveStreams } from '@/services/xtreamApi';
 import { fetchAndParseM3U } from '@/services/m3uParser';
+import { lastNetworkRefreshByCredential, NETWORK_REFRESH_INTERVAL_MS } from '@/services/reminderUrlCache';
 import type { Reminder, Channel } from '@/types';
 import { SIDEBAR_W } from './_layout';
-
-/**
- * Per-credential timestamps of the last successful network channel-list fetch.
- * Keyed by a stable credential signature (host + username) so account switches
- * never re-use another account's refresh window.
- */
-import { lastNetworkRefreshByCredential, NETWORK_REFRESH_INTERVAL_MS } from '@/services/reminderUrlCache';
 
 function credentialSig(c: ReturnType<typeof useAppContext>['credentials']): string {
   // Xtream accounts are identified by host + username.
