@@ -557,6 +557,9 @@ export default function RemindersScreen() {
         type: 'live',
         logo: reminder.channelLogo ?? '',
         epgId: reminder.channelId,
+        // #131: pass channelId so the player can re-resolve a stale stream URL
+        // from the current channel list before surfacing an error screen.
+        channelId: reminder.channelId,
         channelsJson: '[]',
         channelIndex: '-1',
       },

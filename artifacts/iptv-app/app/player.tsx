@@ -27,7 +27,8 @@ import * as Haptics from 'expo-haptics';
 import { useAppContext } from '@/context/AppContext';
 import { StorageService } from '@/services/storage';
 import { cancelRemindersForActiveChannel } from '@/services/notifications';
-import { getXtreamXmltvUrl, getXtreamCatchupUrls } from '@/services/xtreamApi';
+import { getXtreamXmltvUrl, getXtreamCatchupUrls, getXtreamLiveStreams } from '@/services/xtreamApi';
+import { fetchAndParseM3U } from '@/services/m3uParser';
 import { fetchAndParseXmltv } from '@/services/epgService';
 import type { EpgProgram } from '@/types';
 import { useCast } from '@/hooks/useCast';
@@ -386,6 +387,27 @@ export default function PlayerScreen() {
     return () => sub.remove();
   }, [player, isLive, isWeb]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // #131: Always-current credentials ref so the async re-resolve closure reads
+  // the latest value even though the statusChange listener is set up once.
+  const credentialsRef = useRef(credentials);
+  useEffect(() => { credentialsRef.current = credentials; }, [credentials]);
+
+  // #131: Tracks whether we've already attempted a stale-URL re-resolution for
+  // the current stream session.  Reset whenever the player loads a new URL so a
+  // fresh resolve attempt is allowed after a channel switch.
+  const didResolveStaleUrlRef = useRef(false);
+
+  // #131: Always-current channel ID so the re-resolve closure looks up the
+  // right channel after a prev/next switch (params.channelId is fixed from
+  // the route and becomes stale after in-player navigation).
+  const activeChannelIdRef = useRef(params.channelId ?? '');
+
+  // #131: Monotonically-incrementing session token.  Incremented on every
+  // channel switch and on readyToPlay so that any in-flight re-resolve
+  // async closure can detect it has been superseded and bail out safely,
+  // preventing a stale fetch from overwriting the new channel's playback.
+  const resolveSessionRef = useRef(0);
+
   // #30: While the error screen is showing for a live stream, retry every 10 s
   // so the stream auto-recovers when the network returns while already foregrounded
   // (the AppState handler covers the foreground-transition case; this covers the
@@ -493,6 +515,12 @@ export default function PlayerScreen() {
           setIsReconnecting(false);
           setReconnectAttempt(0);
           setIsBuffering(false);
+          // #131: stream is healthy — allow a fresh re-resolve attempt if it
+          // later errors again (e.g. provider rotates stream IDs mid-session).
+          // Bump the session token so any in-flight re-resolve for the
+          // previous error attempt is silently discarded.
+          didResolveStaleUrlRef.current = false;
+          resolveSessionRef.current += 1;
           // Seek to saved position (only once, on first ready)
           if (!didInitialSeekRef.current && startAtSecs > 0) {
             didInitialSeekRef.current = true;
@@ -552,6 +580,74 @@ export default function PlayerScreen() {
 
           // Auto-reconnect only for live streams
           if (isLive) {
+            // #131: Before burning reconnect attempts, try re-resolving the stream
+            // URL from the current channel list.  A 404/403 from a stale URL is
+            // indistinguishable from a true network error at this layer, so we
+            // always attempt one re-resolve on the first failure for any live
+            // stream that carries a channelId (reminder-launched or channel-list
+            // launched).  This catches rotated stream IDs that the focus-refresh
+            // path missed when the cache was cold.
+            if (activeChannelIdRef.current && !didResolveStaleUrlRef.current) {
+              didResolveStaleUrlRef.current = true;
+              setIsReconnecting(true);
+              setIsBuffering(true);
+              // Capture ref values synchronously before yielding to async so
+              // we can detect a superseded session once the fetch completes.
+              const resolveChannelId = activeChannelIdRef.current;
+              const resolveSession = resolveSessionRef.current;
+              (async () => {
+                try {
+                  const creds = credentialsRef.current;
+                  let freshUrl: string | undefined;
+                  if (creds?.type === 'xtream' && creds.host && creds.username && creds.password) {
+                    const streams = await getXtreamLiveStreams({
+                      host: creds.host,
+                      username: creds.username,
+                      password: creds.password,
+                    });
+                    freshUrl = streams.find((ch) => ch.id === resolveChannelId)?.streamUrl;
+                  } else if (creds?.m3uUrl) {
+                    const parsed = await fetchAndParseM3U(creds.m3uUrl);
+                    freshUrl = parsed.channels.find((ch) => ch.id === resolveChannelId)?.streamUrl;
+                  }
+                  // Bail out if the user has switched channels or the stream
+                  // recovered on its own while the fetch was in flight.
+                  if (resolveSession !== resolveSessionRef.current) return;
+                  if (freshUrl && freshUrl !== activeUrlRef.current) {
+                    // Got a genuinely different URL — retry silently
+                    activeUrlRef.current = freshUrl;
+                    setActiveUrl(freshUrl);
+                    setHasError(false);
+                    setIsBuffering(true);
+                    setReconnectAttempt(0);
+                    reconnectAttemptRef.current = 0;
+                    try { player.replace(freshUrl); player.play(); } catch {}
+                    return; // wait for next statusChange
+                  }
+                } catch {
+                  // Re-resolution request failed — fall through to normal reconnect
+                }
+                // Bail if superseded (channel switch / recovery happened while fetching)
+                if (resolveSession !== resolveSessionRef.current) return;
+                // Fresh URL unavailable or same as current — use normal reconnect
+                const attempt = reconnectAttemptRef.current + 1;
+                if (attempt <= MAX_RECONNECTS) {
+                  setReconnectAttempt(attempt);
+                  reconnectAttemptRef.current = attempt;
+                  setIsReconnecting(true);
+                  setIsBuffering(true);
+                  if (reconnectTimerRef.current) { clearTimeout(reconnectTimerRef.current); reconnectTimerRef.current = null; }
+                  reconnectTimerRef.current = setTimeout(() => {
+                    try { player.replace(activeUrlRef.current); player.play(); } catch {}
+                  }, RECONNECT_DELAY_MS);
+                } else {
+                  setIsReconnecting(false);
+                  if (!isBackgroundRef.current) setHasError(true);
+                }
+              })();
+              return;
+            }
+
             const attempt = reconnectAttemptRef.current + 1;
             if (attempt <= MAX_RECONNECTS) {
               setReconnectAttempt(attempt);
@@ -690,6 +786,12 @@ export default function PlayerScreen() {
     setReconnectAttempt(0);
     reconnectAttemptRef.current = 0;  // reset ref immediately so stale closures see 0
     setIsReconnecting(false);
+    // #131: allow a fresh re-resolve attempt on the new channel; bump the
+    // session token so any in-flight re-resolve for the previous channel
+    // is discarded when it eventually completes.
+    didResolveStaleUrlRef.current = false;
+    activeChannelIdRef.current = entry.channelId ?? '';
+    resolveSessionRef.current += 1;
     setLastWatchedUrl(entry.url);
     // Cancel any currently-airing reminder for the channel we're switching to.
     cancelRemindersForActiveChannel({ channelId: entry.channelId, epgId: entry.epgId });
