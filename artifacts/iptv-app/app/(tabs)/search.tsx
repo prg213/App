@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { useAppContext } from '@/context/AppContext';
 import { useParentalContext, isContentBlocked } from '@/context/ParentalContext';
+import { StorageService } from '@/services/storage';
 import {
   getXtreamLiveStreams,
   getXtreamVodStreams,
@@ -197,6 +198,16 @@ export default function SearchScreen() {
   const [query, setQuery] = useState('');
   const [searchType, setSearchType] = useState<SearchType>('all');
   const inputRef = useRef<TextInput>(null);
+
+  // Restore the last-used search filter from storage on mount
+  useEffect(() => {
+    StorageService.getPrefSearchType().then((saved) => setSearchType(saved));
+  }, []);
+
+  const handleSearchTypeChange = (type: SearchType) => {
+    setSearchType(type);
+    StorageService.setPrefSearchType(type);
+  };
 
   const isXtream = credentials?.type === 'xtream';
   const creds = isXtream ? buildCreds(credentials) : null;
@@ -496,7 +507,7 @@ export default function SearchScreen() {
                   { borderColor: active ? colors.primary : colors.border,
                     backgroundColor: active ? 'rgba(59,130,246,0.15)' : colors.secondary },
                 ]}
-                onPress={() => setSearchType(t.id)}
+                onPress={() => handleSearchTypeChange(t.id)}
                 activeOpacity={0.7}
               >
                 <Text style={styles.pillIcon}>{t.icon}</Text>

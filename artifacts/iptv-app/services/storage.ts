@@ -24,6 +24,7 @@ const KEYS = {
   PREF_AUDIO_LANG: 'sv_pref_audio_lang',
   PREF_SUBTITLE_LANG: 'sv_pref_subtitle_lang',
   PREF_REMINDER_LEAD_MINS: 'sv_pref_reminder_lead_mins',
+  PREF_SEARCH_TYPE: 'sv_pref_search_type',
 };
 
 export const StorageService = {
@@ -343,5 +344,24 @@ export const StorageService = {
   /** Persists the user's chosen reminder lead time (5, 10, or 15 minutes). */
   async setReminderLeadMins(mins: 5 | 10 | 15): Promise<void> {
     await AsyncStorage.setItem(KEYS.PREF_REMINDER_LEAD_MINS, String(mins));
+  },
+
+  // ── Preferred search type (AsyncStorage) ──────────────────────────────────
+
+  /**
+   * Returns the last-used search filter ('all' | 'live' | 'movies' | 'series').
+   * Defaults to 'all' if no preference has been saved yet.
+   */
+  async getPrefSearchType(): Promise<'all' | 'live' | 'movies' | 'series'> {
+    try {
+      const val = await AsyncStorage.getItem(KEYS.PREF_SEARCH_TYPE);
+      if (val === 'all' || val === 'live' || val === 'movies' || val === 'series') return val;
+    } catch {}
+    return 'all';
+  },
+
+  /** Persists the user's chosen search filter type. */
+  async setPrefSearchType(type: 'all' | 'live' | 'movies' | 'series'): Promise<void> {
+    await AsyncStorage.setItem(KEYS.PREF_SEARCH_TYPE, type);
   },
 };
