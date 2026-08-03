@@ -160,8 +160,8 @@ const MediaResultRow = React.memo(function MediaResultRow({
           </Text>
         ) : null}
       </View>
-      {/* #106: trailer shortcut for series rows */}
-      {kind === 'series' && onTrailer && (
+      {/* #106/#123: trailer shortcut for movie and series rows */}
+      {onTrailer && (
         <TouchableOpacity
           style={styles.trailerPill}
           onPress={(e) => { (e as any).stopPropagation?.(); onTrailer(); }}
@@ -414,6 +414,23 @@ export default function SearchScreen() {
             query={query}
             colors={colors}
             onPress={() => handleMoviePress(item.item)}
+            onTrailer={async () => {
+              // #123: quick trailer access for movies — prefer provider URL, fall back to YouTube search
+              const providerUrl = item.item.trailerUrl
+                ? (item.item.trailerUrl.startsWith('http')
+                    ? item.item.trailerUrl
+                    : `https://www.youtube.com/watch?v=${item.item.trailerUrl}`)
+                : null;
+              const url = providerUrl ?? `https://www.youtube.com/results?search_query=${encodeURIComponent(`${item.item.name} official trailer`)}`;
+              try {
+                await WebBrowser.openBrowserAsync(url, {
+                  presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET,
+                  toolbarColor: '#0A0A0F', controlsColor: '#3B82F6',
+                });
+              } catch {
+                Alert.alert('No Internet', "Couldn't open the trailer. Check your connection and try again.", [{ text: 'OK' }]);
+              }
+            }}
           />
         );
 
@@ -428,13 +445,18 @@ export default function SearchScreen() {
             colors={colors}
             onPress={() => handleSeriesPress(item.item)}
             onTrailer={async () => {
-              // #106: quick trailer access without opening the detail page
-              const q = encodeURIComponent(`${item.item.name} official trailer`);
+              // #106/#124: prefer provider trailerUrl, fall back to YouTube search
+              const providerUrl = item.item.trailerUrl
+                ? (item.item.trailerUrl.startsWith('http')
+                    ? item.item.trailerUrl
+                    : `https://www.youtube.com/watch?v=${item.item.trailerUrl}`)
+                : null;
+              const url = providerUrl ?? `https://www.youtube.com/results?search_query=${encodeURIComponent(`${item.item.name} official trailer`)}`;
               try {
-                await WebBrowser.openBrowserAsync(
-                  `https://www.youtube.com/results?search_query=${q}`,
-                  { presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET, toolbarColor: '#0A0A0F', controlsColor: '#3B82F6' },
-                );
+                await WebBrowser.openBrowserAsync(url, {
+                  presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET,
+                  toolbarColor: '#0A0A0F', controlsColor: '#3B82F6',
+                });
               } catch {
                 Alert.alert('No Internet', "Couldn't open the trailer. Check your connection and try again.", [{ text: 'OK' }]);
               }

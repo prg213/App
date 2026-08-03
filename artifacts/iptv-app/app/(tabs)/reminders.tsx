@@ -1,16 +1,25 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
   DeviceEventEmitter,
   FlatList,
   Image,
+  LayoutAnimation,
   Modal,
+  Platform,
   Pressable,
+  RefreshControl,
   StyleSheet,
   Text,
   TouchableOpacity,
+  UIManager,
   View,
 } from 'react-native';
+
+// Enable LayoutAnimation on Android (#120)
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 import { useFocusEffect } from 'expo-router';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -32,8 +41,7 @@ import { SIDEBAR_W } from './_layout';
  * Keyed by a stable credential signature (host + username) so account switches
  * never re-use another account's refresh window.
  */
-const lastNetworkRefreshByCredential = new Map<string, number>();
-const NETWORK_REFRESH_INTERVAL_MS = 15 * 60_000; // 15 minutes
+import { lastNetworkRefreshByCredential, NETWORK_REFRESH_INTERVAL_MS } from '@/services/reminderUrlCache';
 
 function credentialSig(c: ReturnType<typeof useAppContext>['credentials']): string {
   // Xtream accounts are identified by host + username.
@@ -203,6 +211,10 @@ function ReminderCard({
             ⏰ Notifies {reminder.leadMins ?? leadMins}min before
           </Text>
         )}
+        {/* #119: warn when channel couldn't be resolved after URL backfill */}
+        {!isOnAir && !reminder.streamUrl && (
+          <Text style={styles.channelWarning}>⚠️ Channel not in current list</Text>
+        )}
         {reminder.programDescription ? (
           <Text style={[styles.desc, { color: colors.mutedForeground }]} numberOfLines={2}>
             {reminder.programDescription}
@@ -259,10 +271,17 @@ export default function RemindersScreen() {
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [nowTs, setNowTs] = useState(() => Date.now());
   const [rescheduleTarget, setRescheduleTarget] = useState<Reminder | null>(null);
-  // #100: load the global lead time so cards can display "Notifies X min before"
-  // #114: reload on every focus so the badge reflects a lead-time change made
-  // in Settings without requiring a full screen remount.
+  // #100/#114: global lead time, reloaded on every focus
   const [reminderLeadMins, setReminderLeadMins] = useState(5);
+  // #116: undo banner shown after a deletion
+  const [undoBanner, setUndoBanner] = useState<{ reminder: Reminder; timerId: ReturnType<typeof setTimeout> } | null>(null);
+  const undoBannerRef = useRef(undoBanner);
+  useEffect(() => { undoBannerRef.current = undoBanner; }, [undoBanner]);
+  // #121: brief auto-removed notice
+  const [autoRemovedCount, setAutoRemovedCount] = useState(0);
+  const autoRemovedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // #117: dedup prune alert so it only fires once per unique set of removed reminders
+  const prunedKeyRef = useRef('');
   useFocusEffect(
     useCallback(() => {
       StorageService.getReminderLeadMins().then(setReminderLeadMins);
@@ -280,12 +299,17 @@ export default function RemindersScreen() {
         setReminders((prev) => {
           const ended = prev.filter((r) => new Date(r.end).getTime() <= now);
           if (ended.length === 0) return prev;
-          // Remove ended reminders from storage (fire-and-forget)
           ended.forEach((r) => {
             cancelReminderNotification(r.notificationId);
             StorageService.removeReminder(r.id);
           });
           DeviceEventEmitter.emit('reminders:changed');
+          // #120: animate cards sliding out
+          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+          // #121: show brief "X reminder(s) ended" notice
+          setAutoRemovedCount(ended.length);
+          if (autoRemovedTimerRef.current) clearTimeout(autoRemovedTimerRef.current);
+          autoRemovedTimerRef.current = setTimeout(() => setAutoRemovedCount(0), 3500);
           return prev.filter((r) => new Date(r.end).getTime() > now);
         });
       }, 30_000);
@@ -419,12 +443,17 @@ export default function RemindersScreen() {
     // #95/#101: prune reminders older than 24 h, then notify if any were removed
     StorageService.pruneExpiredReminders().then((removed) => {
       if (removed.length > 0) {
-        const names = removed.slice(0, 3).join(', ') + (removed.length > 3 ? ` + ${removed.length - 3} more` : '');
-        Alert.alert(
-          'Reminders Cleared',
-          `${removed.length} expired reminder${removed.length > 1 ? 's were' : ' was'} automatically removed:\n${names}`,
-          [{ text: 'OK' }],
-        );
+        // #117: dedup — only show the Alert once per unique batch of pruned reminders
+        const key = [...removed].sort().join('\x00');
+        if (prunedKeyRef.current !== key) {
+          prunedKeyRef.current = key;
+          const names = removed.slice(0, 3).join(', ') + (removed.length > 3 ? ` + ${removed.length - 3} more` : '');
+          Alert.alert(
+            'Reminders Cleared',
+            `${removed.length} expired reminder${removed.length > 1 ? 's were' : ' was'} automatically removed:\n${names}`,
+            [{ text: 'OK' }],
+          );
+        }
       }
       return StorageService.getReminders();
     }).then(async (r) => {
@@ -441,19 +470,34 @@ export default function RemindersScreen() {
 
   useFocusEffect(load);
 
-  const handleDelete = (reminder: Reminder) => {
-    Alert.alert('Remove Reminder', 'Remove this reminder?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Remove', style: 'destructive', onPress: async () => {
-          await cancelReminderNotification(reminder.notificationId);
-          await StorageService.removeReminder(reminder.id);
-          DeviceEventEmitter.emit('reminders:changed'); // #109
-          load();
-        },
-      },
-    ]);
-  };
+  const handleDelete = useCallback((reminder: Reminder) => {
+    // #116: commit deletion immediately, show 5-second undo banner instead of Alert dialog
+    if (undoBannerRef.current) {
+      clearTimeout(undoBannerRef.current.timerId);
+      setUndoBanner(null);
+    }
+    // Optimistically remove from local state with animation (#120)
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setReminders((prev) => prev.filter((r) => r.id !== reminder.id));
+    cancelReminderNotification(reminder.notificationId);
+    StorageService.removeReminder(reminder.id);
+    DeviceEventEmitter.emit('reminders:changed');
+    const timerId = setTimeout(() => setUndoBanner(null), 5000);
+    setUndoBanner({ reminder, timerId });
+  }, []);
+
+  const handleUndo = useCallback(async () => {
+    const banner = undoBannerRef.current;
+    if (!banner) return;
+    clearTimeout(banner.timerId);
+    setUndoBanner(null);
+    // Re-persist and re-schedule the deleted reminder
+    await StorageService.addReminder(banner.reminder);
+    const lead = banner.reminder.leadMins ?? reminderLeadMins;
+    await scheduleReminderNotification(banner.reminder, lead);
+    DeviceEventEmitter.emit('reminders:changed');
+    load();
+  }, [reminderLeadMins, load]);
 
   const handleClearPast = () => {
     const past = reminders.filter((r) => new Date(r.end) < new Date());
@@ -506,9 +550,30 @@ export default function RemindersScreen() {
     });
   }, [router]);
 
-  const upcoming = reminders.filter((r) => new Date(r.start) >= new Date());
-  const past = reminders.filter((r) => new Date(r.start) < new Date());
-  const hasPast = past.length > 0;
+  // #118: use nowTs so cards move between sections when the 30 s ticker fires
+  const upcoming = reminders.filter((r) => new Date(r.start).getTime() > nowTs);
+  const onAirReminders = reminders.filter((r) => new Date(r.start).getTime() <= nowTs && new Date(r.end).getTime() > nowTs);
+  const pastReminders = reminders.filter((r) => new Date(r.end).getTime() <= nowTs);
+  const hasPast = pastReminders.length > 0;
+
+  // Build a flat list with injected section-header rows
+  type FlatItem = { kind: 'divider'; label: string } | { kind: 'reminder'; item: Reminder };
+  const flatItems: FlatItem[] = [];
+  const hasMultipleSections =
+    (onAirReminders.length > 0 && (upcoming.length > 0 || pastReminders.length > 0)) ||
+    (upcoming.length > 0 && pastReminders.length > 0);
+  if (onAirReminders.length > 0) {
+    if (hasMultipleSections) flatItems.push({ kind: 'divider', label: 'ON NOW' });
+    onAirReminders.forEach((r) => flatItems.push({ kind: 'reminder', item: r }));
+  }
+  if (upcoming.length > 0) {
+    if (hasMultipleSections) flatItems.push({ kind: 'divider', label: 'UPCOMING' });
+    upcoming.forEach((r) => flatItems.push({ kind: 'reminder', item: r }));
+  }
+  if (pastReminders.length > 0) {
+    flatItems.push({ kind: 'divider', label: 'PAST' });
+    pastReminders.forEach((r) => flatItems.push({ kind: 'reminder', item: r }));
+  }
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
@@ -532,29 +597,53 @@ export default function RemindersScreen() {
         </View>
       ) : (
         <FlatList
-          data={reminders}
-          keyExtractor={(r) => r.id}
+          data={flatItems}
+          keyExtractor={(item) => item.kind === 'divider' ? `hdr-${item.label}` : item.item.id}
           extraData={nowTs}
-          contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 16, gap: 10 }}
-          renderItem={({ item }) => (
-            <ReminderCard
-              reminder={item}
-              colors={colors}
-              nowTs={nowTs}
-              leadMins={reminderLeadMins}
-              onDelete={() => handleDelete(item)}
-              onReschedule={() => setRescheduleTarget(item)}
-              onWatchLive={() => handleWatchLive(item)}
-            />
-          )}
-          ListHeaderComponent={
-            upcoming.length > 0 && past.length > 0 ? (
-              <>
-                <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>UPCOMING</Text>
-              </>
-            ) : null
+          contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 80, gap: 10 }}
+          refreshControl={
+            <RefreshControl refreshing={false} onRefresh={load} tintColor={colors.primary} />
           }
+          renderItem={({ item }) => {
+            if (item.kind === 'divider') {
+              return (
+                <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>
+                  {item.label}
+                </Text>
+              );
+            }
+            return (
+              <ReminderCard
+                reminder={item.item}
+                colors={colors}
+                nowTs={nowTs}
+                leadMins={reminderLeadMins}
+                onDelete={() => handleDelete(item.item)}
+                onReschedule={() => setRescheduleTarget(item.item)}
+                onWatchLive={() => handleWatchLive(item.item)}
+              />
+            );
+          }}
         />
+      )}
+
+      {/* #121: brief notice when the ticker auto-removes ended reminders */}
+      {autoRemovedCount > 0 && (
+        <View style={[styles.autoRemovedBanner, { backgroundColor: 'rgba(59,130,246,0.10)', borderColor: 'rgba(59,130,246,0.25)' }]}>
+          <Text style={[styles.autoRemovedText, { color: '#3B82F6' }]}>
+            ⏰ {autoRemovedCount} reminder{autoRemovedCount > 1 ? 's' : ''} ended
+          </Text>
+        </View>
+      )}
+
+      {/* #116: undo banner shown for 5 s after a deletion */}
+      {undoBanner && (
+        <View style={[styles.undoBanner, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Text style={[styles.undoText, { color: colors.foreground }]}>Reminder removed</Text>
+          <TouchableOpacity onPress={handleUndo} style={styles.undoBtn} activeOpacity={0.8}>
+            <Text style={styles.undoBtnText}>UNDO</Text>
+          </TouchableOpacity>
+        </View>
       )}
 
       <RescheduleModal
@@ -613,6 +702,44 @@ const styles = StyleSheet.create({
   badge: { fontSize: 11, fontFamily: 'Inter_600SemiBold' },
   desc: { fontSize: 11, fontFamily: 'Inter_400Regular', marginTop: 4, lineHeight: 16 },
   leadBadge: { fontSize: 11, fontFamily: 'Inter_400Regular', marginTop: 2 },
+  channelWarning: { fontSize: 11, fontFamily: 'Inter_500Medium', color: '#F59E0B', marginTop: 3 },
+  // ── Undo banner (#116) ────────────────────────────────────────────────────
+  undoBanner: {
+    position: 'absolute',
+    bottom: 90,
+    left: 16,
+    right: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 6,
+  },
+  undoText: { fontSize: 13, fontFamily: 'Inter_500Medium' },
+  undoBtn: {
+    backgroundColor: '#3B82F6',
+    borderRadius: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  undoBtnText: { fontSize: 12, fontFamily: 'Inter_700Bold', color: '#fff' },
+  // ── Auto-removed notice (#121) ────────────────────────────────────────────
+  autoRemovedBanner: {
+    marginHorizontal: 16,
+    marginTop: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+  },
+  autoRemovedText: { fontSize: 12, fontFamily: 'Inter_500Medium' },
   watchLiveBtn: {
     marginTop: 8,
     alignSelf: 'flex-start',

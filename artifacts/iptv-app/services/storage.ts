@@ -62,6 +62,7 @@ export const StorageService = {
       KEYS.RECENT_CHANNELS,
       KEYS.PREF_AUDIO_LANG,
       KEYS.PREF_SUBTITLE_LANG,
+      KEYS.PREF_SEARCH_QUERY, // #122: clear saved search query on logout
     ]);
   },
 

@@ -998,11 +998,13 @@ export default function PlayerScreen() {
                 🎵 {activeAudioTrack?.label || activeAudioTrack?.language || 'Audio'}
               </Text>
             </Pressable>
-            {/* CC / Subtitle button — always visible */}
+            {/* CC / Subtitle button — tap cycles off→first→next→off; long-press opens picker */}
             <Pressable
               focusable
               style={({ focused }) => [styles.trackPill, subtitleTracks.length === 0 && { opacity: 0.35 }, activeSubtitleTrack !== null && styles.trackPillActive, focused && styles.focusRing]}
-              onPress={() => setShowSubPicker(true)}
+              onPress={handleCcPress}
+              onLongPress={() => setShowSubPicker(true)}
+              delayLongPress={400}
             >
               <Text style={[styles.trackPillText, activeSubtitleTrack !== null && styles.trackPillTextActive]}>
                 CC {activeSubtitleTrack ? `· ${(activeSubtitleTrack.language || '').toUpperCase()}` : ''}
@@ -1101,10 +1103,12 @@ export default function PlayerScreen() {
               🎵 {activeAudioTrack?.label || activeAudioTrack?.language || 'Audio'}
             </Text>
           </TouchableOpacity>
-          {/* CC / Subtitle button */}
+          {/* CC / Subtitle button — tap cycles off→first→next→off; long-press opens picker */}
           <TouchableOpacity
             style={[styles.trackPill, activeSubtitleTrack !== null && styles.trackPillActive]}
-            onPress={() => setShowSubPicker(true)}
+            onPress={handleCcPress}
+            onLongPress={() => setShowSubPicker(true)}
+            delayLongPress={400}
             activeOpacity={0.8}
           >
             <Text style={[styles.trackPillText, activeSubtitleTrack !== null && styles.trackPillTextActive]}>

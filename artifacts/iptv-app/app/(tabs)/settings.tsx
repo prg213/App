@@ -24,6 +24,7 @@ import {
 } from '@/services/xtreamApi';
 import { StorageService } from '@/services/storage';
 import { rescheduleRemindersForLeadTime } from '@/services/reminderReschedule';
+import { clearReminderRefreshCache } from '@/services/reminderUrlCache';
 import type { MaxRating } from '@/types';
 
 const LEAD_TIME_OPTIONS: { value: 5 | 10 | 15; label: string }[] = [
@@ -138,6 +139,7 @@ export default function SettingsScreen() {
         onPress: async () => {
           setLoggingOut(true);
           await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+          clearReminderRefreshCache(); // #126: reset so new credentials get a fresh URL check
           await logout();
         },
       },

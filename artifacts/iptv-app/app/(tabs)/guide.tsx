@@ -237,10 +237,20 @@ function ProgramModal({ program, channel, onClose, onWatch, colors }: {
   const reminderId = `${channel.id}_${program.start.toISOString()}`;
   const [hasReminder, setHasReminder] = React.useState(false);
 
+  // Initial load
   React.useEffect(() => {
     if (isFuture) {
       StorageService.hasReminder(reminderId).then(setHasReminder);
     }
+  }, [reminderId, isFuture]);
+
+  // #125/#128: stay in sync when a reminder is set/cancelled from another screen
+  React.useEffect(() => {
+    if (!isFuture) return;
+    const sub = DeviceEventEmitter.addListener('reminders:changed', () => {
+      StorageService.hasReminder(reminderId).then(setHasReminder);
+    });
+    return () => sub.remove();
   }, [reminderId, isFuture]);
 
   const handleToggleReminder = async () => {
@@ -249,7 +259,6 @@ function ProgramModal({ program, channel, onClose, onWatch, colors }: {
       const nid = await StorageService.getReminderNotificationId(reminderId);
       await cancelReminderNotification(nid);
       await StorageService.removeReminder(reminderId);
-      DeviceEventEmitter.emit('reminders:changed'); // #109
       setHasReminder(false);
       DeviceEventEmitter.emit('reminders:changed');
     } else {
@@ -271,7 +280,6 @@ function ProgramModal({ program, channel, onClose, onWatch, colors }: {
       // Schedule notification first so we can attach the id to the stored reminder
       const notificationId = await scheduleReminderNotification(reminder, leadMins) ?? undefined;
       await StorageService.addReminder({ ...reminder, notificationId });
-      DeviceEventEmitter.emit('reminders:changed'); // #109
       setHasReminder(true);
       DeviceEventEmitter.emit('reminders:changed');
     }
