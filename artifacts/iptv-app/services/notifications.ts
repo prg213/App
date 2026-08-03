@@ -9,6 +9,7 @@
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import type { Reminder } from '@/types';
+import { StorageService } from '@/services/storage';
 
 /** How many minutes before the programme starts the notification fires. */
 const LEAD_MINS = 5;
@@ -98,6 +99,49 @@ export async function scheduleReminderNotification(
   } catch (err) {
     console.warn('[notifications] scheduleReminderNotification failed', err);
     return null;
+  }
+}
+
+/**
+ * On app start, compare stored reminders that have a future trigger time
+ * against the set of currently-scheduled Expo notifications.  Any reminder
+ * whose notification is missing (e.g. because Android cancelled all alarms
+ * after a device reboot) is rescheduled and its notificationId updated in
+ * AsyncStorage.
+ *
+ * Safe to call multiple times — reminders that are already scheduled are
+ * left untouched.
+ */
+export async function rescheduleStaleReminders(): Promise<void> {
+  try {
+    const reminders = await StorageService.getReminders();
+    if (reminders.length === 0) return;
+
+    const now = Date.now();
+
+    // Fetch the identifiers of all currently-pending notifications once so we
+    // can do O(1) lookups without hitting the native layer per reminder.
+    const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+    const scheduledIds = new Set(scheduled.map((n) => n.identifier));
+
+    for (const reminder of reminders) {
+      const triggerMs = new Date(reminder.start).getTime() - LEAD_MINS * 60_000;
+
+      // Skip reminders whose lead time has already passed — they can't fire.
+      if (triggerMs <= now) continue;
+
+      // If the stored notificationId is still in the scheduled set, nothing to do.
+      if (reminder.notificationId && scheduledIds.has(reminder.notificationId)) continue;
+
+      // Notification is missing (lost after reboot, or never stored) — reschedule.
+      const newId = await scheduleReminderNotification(reminder);
+      if (newId) {
+        // Persist the new notificationId back to AsyncStorage.
+        await StorageService.addReminder({ ...reminder, notificationId: newId });
+      }
+    }
+  } catch (err) {
+    console.warn('[notifications] rescheduleStaleReminders failed', err);
   }
 }
 

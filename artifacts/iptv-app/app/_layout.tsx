@@ -3,6 +3,7 @@ import { ActivityIndicator, Alert, View } from 'react-native';
 import {
   addNotificationTapListener,
   requestNotificationPermissions,
+  rescheduleStaleReminders,
   setupNotifications,
 } from '@/services/notifications';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -60,10 +61,14 @@ function RootLayoutNav() {
     }
   }, [isLoading, isActivated, segments]);
 
-  // Request notification permissions and listen for taps once the app is ready
+  // Request notification permissions, reschedule any reminders lost on reboot,
+  // and listen for notification taps once the app is ready.
   useEffect(() => {
     if (!isActivated) return;
     requestNotificationPermissions();
+    // Fire-and-forget: restores reminders lost when Android cancelled all
+    // alarms at device reboot.
+    rescheduleStaleReminders();
     return addNotificationTapListener(({ channelId, start }) => {
       // Navigate to the TV Guide tab; the deep-link carries channelId + start
       // so the guide can highlight the right programme when task #85 lands.
