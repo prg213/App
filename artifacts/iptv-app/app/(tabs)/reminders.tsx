@@ -1,6 +1,7 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
+  DeviceEventEmitter,
   FlatList,
   Image,
   StyleSheet,
@@ -42,8 +43,9 @@ function fmtDate(iso: string): string {
   return `${dayLabel} · ${h % 12 || 12}:${String(m).padStart(2, '0')}${ampm}`;
 }
 
-function timeUntil(iso: string): string {
-  const diff = new Date(iso).getTime() - Date.now();
+// #102: accept nowTs so the countdown re-renders with the parent's 30 s tick
+function timeUntil(iso: string, nowTs: number): string {
+  const diff = new Date(iso).getTime() - nowTs;
   if (diff <= 0) return 'Starting now';
   const mins = Math.floor(diff / 60_000);
   if (mins < 60) return `in ${mins}m`;
@@ -56,12 +58,15 @@ function ReminderCard({
   reminder,
   colors,
   nowTs,
+  leadMins,
   onDelete,
   onWatchLive,
 }: {
   reminder: Reminder;
   colors: any;
   nowTs: number;
+  /** #100: current global notification lead time to display on the card */
+  leadMins: number;
   onDelete: () => void;
   onWatchLive?: () => void;
 }) {
@@ -94,11 +99,17 @@ function ReminderCard({
         <Text style={[styles.time, { color: colors.mutedForeground }]}>
           {fmtDate(reminder.start)}
           {!isPast && (
-            <Text style={[styles.badge, { color: '#22C55E' }]}>  {timeUntil(reminder.start)}</Text>
+            <Text style={[styles.badge, { color: '#22C55E' }]}>  {timeUntil(reminder.start, nowTs)}</Text>
           )}
           {isPast && !isOnAir && <Text style={{ color: '#EF4444' }}>  Past</Text>}
           {isOnAir && <Text style={{ color: '#3B82F6' }}>  On now</Text>}
         </Text>
+        {/* #100: show when the notification will fire */}
+        {!isPast && !isOnAir && leadMins > 0 && (
+          <Text style={[styles.leadBadge, { color: colors.mutedForeground }]}>
+            ⏰ Notifies {leadMins}min before
+          </Text>
+        )}
         {reminder.programDescription ? (
           <Text style={[styles.desc, { color: colors.mutedForeground }]} numberOfLines={2}>
             {reminder.programDescription}
@@ -142,12 +153,32 @@ export default function RemindersScreen() {
   const { credentials } = useAppContext();
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [nowTs, setNowTs] = useState(() => Date.now());
+  // #100: load the global lead time so cards can display "Notifies Xmin before"
+  const [reminderLeadMins, setReminderLeadMins] = useState(5);
+  useEffect(() => {
+    StorageService.getReminderLeadMins().then(setReminderLeadMins);
+  }, []);
 
-  // Ticker: re-evaluate on-air status every 30 s while screen is focused
+  // Ticker: re-evaluate on-air status every 30 s while screen is focused.
+  // #103: also auto-remove reminders whose programme has now ended.
   useFocusEffect(
     useCallback(() => {
       setNowTs(Date.now());
-      const id = setInterval(() => setNowTs(Date.now()), 30_000);
+      const id = setInterval(() => {
+        const now = Date.now();
+        setNowTs(now);
+        setReminders((prev) => {
+          const ended = prev.filter((r) => new Date(r.end).getTime() <= now);
+          if (ended.length === 0) return prev;
+          // Remove ended reminders from storage (fire-and-forget)
+          ended.forEach((r) => {
+            cancelReminderNotification(r.notificationId);
+            StorageService.removeReminder(r.id);
+          });
+          DeviceEventEmitter.emit('reminders:changed');
+          return prev.filter((r) => new Date(r.end).getTime() > now);
+        });
+      }, 30_000);
       return () => clearInterval(id);
     }, []),
   );
@@ -177,39 +208,41 @@ export default function RemindersScreen() {
   }, [credentials]);
 
   /**
-   * For any reminders that are currently on-air but missing a streamUrl,
-   * fetch the channel list once and backfill + persist the URL.
-   * Returns the (possibly updated) reminders array.
+   * #104: Backfill streamUrl for ALL reminders that are missing one
+   * (on-air AND upcoming), so Watch Live works as soon as they start.
+   * #105: Also refresh any stored URL that has changed on the server
+   * (for on-air and upcoming only — past reminders don't need playback).
+   * Fetches the channel list once and persists any updates atomically.
    */
-  const backfillOnAirStreamUrls = useCallback(
+  const backfillStreamUrls = useCallback(
     async (loaded: Reminder[]): Promise<Reminder[]> => {
       const now = Date.now();
-      const needsBackfill = loaded.filter(
-        (r) =>
-          !r.streamUrl &&
-          new Date(r.start).getTime() <= now &&
-          now < new Date(r.end).getTime(),
+      // Only work on active/upcoming reminders (past ones don't need URLs)
+      const active = loaded.filter((r) => new Date(r.end).getTime() > now);
+      const needsWork = active.some(
+        (r) => !r.streamUrl || true, // always refresh URLs to catch #105 changes
       );
-      if (needsBackfill.length === 0) return loaded;
+      if (!needsWork || active.length === 0) return loaded;
 
       const urlMap = await fetchChannelUrlMap();
       if (!urlMap) return loaded;
 
       let anyUpdated = false;
       const updated = loaded.map((r) => {
-        if (!r.streamUrl && urlMap.has(r.channelId)) {
+        const isActive = new Date(r.end).getTime() > now;
+        if (!isActive) return r; // leave past reminders untouched
+        const fresh = urlMap.get(r.channelId);
+        if (!fresh) return r;
+        if (r.streamUrl !== fresh) {
           anyUpdated = true;
-          return { ...r, streamUrl: urlMap.get(r.channelId)! };
+          return { ...r, streamUrl: fresh };
         }
         return r;
       });
 
       if (anyUpdated) {
-        // Single atomic write — avoids read-modify-write races that concurrent
-        // addReminder() calls would cause when backfilling multiple reminders.
         await StorageService.saveReminders(updated);
       }
-
       return updated;
     },
     [fetchChannelUrlMap],
@@ -228,15 +261,16 @@ export default function RemindersScreen() {
       }
       return StorageService.getReminders();
     }).then(async (r) => {
-      // Backfill streamUrl for any on-air reminders that pre-date this feature
-      const backfilled = await backfillOnAirStreamUrls(r);
-      // Sort: upcoming first, then past
+      // #104/#105: backfill missing URLs and refresh stale ones for all active reminders
+      const backfilled = await backfillStreamUrls(r);
       const sorted = [...backfilled].sort(
         (a, b) => new Date(a.start).getTime() - new Date(b.start).getTime(),
       );
       setReminders(sorted);
+      // #109: let the tab bar badge update immediately after load
+      DeviceEventEmitter.emit('reminders:changed');
     });
-  }, [backfillOnAirStreamUrls]);
+  }, [backfillStreamUrls]);
 
   useFocusEffect(load);
 
@@ -247,6 +281,7 @@ export default function RemindersScreen() {
         text: 'Remove', style: 'destructive', onPress: async () => {
           await cancelReminderNotification(reminder.notificationId);
           await StorageService.removeReminder(reminder.id);
+          DeviceEventEmitter.emit('reminders:changed'); // #109
           load();
         },
       },
@@ -264,6 +299,7 @@ export default function RemindersScreen() {
             await cancelReminderNotification(r.notificationId);
             await StorageService.removeReminder(r.id);
           }
+          DeviceEventEmitter.emit('reminders:changed'); // #109
           load();
         },
       },
@@ -314,12 +350,14 @@ export default function RemindersScreen() {
         <FlatList
           data={reminders}
           keyExtractor={(r) => r.id}
+          extraData={nowTs}
           contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 16, gap: 10 }}
           renderItem={({ item }) => (
             <ReminderCard
               reminder={item}
               colors={colors}
               nowTs={nowTs}
+              leadMins={reminderLeadMins}
               onDelete={() => handleDelete(item)}
               onWatchLive={() => handleWatchLive(item)}
             />
@@ -381,6 +419,7 @@ const styles = StyleSheet.create({
   time: { fontSize: 11, fontFamily: 'Inter_400Regular', marginTop: 2 },
   badge: { fontSize: 11, fontFamily: 'Inter_600SemiBold' },
   desc: { fontSize: 11, fontFamily: 'Inter_400Regular', marginTop: 4, lineHeight: 16 },
+  leadBadge: { fontSize: 11, fontFamily: 'Inter_400Regular', marginTop: 2 },
   watchLiveBtn: {
     marginTop: 8,
     alignSelf: 'flex-start',

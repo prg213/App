@@ -1,6 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Image,
   Modal,
   Platform,
@@ -296,11 +297,16 @@ export default function MovieDetailScreen() {
                 const query = encodeURIComponent(`${params.title} official trailer`);
                 trailerUrl = `https://www.youtube.com/results?search_query=${query}`;
               }
-              await WebBrowser.openBrowserAsync(trailerUrl, {
-                presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET,
-                toolbarColor: '#0A0A0F',
-                controlsColor: '#3B82F6',
-              });
+              // #107: Catch network errors so the button doesn't silently fail offline
+              try {
+                await WebBrowser.openBrowserAsync(trailerUrl, {
+                  presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET,
+                  toolbarColor: '#0A0A0F',
+                  controlsColor: '#3B82F6',
+                });
+              } catch {
+                Alert.alert('No Internet', "Couldn't open the trailer. Check your connection and try again.", [{ text: 'OK' }]);
+              }
             }}
           >
             <Text style={styles.outlineBtnText}>▶  Watch Trailer</Text>

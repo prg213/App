@@ -21,6 +21,10 @@ import {
   getXtreamAccountInfo,
   parseXtreamCredsFromM3u,
 } from '@/services/xtreamApi';
+import {
+  scheduleReminderNotification,
+  cancelReminderNotification,
+} from '@/services/notifications';
 import { StorageService } from '@/services/storage';
 import type { MaxRating } from '@/types';
 
@@ -70,6 +74,35 @@ export default function SettingsScreen() {
     await StorageService.setReminderLeadMins(value);
     setReminderLeadMins(value);
     setShowLeadTimeSheet(false);
+
+    // #99: Re-schedule all future reminders with the new lead time
+    const all = await StorageService.getReminders();
+    const now = Date.now();
+    const upcoming = all.filter((r) => new Date(r.start).getTime() > now);
+    if (upcoming.length === 0) return;
+
+    let tooSoon = 0;
+    const updated = await Promise.all(
+      upcoming.map(async (r) => {
+        await cancelReminderNotification(r.notificationId);
+        const newId = (await scheduleReminderNotification(r)) ?? undefined;
+        if (!newId) tooSoon++;
+        return { ...r, notificationId: newId };
+      }),
+    );
+    await StorageService.saveReminders([
+      ...all.filter((r) => new Date(r.start).getTime() <= now),
+      ...updated,
+    ]);
+
+    // #110: Warn if any reminders start too soon to fire at the new lead time
+    if (tooSoon > 0) {
+      Alert.alert(
+        'Some reminders not updated',
+        `${tooSoon} reminder${tooSoon > 1 ? 's start' : ' starts'} too soon to fire ${value} minute${value > 1 ? 's' : ''} early. ${tooSoon > 1 ? 'They' : 'It'} will still appear on-screen.`,
+        [{ text: 'OK' }],
+      );
+    }
   };
 
   // PIN modal state

@@ -13,6 +13,8 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
+import * as WebBrowser from 'expo-web-browser';
+import { Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { useAppContext } from '@/context/AppContext';
@@ -120,6 +122,7 @@ const MediaResultRow = React.memo(function MediaResultRow({
   query,
   colors,
   onPress,
+  onTrailer,
 }: {
   cover?: string;
   title: string;
@@ -128,6 +131,8 @@ const MediaResultRow = React.memo(function MediaResultRow({
   query: string;
   colors: ReturnType<typeof useColors>;
   onPress: () => void;
+  // #106: optional trailer shortcut shown on series rows
+  onTrailer?: () => void;
 }) {
   return (
     <TouchableOpacity
@@ -155,6 +160,17 @@ const MediaResultRow = React.memo(function MediaResultRow({
           </Text>
         ) : null}
       </View>
+      {/* #106: trailer shortcut for series rows */}
+      {kind === 'series' && onTrailer && (
+        <TouchableOpacity
+          style={styles.trailerPill}
+          onPress={(e) => { (e as any).stopPropagation?.(); onTrailer(); }}
+          activeOpacity={0.7}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Text style={styles.trailerPillText}>▶ Trailer</Text>
+        </TouchableOpacity>
+      )}
       <View style={[styles.typePill, kind === 'series' && styles.typePillSeries]}>
         <Text style={[styles.typePillText, kind === 'series' && { color: '#8B5CF6' }]}>
           {kind === 'movie' ? 'MOVIE' : 'SERIES'}
@@ -199,10 +215,17 @@ export default function SearchScreen() {
   const [searchType, setSearchType] = useState<SearchType>('all');
   const inputRef = useRef<TextInput>(null);
 
-  // Restore the last-used search filter from storage on mount
+  // Restore the last-used search filter and query from storage on mount
   useEffect(() => {
     StorageService.getPrefSearchType().then((saved) => setSearchType(saved));
+    StorageService.getPrefSearchQuery().then((saved) => { if (saved) setQuery(saved); });
   }, []);
+
+  // #108: Persist query with a 1 s debounce so fast typing doesn't thrash storage
+  useEffect(() => {
+    const t = setTimeout(() => StorageService.setPrefSearchQuery(query), 1000);
+    return () => clearTimeout(t);
+  }, [query]);
 
   const handleSearchTypeChange = (type: SearchType) => {
     setSearchType(type);
@@ -404,6 +427,18 @@ export default function SearchScreen() {
             query={query}
             colors={colors}
             onPress={() => handleSeriesPress(item.item)}
+            onTrailer={async () => {
+              // #106: quick trailer access without opening the detail page
+              const q = encodeURIComponent(`${item.item.name} official trailer`);
+              try {
+                await WebBrowser.openBrowserAsync(
+                  `https://www.youtube.com/results?search_query=${q}`,
+                  { presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET, toolbarColor: '#0A0A0F', controlsColor: '#3B82F6' },
+                );
+              } catch {
+                Alert.alert('No Internet', "Couldn't open the trailer. Check your connection and try again.", [{ text: 'OK' }]);
+              }
+            }}
           />
         );
 
@@ -674,6 +709,20 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_700Bold',
     color: '#EF4444', // overridden per kind via inline style
     letterSpacing: 0.5,
+  },
+  trailerPill: {
+    backgroundColor: 'rgba(139,92,246,0.15)',
+    borderRadius: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    marginRight: 4,
+    flexShrink: 0,
+  },
+  trailerPillText: {
+    fontSize: 9,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#8B5CF6',
+    letterSpacing: 0.3,
   },
 
   // ── Empty / placeholder ──

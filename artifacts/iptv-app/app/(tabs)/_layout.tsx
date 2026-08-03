@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import {
   AppState,
   type AppStateStatus,
+  DeviceEventEmitter,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -57,9 +58,13 @@ function useUpcomingReminderCount(): number {
       },
     );
 
+    // #109: Refresh immediately whenever any screen adds or removes a reminder
+    const emitterSub = DeviceEventEmitter.addListener('reminders:changed', refresh);
+
     return () => {
       clearInterval(interval);
       subscription.remove();
+      emitterSub.remove();
     };
   }, [refresh]);
 

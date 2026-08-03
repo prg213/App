@@ -25,6 +25,7 @@ const KEYS = {
   PREF_SUBTITLE_LANG: 'sv_pref_subtitle_lang',
   PREF_REMINDER_LEAD_MINS: 'sv_pref_reminder_lead_mins',
   PREF_SEARCH_TYPE: 'sv_pref_search_type',
+  PREF_SEARCH_QUERY: 'sv_pref_search_query',
 };
 
 export const StorageService = {
@@ -363,5 +364,25 @@ export const StorageService = {
   /** Persists the user's chosen search filter type. */
   async setPrefSearchType(type: 'all' | 'live' | 'movies' | 'series'): Promise<void> {
     await AsyncStorage.setItem(KEYS.PREF_SEARCH_TYPE, type);
+  },
+
+  // ── Preferred search query (AsyncStorage) ─────────────────────────────────
+
+  /** Returns the last search query the user typed, or empty string. */
+  async getPrefSearchQuery(): Promise<string> {
+    try {
+      return (await AsyncStorage.getItem(KEYS.PREF_SEARCH_QUERY)) ?? '';
+    } catch { return ''; }
+  },
+
+  /** Persists the search query; clears the key when query is empty. */
+  async setPrefSearchQuery(q: string): Promise<void> {
+    try {
+      if (q) {
+        await AsyncStorage.setItem(KEYS.PREF_SEARCH_QUERY, q);
+      } else {
+        await AsyncStorage.removeItem(KEYS.PREF_SEARCH_QUERY);
+      }
+    } catch {}
   },
 };
