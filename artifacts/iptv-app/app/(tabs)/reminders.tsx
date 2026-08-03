@@ -122,10 +122,18 @@ export default function RemindersScreen() {
   const [reminders, setReminders] = useState<Reminder[]>([]);
 
   const load = useCallback(() => {
-    // #95: silently prune reminders older than 24 h before loading the list
-    StorageService.pruneExpiredReminders().then(() =>
-      StorageService.getReminders()
-    ).then((r) => {
+    // #95/#101: prune reminders older than 24 h, then notify if any were removed
+    StorageService.pruneExpiredReminders().then((removed) => {
+      if (removed.length > 0) {
+        const names = removed.slice(0, 3).join(', ') + (removed.length > 3 ? ` + ${removed.length - 3} more` : '');
+        Alert.alert(
+          'Reminders Cleared',
+          `${removed.length} expired reminder${removed.length > 1 ? 's were' : ' was'} automatically removed:\n${names}`,
+          [{ text: 'OK' }],
+        );
+      }
+      return StorageService.getReminders();
+    }).then((r) => {
       // Sort: upcoming first, then past
       const sorted = [...r].sort(
         (a, b) => new Date(a.start).getTime() - new Date(b.start).getTime(),

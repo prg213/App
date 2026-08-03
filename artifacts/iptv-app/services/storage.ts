@@ -248,19 +248,23 @@ export const StorageService = {
   },
 
   /**
-   * #95: Silently remove reminders whose programme ended more than
-   * `maxAgeMins` minutes ago (default 24 h).  Notifications for these
-   * will have already fired (or been missed), so no cancellation needed.
+   * #95/#101: Remove reminders whose programme ended more than `maxAgeMins`
+   * minutes ago (default 24 h).  Returns the titles of every removed reminder
+   * so the caller can notify the user if anything was pruned.
    */
-  async pruneExpiredReminders(maxAgeMins = 24 * 60): Promise<void> {
+  async pruneExpiredReminders(maxAgeMins = 24 * 60): Promise<string[]> {
     try {
       const current = await StorageService.getReminders();
       const cutoff = Date.now() - maxAgeMins * 60 * 1000;
       const kept = current.filter((r) => new Date(r.end).getTime() > cutoff);
-      if (kept.length < current.length) {
+      const removed = current.filter((r) => new Date(r.end).getTime() <= cutoff);
+      if (removed.length > 0) {
         await AsyncStorage.setItem(KEYS.REMINDERS, JSON.stringify(kept));
       }
-    } catch {}
+      return removed.map((r) => r.title ?? r.channelName ?? 'Unknown');
+    } catch {
+      return [];
+    }
   },
 
   /** Returns the notificationId stored for the given reminder, or null. */
