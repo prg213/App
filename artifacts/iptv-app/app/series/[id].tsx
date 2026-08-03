@@ -272,15 +272,21 @@ export default function SeriesDetailScreen() {
             focusable
             style={({ focused }) => [styles.outlineBtn, { borderColor: focused ? '#00E5FF' : 'rgba(255,255,255,0.15)' }, focused && styles.focusRing]}
             onPress={async () => {
-              const query = encodeURIComponent(`${params.title} official trailer`);
-              await WebBrowser.openBrowserAsync(
-                `https://www.youtube.com/results?search_query=${query}`,
-                {
-                  presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET,
-                  toolbarColor: '#0A0A0F',
-                  controlsColor: '#3B82F6',
-                },
-              );
+              const rawTrailer = data?.series?.trailerUrl;
+              let trailerUrl: string;
+              if (rawTrailer) {
+                trailerUrl = rawTrailer.startsWith('http')
+                  ? rawTrailer
+                  : `https://www.youtube.com/watch?v=${rawTrailer}`;
+              } else {
+                const query = encodeURIComponent(`${params.title} official trailer`);
+                trailerUrl = `https://www.youtube.com/results?search_query=${query}`;
+              }
+              await WebBrowser.openBrowserAsync(trailerUrl, {
+                presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET,
+                toolbarColor: '#0A0A0F',
+                controlsColor: '#3B82F6',
+              });
             }}
           >
             <Text style={styles.outlineBtnText}>▶  Watch Trailer</Text>

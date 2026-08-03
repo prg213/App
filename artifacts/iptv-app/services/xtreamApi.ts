@@ -356,6 +356,7 @@ export async function getXtreamSeriesInfo(
       releaseDate?: string;
       rating?: string;
       category_id?: string;
+      youtube_trailer?: string;
     };
     episodes?: Record<
       string,
@@ -387,6 +388,7 @@ export async function getXtreamSeriesInfo(
     releaseDate: data?.info?.releaseDate || undefined,
     rating: data?.info?.rating || undefined,
     categoryId: data?.info?.category_id ?? '',
+    trailerUrl: data?.info?.youtube_trailer || undefined,
   };
 
   const seasons: Season[] = [];

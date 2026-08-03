@@ -112,6 +112,8 @@ export interface Series {
   categoryName?: string;
   /** Unix timestamp (seconds) when this series was added to the server */
   added?: number;
+  /** YouTube video ID or full URL from the provider's series info */
+  trailerUrl?: string;
 }
 
 export interface Season {
