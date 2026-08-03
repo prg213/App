@@ -18,6 +18,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useColors } from '@/hooks/useColors';
+import { useIsOnline } from '@/hooks/useIsOnline';
 import { useAppContext } from '@/context/AppContext';
 import { useParentalContext, isContentBlocked } from '@/context/ParentalContext';
 import { PinPad } from '@/components/PinPad';
@@ -80,6 +81,7 @@ type ActiveTab = 'episodes' | 'cast';
 
 export default function SeriesDetailScreen() {
   const colors = useColors();
+  const isOnline = useIsOnline(); // #140
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { credentials } = useAppContext();
@@ -272,8 +274,12 @@ export default function SeriesDetailScreen() {
 
           <Pressable
             focusable
-            style={({ focused }) => [styles.outlineBtn, { borderColor: focused ? '#00E5FF' : 'rgba(255,255,255,0.15)' }, focused && styles.focusRing]}
+            style={({ focused }) => [styles.outlineBtn, { borderColor: focused ? '#00E5FF' : 'rgba(255,255,255,0.15)' }, !isOnline && styles.offlineBtn, focused && styles.focusRing]}
             onPress={async () => {
+              if (!isOnline) {
+                Alert.alert('No Internet', 'No internet connection — trailer unavailable.', [{ text: 'OK' }]);
+                return;
+              }
               const netState = await Network.getNetworkStateAsync();
               if (!netState.isConnected || !netState.isInternetReachable) {
                 Alert.alert('No Internet', 'No internet connection — trailer unavailable.', [{ text: 'OK' }]);
@@ -296,7 +302,9 @@ export default function SeriesDetailScreen() {
               });
             }}
           >
-            <Text style={styles.outlineBtnText}>▶  Watch Trailer</Text>
+            <Text style={[styles.outlineBtnText, !isOnline && { opacity: 0.45 }]}>
+              {isOnline ? '▶  Watch Trailer' : '✕  No Connection'}
+            </Text>
           </Pressable>
         </View>
 
@@ -506,6 +514,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 8,
   },
   focusRing: { borderColor: '#00E5FF' },
+  offlineBtn: { opacity: 0.45 },
 
   // Two-column
   topSection: {

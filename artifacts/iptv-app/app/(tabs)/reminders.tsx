@@ -470,6 +470,19 @@ export default function RemindersScreen() {
 
   useFocusEffect(load);
 
+  // #139: if the user navigates away while the undo banner is live, restore the
+  // reminder automatically — they can always delete again from the new screen.
+  useFocusEffect(
+    useCallback(() => {
+      return () => {
+        if (undoBannerRef.current) {
+          clearTimeout(undoBannerRef.current.timerId);
+          handleUndo(); // fire-and-forget; restores to storage + reschedules notification
+        }
+      };
+    }, [handleUndo]),
+  );
+
   const handleDelete = useCallback((reminder: Reminder) => {
     // #116: commit deletion immediately, show 5-second undo banner instead of Alert dialog
     if (undoBannerRef.current) {
