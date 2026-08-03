@@ -14,6 +14,7 @@ import {
 import { useFocusEffect } from 'expo-router';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useQueryClient } from '@tanstack/react-query';
 import { useColors } from '@/hooks/useColors';
 import { StorageService } from '@/services/storage';
 import {
@@ -25,6 +26,23 @@ import { getXtreamLiveStreams } from '@/services/xtreamApi';
 import { fetchAndParseM3U } from '@/services/m3uParser';
 import type { Reminder, Channel } from '@/types';
 import { SIDEBAR_W } from './_layout';
+
+/**
+ * Per-credential timestamps of the last successful network channel-list fetch.
+ * Keyed by a stable credential signature (host + username) so account switches
+ * never re-use another account's refresh window.
+ */
+const lastNetworkRefreshByCredential = new Map<string, number>();
+const NETWORK_REFRESH_INTERVAL_MS = 15 * 60_000; // 15 minutes
+
+function credentialSig(c: ReturnType<typeof useAppContext>['credentials']): string {
+  // Xtream accounts are identified by host + username.
+  // M3U accounts have no host/username — use the playlist URL as the unique key.
+  if (c?.type === 'm3u' || (!c?.host && !c?.username && c?.m3uUrl)) {
+    return JSON.stringify({ type: 'm3u', m3uUrl: c?.m3uUrl ?? '' });
+  }
+  return JSON.stringify({ type: 'xtream', host: c?.host ?? '', username: c?.username ?? '' });
+}
 
 function buildCreds(c: ReturnType<typeof useAppContext>['credentials']) {
   return {
@@ -237,6 +255,7 @@ export default function RemindersScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { credentials } = useAppContext();
+  const queryClient = useQueryClient();
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [nowTs, setNowTs] = useState(() => Date.now());
   const [rescheduleTarget, setRescheduleTarget] = useState<Reminder | null>(null);
@@ -271,48 +290,105 @@ export default function RemindersScreen() {
   );
 
   /**
-   * Fetch all channels once (Xtream or M3U) and return a map of channelId → streamUrl.
-   * Returns null if credentials are unavailable or the fetch fails.
+   * Build a channelId → streamUrl map for the CURRENT credentials.
+   * Strategy (#105):
+   *   1. Merge all React Query 'live-channels' cache entries that belong to the
+   *      current credential set — any category key, including per-category keys
+   *      written by the Live TV tab — into a single map. This is free (no network
+   *      call). Cache entries from other accounts are ignored.
+   *   2. If no matching cached channels exist, fall back to a live network fetch
+   *      and record the per-credential timestamp so the staleness gate works
+   *      correctly after account switches.
+   * Returns null when credentials are missing or every path fails.
    */
-  const fetchChannelUrlMap = useCallback(async (): Promise<Map<string, string> | null> => {
-    if (!credentials) return null;
-    try {
-      let channels: Channel[] = [];
-      if (credentials.type === 'xtream') {
-        channels = await getXtreamLiveStreams(buildCreds(credentials));
-      } else if (credentials.m3uUrl) {
-        const parsed = await fetchAndParseM3U(credentials.m3uUrl);
-        channels = parsed.channels;
+  const fetchChannelUrlMap = useCallback(
+    async (): Promise<{ map: Map<string, string>; fromCache: boolean } | null> => {
+      if (!credentials) return null;
+
+      const mySig = credentialSig(credentials);
+
+      // 1. Merge cached live-channels entries that belong to the current account.
+      //    Keys have the shape ['live-channels', categoryId, credentialsObject].
+      //    We match by comparing a stable credential signature (host + username)
+      //    rather than object identity so across-render reference changes still hit.
+      const allCachedEntries = queryClient.getQueriesData<Channel[]>({
+        queryKey: ['live-channels'],
+      });
+      const mergedMap = new Map<string, string>();
+      for (const [key, channels] of allCachedEntries) {
+        if (!channels || channels.length === 0) continue;
+        // key = ['live-channels', categoryId, credentials]
+        const entryCreds = (key as unknown[])[2];
+        if (credentialSig(entryCreds as typeof credentials) !== mySig) continue;
+        for (const ch of channels) mergedMap.set(ch.id, ch.streamUrl);
       }
-      const map = new Map<string, string>();
-      for (const ch of channels) {
-        map.set(ch.id, ch.streamUrl);
+      if (mergedMap.size > 0) {
+        return { map: mergedMap, fromCache: true };
       }
-      return map;
-    } catch {
-      return null;
-    }
-  }, [credentials]);
+
+      // 2. Cache cold for this account — fetch from the network.
+      try {
+        let channels: Channel[] = [];
+        if (credentials.type === 'xtream') {
+          channels = await getXtreamLiveStreams(buildCreds(credentials));
+        } else if (credentials.m3uUrl) {
+          const parsed = await fetchAndParseM3U(credentials.m3uUrl);
+          channels = parsed.channels;
+        }
+        const map = new Map<string, string>();
+        for (const ch of channels) map.set(ch.id, ch.streamUrl);
+        // Record per-credential timestamp so other accounts don't borrow this window.
+        lastNetworkRefreshByCredential.set(mySig, Date.now());
+        return { map, fromCache: false };
+      } catch {
+        return null;
+      }
+    },
+    [credentials, queryClient],
+  );
 
   /**
    * #104: Backfill streamUrl for ALL reminders that are missing one
    * (on-air AND upcoming), so Watch Live works as soon as they start.
-   * #105: Also refresh any stored URL that has changed on the server
-   * (for on-air and upcoming only — past reminders don't need playback).
-   * Fetches the channel list once and persists any updates atomically.
+   * #105: Refresh stored URLs that may have changed on the server
+   * (stream IDs rotate when the provider updates or the user switches servers).
+   *
+   * Cost policy (all scoped to current credentials):
+   * - Cache warm (any matching live-channels entry): always refresh all active
+   *   reminder URLs at zero network cost.
+   * - Cache cold + URLs all present + within NETWORK_REFRESH_INTERVAL_MS for
+   *   this credential: skip (URLs are probably still valid).
+   * - Cache cold + any URL missing OR per-credential gate has expired: do one
+   *   network fetch so rotated IDs are caught even when the user hasn't visited
+   *   Live TV or Catch-Up in the current session.
    */
   const backfillStreamUrls = useCallback(
     async (loaded: Reminder[]): Promise<Reminder[]> => {
       const now = Date.now();
-      // Only work on active/upcoming reminders (past ones don't need URLs)
       const active = loaded.filter((r) => new Date(r.end).getTime() > now);
-      const needsWork = active.some(
-        (r) => !r.streamUrl || true, // always refresh URLs to catch #105 changes
-      );
-      if (!needsWork || active.length === 0) return loaded;
+      if (active.length === 0) return loaded;
 
-      const urlMap = await fetchChannelUrlMap();
-      if (!urlMap) return loaded;
+      const mySig = credentialSig(credentials);
+      const lastRefresh = lastNetworkRefreshByCredential.get(mySig) ?? 0;
+      const gateExpired = now - lastRefresh > NETWORK_REFRESH_INTERVAL_MS;
+      const hasMissingUrls = active.some((r) => !r.streamUrl);
+
+      // Peek at the cache — scoped to current credentials.
+      const allCachedEntries = queryClient.getQueriesData<Channel[]>({
+        queryKey: ['live-channels'],
+      });
+      const cacheIsWarm = allCachedEntries.some(([key, ch]) => {
+        if (!ch || ch.length === 0) return false;
+        const entryCreds = (key as unknown[])[2];
+        return credentialSig(entryCreds as typeof credentials) === mySig;
+      });
+
+      // Skip only when: cache is cold AND all URLs present AND gate hasn't expired.
+      if (!cacheIsWarm && !hasMissingUrls && !gateExpired) return loaded;
+
+      const result = await fetchChannelUrlMap();
+      if (!result) return loaded;
+      const { map: urlMap } = result;
 
       let anyUpdated = false;
       const updated = loaded.map((r) => {
@@ -332,7 +408,7 @@ export default function RemindersScreen() {
       }
       return updated;
     },
-    [fetchChannelUrlMap],
+    [credentials, fetchChannelUrlMap, queryClient],
   );
 
   const load = useCallback(() => {
