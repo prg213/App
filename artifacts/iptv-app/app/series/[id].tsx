@@ -95,6 +95,7 @@ export default function SeriesDetailScreen() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('episodes');
   const [trailerUrl, setTrailerUrl] = useState<string | null>(null);
   const [coverError, setCoverError] = useState(false);
+  const [epThumbErrors, setEpThumbErrors] = useState<Record<string, boolean>>({});
 
   const params = useLocalSearchParams<{
     id: string; title: string; cover: string; rating: string;
@@ -356,8 +357,15 @@ export default function SeriesDetailScreen() {
                   >
                     {/* Thumbnail */}
                     <View style={[styles.epThumb, { backgroundColor: '#1A1A2E' }]}>
-                      {ep.info?.cover ? (
-                        <Image source={{ uri: ep.info.cover }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+                      {ep.info?.cover && !epThumbErrors[ep.id] ? (
+                        <Image
+                          source={{ uri: ep.info.cover }}
+                          style={StyleSheet.absoluteFill}
+                          resizeMode="cover"
+                          onError={() => setEpThumbErrors((prev) => ({ ...prev, [ep.id]: true }))}
+                        />
+                      ) : displayCover ? (
+                        <Image source={{ uri: displayCover }} style={StyleSheet.absoluteFill} resizeMode="cover" />
                       ) : (
                         <Text style={{ fontSize: 20 }}>📺</Text>
                       )}
