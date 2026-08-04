@@ -255,6 +255,14 @@ function ProgramModal({ program, channel, onClose, onWatch, colors }: {
     return () => sub.remove();
   }, [reminderId, isFuture]);
 
+  // #136: keep lead time label current if user changes it in Settings while modal is open
+  React.useEffect(() => {
+    const sub = DeviceEventEmitter.addListener('leadtime:changed', () => {
+      StorageService.getReminderLeadMins().then(setLeadMins);
+    });
+    return () => sub.remove();
+  }, []);
+
   const handleToggleReminder = async () => {
     if (hasReminder) {
       // Cancel the scheduled notification before removing the reminder
