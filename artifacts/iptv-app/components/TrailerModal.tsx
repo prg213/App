@@ -21,27 +21,44 @@ interface Props {
   onClose: () => void;
 }
 
-// A recent desktop Chrome UA. YouTube checks this to decide whether to serve
-// the embed player — without it the WebView gets Error 153 ("Video player
-// configuration error") because YouTube treats bare WebViews as bots.
-const CHROME_UA =
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) ' +
-  'AppleWebKit/537.36 (KHTML, like Gecko) ' +
-  'Chrome/125.0.0.0 Safari/537.36';
-
-/** Convert a YouTube watch/shorts URL to an embeddable autoplay URL. */
-function toEmbedUrl(url: string): string {
-  const watchMatch = url.match(
+/**
+ * Build a self-contained HTML page that embeds the YouTube player inside a
+ * proper <iframe> with the correct `allow` attribute. Injecting HTML with
+ * baseUrl="https://www.youtube.com" makes YouTube treat the embed as
+ * originating from youtube.com, which avoids Error 153 ("Video player
+ * configuration error") that occurs when the player is loaded as a bare URI
+ * in a WebView (no real page origin → YouTube blocks playback).
+ */
+function buildEmbedHtml(url: string): string {
+  const videoMatch = url.match(
     /(?:youtube\.com\/(?:watch\?v=|shorts\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/,
   );
-  if (watchMatch) {
-    return (
-      `https://www.youtube.com/embed/${watchMatch[1]}` +
-      `?autoplay=1&rel=0&modestbranding=1&playsinline=1` +
-      `&origin=https%3A%2F%2Fwww.youtube.com`
-    );
-  }
-  return url;
+  const src = videoMatch
+    ? `https://www.youtube.com/embed/${videoMatch[1]}?autoplay=1&rel=0&modestbranding=1&playsinline=1`
+    : url;
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:100%;height:100%;background:#000;overflow:hidden}
+  .wrap{position:relative;width:100%;height:100%}
+  iframe{position:absolute;top:0;left:0;width:100%;height:100%;border:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <iframe
+    src="${src}"
+    frameborder="0"
+    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+    allowfullscreen>
+  </iframe>
+</div>
+</body>
+</html>`;
 }
 
 export function TrailerModal({ url, onClose }: Props) {
@@ -56,7 +73,7 @@ export function TrailerModal({ url, onClose }: Props) {
   if (!url) return null;
 
   const isFetching = url === 'loading';
-  const embedUrl = isFetching ? '' : toEmbedUrl(url);
+  const embedHtml = isFetching ? '' : buildEmbedHtml(url);
 
   return (
     <Modal
@@ -88,15 +105,16 @@ export function TrailerModal({ url, onClose }: Props) {
               </View>
             )}
             <WebView
-              source={{ uri: embedUrl }}
+              source={{ html: embedHtml, baseUrl: 'https://www.youtube.com' }}
               style={styles.webview}
-              userAgent={CHROME_UA}
               onLoadEnd={() => setWebviewLoading(false)}
               allowsFullscreenVideo
               allowsInlineMediaPlayback
               mediaPlaybackRequiresUserAction={false}
               javaScriptEnabled
               domStorageEnabled
+              originWhitelist={['*']}
+              mixedContentMode="always"
             />
           </>
         )}
