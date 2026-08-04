@@ -1,5 +1,6 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
+  DeviceEventEmitter,
   FlatList,
   Image,
   StyleSheet,
@@ -32,6 +33,12 @@ export function ContinueWatchingRail({ type }: Props) {
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
   useFocusEffect(useCallback(() => { loadHistory(); }, [loadHistory]));
+
+  // Refresh instantly when settings clears history (no re-focus needed)
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener('history:cleared', loadHistory);
+    return () => sub.remove();
+  }, [loadHistory]);
 
   if (history.length === 0) return null;
 

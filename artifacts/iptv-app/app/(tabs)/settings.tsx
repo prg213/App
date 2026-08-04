@@ -208,7 +208,9 @@ export default function SettingsScreen() {
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Clear All', style: 'destructive',
-        onPress: () => StorageService.clearHistory().catch(() => {}),
+        onPress: () => StorageService.clearHistory().then(() => {
+          DeviceEventEmitter.emit('history:cleared');
+        }).catch(() => {}),
       },
     ]);
   };
@@ -445,6 +447,21 @@ export default function SettingsScreen() {
             sub="Remove the recently-watched channel rail"
             icon="⏮"
             onPress={handleClearRecentChannels}
+          />
+          <ActionRow
+            title="Clear Search History"
+            sub="Remove saved recent searches"
+            icon="🔍"
+            onPress={() => {
+              Alert.alert('Clear Search History', 'Remove all saved recent searches?', [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'Clear', style: 'destructive', onPress: () => {
+                    StorageService.clearRecentSearches();
+                  }
+                },
+              ]);
+            }}
           />
         </View>
 

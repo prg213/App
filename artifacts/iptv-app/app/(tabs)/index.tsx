@@ -1022,6 +1022,16 @@ export default function LiveTVScreen() {
           getItemLayout={(_, i) => ({ length: 52, offset: 52 * i, index: i })}
           contentContainerStyle={{ paddingBottom: insets.bottom + 8 }}
           removeClippedSubviews={false}
+          ListEmptyComponent={
+            catSearch.trim() ? (
+              <View style={{ padding: 10, alignItems: 'center' }}>
+                <Text style={{ fontSize: 18, marginBottom: 4 }}>🔍</Text>
+                <Text style={{ color: '#888', fontSize: 10, textAlign: 'center' }}>
+                  No categories match
+                </Text>
+              </View>
+            ) : null
+          }
         />
       </View>
 
@@ -1293,6 +1303,20 @@ export default function LiveTVScreen() {
                         >
                           {prog.title}
                         </Text>
+                        {isCurrent && (() => {
+                          const total = prog.end.getTime() - prog.start.getTime();
+                          const elapsed = Math.max(0, nowTs - prog.start.getTime());
+                          const pct = Math.min(1, elapsed / total);
+                          const minsLeft = Math.max(0, Math.round((prog.end.getTime() - nowTs) / 60_000));
+                          return (
+                            <View style={styles.epgProgressWrap}>
+                              <View style={[styles.epgProgressBar, { width: `${Math.round(pct * 100)}%` as any }]} />
+                              <Text style={[styles.epgTimeLeft, { color: colors.mutedForeground }]}>
+                                {minsLeft > 0 ? `${minsLeft}m left` : 'ending soon'}
+                              </Text>
+                            </View>
+                          );
+                        })()}
                         {prog.description ? (
                           <Text
                             style={[styles.epgDesc, { color: colors.mutedForeground }]}
@@ -1573,6 +1597,9 @@ const styles = StyleSheet.create({
   epgDesc: { fontSize: 10, fontFamily: 'Inter_400Regular', lineHeight: 14 },
   epgBell: { fontSize: 14, flexShrink: 0, alignSelf: 'center', marginLeft: 4 },
   epgEmpty: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 6 },
+  epgProgressWrap: { marginTop: 3, marginBottom: 2, height: 3, borderRadius: 2, backgroundColor: 'rgba(59,130,246,0.15)', overflow: 'hidden' as const },
+  epgProgressBar: { height: 3, borderRadius: 2, backgroundColor: '#3B82F6' },
+  epgTimeLeft: { fontSize: 9, fontFamily: 'Inter_400Regular', marginTop: 2 },
 
   noSel: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 },
   noSelTitle: { fontSize: 16, fontFamily: 'Inter_700Bold', marginBottom: 6 },

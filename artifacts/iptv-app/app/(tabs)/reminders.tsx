@@ -170,6 +170,16 @@ function ReminderCard({
   const isOnAir = startMs <= nowTs && nowTs < endMs;
 
   return (
+    <TouchableOpacity
+      activeOpacity={isPast ? 0.65 : 1}
+      onPress={isPast && !isOnAir ? () => {
+        Alert.alert(
+          reminder.programTitle,
+          [reminder.channelName, fmtDate(reminder.start), reminder.programDescription].filter(Boolean).join('\n'),
+          [{ text: 'OK' }],
+        );
+      } : undefined}
+    >
     <View style={[styles.card, { backgroundColor: colors.card, borderColor: isOnAir ? '#3B82F6' : colors.border, opacity: isPast && !isOnAir ? 0.5 : 1 }]}>
       {/* Left: channel logo */}
       <View style={[styles.logoWrap, { backgroundColor: colors.secondary }]}>
@@ -250,6 +260,7 @@ function ReminderCard({
         </TouchableOpacity>
       </View>
     </View>
+    </TouchableOpacity>
   );
 }
 
