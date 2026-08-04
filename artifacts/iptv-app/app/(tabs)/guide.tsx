@@ -682,7 +682,6 @@ function FullGuide({
           placeholderTextColor={colors.mutedForeground}
           style={[styles.guideChFilter, { backgroundColor: colors.secondary, color: colors.foreground, borderColor: colors.border }]}
           returnKeyType="search"
-          onSubmitEditing={() => { /* keep filter as typed; just dismiss keyboard */ }}
           clearButtonMode="while-editing"
         />
         <Text style={[styles.chCountLabel, { color: colors.mutedForeground }]}>

@@ -301,6 +301,7 @@ export default function SeriesScreen() {
             placeholderTextColor={colors.mutedForeground}
             value={search}
             onChangeText={(t) => { setSearch(t); gridRef.current?.scrollToOffset({ offset: 0, animated: false }); }}
+            clearButtonMode="while-editing"
           />
           {!isFavsSelected && !isRecentSelected && (
             <TouchableOpacity
@@ -406,6 +407,7 @@ export default function SeriesScreen() {
                   Alert.alert(item.name, undefined, [
                     { text: isFav ? '♥ Remove Favourite' : '♡ Add to Favourites', onPress: () => handleToggleFav(item) },
                     { text: '📺 Open Details', onPress: () => router.push({ pathname: '/series/[id]', params: { id: item.id, title: item.name, cover: item.cover ?? '', rating: item.rating ?? '', genre: item.genre ?? '', plot: item.plot ?? '', cast: item.cast ?? '', director: item.director ?? '' } }) },
+                    ...(isRecentSelected ? [{ text: '🗑 Remove from History', style: 'destructive' as const, onPress: () => { StorageService.removeFromHistory(item.id).then(refreshWatchHistory); } }] : []),
                     { text: 'Cancel', style: 'cancel' },
                   ]);
                 }}

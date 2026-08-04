@@ -304,6 +304,7 @@ export default function MoviesScreen() {
             placeholderTextColor={colors.mutedForeground}
             value={search}
             onChangeText={(t) => { setSearch(t); gridRef.current?.scrollToOffset({ offset: 0, animated: false }); }}
+            clearButtonMode="while-editing"
           />
           {!isFavsSelected && !isRecentSelected && (
             <TouchableOpacity
@@ -409,6 +410,7 @@ export default function MoviesScreen() {
                   Alert.alert(item.name, undefined, [
                     { text: isFav ? '♥ Remove Favourite' : '♡ Add to Favourites', onPress: () => handleToggleFav(item) },
                     { text: '🎬 Open Details', onPress: () => router.push({ pathname: '/movie/[id]', params: { id: item.id, title: item.name, cover: item.cover ?? '', genre: item.genre ?? '', rating: item.rating ?? '', plot: item.plot ?? '', cast: item.cast ?? '', director: item.director ?? '', releaseDate: item.releaseDate ?? '', duration: item.duration ?? '', ext: item.containerExtension } }) },
+                    ...(isRecentSelected ? [{ text: '🗑 Remove from History', style: 'destructive' as const, onPress: () => { StorageService.removeFromHistory(item.id).then(refreshWatchHistory); } }] : []),
                     { text: 'Cancel', style: 'cancel' },
                   ]);
                 }}
