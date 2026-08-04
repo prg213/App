@@ -78,8 +78,20 @@ export function ContinueWatchingRail({ type }: Props) {
             }
           };
 
+          const handleRemove = () => {
+            StorageService.removeFromHistory(item.id).then(() => {
+              setHistory((prev) => prev.filter((e) => e.id !== item.id));
+            }).catch(() => {});
+          };
+
           return (
-            <TouchableOpacity style={styles.card} onPress={handlePress} activeOpacity={0.75}>
+            <TouchableOpacity
+              style={styles.card}
+              onPress={handlePress}
+              onLongPress={handleRemove}
+              delayLongPress={500}
+              activeOpacity={0.75}
+            >
               <View style={[styles.thumb, { backgroundColor: colors.secondary }]}>
                 {item.cover ? (
                   <Image

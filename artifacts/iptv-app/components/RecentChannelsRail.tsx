@@ -42,9 +42,10 @@ interface CardProps {
   nowTitle: string | undefined;
   colors: ReturnType<typeof useColors>;
   onWatchFullscreen: (ch: Channel, cardRef: React.RefObject<View | null>) => void;
+  onRemove: (id: string) => void;
 }
 
-function RecentCard({ item, nowTitle, colors, onWatchFullscreen }: CardProps) {
+function RecentCard({ item, nowTitle, colors, onWatchFullscreen, onRemove }: CardProps) {
   const cardRef = useRef<View>(null);
   const ch = toChannel(item);
 
@@ -53,6 +54,8 @@ function RecentCard({ item, nowTitle, colors, onWatchFullscreen }: CardProps) {
       ref={cardRef as any}
       style={styles.card}
       onPress={() => onWatchFullscreen(ch, cardRef)}
+      onLongPress={() => onRemove(item.id)}
+      delayLongPress={500}
       activeOpacity={0.75}
     >
       {/* Logo area — 16:9 crop */}
@@ -106,6 +109,11 @@ export function RecentChannelsRail({
     }, [blockedIds]),
   );
 
+  const handleRemove = useCallback(async (id: string) => {
+    await StorageService.removeFromRecentChannels(id);
+    setRecent((prev) => prev.filter((ch) => ch.id !== id));
+  }, []);
+
   if (recent.length === 0) return null;
 
   return (
@@ -128,6 +136,7 @@ export function RecentChannelsRail({
               nowTitle={nowTitle}
               colors={colors}
               onWatchFullscreen={onWatchFullscreen}
+              onRemove={handleRemove}
             />
           );
         }}

@@ -230,6 +230,13 @@ export const StorageService = {
     await AsyncStorage.setItem(KEYS.RECENT_CHANNELS, JSON.stringify(updated));
   },
 
+  /** Remove a single channel from the recently-watched list by ID. */
+  async removeFromRecentChannels(id: string): Promise<void> {
+    const current = await StorageService.getRecentChannels();
+    const updated = current.filter((c) => c.id !== id);
+    await AsyncStorage.setItem(KEYS.RECENT_CHANNELS, JSON.stringify(updated));
+  },
+
   // ── Reminders (AsyncStorage) ──────────────────────────────────────────────
 
   async getReminders(): Promise<Reminder[]> {
