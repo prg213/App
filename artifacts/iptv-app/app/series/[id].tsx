@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -24,6 +24,7 @@ import { useParentalContext, isContentBlocked } from '@/context/ParentalContext'
 import { PinPad } from '@/components/PinPad';
 import { StorageService } from '@/services/storage';
 import { getXtreamSeriesInfo, getXtreamSeriesUrl } from '@/services/xtreamApi';
+import { ThumbnailWithFallback } from '@/components/ThumbnailWithFallback';
 import type { Episode, WatchHistoryEntry } from '@/types';
 
 function StarRow({ value }: { value: number }) {
@@ -95,14 +96,6 @@ export default function SeriesDetailScreen() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('episodes');
   const [trailerUrl, setTrailerUrl] = useState<string | null>(null);
   const [coverError, setCoverError] = useState(false);
-  const [epThumbErrors, setEpThumbErrors] = useState<Record<string, boolean>>({});
-
-  // Reset thumbnail error state whenever the user switches seasons so a valid
-  // thumbnail in the new season is never hidden by a stale error from a
-  // previous season that happened to share the same episode stream ID.
-  useEffect(() => {
-    setEpThumbErrors({});
-  }, [selectedSeason]);
 
   const params = useLocalSearchParams<{
     id: string; title: string; cover: string; rating: string;
@@ -363,26 +356,12 @@ export default function SeriesDetailScreen() {
                     onPress={() => handlePlayEpisode(ep)}
                   >
                     {/* Thumbnail */}
-                    <View style={[styles.epThumb, { backgroundColor: '#1A1A2E' }]}>
-                      {ep.info?.cover && !epThumbErrors[ep.id] ? (
-                        <Image
-                          source={{ uri: ep.info.cover }}
-                          style={StyleSheet.absoluteFill}
-                          resizeMode="cover"
-                          onError={() => setEpThumbErrors((prev) => ({ ...prev, [ep.id]: true }))}
-                        />
-                      ) : displayCover ? (
-                        <>
-                          <Image source={{ uri: displayCover }} style={StyleSheet.absoluteFill} resizeMode="cover" blurRadius={12} />
-                          <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.55)' }]} />
-                        </>
-                      ) : (
-                        <Text style={{ fontSize: 20 }}>📺</Text>
-                      )}
-                      <View style={styles.epPlayOverlay}>
-                        <Text style={styles.epPlayIcon}>▶</Text>
-                      </View>
-                    </View>
+                    <ThumbnailWithFallback
+                      uri={ep.info?.cover}
+                      fallbackUri={displayCover}
+                      style={styles.epThumb}
+                      showPlayOverlay
+                    />
 
                     {/* Info */}
                     <View style={styles.epInfo}>
@@ -596,12 +575,6 @@ const styles = StyleSheet.create({
     overflow: 'hidden', flexShrink: 0,
     justifyContent: 'center', alignItems: 'center',
   },
-  epPlayOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: 'center', alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.3)',
-  },
-  epPlayIcon: { fontSize: 20, color: '#fff' },
   epInfo: { flex: 1, gap: 2 },
   epTitle: { fontSize: 13, fontFamily: 'Inter_600SemiBold', lineHeight: 18 },
   durationBadge: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 5 },
