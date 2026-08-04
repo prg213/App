@@ -21,6 +21,14 @@ interface Props {
   onClose: () => void;
 }
 
+// A recent desktop Chrome UA. YouTube checks this to decide whether to serve
+// the embed player — without it the WebView gets Error 153 ("Video player
+// configuration error") because YouTube treats bare WebViews as bots.
+const CHROME_UA =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) ' +
+  'AppleWebKit/537.36 (KHTML, like Gecko) ' +
+  'Chrome/125.0.0.0 Safari/537.36';
+
 /** Convert a YouTube watch/shorts URL to an embeddable autoplay URL. */
 function toEmbedUrl(url: string): string {
   const watchMatch = url.match(
@@ -29,7 +37,8 @@ function toEmbedUrl(url: string): string {
   if (watchMatch) {
     return (
       `https://www.youtube.com/embed/${watchMatch[1]}` +
-      `?autoplay=1&rel=0&modestbranding=1&playsinline=1`
+      `?autoplay=1&rel=0&modestbranding=1&playsinline=1` +
+      `&origin=https%3A%2F%2Fwww.youtube.com`
     );
   }
   // Search-results fallback → mobile YouTube for a better in-app experience
@@ -82,6 +91,7 @@ export function TrailerModal({ url, onClose }: Props) {
             <WebView
               source={{ uri: embedUrl }}
               style={styles.webview}
+              userAgent={CHROME_UA}
               onLoadEnd={() => setWebviewLoading(false)}
               allowsFullscreenVideo
               allowsInlineMediaPlayback
