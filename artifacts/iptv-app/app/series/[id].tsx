@@ -434,10 +434,16 @@ export default function SeriesDetailScreen() {
           <View style={{ paddingHorizontal: 14, paddingTop: 12, gap: 10 }}>
             {isLoading ? (
               <ActivityIndicator color={colors.primary} style={{ marginTop: 24 }} />
-            ) : seasons.length === 0 ? (
-              <Text style={{ color: 'rgba(255,255,255,0.35)', textAlign: 'center', marginTop: 24, fontFamily: 'Inter_400Regular' }}>
-                No episodes available
-              </Text>
+            ) : seasons.length === 0 || (activeSeason && activeSeason.episodes.length === 0) ? (
+              <View style={{ alignItems: 'center', paddingVertical: 48, gap: 8 }}>
+                <Text style={{ fontSize: 32 }}>📭</Text>
+                <Text style={{ color: 'rgba(255,255,255,0.55)', fontSize: 14, fontFamily: 'Inter_500Medium' }}>
+                  No episodes available
+                </Text>
+                <Text style={{ color: 'rgba(255,255,255,0.3)', fontSize: 12, fontFamily: 'Inter_400Regular', textAlign: 'center', paddingHorizontal: 24 }}>
+                  The provider hasn't listed any episodes for this season.
+                </Text>
+              </View>
             ) : (
               activeSeason?.episodes.map((ep) => {
                 const hist = episodeHistory[ep.streamId];

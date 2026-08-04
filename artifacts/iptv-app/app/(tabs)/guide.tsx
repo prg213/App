@@ -153,10 +153,10 @@ function ChannelCell({
 // ─── Program cell ─────────────────────────────────────────────────────────────
 
 const ProgramCell = React.memo(function ProgramCell({
-  program, left, width, now, colors, onPress, onLongPress,
+  program, left, width, now, colors, hasReminder, onPress, onLongPress,
 }: {
   program: EpgProgram; left: number; width: number; now: number;
-  colors: any; onPress: () => void; onLongPress?: () => void;
+  colors: any; hasReminder?: boolean; onPress: () => void; onLongPress?: () => void;
 }) {
   if (width < 6) return null;
   const isNow = program.start.getTime() <= now && now < program.end.getTime();
@@ -177,6 +177,11 @@ const ProgramCell = React.memo(function ProgramCell({
       activeOpacity={0.7}
     >
       {isNow && <View style={[styles.progressBar, { width: `${progress * 100}%` as any }]} />}
+      {hasReminder && width > 20 && (
+        <View style={styles.reminderBadge} pointerEvents="none">
+          <Text style={styles.reminderBadgeIcon}>🔔</Text>
+        </View>
+      )}
       {width > 30 && (
         <Text style={[styles.progTitle, { color: isNow ? '#F2F2F2' : colors.foreground }]} numberOfLines={1}>
           {program.title}
@@ -194,10 +199,11 @@ const ProgramCell = React.memo(function ProgramCell({
 // ─── Program row ─────────────────────────────────────────────────────────────
 
 const ProgramRow = React.memo(function ProgramRow({
-  channel, programs, dayStartMs, now, colors, onProgramPress, onProgramLongPress,
+  channel, programs, dayStartMs, now, colors, reminderIds, onProgramPress, onProgramLongPress,
 }: {
   channel: Channel; programs: EpgProgram[]; dayStartMs: number; now: number;
-  colors: any; onProgramPress: (p: EpgProgram, ch: Channel) => void;
+  colors: any; reminderIds?: Set<string>;
+  onProgramPress: (p: EpgProgram, ch: Channel) => void;
   onProgramLongPress?: (p: EpgProgram, ch: Channel) => void;
 }) {
   const dayEndMs = dayStartMs + DAY_MINS * 60_000;
@@ -217,6 +223,7 @@ const ProgramRow = React.memo(function ProgramRow({
         return (
           <ProgramCell
             key={i} program={prog} left={left} width={width} now={now} colors={colors}
+            hasReminder={reminderIds?.has(`${channel.id}_${prog.start.toISOString()}`)}
             onPress={() => onProgramPress(prog, channel)}
             onLongPress={onProgramLongPress ? () => onProgramLongPress(prog, channel) : undefined}
           />
@@ -477,6 +484,18 @@ function FullGuide({
   const [selected, setSelected] = useState<{ program: EpgProgram; channel: Channel } | null>(null);
   const [now, setNow] = useState(Date.now());
   const [guideToast, setGuideToast] = useState<string | null>(null);
+  const [guideReminderIds, setGuideReminderIds] = useState<Set<string>>(new Set());
+
+  // Load current reminder IDs so ProgramCells can show 🔔 badge
+  const refreshGuideReminderIds = useCallback(() => {
+    StorageService.getReminders().then((rs) => setGuideReminderIds(new Set(rs.map((r) => r.id))));
+  }, []);
+  useEffect(() => { refreshGuideReminderIds(); }, [refreshGuideReminderIds]);
+  // Stay in sync when reminders change (from long-press or modal)
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener('reminders:changed', refreshGuideReminderIds);
+    return () => sub.remove();
+  }, [refreshGuideReminderIds]);
 
   const handleProgramLongPress = useCallback(async (prog: EpgProgram, ch: Channel) => {
     const isFuture = prog.start > new Date();
@@ -771,6 +790,7 @@ function FullGuide({
                       dayStartMs={dayStartMs}
                       now={now}
                       colors={colors}
+                      reminderIds={guideReminderIds}
                       onProgramPress={(p, c) => setSelected({ program: p, channel: c })}
                       onProgramLongPress={handleProgramLongPress}
                     />
@@ -1179,6 +1199,8 @@ const styles = StyleSheet.create({
   },
   progTitle: { fontSize: 11, fontFamily: 'Inter_600SemiBold' },
   progTime: { fontSize: 9, fontFamily: 'Inter_400Regular' },
+  reminderBadge: { position: 'absolute', top: 2, right: 3 },
+  reminderBadgeIcon: { fontSize: 8 },
   noProg: {
     width: TOTAL_DAY_W - 8,
     height: ROW_H - 12,
