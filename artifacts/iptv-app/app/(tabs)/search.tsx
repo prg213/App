@@ -531,7 +531,13 @@ export default function SearchScreen() {
                   <TouchableOpacity
                     key={s}
                     style={[styles.recentRow, { borderBottomColor: colors.border }]}
-                    onPress={() => setQuery(s)}
+                    onPress={() => {
+                      setQuery(s);
+                      // Also save it (bumps to top) then let the results render
+                      StorageService.addRecentSearch(s).then(() =>
+                        StorageService.getRecentSearches().then(setRecentSearches)
+                      );
+                    }}
                     activeOpacity={0.7}
                   >
                     <Text style={[styles.recentIcon, { color: colors.mutedForeground }]}>🕐</Text>

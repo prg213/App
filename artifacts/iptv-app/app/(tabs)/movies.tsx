@@ -163,6 +163,8 @@ export default function MoviesScreen() {
 
   const [sortOrder, setSortOrder] = useState<'newest' | 'name' | 'rating'>('newest');
   const [sortToast, setSortToast] = useState<string | null>(null);
+  const [showScrollTop, setShowScrollTop] = useState(false);
+  const gridRef = useRef<FlatList<Movie>>(null);
   const cycleSortOrder = useCallback(() => {
     setSortOrder((s) => {
       const next = s === 'newest' ? 'name' : s === 'name' ? 'rating' : 'newest';
@@ -353,9 +355,12 @@ export default function MoviesScreen() {
           </View>
         ) : (
           <FlatList
+            ref={gridRef}
             data={filtered}
             numColumns={4}
             keyExtractor={(item) => item.id}
+            onScroll={(e) => setShowScrollTop(e.nativeEvent.contentOffset.y > 300)}
+            scrollEventThrottle={200}
             renderItem={({ item }) => (
               <MovieCard
                 id={item.id}
@@ -394,6 +399,15 @@ export default function MoviesScreen() {
       </View>
     </View>
     <TrailerModal videoIds={trailerIds} onClose={() => setTrailerIds(null)} />
+    {showScrollTop && (
+      <TouchableOpacity
+        style={[styles.scrollTopFab, { backgroundColor: colors.primary }]}
+        onPress={() => gridRef.current?.scrollToOffset({ offset: 0, animated: true })}
+        activeOpacity={0.8}
+      >
+        <Text style={styles.scrollTopIcon}>↑</Text>
+      </TouchableOpacity>
+    )}
     </>
   );
 }
@@ -415,4 +429,6 @@ const styles = StyleSheet.create({
   empty: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 8 },
   emptyTitle: { fontSize: 15, fontFamily: 'Inter_500Medium' },
   emptySub: { fontSize: 13, fontFamily: 'Inter_400Regular', textAlign: 'center', paddingHorizontal: 24 },
+  scrollTopFab: { position: 'absolute', bottom: 24, right: 16, width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.4, shadowRadius: 4, elevation: 6 },
+  scrollTopIcon: { color: '#fff', fontSize: 18, fontWeight: '700', lineHeight: 20 },
 });
