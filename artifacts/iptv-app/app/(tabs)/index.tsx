@@ -769,6 +769,8 @@ export default function LiveTVScreen() {
     setSelectedChannel(null);
     // Exit reorder mode whenever the user switches category
     setIsReordering(false);
+    // Scroll the channel list back to the top so the first channel is visible
+    channelListRef.current?.scrollToOffset({ offset: 0, animated: false });
   }, []);
 
   // ── Reorder mode handlers ─────────────────────────────────────────────────

@@ -303,6 +303,7 @@ export default function PlayerScreen() {
 
   // Active channel state — updates when navigating prev/next
   const [activeTitle, setActiveTitle] = useState(params.title);
+  const [activeLogo, setActiveLogo] = useState<string>(params.logo as string ?? '');
   const [activeEpgId, setActiveEpgId] = useState(params.epgId ?? '');
 
   const prevChannel = channelList.length > 0 && channelIdx > 0 ? channelList[channelIdx - 1] : null;
@@ -845,6 +846,7 @@ export default function PlayerScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setChannelIdx(newIdx);
     setActiveTitle(entry.title);
+    setActiveLogo(entry.logo ?? '');
     setActiveEpgId(entry.epgId);
     setActiveUrl(entry.url);   // keeps cast hook in sync with the new stream
     activeUrlRef.current = entry.url; // keep ref in sync so reconnect targets the right channel
@@ -1399,9 +1401,9 @@ export default function PlayerScreen() {
                 <Text style={styles.ccActiveBadgeText}>{ccLabel}</Text>
               </View>
             )}
-            {!!params.logo && (
+            {!!activeLogo && (
               <Image
-                source={{ uri: params.logo as string }}
+                source={{ uri: activeLogo }}
                 style={styles.infoChannelLogo}
                 resizeMode="contain"
               />

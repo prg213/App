@@ -173,10 +173,11 @@ export default function MoviesScreen() {
   const [showScrollTop, setShowScrollTop] = useState(false);
   const gridRef = useRef<FlatList<Movie>>(null);
 
-  // Scroll back to top whenever the category changes
+  // Scroll back to top and clear search whenever the category changes
   useEffect(() => {
     gridRef.current?.scrollToOffset({ offset: 0, animated: false });
     setShowScrollTop(false);
+    setSearch('');
   }, [selectedCat]);
   const cycleSortOrder = useCallback(() => {
     setSortOrder((s) => {
