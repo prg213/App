@@ -154,6 +154,22 @@ export default function SeriesDetailScreen() {
   const seasons = data?.seasons ?? [];
   const activeSeason = seasons[selectedSeason];
 
+  // Prefetch episode thumbnails for the current season as soon as series data
+  // arrives (or the user switches seasons) so the episode list shows crisp
+  // images on the very first render, even on slow connections.
+  useEffect(() => {
+    if (seasons.length === 0) return;
+    const season = seasons[selectedSeason];
+    if (!season) return;
+    for (const ep of season.episodes) {
+      const thumbUri = ep.info?.cover;
+      if (thumbUri) {
+        // Fire-and-forget — errors are silently ignored; this is best-effort.
+        Image.prefetch(thumbUri).catch(() => {});
+      }
+    }
+  }, [selectedSeason, seasons]);
+
   // Prefetch episode thumbnails for the adjacent seasons (N-1, N+1) so that
   // switching seasons shows images immediately instead of waiting for downloads.
   useEffect(() => {
