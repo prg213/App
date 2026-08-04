@@ -12,6 +12,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter, useFocusEffect } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { TrailerModal } from '@/components/TrailerModal';
+import { getTmdbTrailerVideoId } from '@/services/tmdb';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { useAppContext } from '@/context/AppContext';
@@ -318,10 +319,14 @@ export default function SeriesScreen() {
                   router.push({ pathname: '/series/[id]', params: { id: item.id, title: item.name, cover: item.cover ?? '', rating: item.rating ?? '', genre: item.genre ?? '', plot: item.plot ?? '', cast: item.cast ?? '', director: item.director ?? '' } });
                 }}
                 onTrailerPress={() => {
-                  const providerUrl = item.trailerUrl
-                    ? (item.trailerUrl.startsWith('http') ? item.trailerUrl : `https://www.youtube.com/watch?v=${item.trailerUrl}`)
-                    : null;
-                  setTrailerUrl(providerUrl ?? `https://www.youtube.com/results?search_query=${encodeURIComponent(`${item.name} official trailer`)}`);
+                  setTrailerUrl('loading');
+                  getTmdbTrailerVideoId(item.name, 'tv').then((videoId) => {
+                    if (videoId) { setTrailerUrl(`https://www.youtube.com/watch?v=${videoId}`); return; }
+                    const providerUrl = item.trailerUrl
+                      ? (item.trailerUrl.startsWith('http') ? item.trailerUrl : `https://www.youtube.com/watch?v=${item.trailerUrl}`)
+                      : null;
+                    setTrailerUrl(providerUrl ?? `https://www.youtube.com/results?search_query=${encodeURIComponent(`${item.name} official trailer`)}`);
+                  });
                 }}
               />
             )}

@@ -12,6 +12,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter, useFocusEffect } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { TrailerModal } from '@/components/TrailerModal';
+import { getTmdbTrailerVideoId } from '@/services/tmdb';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { useAppContext } from '@/context/AppContext';
@@ -321,10 +322,14 @@ export default function MoviesScreen() {
                   router.push({ pathname: '/movie/[id]', params: { id: item.id, title: item.name, cover: item.cover ?? '', genre: item.genre ?? '', rating: item.rating ?? '', plot: item.plot ?? '', cast: item.cast ?? '', director: item.director ?? '', releaseDate: item.releaseDate ?? '', duration: item.duration ?? '', ext: item.containerExtension } });
                 }}
                 onTrailerPress={() => {
-                  const providerUrl = item.trailerUrl
-                    ? (item.trailerUrl.startsWith('http') ? item.trailerUrl : `https://www.youtube.com/watch?v=${item.trailerUrl}`)
-                    : null;
-                  setTrailerUrl(providerUrl ?? `https://www.youtube.com/results?search_query=${encodeURIComponent(`${item.name} official trailer`)}`);
+                  setTrailerUrl('loading');
+                  getTmdbTrailerVideoId(item.name, 'movie').then((videoId) => {
+                    if (videoId) { setTrailerUrl(`https://www.youtube.com/watch?v=${videoId}`); return; }
+                    const providerUrl = item.trailerUrl
+                      ? (item.trailerUrl.startsWith('http') ? item.trailerUrl : `https://www.youtube.com/watch?v=${item.trailerUrl}`)
+                      : null;
+                    setTrailerUrl(providerUrl ?? `https://www.youtube.com/results?search_query=${encodeURIComponent(`${item.name} official trailer`)}`);
+                  });
                 }}
               />
             )}

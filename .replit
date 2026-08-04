@@ -33,3 +33,8 @@ externalPort = 80
 [[ports]]
 localPort = 24944
 externalPort = 3000
+
+[userenv]
+
+[userenv.shared]
+EXPO_PUBLIC_TMDB_API_KEY = "312ee14dd7f250471da1174324be2bda"

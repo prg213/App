@@ -12,7 +12,7 @@ import {
   View,
 } from 'react-native';
 import { TrailerModal } from '@/components/TrailerModal';
-import * as Network from 'expo-network';
+import { getTmdbTrailerVideoId } from '@/services/tmdb';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -281,22 +281,15 @@ export default function SeriesDetailScreen() {
                 Alert.alert('No Internet', 'No internet connection — trailer unavailable.', [{ text: 'OK' }]);
                 return;
               }
-              const netState = await Network.getNetworkStateAsync();
-              if (!netState.isConnected || !netState.isInternetReachable) {
-                Alert.alert('No Internet', 'No internet connection — trailer unavailable.', [{ text: 'OK' }]);
-                return;
-              }
+              setTrailerUrl('loading');
+              const videoId = await getTmdbTrailerVideoId(params.title, 'tv');
+              if (videoId) { setTrailerUrl(`https://www.youtube.com/watch?v=${videoId}`); return; }
               const rawTrailer = data?.series?.trailerUrl;
-              let url: string;
               if (rawTrailer) {
-                url = rawTrailer.startsWith('http')
-                  ? rawTrailer
-                  : `https://www.youtube.com/watch?v=${rawTrailer}`;
+                setTrailerUrl(rawTrailer.startsWith('http') ? rawTrailer : `https://www.youtube.com/watch?v=${rawTrailer}`);
               } else {
-                const q = encodeURIComponent(`${params.title} official trailer`);
-                url = `https://www.youtube.com/results?search_query=${q}`;
+                setTrailerUrl(`https://www.youtube.com/results?search_query=${encodeURIComponent(`${params.title} official trailer`)}`);
               }
-              setTrailerUrl(url);
             }}
           >
             <Text style={[styles.outlineBtnText, !isOnline && { opacity: 0.45 }]}>

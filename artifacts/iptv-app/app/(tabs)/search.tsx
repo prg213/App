@@ -15,6 +15,7 @@ import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { Alert } from 'react-native';
 import { TrailerModal } from '@/components/TrailerModal';
+import { getTmdbTrailerVideoId } from '@/services/tmdb';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { useIsOnline } from '@/hooks/useIsOnline';
@@ -420,12 +421,14 @@ export default function SearchScreen() {
             colors={colors}
             onPress={() => handleMoviePress(item.item)}
             onTrailer={() => {
-              const providerUrl = item.item.trailerUrl
-                ? (item.item.trailerUrl.startsWith('http')
-                    ? item.item.trailerUrl
-                    : `https://www.youtube.com/watch?v=${item.item.trailerUrl}`)
-                : null;
-              setTrailerUrl(providerUrl ?? `https://www.youtube.com/results?search_query=${encodeURIComponent(`${item.item.name} official trailer`)}`);
+              setTrailerUrl('loading');
+              getTmdbTrailerVideoId(item.item.name, 'movie').then((videoId) => {
+                if (videoId) { setTrailerUrl(`https://www.youtube.com/watch?v=${videoId}`); return; }
+                const providerUrl = item.item.trailerUrl
+                  ? (item.item.trailerUrl.startsWith('http') ? item.item.trailerUrl : `https://www.youtube.com/watch?v=${item.item.trailerUrl}`)
+                  : null;
+                setTrailerUrl(providerUrl ?? `https://www.youtube.com/results?search_query=${encodeURIComponent(`${item.item.name} official trailer`)}`);
+              });
             }}
           />
         );
@@ -441,12 +444,14 @@ export default function SearchScreen() {
             colors={colors}
             onPress={() => handleSeriesPress(item.item)}
             onTrailer={() => {
-              const providerUrl = item.item.trailerUrl
-                ? (item.item.trailerUrl.startsWith('http')
-                    ? item.item.trailerUrl
-                    : `https://www.youtube.com/watch?v=${item.item.trailerUrl}`)
-                : null;
-              setTrailerUrl(providerUrl ?? `https://www.youtube.com/results?search_query=${encodeURIComponent(`${item.item.name} official trailer`)}`);
+              setTrailerUrl('loading');
+              getTmdbTrailerVideoId(item.item.name, 'tv').then((videoId) => {
+                if (videoId) { setTrailerUrl(`https://www.youtube.com/watch?v=${videoId}`); return; }
+                const providerUrl = item.item.trailerUrl
+                  ? (item.item.trailerUrl.startsWith('http') ? item.item.trailerUrl : `https://www.youtube.com/watch?v=${item.item.trailerUrl}`)
+                  : null;
+                setTrailerUrl(providerUrl ?? `https://www.youtube.com/results?search_query=${encodeURIComponent(`${item.item.name} official trailer`)}`);
+              });
             }}
           />
         );

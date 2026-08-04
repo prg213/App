@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Modal,
@@ -11,28 +11,44 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
 
 interface Props {
+  /**
+   * null  → modal is closed
+   * 'loading' → modal open, showing a full-screen spinner while the caller
+   *              fetches the real URL asynchronously
+   * string URL → modal open, rendering the video in a WebView
+   */
   url: string | null;
   onClose: () => void;
 }
 
-/** Convert a YouTube watch/short URL to an embeddable URL with autoplay. */
+/** Convert a YouTube watch/shorts URL to an embeddable autoplay URL. */
 function toEmbedUrl(url: string): string {
   const watchMatch = url.match(
     /(?:youtube\.com\/(?:watch\?v=|shorts\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/,
   );
   if (watchMatch) {
-    return `https://www.youtube.com/embed/${watchMatch[1]}?autoplay=1&rel=0&modestbranding=1`;
+    return (
+      `https://www.youtube.com/embed/${watchMatch[1]}` +
+      `?autoplay=1&rel=0&modestbranding=1&playsinline=1`
+    );
   }
-  return url;
+  // Search-results fallback → mobile YouTube for a better in-app experience
+  return url.replace('//www.youtube.com/results', '//m.youtube.com/results');
 }
 
 export function TrailerModal({ url, onClose }: Props) {
   const insets = useSafeAreaInsets();
-  const [loading, setLoading] = useState(true);
+  const [webviewLoading, setWebviewLoading] = useState(true);
+
+  // Reset spinner each time a new URL is set
+  useEffect(() => {
+    if (url && url !== 'loading') setWebviewLoading(true);
+  }, [url]);
 
   if (!url) return null;
 
-  const embedUrl = toEmbedUrl(url);
+  const isFetching = url === 'loading';
+  const embedUrl = isFetching ? '' : toEmbedUrl(url);
 
   return (
     <Modal
@@ -50,23 +66,31 @@ export function TrailerModal({ url, onClose }: Props) {
           </Pressable>
         </View>
 
-        {/* ── Loader ── */}
-        {loading && (
-          <View style={styles.loaderOverlay}>
+        {/* ── Loading state (TMDB fetch in progress) ── */}
+        {isFetching ? (
+          <View style={styles.loaderFull}>
             <ActivityIndicator size="large" color="#3B82F6" />
+            <Text style={styles.loaderText}>Finding trailer…</Text>
           </View>
+        ) : (
+          <>
+            {webviewLoading && (
+              <View style={styles.loaderOverlay}>
+                <ActivityIndicator size="large" color="#3B82F6" />
+              </View>
+            )}
+            <WebView
+              source={{ uri: embedUrl }}
+              style={styles.webview}
+              onLoadEnd={() => setWebviewLoading(false)}
+              allowsFullscreenVideo
+              allowsInlineMediaPlayback
+              mediaPlaybackRequiresUserAction={false}
+              javaScriptEnabled
+              domStorageEnabled
+            />
+          </>
         )}
-
-        {/* ── WebView ── */}
-        <WebView
-          source={{ uri: embedUrl }}
-          style={styles.webview}
-          onLoadEnd={() => setLoading(false)}
-          allowsFullscreenVideo
-          mediaPlaybackRequiresUserAction={false}
-          javaScriptEnabled
-          allowsInlineMediaPlayback
-        />
       </View>
     </Modal>
   );
@@ -104,9 +128,20 @@ const styles = StyleSheet.create({
     color: '#F2F2F2',
     lineHeight: 18,
   },
+  loaderFull: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 14,
+  },
+  loaderText: {
+    fontSize: 14,
+    fontFamily: 'Inter_400Regular',
+    color: 'rgba(255,255,255,0.5)',
+  },
   loaderOverlay: {
     ...StyleSheet.absoluteFillObject,
-    top: 60,
+    top: 56,
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 10,
