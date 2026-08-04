@@ -12,7 +12,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter, useFocusEffect } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { TrailerModal } from '@/components/TrailerModal';
-import { getTmdbTrailerVideoId } from '@/services/tmdb';
+import { getTmdbTrailerVideoId, getTmdbPosterUrl } from '@/services/tmdb';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { useAppContext } from '@/context/AppContext';

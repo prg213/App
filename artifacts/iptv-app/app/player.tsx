@@ -16,6 +16,7 @@ import {
   TouchableWithoutFeedback,
   View,
 } from 'react-native';
+import * as Network from 'expo-network';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useLivePlayer } from '@/context/LivePlayerContext';
@@ -366,27 +367,77 @@ export default function PlayerScreen() {
   }, []);
 
   // ── AppState — background suppression (#31) + foreground retry (#30) ─────
+  // isBackgroundRef: true whenever the app is not in the foreground.
+  // This prevents error UI from appearing during brief background stalls.
   const isBackgroundRef = useRef(false);
+  // hasErrorRef: mirrors hasError so the AppState handler can read it
+  // synchronously without stale closure issues.
+  const hasErrorRef = useRef(false);
   useEffect(() => {
     if (isWeb) return;
     const sub = AppState.addEventListener('change', (state: AppStateStatus) => {
       const wasBackground = isBackgroundRef.current;
       isBackgroundRef.current = state !== 'active';
-      // On foregrounding: if live retries were exhausted while the app was
-      // backgrounded/offline, reset the counter and try once more immediately.
-      if (wasBackground && state === 'active' && isLive) {
-        if (reconnectAttemptRef.current >= MAX_RECONNECTS) {
-          setReconnectAttempt(0);
-          reconnectAttemptRef.current = 0;
-          setHasError(false);
-          setIsReconnecting(true);
-          setIsBuffering(true);
-          try { player.replace(activeUrlRef.current); player.play(); } catch {}
+
+      if (wasBackground && state === 'active') {
+        // #31: App came back to foreground — re-evaluate player state.
+        // If an error was suppressed while backgrounded, show it now only if
+        // the player is genuinely still broken (hasError was set).
+        // #30: For live streams, if the error screen is showing (or retries
+        // were exhausted while backgrounded), reset and attempt playback again.
+        if (isLive) {
+          if (hasErrorRef.current || reconnectAttemptRef.current >= MAX_RECONNECTS) {
+            setReconnectAttempt(0);
+            reconnectAttemptRef.current = 0;
+            setHasError(false);
+            hasErrorRef.current = false;
+            setIsReconnecting(true);
+            setIsBuffering(true);
+            try { player.replace(activeUrlRef.current); player.play(); } catch {}
+          }
         }
       }
     });
     return () => sub.remove();
   }, [player, isLive, isWeb]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Keep hasErrorRef in sync with hasError state
+  useEffect(() => { hasErrorRef.current = hasError; }, [hasError]);
+
+  // #30: Network-reconnect polling for live streams.
+  // While the error screen is showing, poll expo-network every 3 s.
+  // When the device goes from offline → online, immediately retry playback.
+  const wasOfflineRef = useRef(false);
+  useEffect(() => {
+    if (!isLive || isWeb) return;
+    // Only run the network poll while in an error/reconnecting state.
+    if (!hasError && !isReconnecting) return;
+
+    const poll = setInterval(async () => {
+      try {
+        const state = await Network.getNetworkStateAsync();
+        const isOnline = state.isConnected === true && state.isInternetReachable !== false;
+        if (!isOnline) {
+          wasOfflineRef.current = true;
+        } else if (wasOfflineRef.current) {
+          // Network came back — attempt immediate reconnect
+          wasOfflineRef.current = false;
+          setReconnectAttempt(0);
+          reconnectAttemptRef.current = 0;
+          setHasError(false);
+          hasErrorRef.current = false;
+          setIsReconnecting(true);
+          setIsBuffering(true);
+          if (reconnectTimerRef.current) { clearTimeout(reconnectTimerRef.current); reconnectTimerRef.current = null; }
+          try { player.replace(activeUrlRef.current); player.play(); } catch {}
+        }
+      } catch {
+        // expo-network unavailable — ignore
+      }
+    }, 3000);
+
+    return () => clearInterval(poll);
+  }, [isLive, isWeb, hasError, isReconnecting, player]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // #131: Always-current credentials ref so the async re-resolve closure reads
   // the latest value even though the statusChange listener is set up once.

@@ -227,6 +227,24 @@ export default function SearchScreen() {
     StorageService.getPrefSearchQuery().then((saved) => { if (saved) setQuery(saved); });
   }, []);
 
+  // #122: Clear the in-memory query when the user logs out or switches accounts.
+  // credentials becomes null on logout; reset the query so the old search isn't
+  // visible if a different account logs in within the same session.
+  const prevCredentialsRef = useRef(credentials);
+  useEffect(() => {
+    const prev = prevCredentialsRef.current;
+    prevCredentialsRef.current = credentials;
+    // Detect logout (had credentials, now null) or account switch (host/username changed)
+    if (prev && !credentials) {
+      setQuery('');
+    } else if (
+      prev && credentials &&
+      (prev.host !== credentials.host || prev.username !== credentials.username)
+    ) {
+      setQuery('');
+    }
+  }, [credentials]);
+
   // #108: Persist query with a 1 s debounce so fast typing doesn't thrash storage
   useEffect(() => {
     const t = setTimeout(() => StorageService.setPrefSearchQuery(query), 1000);

@@ -283,11 +283,17 @@ export default function RemindersScreen() {
   const [undoBanner, setUndoBanner] = useState<{ reminder: Reminder; timerId: ReturnType<typeof setTimeout> } | null>(null);
   const undoBannerRef = useRef(undoBanner);
   useEffect(() => { undoBannerRef.current = undoBanner; }, [undoBanner]);
-  // #121: brief auto-removed notice
+  // #121: brief auto-removed notice (in-session ticker removals)
   const [autoRemovedCount, setAutoRemovedCount] = useState(0);
   const autoRemovedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // #95/#121: brief startup prune notice (replaces Alert.alert)
+  const [prunedCount, setPrunedCount] = useState(0);
+  const prunedBannerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // #117: dedup prune alert so it only fires once per unique set of removed reminders
   const prunedKeyRef = useRef('');
+  // #152: track last background refresh failure timestamp to enforce a 5-min backoff
+  const lastRefreshFailureRef = useRef<number>(0);
+  const REFRESH_FAILURE_BACKOFF_MS = 5 * 60_000;
   useFocusEffect(
     useCallback(() => {
       StorageService.getReminderLeadMins().then(setReminderLeadMins);
