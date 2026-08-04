@@ -12,7 +12,7 @@ import {
   View,
 } from 'react-native';
 import { TrailerModal } from '@/components/TrailerModal';
-import { getTmdbTrailerVideoId } from '@/services/tmdb';
+import { getTmdbTrailerVideoId, getTmdbPosterUrl } from '@/services/tmdb';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -151,6 +151,15 @@ export default function MovieDetailScreen() {
   const duration    = params.duration    || vodInfo?.duration    || '';
   const ext         = params.ext         || vodInfo?.containerExtension || 'mp4';
 
+  // Fetch TMDB poster when the provider hasn't supplied a cover image.
+  const { data: tmdbPoster } = useQuery({
+    queryKey: ['tmdb-poster', params.title, 'movie'],
+    queryFn: () => getTmdbPosterUrl(params.title, 'movie'),
+    enabled: !cover,
+    staleTime: 30 * 60_000,
+  });
+  const displayCover = cover || tmdbPoster || '';
+
   const handleToggleFav = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     const updated = await StorageService.toggleMovieFavorite({
@@ -195,8 +204,8 @@ export default function MovieDetailScreen() {
   return (
     <View style={[styles.root, { backgroundColor: '#0A0A0F' }]}>
       {/* Faint blurred background from cover */}
-      {cover ? (
-        <Image source={{ uri: cover }} style={styles.bgImage} blurRadius={10} />
+      {displayCover ? (
+        <Image source={{ uri: displayCover }} style={styles.bgImage} blurRadius={10} />
       ) : null}
       <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(10,10,15,0.87)' }]} />
 
@@ -229,8 +238,8 @@ export default function MovieDetailScreen() {
         <View style={styles.topSection}>
           {/* Left: poster + stars */}
           <View style={styles.posterCol}>
-            {cover ? (
-              <Image source={{ uri: cover }} style={styles.poster} resizeMode="cover" />
+            {displayCover ? (
+              <Image source={{ uri: displayCover }} style={styles.poster} resizeMode="cover" />
             ) : (
               <View style={[styles.poster, { backgroundColor: '#1A1A2E', justifyContent: 'center', alignItems: 'center' }]}>
                 <Text style={{ fontSize: 36 }}>🎬</Text>

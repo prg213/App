@@ -12,7 +12,7 @@ import {
   View,
 } from 'react-native';
 import { TrailerModal } from '@/components/TrailerModal';
-import { getTmdbTrailerVideoId } from '@/services/tmdb';
+import { getTmdbTrailerVideoId, getTmdbPosterUrl } from '@/services/tmdb';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -183,14 +183,23 @@ export default function SeriesDetailScreen() {
   const releaseDate = data?.info?.releaseDate || '';
   const genreDisplay = genre ? genre.split(',').slice(0, 2).map((g) => g.trim()).join(' / ') : '';
 
+  // Fetch TMDB poster when the provider hasn't supplied a cover image.
+  const { data: tmdbPoster } = useQuery({
+    queryKey: ['tmdb-poster', params.title, 'tv'],
+    queryFn: () => getTmdbPosterUrl(params.title, 'tv'),
+    enabled: !params.cover,
+    staleTime: 30 * 60_000,
+  });
+  const displayCover = params.cover || tmdbPoster || '';
+
   // Cast list for Cast tab
   const castList = cast ? cast.split(',').map((c) => c.trim()).filter(Boolean) : [];
 
   return (
     <View style={[styles.root, { backgroundColor: '#0A0A0F' }]}>
       {/* Faint blurred background */}
-      {params.cover ? (
-        <Image source={{ uri: params.cover }} style={styles.bgImage} blurRadius={10} />
+      {displayCover ? (
+        <Image source={{ uri: displayCover }} style={styles.bgImage} blurRadius={10} />
       ) : null}
       <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(10,10,15,0.87)' }]} />
 
@@ -220,8 +229,8 @@ export default function SeriesDetailScreen() {
         <View style={styles.topSection}>
           {/* Poster + stars */}
           <View style={styles.posterCol}>
-            {params.cover ? (
-              <Image source={{ uri: params.cover }} style={styles.poster} resizeMode="cover" />
+            {displayCover ? (
+              <Image source={{ uri: displayCover }} style={styles.poster} resizeMode="cover" />
             ) : (
               <View style={[styles.poster, { backgroundColor: '#1A1A2E', justifyContent: 'center', alignItems: 'center' }]}>
                 <Text style={{ fontSize: 36 }}>📺</Text>
