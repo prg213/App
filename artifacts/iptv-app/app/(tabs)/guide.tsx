@@ -752,8 +752,15 @@ function FullGuide({
           <Text style={{ fontSize: 36 }}>🔍</Text>
           <Text style={[styles.emptyTitle, { color: colors.foreground }]}>No channels match</Text>
           <Text style={[styles.emptySub, { color: colors.mutedForeground }]}>
-            Clear the filter or try a different channel name.
+            Try a different channel name.
           </Text>
+          <TouchableOpacity
+            style={[styles.clearFilterBtn, { backgroundColor: colors.secondary, borderColor: colors.border }]}
+            onPress={() => setChFilter('')}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.clearFilterBtnText, { color: colors.primary }]}>✕ Clear filter</Text>
+          </TouchableOpacity>
         </View>
       ) : null}
       {/* EPG loading overlay — semi-transparent spinner over the grid */}
@@ -1297,6 +1304,8 @@ const styles = StyleSheet.create({
 
   // ── Empty state ──
   empty: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 12, paddingHorizontal: 60 },
+  clearFilterBtn: { marginTop: 12, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, borderWidth: 1 },
+  clearFilterBtnText: { fontSize: 13, fontFamily: 'Inter_500Medium' },
   emptyTitle: { fontSize: 17, fontFamily: 'Inter_600SemiBold', textAlign: 'center' },
   emptySub: { fontSize: 13, fontFamily: 'Inter_400Regular', textAlign: 'center', lineHeight: 20 },
 

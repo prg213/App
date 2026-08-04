@@ -412,8 +412,9 @@ export default function SeriesDetailScreen() {
         {/* ── Tabs ── */}
         <View style={[styles.tabBar, { borderBottomColor: 'rgba(255,255,255,0.08)' }]}>
           {(['episodes', 'cast'] as ActiveTab[]).map((tab) => {
+            const totalEpisodes = seasons.reduce((sum, s) => sum + s.episodes.length, 0);
             const label = tab === 'episodes'
-              ? `Episodes${activeSeason ? ` (${activeSeason.episodes.length})` : ''}`
+              ? `Episodes${activeSeason ? ` (${activeSeason.episodes.length}/${totalEpisodes})` : ''}`
               : `Cast${castList.length > 0 ? ` (${castList.length})` : ''}`;
             return (
               <Pressable

@@ -335,8 +335,8 @@ export default function MoviesScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Continue Watching rail */}
-        <ContinueWatchingRail type="movie" />
+        {/* Continue Watching rail — hidden when viewing recently-watched (would duplicate entries) */}
+        {!isRecentSelected && <ContinueWatchingRail type="movie" />}
 
         {isLoading && !isFavsSelected ? (
           <FlatList

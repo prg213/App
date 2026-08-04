@@ -332,8 +332,8 @@ export default function SeriesScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Continue Watching rail */}
-        <ContinueWatchingRail type="series" />
+        {/* Continue Watching rail — hidden when viewing recently-watched (would duplicate entries) */}
+        {!isRecentSelected && <ContinueWatchingRail type="series" />}
 
         {isLoading && !isFavsSelected ? (
           <FlatList
