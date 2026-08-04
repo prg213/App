@@ -352,11 +352,12 @@ export default function MoviesScreen() {
         ) : filtered.length === 0 ? (
           <View style={styles.empty}>
             <Text style={{ fontSize: 36, color: colors.mutedForeground }}>
-              {isFavsSelected ? '♡' : isRecentSelected ? '🕒' : '🎬'}
+              {isFavsSelected ? '♡' : isRecentSelected ? '🕒' : search.trim() ? '🔍' : '🎬'}
             </Text>
             <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
               {isFavsSelected ? 'No favourite movies yet'
                 : isRecentSelected ? 'No recently watched movies'
+                : search.trim() ? `No results for "${search.trim()}"`
                 : 'No movies found'}
             </Text>
             {isFavsSelected && (
@@ -367,6 +368,11 @@ export default function MoviesScreen() {
             {isRecentSelected && (
               <Text style={[styles.emptySub, { color: colors.mutedForeground }]}>
                 Movies you watch will appear here automatically.
+              </Text>
+            )}
+            {search.trim() && !isFavsSelected && !isRecentSelected && (
+              <Text style={[styles.emptySub, { color: colors.mutedForeground }]}>
+                Try a different search term or browse by category.
               </Text>
             )}
           </View>

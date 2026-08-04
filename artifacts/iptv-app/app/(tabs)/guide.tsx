@@ -17,6 +17,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
   useWindowDimensions,
@@ -485,6 +486,7 @@ function FullGuide({
   const [now, setNow] = useState(Date.now());
   const [guideToast, setGuideToast] = useState<string | null>(null);
   const [guideReminderIds, setGuideReminderIds] = useState<Set<string>>(new Set());
+  const [chFilter, setChFilter] = useState('');
 
   // Load current reminder IDs so ProgramCells can show 🔔 badge
   const refreshGuideReminderIds = useCallback(() => {
@@ -579,8 +581,15 @@ function FullGuide({
 
   const dayStartMs = useMemo(() => dayStart(selectedDay).getTime(), [selectedDay]);
   const nowX = ((now - dayStartMs) / 60_000) * PX_PER_MIN;
+
+  // Channel filter — applied on top of the category filter
+  const visibleChannels = useMemo(() => {
+    const q = chFilter.trim().toLowerCase();
+    return q ? channels.filter((c) => c.name.toLowerCase().includes(q)) : channels;
+  }, [channels, chFilter]);
+
   // Height of the full programme column — used for the "Now" indicator line
-  const nowLineH = channels.length * ROW_H;
+  const nowLineH = visibleChannels.length * ROW_H;
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 60_000);
@@ -647,8 +656,17 @@ function FullGuide({
           </TouchableOpacity>
         )}
 
+        <TextInput
+          value={chFilter}
+          onChangeText={setChFilter}
+          placeholder="Filter channels…"
+          placeholderTextColor={colors.mutedForeground}
+          style={[styles.guideChFilter, { backgroundColor: colors.secondary, color: colors.foreground, borderColor: colors.border }]}
+          returnKeyType="search"
+          clearButtonMode="while-editing"
+        />
         <Text style={[styles.chCountLabel, { color: colors.mutedForeground }]}>
-          {channels.length} channels
+          {visibleChannels.length}{chFilter.trim() ? `/${channels.length}` : ''} ch
         </Text>
       </View>
 
@@ -751,7 +769,7 @@ function FullGuide({
 
             {/* Left: channel name column */}
             <View style={[styles.leftCol, { borderRightColor: colors.border }]}>
-              {channels.map((ch) => {
+              {visibleChannels.map((ch) => {
                 const progs = epgMap?.get(ch.epgId ?? ch.id) ?? [];
                 const nowIdx = progs.findIndex(
                   (p) => p.start.getTime() <= now && now < p.end.getTime(),
@@ -782,7 +800,7 @@ function FullGuide({
                 <View pointerEvents="none" style={[styles.nowLine, { left: nowX, height: nowLineH }]} />
               )}
               <View style={{ width: TOTAL_DAY_W }}>
-                {channels.map((ch) => {
+                {visibleChannels.map((ch) => {
                   const programs = epgMap?.get(ch.epgId ?? ch.id) ?? [];
                   return (
                     <ProgramRow
@@ -1064,6 +1082,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   todayBtnText: { fontSize: 12, fontFamily: 'Inter_600SemiBold' },
+  guideChFilter: { flex: 1, height: 30, borderRadius: 8, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: 8, fontSize: 12, fontFamily: 'Inter_400Regular' },
   chCountLabel: { fontSize: 11, fontFamily: 'Inter_400Regular' },
   backBtn: {
     width: SIDEBAR_W,

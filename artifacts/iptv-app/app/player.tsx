@@ -869,13 +869,18 @@ export default function PlayerScreen() {
     } catch {}
   }, [isLive, liveUrlRef, player, setLastWatchedUrl]);
 
+  const navCooldownRef = useRef(false);
   const handlePrevChannel = useCallback(() => {
-    if (!prevChannel) return;
+    if (!prevChannel || navCooldownRef.current) return;
+    navCooldownRef.current = true;
+    setTimeout(() => { navCooldownRef.current = false; }, 1200);
     switchChannel(prevChannel, channelIdx - 1);
   }, [prevChannel, channelIdx, switchChannel]);
 
   const handleNextChannel = useCallback(() => {
-    if (!nextChannel) return;
+    if (!nextChannel || navCooldownRef.current) return;
+    navCooldownRef.current = true;
+    setTimeout(() => { navCooldownRef.current = false; }, 1200);
     switchChannel(nextChannel, channelIdx + 1);
   }, [nextChannel, channelIdx, switchChannel]);
 

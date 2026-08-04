@@ -350,11 +350,12 @@ export default function SeriesScreen() {
         ) : filtered.length === 0 ? (
           <View style={styles.empty}>
             <Text style={{ fontSize: 36, color: colors.mutedForeground }}>
-              {isFavsSelected ? '♡' : isRecentSelected ? '🕒' : '📺'}
+              {isFavsSelected ? '♡' : isRecentSelected ? '🕒' : search.trim() ? '🔍' : '📺'}
             </Text>
             <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
               {isFavsSelected ? 'No favourite series yet'
                 : isRecentSelected ? 'No recently watched series'
+                : search.trim() ? `No results for "${search.trim()}"`
                 : 'No series found'}
             </Text>
             {isFavsSelected && (
@@ -365,6 +366,11 @@ export default function SeriesScreen() {
             {isRecentSelected && (
               <Text style={[styles.emptySub, { color: colors.mutedForeground }]}>
                 Series you watch will appear here automatically.
+              </Text>
+            )}
+            {search.trim() && !isFavsSelected && !isRecentSelected && (
+              <Text style={[styles.emptySub, { color: colors.mutedForeground }]}>
+                Try a different search term or browse by category.
               </Text>
             )}
           </View>
