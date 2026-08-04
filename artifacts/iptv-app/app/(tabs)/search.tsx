@@ -456,6 +456,7 @@ export default function SearchScreen() {
                   : raw) : null;
                 const all = provId && !ids.includes(provId) ? [...ids, provId] : ids;
                 setTrailerIds(all.length > 0 ? all : null);
+              });
             }}
           />
         );
@@ -479,6 +480,7 @@ export default function SearchScreen() {
                   : raw) : null;
                 const all = provId && !ids.includes(provId) ? [...ids, provId] : ids;
                 setTrailerIds(all.length > 0 ? all : null);
+              });
             }}
           />
         );

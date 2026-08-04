@@ -47,6 +47,7 @@ import {
 import { fetchAndParseM3U } from '@/services/m3uParser';
 import { fetchAndParseXmltv } from '@/services/epgService';
 import { CatchupSheet } from '@/components/CatchupSheet';
+import { RecentChannelsRail } from '@/components/RecentChannelsRail';
 import type { Channel, Category, EpgProgram, FavoriteChannel } from '@/types';
 
 const FAVS_CAT_ID = '__favs';
@@ -944,6 +945,15 @@ export default function LiveTVScreen() {
             </Pressable>
           )}
         </View>
+
+        {/* Recently Watched rail — shows up to 8 channels, hides itself when empty */}
+        {!isReordering && (
+          <RecentChannelsRail
+            blockedIds={blockedSet}
+            nowPlayingMap={nowPlayingMap}
+            onWatchFullscreen={handleWatchChannel}
+          />
+        )}
 
         {channelsLoading && !isFavsSelected ? (
           <ActivityIndicator color={colors.primary} style={{ marginTop: 32 }} />
