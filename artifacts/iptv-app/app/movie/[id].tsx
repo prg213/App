@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -162,6 +162,12 @@ export default function MovieDetailScreen() {
   });
   // Background blur uses the best available image; poster rendering is handled by ThumbnailWithFallback.
   const displayCover = cover || tmdbPoster || '';
+
+  // #172: Prefetch the cover into the native image cache so the blurred
+  // background and poster stay sharp after the app returns from background.
+  useEffect(() => {
+    if (displayCover) Image.prefetch(displayCover).catch(() => {});
+  }, [displayCover]);
 
   const handleToggleFav = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);

@@ -255,6 +255,13 @@ export default function SeriesDetailScreen() {
     }).catch(() => {});
   }, [params.title, params.cover, coverError]);
 
+  // #172/#171: Prefetch the poster into the native image cache whenever the URL
+  // is resolved (initial load, TMDB fallback, or app returning from background).
+  // This prevents a blank or blurry poster while the image re-downloads.
+  useEffect(() => {
+    if (displayCover) Image.prefetch(displayCover).catch(() => {});
+  }, [displayCover]);
+
   const displayCover = (!params.cover || coverError)
     ? (tmdbPosterRef.current || '')
     : params.cover;
