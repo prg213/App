@@ -1014,19 +1014,32 @@ export default function PlayerScreen() {
     scheduleHide();
   }, [isCasting, currentTime, player, scheduleHide, seekRemote]);
 
-  // ── CC pill: off → first track → next → … → off ─────────────────────────
+  // ── CC pill behaviour ────────────────────────────────────────────────────
+  // • Subtitles OFF + only 1 track  → enable that track directly.
+  // • Subtitles OFF + multiple tracks → open the subtitle picker so the user
+  //   can choose which track to enable (Task #42).
+  // • Subtitles ON  → advance to the next track; wrap around to OFF after the
+  //   last track (existing cycling behaviour).
   const handleCcPress = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (subtitleTracks.length === 0) return;
-    // Currently off → turn on the first (or only) track
+
     if (activeSubtitleTrack === null) {
-      const first = subtitleTracks[0];
-      try { player.subtitleTrack = first; } catch {}
-      setActiveSubtitleTrack(first);
-      if (first.language) StorageService.setPrefSubtitleLang(first.language).catch(() => {});
+      // Subtitles are currently OFF
+      if (subtitleTracks.length === 1) {
+        // Only one track — enable it directly without showing a picker
+        const first = subtitleTracks[0];
+        try { player.subtitleTrack = first; } catch {}
+        setActiveSubtitleTrack(first);
+        if (first.language) StorageService.setPrefSubtitleLang(first.language).catch(() => {});
+      } else {
+        // Multiple tracks — open the picker so the user can choose (#42)
+        setShowSubPicker(true);
+      }
       return;
     }
-    // Currently on → advance to next, wrap to off after last
+
+    // Subtitles are ON → advance to next track, wrap to OFF after last
     const currentIdx = subtitleTracks.findIndex(
       (t) => t === activeSubtitleTrack || t.language === activeSubtitleTrack.language,
     );

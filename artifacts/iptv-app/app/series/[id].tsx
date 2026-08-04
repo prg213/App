@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -6,6 +6,7 @@ import {
   Modal,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -96,9 +97,15 @@ export default function SeriesDetailScreen() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('episodes');
   const [trailerUrl, setTrailerUrl] = useState<string | null>(null);
   const [coverError, setCoverError] = useState(false);
+  // #165: Store the TMDB poster URL in a ref so it is set only once on first
+  // successful fetch and never cleared when series data re-fetches in the background.
+  const tmdbPosterRef = useRef<string | null>(null);
+  const [tmdbPosterReady, setTmdbPosterReady] = useState(false);
   // Incremented whenever the series-info query delivers fresh data so that
   // episode thumbnails which previously errored get a clean remount and retry.
   const [thumbResetKey, setThumbResetKey] = useState(0);
+  // #166: pull-to-refresh state
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const params = useLocalSearchParams<{
     id: string; title: string; cover: string; rating: string;

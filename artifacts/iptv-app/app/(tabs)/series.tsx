@@ -171,6 +171,16 @@ export default function SeriesScreen() {
     return list;
   }, [seriesList, search, maxRating]);
 
+  // #158: Pre-warm TMDB poster cache for the first 20 visible items that have
+  // no provider cover image. Fire-and-forget so the cache fills before the card
+  // renders and needs to fall back to TMDB.
+  useEffect(() => {
+    const needsPosters = filtered.filter((s) => !s.cover).slice(0, 20);
+    for (const series of needsPosters) {
+      getTmdbPosterUrl(series.name, 'tv').catch(() => {});
+    }
+  }, [filtered]);
+
   const handleToggleFav = useCallback(async (item: Series) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     const updated = await StorageService.toggleSeriesFavorite({

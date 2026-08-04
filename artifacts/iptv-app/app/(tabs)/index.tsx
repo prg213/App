@@ -235,9 +235,17 @@ export default function LiveTVScreen() {
       setFavSyncState('synced');
       setTimeout(() => setFavSyncState('idle'), 2000);
     }).catch(() => { setFavSyncState('idle'); });
+  }, [deviceMac]);
+
+  // #126: EPG "now" ticker — tied to credentials so the interval is cleared on
+  // logout and immediately fires a fresh tick when a new user logs in, ensuring
+  // stale stream-URL state from the previous session is never reused.
+  useEffect(() => {
+    if (!credentials) return; // cleared on logout — no timer needed
+    setNowTs(Date.now()); // immediate tick so the new session is always current
     const t = setInterval(() => setNowTs(Date.now()), 60_000);
     return () => clearInterval(t);
-  }, [deviceMac]);
+  }, [credentials]);
 
   // ── Video player (shared from LivePlayerContext — persists across navigation) ──
   const { player, activeUrlRef: liveUrlRef, miniPlayerRef, isCollapsingRef, collapseRestorePendingRef, pendingCollapseRemountRef, onCollapseCompleteRef, triggerExpand, triggerExpandFromRef } = useLivePlayer();

@@ -475,30 +475,45 @@ export default function RemindersScreen() {
     // #95/#101: prune reminders older than 24 h, then notify if any were removed
     StorageService.pruneExpiredReminders().then((removed) => {
       if (removed.length > 0) {
-        // #117: dedup — only show the Alert once per unique batch of pruned reminders
+        // #117: dedup — only show the toast once per unique batch of pruned reminders
         const key = [...removed].sort().join('\x00');
         if (prunedKeyRef.current !== key) {
           prunedKeyRef.current = key;
-          const names = removed.slice(0, 3).join(', ') + (removed.length > 3 ? ` + ${removed.length - 3} more` : '');
-          Alert.alert(
-            'Reminders Cleared',
-            `${removed.length} expired reminder${removed.length > 1 ? 's were' : ' was'} automatically removed:\n${names}`,
-            [{ text: 'OK' }],
-          );
+          // #95/#121: show a friendly banner instead of an intrusive Alert dialog
+          setPrunedCount(removed.length);
+          if (prunedBannerTimerRef.current) clearTimeout(prunedBannerTimerRef.current);
+          prunedBannerTimerRef.current = setTimeout(() => setPrunedCount(0), 4000);
         }
       }
       return StorageService.getReminders();
-    }).then(async (r) => {
-      // #104/#105: backfill missing URLs and refresh stale ones for all active reminders
-      const backfilled = await backfillStreamUrls(r);
-      const sorted = [...backfilled].sort(
+    }).then((r) => {
+      // #151: render cards immediately from storage, without waiting for URL backfill
+      const sorted = [...r].sort(
         (a, b) => new Date(a.start).getTime() - new Date(b.start).getTime(),
       );
       setReminders(sorted);
       // #109: let the tab bar badge update immediately after load
       DeviceEventEmitter.emit('reminders:changed');
+
+      // #151: kick off URL refresh silently in the background
+      // #152: honour the 5-minute failure backoff before retrying
+      const now = Date.now();
+      if (now - lastRefreshFailureRef.current < REFRESH_FAILURE_BACKOFF_MS) return;
+
+      backfillStreamUrls(r).then((backfilled) => {
+        const anyChanged = backfilled.some((b, i) => b.streamUrl !== r[i]?.streamUrl);
+        if (!anyChanged) return;
+        // Silently update cards with refreshed URLs — no re-mount, no spinner
+        const resorted = [...backfilled].sort(
+          (a, b) => new Date(a.start).getTime() - new Date(b.start).getTime(),
+        );
+        setReminders(resorted);
+      }).catch(() => {
+        // #152: record failure timestamp so next focus skips refresh for 5 minutes
+        lastRefreshFailureRef.current = Date.now();
+      });
     });
-  }, [backfillStreamUrls]);
+  }, [backfillStreamUrls, REFRESH_FAILURE_BACKOFF_MS]);
 
   useFocusEffect(load);
 
@@ -673,6 +688,15 @@ export default function RemindersScreen() {
             );
           }}
         />
+      )}
+
+      {/* #95/#121: friendly startup toast when expired reminders were auto-pruned */}
+      {prunedCount > 0 && (
+        <View style={[styles.autoRemovedBanner, { backgroundColor: 'rgba(234,179,8,0.10)', borderColor: 'rgba(234,179,8,0.30)' }]}>
+          <Text style={[styles.autoRemovedText, { color: '#EAB308' }]}>
+            🗑 {prunedCount} past reminder{prunedCount > 1 ? 's were' : ' was'} cleared
+          </Text>
+        </View>
       )}
 
       {/* #121: brief notice when the ticker auto-removes ended reminders */}

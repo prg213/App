@@ -21,7 +21,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { useAppContext } from '@/context/AppContext';
@@ -780,6 +780,15 @@ export default function GuideScreen() {
 
   // selectedCat stores the category_id (numeric string from groupTitle)
   const [selectedCat, setSelectedCat] = useState<string | null>(null);
+
+  // #128: When the Guide tab comes back into focus (e.g. user just cancelled a
+  // reminder from the Reminders screen), broadcast reminders:changed so any
+  // open ProgramModal refreshes its bell-icon state immediately.
+  useFocusEffect(
+    useCallback(() => {
+      DeviceEventEmitter.emit('reminders:changed');
+    }, []),
+  );
 
   const creds = isXtream ? buildCreds(credentials) : null;
 

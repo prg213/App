@@ -359,6 +359,15 @@ export default function SearchScreen() {
 
   const handleChannelPress = (ch: Channel) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    // #138: pass the full channel list and correct index so the player can
+    // re-resolve a stale stream URL instead of showing the error screen.
+    const chList = allChannels.map((c) => ({
+      url: c.streamUrl,
+      title: c.name,
+      epgId: c.epgId ?? c.id,
+      channelId: c.id,
+    }));
+    const idx = allChannels.findIndex((c) => c.id === ch.id);
     router.push({
       pathname: '/player',
       params: {
@@ -368,8 +377,8 @@ export default function SearchScreen() {
         logo: ch.logo ?? '',
         epgId: ch.epgId ?? ch.id,
         channelId: ch.id,
-        channelsJson: JSON.stringify([]),
-        channelIndex: '0',
+        channelsJson: JSON.stringify(chList),
+        channelIndex: String(idx),
       },
     });
   };

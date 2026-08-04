@@ -168,6 +168,16 @@ export default function MoviesScreen() {
     return list;
   }, [movies, search, maxRating]);
 
+  // #158: Pre-warm TMDB poster cache for the first 20 visible items that have
+  // no provider cover image. Fire-and-forget so the cache fills before the card
+  // renders and needs to fall back to TMDB.
+  useEffect(() => {
+    const needsPosters = filtered.filter((m) => !m.cover).slice(0, 20);
+    for (const movie of needsPosters) {
+      getTmdbPosterUrl(movie.name, 'movie').catch(() => {});
+    }
+  }, [filtered]);
+
   const handleToggleFav = useCallback(async (item: Movie) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     const updated = await StorageService.toggleMovieFavorite({
