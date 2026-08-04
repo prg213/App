@@ -516,6 +516,7 @@ function FullGuide({
               const reminder = (await StorageService.getReminders()).find((r) => r.id === reminderId);
               if (reminder?.notificationId) await cancelReminderNotification(reminder.notificationId);
               await StorageService.removeReminder(reminderId);
+              DeviceEventEmitter.emit('reminders:changed');
               setGuideToast(`Reminder removed for "${prog.title}"`);
             },
           },
@@ -539,6 +540,7 @@ function FullGuide({
         streamUrl: ch.streamUrl,
         notificationId,
       });
+      DeviceEventEmitter.emit('reminders:changed');
       setGuideToast(`🔔 Reminder set for "${prog.title}"`);
     }
   }, []);

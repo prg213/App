@@ -857,6 +857,8 @@ export default function LiveTVScreen() {
     // Mark that we came from recently-watched so backing out stops the stream
     // rather than leaving it playing silently in the mini-player.
     clearChannelOnReturnRef.current = true;
+    // Update the right-panel EPG to show this channel's guide
+    setSelectedChannel(ch);
 
     const chList = channels.map((c) => ({
       url: c.streamUrl,
