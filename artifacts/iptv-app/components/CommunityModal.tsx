@@ -10,7 +10,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
 
-const TELEGRAM_URL = 'https://t.me/twstqws';
+const TELEGRAM_URL = 'https://t.me/s/twstqws';
 
 // Desktop Chrome UA so Telegram's web interface renders properly in the WebView.
 const CHROME_UA =
