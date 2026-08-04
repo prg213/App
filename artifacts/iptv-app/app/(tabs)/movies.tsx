@@ -214,6 +214,7 @@ export default function MoviesScreen() {
   }
 
   return (
+    <>
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       {/* Left category panel */}
       <View style={[styles.catPanel, { backgroundColor: '#0E0E1A', borderRightColor: colors.border, paddingTop: insets.top + 8 }]}>
@@ -343,6 +344,7 @@ export default function MoviesScreen() {
       </View>
     </View>
     <TrailerModal url={trailerUrl} onClose={() => setTrailerUrl(null)} />
+    </>
   );
 }
 
