@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   DeviceEventEmitter,
   FlatList,
@@ -13,6 +14,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { WebView } from 'react-native-webview';
 import { useFocusEffect } from 'expo-router';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -32,6 +34,14 @@ import { SIDEBAR_W } from './_layout';
 
 /** #152: minimum wait after a background URL-refresh failure before retrying (5 min). */
 const REFRESH_FAILURE_BACKOFF_MS = 5 * 60_000;
+
+const TELEGRAM_URL = 'https://t.me/s/twstqws';
+const CHROME_UA =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) ' +
+  'AppleWebKit/537.36 (KHTML, like Gecko) ' +
+  'Chrome/125.0.0.0 Safari/537.36';
+
+type ActivePanel = 'reminders' | 'telegram';
 
 function credentialSig(c: ReturnType<typeof useAppContext>['credentials']): string {
   // Xtream accounts are identified by host + username.
@@ -281,6 +291,10 @@ export default function RemindersScreen() {
     });
     return () => sub.remove();
   }, []);
+
+  // Left-sidebar panel selection
+  const [activePanel, setActivePanel] = useState<ActivePanel>('reminders');
+  const [telegramLoading, setTelegramLoading] = useState(true);
 
   // #116: undo banner shown after a deletion
   const [undoBanner, setUndoBanner] = useState<{ reminder: Reminder; timerId: ReturnType<typeof setTimeout> } | null>(null);
@@ -645,52 +659,113 @@ export default function RemindersScreen() {
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 12, borderBottomColor: colors.border }]}>
         <Text style={[styles.title, { color: colors.foreground }]}>🔔  Reminders</Text>
-        {hasPast && (
+        {activePanel === 'reminders' && hasPast && (
           <TouchableOpacity onPress={handleClearPast} style={styles.clearBtn} activeOpacity={0.7}>
             <Text style={[styles.clearBtnText, { color: '#EF4444' }]}>Clear past</Text>
           </TouchableOpacity>
         )}
       </View>
 
-      {reminders.length === 0 ? (
-        <View style={styles.empty}>
-          <Text style={styles.emptyIcon}>🔔</Text>
-          <Text style={[styles.emptyTitle, { color: colors.foreground }]}>No reminders</Text>
-          <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
-            Open the TV Guide, tap a future programme, and tap "Set Reminder".
-          </Text>
+      {/* Body: left sidebar + right content panel */}
+      <View style={styles.body}>
+
+        {/* ── Left sidebar ── */}
+        <View style={[styles.leftNav, { backgroundColor: colors.card, borderRightColor: colors.border }]}>
+          {([
+            { key: 'reminders' as ActivePanel, icon: '🔔', label: 'Reminders' },
+            { key: 'telegram' as ActivePanel, icon: '💬', label: 'Telegram' },
+          ] as { key: ActivePanel; icon: string; label: string }[]).map(({ key, icon, label }) => (
+            <TouchableOpacity
+              key={key}
+              style={[
+                styles.navItem,
+                activePanel === key && { backgroundColor: colors.secondary },
+              ]}
+              onPress={() => {
+                setActivePanel(key);
+                if (key === 'telegram') setTelegramLoading(true);
+              }}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.navIcon}>{icon}</Text>
+              <Text
+                style={[
+                  styles.navLabel,
+                  { color: activePanel === key ? colors.primary : colors.mutedForeground },
+                ]}
+                numberOfLines={1}
+              >
+                {label}
+              </Text>
+            </TouchableOpacity>
+          ))}
         </View>
-      ) : (
-        <FlatList
-          data={flatItems}
-          keyExtractor={(item) => item.kind === 'divider' ? `hdr-${item.label}` : item.item.id}
-          extraData={nowTs}
-          contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 80, gap: 10 }}
-          refreshControl={
-            <RefreshControl refreshing={false} onRefresh={load} tintColor={colors.primary} />
-          }
-          renderItem={({ item }) => {
-            if (item.kind === 'divider') {
-              return (
-                <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>
-                  {item.label}
+
+        {/* ── Right content panel ── */}
+        <View style={styles.rightPanel}>
+          {activePanel === 'reminders' ? (
+            reminders.length === 0 ? (
+              <View style={styles.empty}>
+                <Text style={styles.emptyIcon}>🔔</Text>
+                <Text style={[styles.emptyTitle, { color: colors.foreground }]}>No reminders</Text>
+                <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
+                  Open the TV Guide, tap a future programme, and tap "Set Reminder".
                 </Text>
-              );
-            }
-            return (
-              <ReminderCard
-                reminder={item.item}
-                colors={colors}
-                nowTs={nowTs}
-                leadMins={reminderLeadMins}
-                onDelete={() => handleDelete(item.item)}
-                onReschedule={() => setRescheduleTarget(item.item)}
-                onWatchLive={() => handleWatchLive(item.item)}
+              </View>
+            ) : (
+              <FlatList
+                data={flatItems}
+                keyExtractor={(item) => item.kind === 'divider' ? `hdr-${item.label}` : item.item.id}
+                extraData={nowTs}
+                contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 80, gap: 10 }}
+                refreshControl={
+                  <RefreshControl refreshing={false} onRefresh={load} tintColor={colors.primary} />
+                }
+                renderItem={({ item }) => {
+                  if (item.kind === 'divider') {
+                    return (
+                      <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>
+                        {item.label}
+                      </Text>
+                    );
+                  }
+                  return (
+                    <ReminderCard
+                      reminder={item.item}
+                      colors={colors}
+                      nowTs={nowTs}
+                      leadMins={reminderLeadMins}
+                      onDelete={() => handleDelete(item.item)}
+                      onReschedule={() => setRescheduleTarget(item.item)}
+                      onWatchLive={() => handleWatchLive(item.item)}
+                    />
+                  );
+                }}
               />
-            );
-          }}
-        />
-      )}
+            )
+          ) : (
+            /* ── Telegram panel (inline, no modal) ── */
+            <View style={{ flex: 1 }}>
+              {telegramLoading && (
+                <View style={[StyleSheet.absoluteFillObject, styles.telegramLoader]}>
+                  <ActivityIndicator size="large" color="#3B82F6" />
+                  <Text style={[styles.telegramLoaderText, { color: colors.mutedForeground }]}>
+                    Opening community…
+                  </Text>
+                </View>
+              )}
+              <WebView
+                source={{ uri: TELEGRAM_URL }}
+                style={{ flex: 1 }}
+                userAgent={CHROME_UA}
+                onLoadEnd={() => setTelegramLoading(false)}
+                javaScriptEnabled
+                domStorageEnabled
+              />
+            </View>
+          )}
+        </View>
+      </View>
 
       {/* #95/#121: friendly startup toast when expired reminders were auto-pruned */}
       {prunedCount > 0 && (
@@ -744,6 +819,34 @@ const styles = StyleSheet.create({
   title: { fontSize: 18, fontFamily: 'Inter_700Bold' },
   clearBtn: { paddingVertical: 4, paddingHorizontal: 10 },
   clearBtnText: { fontSize: 12, fontFamily: 'Inter_500Medium' },
+  // ── Split-view layout ─────────────────────────────────────────────────────
+  body: { flex: 1, flexDirection: 'row' },
+  leftNav: {
+    width: 108,
+    borderRightWidth: 1,
+    paddingTop: 8,
+  },
+  navItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 13,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    marginHorizontal: 6,
+    marginBottom: 2,
+  },
+  navIcon: { fontSize: 16 },
+  navLabel: { fontSize: 12, fontFamily: 'Inter_500Medium', flexShrink: 1 },
+  rightPanel: { flex: 1 },
+  telegramLoader: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 14,
+    zIndex: 10,
+    backgroundColor: '#0A0A0F',
+  },
+  telegramLoaderText: { fontSize: 14, fontFamily: 'Inter_400Regular' },
   sectionLabel: {
     fontSize: 11,
     fontFamily: 'Inter_600SemiBold',
