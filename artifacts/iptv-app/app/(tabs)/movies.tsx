@@ -102,7 +102,7 @@ export default function MoviesScreen() {
   // Pass undefined when All is selected so the API returns everything
   const queryCategory = isAllSelected || isFavsSelected || isRecentSelected ? undefined : selectedCat;
 
-  const { data: fetchedMovies = [], isLoading, refetch, isRefetching } = useQuery<Movie[]>({
+  const { data: fetchedMovies = [], isLoading, refetch, isRefetching, isError } = useQuery<Movie[]>({
     queryKey: ['vod-streams', queryCategory, credentials],
     queryFn: () => getXtreamVodStreams(buildCreds(credentials), queryCategory),
     enabled: !!credentials && isXtream && !isFavsSelected && !isRecentSelected,
@@ -291,6 +291,14 @@ export default function MoviesScreen() {
             contentContainerStyle={styles.grid}
             scrollEnabled={false}
           />
+        ) : isError ? (
+          <View style={styles.empty}>
+            <Text style={{ fontSize: 36, color: colors.mutedForeground }}>⚠️</Text>
+            <Text style={[styles.emptyTitle, { color: colors.foreground }]}>Couldn't load movies</Text>
+            <Text style={[styles.emptySub, { color: colors.mutedForeground }]}>
+              Check your connection or provider settings, then pull down to retry.
+            </Text>
+          </View>
         ) : filtered.length === 0 ? (
           <View style={styles.empty}>
             <Text style={{ fontSize: 36, color: colors.mutedForeground }}>

@@ -129,6 +129,7 @@ const ChannelRow = React.memo(function ChannelRow({
   colors: ReturnType<typeof useColors>;
   onPress: () => void;
   onHeartPress: () => void;
+  onLongPress?: () => void;
   hideHeart?: boolean;
 }) {
   return (
@@ -141,6 +142,8 @@ const ChannelRow = React.memo(function ChannelRow({
         focused && !hideHeart && styles.tvFocused,
       ]}
       onPress={hideHeart ? undefined : onPress}
+      onLongPress={hideHeart ? undefined : onLongPress}
+      delayLongPress={500}
     >
       {isSelected && !hideHeart && <View style={styles.selectedPip} />}
       {channel.num != null && (
@@ -875,6 +878,28 @@ export default function LiveTVScreen() {
     );
   }, [selectedCatId, blockedCategoryIds, colors, handleSelectCat, toggleBlockedCategory]);
 
+  const handleLongPressChannel = useCallback((ch: Channel) => {
+    const isBlocked = blockedChannels.includes(ch.id);
+    const action = isBlocked ? 'Unblock' : 'Block';
+    Alert.alert(
+      ch.name,
+      isBlocked ? 'Unblock this channel?' : 'Block this channel? It will be hidden everywhere.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: action,
+          style: isBlocked ? 'default' : 'destructive',
+          onPress: () => {
+            const updated = isBlocked
+              ? blockedChannels.filter((id) => id !== ch.id)
+              : [...blockedChannels, ch.id];
+            setBlockedChannelIds(updated);
+          },
+        },
+      ],
+    );
+  }, [blockedChannels, setBlockedChannelIds]);
+
   const renderChannel = useCallback(({ item }: { item: Channel }) => (
     <ChannelRow
       channel={item}
@@ -884,8 +909,9 @@ export default function LiveTVScreen() {
       colors={colors}
       onPress={() => handleSelectChannel(item)}
       onHeartPress={() => handleToggleFav(item)}
+      onLongPress={() => handleLongPressChannel(item)}
     />
-  ), [selectedChannel?.id, favSet, nowPlayingMap, colors, handleSelectChannel, handleToggleFav]);
+  ), [selectedChannel?.id, favSet, nowPlayingMap, colors, handleSelectChannel, handleToggleFav, handleLongPressChannel]);
 
   // ── Render ────────────────────────────────────────────────────────────────
 

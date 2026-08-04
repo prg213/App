@@ -102,7 +102,7 @@ export default function SeriesScreen() {
   // Pass undefined when All is selected so the API returns everything
   const queryCategory = isAllSelected || isFavsSelected || isRecentSelected ? undefined : selectedCat;
 
-  const { data: fetchedSeries = [], isLoading, refetch, isRefetching } = useQuery<Series[]>({
+  const { data: fetchedSeries = [], isLoading, refetch, isRefetching, isError } = useQuery<Series[]>({
     queryKey: ['series-list', queryCategory, credentials],
     queryFn: () => getXtreamSeries(buildCreds(credentials), queryCategory),
     enabled: !!credentials && isXtream && !isFavsSelected && !isRecentSelected,
@@ -288,6 +288,14 @@ export default function SeriesScreen() {
             contentContainerStyle={styles.grid}
             scrollEnabled={false}
           />
+        ) : isError ? (
+          <View style={styles.empty}>
+            <Text style={{ fontSize: 36, color: colors.mutedForeground }}>⚠️</Text>
+            <Text style={[styles.emptyTitle, { color: colors.foreground }]}>Couldn't load series</Text>
+            <Text style={[styles.emptySub, { color: colors.mutedForeground }]}>
+              Check your connection or provider settings, then pull down to retry.
+            </Text>
+          </View>
         ) : filtered.length === 0 ? (
           <View style={styles.empty}>
             <Text style={{ fontSize: 36, color: colors.mutedForeground }}>
