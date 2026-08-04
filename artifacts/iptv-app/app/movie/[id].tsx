@@ -11,7 +11,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import * as WebBrowser from 'expo-web-browser';
+import { TrailerModal } from '@/components/TrailerModal';
 import * as Network from 'expo-network';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
@@ -102,6 +102,7 @@ export default function MovieDetailScreen() {
   const [isFav, setIsFav] = useState(false);
   const [savedPosition, setSavedPosition] = useState<number | null>(null);
   const [showPinGate, setShowPinGate] = useState(false);
+  const [trailerUrl, setTrailerUrl] = useState<string | null>(null);
   const [pendingStartAt, setPendingStartAt] = useState<number | undefined>(undefined);
 
   const params = useLocalSearchParams<{
@@ -299,21 +300,16 @@ export default function MovieDetailScreen() {
                 return;
               }
               const rawTrailer = vodInfo?.trailerUrl;
-              let trailerUrl: string;
+              let url: string;
               if (rawTrailer) {
-                // Full URL provided by the server — use as-is; otherwise treat as a YouTube video ID
-                trailerUrl = rawTrailer.startsWith('http')
+                url = rawTrailer.startsWith('http')
                   ? rawTrailer
                   : `https://www.youtube.com/watch?v=${rawTrailer}`;
               } else {
-                const query = encodeURIComponent(`${params.title} official trailer`);
-                trailerUrl = `https://www.youtube.com/results?search_query=${query}`;
+                const q = encodeURIComponent(`${params.title} official trailer`);
+                url = `https://www.youtube.com/results?search_query=${q}`;
               }
-              await WebBrowser.openBrowserAsync(trailerUrl, {
-                presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET,
-                toolbarColor: '#0A0A0F',
-                controlsColor: '#3B82F6',
-              });
+              setTrailerUrl(url);
             }}
           >
             <Text style={[styles.outlineBtnText, !isOnline && { opacity: 0.45 }]}>
@@ -338,6 +334,7 @@ export default function MovieDetailScreen() {
           onCancel={() => setShowPinGate(false)}
         />
       </Modal>
+      <TrailerModal url={trailerUrl} onClose={() => setTrailerUrl(null)} />
     </View>
   );
 }

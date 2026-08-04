@@ -13,8 +13,8 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import * as WebBrowser from 'expo-web-browser';
 import { Alert } from 'react-native';
+import { TrailerModal } from '@/components/TrailerModal';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { useIsOnline } from '@/hooks/useIsOnline';
@@ -217,6 +217,7 @@ export default function SearchScreen() {
 
   const [query, setQuery] = useState('');
   const [searchType, setSearchType] = useState<SearchType>('all');
+  const [trailerUrl, setTrailerUrl] = useState<string | null>(null);
   const inputRef = useRef<TextInput>(null);
 
   // Restore the last-used search filter and query from storage on mount
@@ -418,22 +419,13 @@ export default function SearchScreen() {
             query={query}
             colors={colors}
             onPress={() => handleMoviePress(item.item)}
-            onTrailer={async () => {
-              // #123: quick trailer access for movies — prefer provider URL, fall back to YouTube search
+            onTrailer={() => {
               const providerUrl = item.item.trailerUrl
                 ? (item.item.trailerUrl.startsWith('http')
                     ? item.item.trailerUrl
                     : `https://www.youtube.com/watch?v=${item.item.trailerUrl}`)
                 : null;
-              const url = providerUrl ?? `https://www.youtube.com/results?search_query=${encodeURIComponent(`${item.item.name} official trailer`)}`;
-              try {
-                await WebBrowser.openBrowserAsync(url, {
-                  presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET,
-                  toolbarColor: '#0A0A0F', controlsColor: '#3B82F6',
-                });
-              } catch {
-                Alert.alert('No Internet', "Couldn't open the trailer. Check your connection and try again.", [{ text: 'OK' }]);
-              }
+              setTrailerUrl(providerUrl ?? `https://www.youtube.com/results?search_query=${encodeURIComponent(`${item.item.name} official trailer`)}`);
             }}
           />
         );
@@ -448,22 +440,13 @@ export default function SearchScreen() {
             query={query}
             colors={colors}
             onPress={() => handleSeriesPress(item.item)}
-            onTrailer={async () => {
-              // #106/#124: prefer provider trailerUrl, fall back to YouTube search
+            onTrailer={() => {
               const providerUrl = item.item.trailerUrl
                 ? (item.item.trailerUrl.startsWith('http')
                     ? item.item.trailerUrl
                     : `https://www.youtube.com/watch?v=${item.item.trailerUrl}`)
                 : null;
-              const url = providerUrl ?? `https://www.youtube.com/results?search_query=${encodeURIComponent(`${item.item.name} official trailer`)}`;
-              try {
-                await WebBrowser.openBrowserAsync(url, {
-                  presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET,
-                  toolbarColor: '#0A0A0F', controlsColor: '#3B82F6',
-                });
-              } catch {
-                Alert.alert('No Internet', "Couldn't open the trailer. Check your connection and try again.", [{ text: 'OK' }]);
-              }
+              setTrailerUrl(providerUrl ?? `https://www.youtube.com/results?search_query=${encodeURIComponent(`${item.item.name} official trailer`)}`);
             }}
           />
         );
@@ -608,6 +591,7 @@ export default function SearchScreen() {
         ]}
         removeClippedSubviews={false}
       />
+      <TrailerModal url={trailerUrl} onClose={() => setTrailerUrl(null)} />
     </View>
   );
 }

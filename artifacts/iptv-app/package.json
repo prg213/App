@@ -91,6 +91,7 @@
     "expo-video": "^57.0.2",
     "react": "19.2.3",
     "react-native": "0.86.2",
-    "react-native-google-cast": "4.9.1"
+    "react-native-google-cast": "4.9.1",
+    "react-native-webview": "13.16.1"
   }
 }

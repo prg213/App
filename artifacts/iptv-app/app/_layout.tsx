@@ -60,7 +60,7 @@ function RootLayoutNav() {
     if (!isActivated && !inActivation) {
       router.replace('/activation');
     } else if (isActivated && inActivation) {
-      router.replace('/(tabs)');
+      router.replace('/(tabs)/home');
     }
   }, [isLoading, isActivated, segments]);
 
