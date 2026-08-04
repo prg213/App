@@ -336,7 +336,7 @@ export default function RemindersScreen() {
    * Returns null when credentials are missing or every path fails.
    */
   const fetchChannelUrlMap = useCallback(
-    async (): Promise<{ map: Map<string, string>; fromCache: boolean } | null> => {
+    async (forceNetwork = false): Promise<{ map: Map<string, string>; fromCache: boolean } | null> => {
       if (!credentials) return null;
 
       const mySig = credentialSig(credentials);
@@ -345,22 +345,26 @@ export default function RemindersScreen() {
       //    Keys have the shape ['live-channels', categoryId, credentialsObject].
       //    We match by comparing a stable credential signature (host + username)
       //    rather than object identity so across-render reference changes still hit.
-      const allCachedEntries = queryClient.getQueriesData<Channel[]>({
-        queryKey: ['live-channels'],
-      });
-      const mergedMap = new Map<string, string>();
-      for (const [key, channels] of allCachedEntries) {
-        if (!channels || channels.length === 0) continue;
-        // key = ['live-channels', categoryId, credentials]
-        const entryCreds = (key as unknown[])[2];
-        if (credentialSig(entryCreds as typeof credentials) !== mySig) continue;
-        for (const ch of channels) mergedMap.set(ch.id, ch.streamUrl);
-      }
-      if (mergedMap.size > 0) {
-        return { map: mergedMap, fromCache: true };
+      //    Skipped when forceNetwork = true so the gate-expiry path always gets
+      //    fresh data from the provider (not the possibly-stale React Query cache).
+      if (!forceNetwork) {
+        const allCachedEntries = queryClient.getQueriesData<Channel[]>({
+          queryKey: ['live-channels'],
+        });
+        const mergedMap = new Map<string, string>();
+        for (const [key, channels] of allCachedEntries) {
+          if (!channels || channels.length === 0) continue;
+          // key = ['live-channels', categoryId, credentials]
+          const entryCreds = (key as unknown[])[2];
+          if (credentialSig(entryCreds as typeof credentials) !== mySig) continue;
+          for (const ch of channels) mergedMap.set(ch.id, ch.streamUrl);
+        }
+        if (mergedMap.size > 0) {
+          return { map: mergedMap, fromCache: true };
+        }
       }
 
-      // 2. Cache cold for this account — fetch from the network.
+      // 2. Cache cold (or forceNetwork = true) — fetch from the network.
       try {
         let channels: Channel[] = [];
         if (credentials.type === 'xtream') {
@@ -400,13 +404,14 @@ export default function RemindersScreen() {
    * (stream IDs rotate when the provider updates or the user switches servers).
    *
    * Cost policy (all scoped to current credentials):
-   * - Cache warm (any matching live-channels entry): always refresh all active
-   *   reminder URLs at zero network cost.
-   * - Cache cold + URLs all present + within NETWORK_REFRESH_INTERVAL_MS for
-   *   this credential: skip (URLs are probably still valid).
-   * - Cache cold + any URL missing OR per-credential gate has expired: do one
-   *   network fetch so rotated IDs are caught even when the user hasn't visited
-   *   Live TV or Catch-Up in the current session.
+   * - Cache warm + gate not expired: refresh all active reminder URLs from the
+   *   React Query cache at zero network cost.
+   * - Cache cold + URLs all present + gate not expired: skip entirely
+   *   (URLs are probably still valid).
+   * - Gate expired (regardless of cache temperature): force a network fetch so
+   *   provider-rotated stream IDs are always caught, and re-seed the React Query
+   *   cache so subsequent focuses within the new window stay fast.
+   * - Cache cold + any URL missing: network fetch to fill the gap.
    */
   const backfillStreamUrls = useCallback(
     async (loaded: Reminder[]): Promise<Reminder[]> => {
@@ -432,7 +437,10 @@ export default function RemindersScreen() {
       // Skip only when: cache is cold AND all URLs present AND gate hasn't expired.
       if (!cacheIsWarm && !hasMissingUrls && !gateExpired) return loaded;
 
-      const result = await fetchChannelUrlMap();
+      // Pass gateExpired as forceNetwork so an expired gate always bypasses the
+      // React Query cache and hits the provider directly, re-seeding the cache
+      // with fresh stream URLs for the next NETWORK_REFRESH_INTERVAL_MS window.
+      const result = await fetchChannelUrlMap(gateExpired);
       if (!result) return loaded;
       const { map: urlMap } = result;
 
