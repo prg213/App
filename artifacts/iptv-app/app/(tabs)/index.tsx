@@ -957,6 +957,14 @@ export default function LiveTVScreen() {
 
         {channelsLoading && !isFavsSelected ? (
           <ActivityIndicator color={colors.primary} style={{ marginTop: 32 }} />
+        ) : channels.length === 0 && !isFavsSelected && !channelsLoading ? (
+          <View style={styles.noSel}>
+            <Text style={{ fontSize: 32, marginBottom: 8 }}>📡</Text>
+            <Text style={[styles.noSelTitle, { color: colors.foreground }]}>No channels</Text>
+            <Text style={[styles.noSelSub, { color: colors.mutedForeground }]}>
+              No channels found in this category. Try another category or check your provider settings.
+            </Text>
+          </View>
         ) : channels.length === 0 && isFavsSelected ? (
           <View style={styles.noSel}>
             <Text style={{ fontSize: 32, marginBottom: 8 }}>♡</Text>
