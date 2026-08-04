@@ -263,10 +263,18 @@ export default function RemindersScreen() {
 
   // #135: update the lead-time badge immediately when Settings changes the value,
   // even when the Reminders tab is already visible (e.g. tablet split-view).
-  // Uses a separate event so this listener never triggers a full reminder reload.
+  // #145: also reload reminders so each card's reminder.leadMins reflects the
+  // value stamped by rescheduleRemindersForLeadTime (storage is already updated
+  // by the time this event fires).
   useEffect(() => {
     const sub = DeviceEventEmitter.addListener('leadtime:changed', () => {
       StorageService.getReminderLeadMins().then(setReminderLeadMins);
+      StorageService.getReminders().then((r) => {
+        const sorted = [...r].sort(
+          (a, b) => new Date(a.start).getTime() - new Date(b.start).getTime(),
+        );
+        setReminders(sorted);
+      });
     });
     return () => sub.remove();
   }, []);
