@@ -120,11 +120,21 @@ export function RecentChannelsRail({
 
   if (recent.length === 0) return null;
 
+  const handleClearAll = useCallback(async () => {
+    await StorageService.clearRecentChannels();
+    setRecent([]);
+  }, []);
+
   return (
     <View style={[styles.container, { borderBottomColor: colors.border, paddingTop: topInset + 8 }]}>
-      <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>
-        RECENTLY WATCHED
-      </Text>
+      <View style={styles.sectionHeader}>
+        <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>
+          RECENTLY WATCHED
+        </Text>
+        <TouchableOpacity onPress={handleClearAll} hitSlop={8} activeOpacity={0.6}>
+          <Text style={[styles.clearAll, { color: colors.mutedForeground }]}>Clear all</Text>
+        </TouchableOpacity>
+      </View>
       <FlatList
         data={recent}
         horizontal
@@ -163,12 +173,23 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingRight: 12,
+    marginBottom: 8,
+  },
   sectionTitle: {
     fontSize: 9,
     fontFamily: 'Inter_600SemiBold',
     letterSpacing: 1.5,
     paddingHorizontal: 12,
-    marginBottom: 8,
+  },
+  clearAll: {
+    fontSize: 10,
+    fontFamily: 'Inter_400Regular',
+    opacity: 0.6,
   },
   list: { paddingHorizontal: 8, gap: 8 },
   card: { width: 88 },

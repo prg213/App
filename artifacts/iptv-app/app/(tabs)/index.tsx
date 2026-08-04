@@ -70,6 +70,7 @@ const CategoryRow = React.memo(function CategoryRow({
   cat,
   isSelected,
   isBlocked = false,
+  channelCount,
   colors,
   onPress,
   onLongPress,
@@ -77,6 +78,7 @@ const CategoryRow = React.memo(function CategoryRow({
   cat: Category;
   isSelected: boolean;
   isBlocked?: boolean;
+  channelCount?: number;
   colors: ReturnType<typeof useColors>;
   onPress: () => void;
   onLongPress?: () => void;
@@ -107,6 +109,11 @@ const CategoryRow = React.memo(function CategoryRow({
       >
         {isBlocked ? '⊘ ' : ''}{cat.name}
       </Text>
+      {channelCount !== undefined && channelCount > 0 && (
+        <Text style={[styles.catCount, { color: isSelected ? 'rgba(255,255,255,0.65)' : colors.mutedForeground }]}>
+          {channelCount}
+        </Text>
+      )}
     </Pressable>
   );
 });
@@ -618,6 +625,18 @@ export default function LiveTVScreen() {
 
   const blockedSet = useMemo(() => new Set(blockedChannels), [blockedChannels]);
 
+  // Channel count per category for the category panel badge
+  const catChannelCountMap = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const ch of fetchedChannels) {
+      if (blockedSet.has(ch.id)) continue;
+      // Xtream categories use name as groupTitle; M3U may use id or name
+      const key = ch.groupTitle ?? '';
+      map.set(key, (map.get(key) ?? 0) + 1);
+    }
+    return map;
+  }, [fetchedChannels, blockedSet]);
+
   // Map blocked category IDs → names so both Xtream (groupTitle = name) and
   // M3U (groupTitle = id) channels are filtered correctly.
   const blockedCatNames = useMemo(() => {
@@ -875,11 +894,21 @@ export default function LiveTVScreen() {
   const renderCat = useCallback(({ item }: { item: Category }) => {
     const isBlockable = item.id !== FAVS_CAT_ID && item.id !== ALL_CAT_ID;
     const isBlocked = isBlockable && blockedCategoryIds.includes(item.id);
+    // Compute channel count: All = total non-blocked, Favs = favourites, others = by groupTitle name
+    let channelCount: number | undefined;
+    if (item.id === ALL_CAT_ID) {
+      channelCount = fetchedChannels.filter((ch) => !blockedSet.has(ch.id)).length;
+    } else if (item.id === FAVS_CAT_ID) {
+      channelCount = favorites.length;
+    } else {
+      channelCount = catChannelCountMap.get(item.name);
+    }
     return (
       <CategoryRow
         cat={item}
         isSelected={item.id === selectedCatId}
         isBlocked={isBlocked}
+        channelCount={channelCount}
         colors={colors}
         onPress={() => handleSelectCat(item.id)}
         onLongPress={isBlockable ? () => {
@@ -895,7 +924,7 @@ export default function LiveTVScreen() {
         } : undefined}
       />
     );
-  }, [selectedCatId, blockedCategoryIds, colors, handleSelectCat, toggleBlockedCategory]);
+  }, [selectedCatId, blockedCategoryIds, catChannelCountMap, fetchedChannels, blockedSet, favorites, colors, handleSelectCat, toggleBlockedCategory]);
 
   const handleLongPressChannel = useCallback((ch: Channel) => {
     const isBlocked = blockedChannels.includes(ch.id);
@@ -1329,6 +1358,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   catRowText: { fontSize: 12, fontFamily: 'Inter_500Medium', lineHeight: 16 },
+  catCount: { fontSize: 9, fontFamily: 'Inter_400Regular', marginTop: 2 },
 
   // ── Channel panel ──
   chPanel: {

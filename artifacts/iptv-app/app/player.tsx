@@ -923,6 +923,7 @@ export default function PlayerScreen() {
 
   // ── Save history on exit and navigate back ────────────────────────────────
   const handleBack = useCallback(async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (!isLive && params.contentId) {
       const pos = currentTimeRef.current;
       const dur = durationRef.current;

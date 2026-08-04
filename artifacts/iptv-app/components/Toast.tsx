@@ -10,6 +10,7 @@
 
 import React, { useEffect, useRef } from 'react';
 import { Animated, StyleSheet, Text } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface ToastProps {
   message: string;
@@ -20,6 +21,7 @@ interface ToastProps {
 }
 
 export function Toast({ message, visible, duration = 3000, onHide }: ToastProps) {
+  const insets = useSafeAreaInsets();
   const opacity = useRef(new Animated.Value(0)).current;
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -52,7 +54,10 @@ export function Toast({ message, visible, duration = 3000, onHide }: ToastProps)
   if (!visible) return null;
 
   return (
-    <Animated.View style={[styles.container, { opacity }]} pointerEvents="none">
+    <Animated.View
+      style={[styles.container, { opacity, bottom: Math.max(80, insets.bottom + 16) }]}
+      pointerEvents="none"
+    >
       <Text style={styles.text}>{message}</Text>
     </Animated.View>
   );
