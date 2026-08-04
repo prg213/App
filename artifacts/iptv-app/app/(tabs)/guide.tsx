@@ -653,21 +653,26 @@ function FullGuide({
           </TouchableOpacity>
         )}
 
-        {/* Jump-to-now button */}
-        {selectedDay === 0 && (
-          <TouchableOpacity
-            style={[styles.todayBtn, { backgroundColor: colors.secondary, borderColor: colors.border }]}
-            onPress={() => {
-              const scrollX = Math.max(0, nowX - SLOT_W * 2);
+        {/* Jump-to-now button — always visible so the user can navigate back to Today */}
+        <TouchableOpacity
+          style={[styles.todayBtn, { backgroundColor: colors.secondary, borderColor: colors.border }]}
+          onPress={() => {
+            // If on a future day, snap back to Today first
+            setSelectedDay(0);
+            const scrollX = Math.max(0, nowX - SLOT_W * 2);
+            // Use a small delay so the day-change effect fires first and repositions the scroll
+            setTimeout(() => {
               gridHorizRef.current?.scrollTo({ x: scrollX, animated: true });
               timeHeaderRef.current?.scrollTo({ x: scrollX, animated: true });
-            }}
-            activeOpacity={0.7}
-          >
-            <View style={styles.nowDot} />
-            <Text style={[styles.todayBtnText, { color: '#EF4444' }]}>Now</Text>
-          </TouchableOpacity>
-        )}
+            }, 50);
+          }}
+          activeOpacity={0.7}
+        >
+          <View style={styles.nowDot} />
+          <Text style={[styles.todayBtnText, { color: '#EF4444' }]}>
+            {selectedDay === 0 ? 'Now' : 'Today'}
+          </Text>
+        </TouchableOpacity>
 
         <TextInput
           value={chFilter}
