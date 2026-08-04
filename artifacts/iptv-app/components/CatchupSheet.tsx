@@ -162,9 +162,16 @@ export function CatchupSheet({
       pathname: '/player',
       params: {
         url: urls[0],
-        title: prog.title,
-        type: 'vod',
+        title: `${prog.title} — ${channel.name}`,
+        type: 'catchup',
         logo: channel.logo ?? '',
+        // Pass duration so the scrubber has a progress bar immediately
+        // (timeshift HLS streams don't expose duration to expo-video).
+        knownDuration: String(durationMinutes * 60),
+        // Fields needed to regenerate the timeshift URL when the user seeks
+        catchupStreamId: channel.id,
+        catchupServerStart: prog.serverStart,
+        catchupStartTimestamp: String(prog.startTimestamp),
       },
     });
   };
