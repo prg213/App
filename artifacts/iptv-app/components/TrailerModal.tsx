@@ -108,24 +108,28 @@ export function TrailerModal({ videoIds, onClose }: Props) {
   const insets = useSafeAreaInsets();
   const [idx, setIdx] = useState(0);
   const [webviewLoading, setWebviewLoading] = useState(true);
+  const [allFailed, setAllFailed] = useState(false);
   const webviewKey = useRef(0); // increment to force remount on ID change
 
   // Reset to first candidate whenever a new set arrives
   useEffect(() => {
     setIdx(0);
     setWebviewLoading(true);
+    setAllFailed(false);
     webviewKey.current += 1;
   }, [videoIds]);
 
-  // Also reset loading state when we advance to next candidate
+  // Advance to the next candidate; mark allFailed when the last one errors.
   const advance = () => {
     const ids = Array.isArray(videoIds) ? videoIds : [];
     if (idx < ids.length - 1) {
       setIdx((i) => i + 1);
       setWebviewLoading(true);
       webviewKey.current += 1;
+    } else {
+      // All candidates exhausted — show a clean error instead of YouTube's UI.
+      setAllFailed(true);
     }
-    // If no more candidates just stay — YouTube's own error UI is already shown.
   };
 
   const handleMessage = (e: WebViewMessageEvent) => {
@@ -163,12 +167,18 @@ export function TrailerModal({ videoIds, onClose }: Props) {
           </Pressable>
         </View>
 
-        {/* ── Loading state (fetch in progress) ── */}
-        {isFetching || !current ? (
+        {/* ── Loading / error states ── */}
+        {isFetching ? (
           <View style={styles.loaderFull}>
             <ActivityIndicator size="large" color="#3B82F6" />
-            <Text style={styles.loaderText}>
-              {isFetching ? 'Finding trailer…' : 'No trailer found'}
+            <Text style={styles.loaderText}>Finding trailer…</Text>
+          </View>
+        ) : allFailed || !current ? (
+          <View style={styles.loaderFull}>
+            <Text style={{ fontSize: 40, marginBottom: 12 }}>🎬</Text>
+            <Text style={styles.loaderText}>No trailer available</Text>
+            <Text style={[styles.loaderText, { fontSize: 12, marginTop: 4, opacity: 0.5 }]}>
+              No playable trailer was found for this title.
             </Text>
           </View>
         ) : (
