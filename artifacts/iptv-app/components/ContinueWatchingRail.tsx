@@ -10,6 +10,7 @@ import {
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useColors } from '@/hooks/useColors';
 import { StorageService } from '@/services/storage';
+import { Toast } from '@/components/Toast';
 import type { WatchHistoryEntry } from '@/types';
 
 function fmtSecs(secs: number) {
@@ -28,6 +29,7 @@ export function ContinueWatchingRail({ type }: Props) {
   const colors = useColors();
   const router = useRouter();
   const [history, setHistory] = useState<WatchHistoryEntry[]>([]);
+  const [toastMsg, setToastMsg] = useState<string | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -51,6 +53,9 @@ export function ContinueWatchingRail({ type }: Props) {
       <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>
         CONTINUE WATCHING
       </Text>
+      {toastMsg !== null && (
+        <Toast message={toastMsg} visible duration={2500} onHide={() => setToastMsg(null)} />
+      )}
       <FlatList
         data={history}
         horizontal
@@ -81,6 +86,7 @@ export function ContinueWatchingRail({ type }: Props) {
           const handleRemove = () => {
             StorageService.removeFromHistory(item.id).then(() => {
               setHistory((prev) => prev.filter((e) => e.id !== item.id));
+              setToastMsg(`"${item.title}" removed from Continue Watching`);
             }).catch(() => {});
           };
 

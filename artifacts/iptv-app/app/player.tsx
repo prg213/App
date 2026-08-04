@@ -14,6 +14,7 @@ import {
   Text,
   TouchableOpacity,
   TouchableWithoutFeedback,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import * as Network from 'expo-network';
@@ -334,6 +335,7 @@ export default function PlayerScreen() {
   useEffect(() => { reconnectAttemptRef.current = reconnectAttempt; }, [reconnectAttempt]);
   // Source-of-truth URL ref — always points to the currently loaded stream URL
   const activeUrlRef = useRef(params.url);
+  const { width: screenWidth } = useWindowDimensions();
   const [currentTime, setCurrentTime] = useState(0);
   // Seed with the known programme duration so catch-up scrubber works immediately
   // even when the timeshift stream doesn't expose its duration to expo-video.
@@ -341,6 +343,9 @@ export default function PlayerScreen() {
   const [showControls, setShowControls] = useState(false);
   const [showInfo, setShowInfo] = useState(true);
   const [nowTs, setNowTs] = useState(Date.now());
+  /** 'back' | 'forward' | null — brief double-tap seek visual indicator */
+  const [doubleTapSide, setDoubleTapSide] = useState<'back' | 'forward' | null>(null);
+  const doubleTapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Settings state ────────────────────────────────────────────────────────
   const [showSettings, setShowSettings] = useState(false);
@@ -996,6 +1001,21 @@ export default function PlayerScreen() {
     scheduleHide();
   }, [showControls, controlsOpacity, scheduleHide, showInfoBar]);
 
+  /** Double-tap left half → −10 s, right half → +10 s (VOD only). */
+  const tapGesture = Gesture.Tap().runOnJS(true).onEnd(handleTap);
+  const doubleTapGesture = Gesture.Tap()
+    .numberOfTaps(2)
+    .runOnJS(true)
+    .onEnd((e) => {
+      if (isLive) return;
+      const isLeft = e.x < screenWidth / 2;
+      seek(isLeft ? -10 : 10);
+      if (doubleTapTimer.current) clearTimeout(doubleTapTimer.current);
+      setDoubleTapSide(isLeft ? 'back' : 'forward');
+      doubleTapTimer.current = setTimeout(() => setDoubleTapSide(null), 700);
+    });
+  const combinedGesture = Gesture.Exclusive(doubleTapGesture, tapGesture);
+
   const togglePlay = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (isCasting) {
@@ -1143,11 +1163,27 @@ export default function PlayerScreen() {
         </View>
       )}
 
-      {/* Tap catcher */}
+      {/* Tap catcher — single tap shows controls, double tap on VOD seeks ±10 s */}
       {!isWeb && !hasError && (
-        <TouchableWithoutFeedback onPress={handleTap}>
-          <View style={StyleSheet.absoluteFill} />
-        </TouchableWithoutFeedback>
+        <GestureDetector gesture={combinedGesture}>
+          <View style={StyleSheet.absoluteFill}>
+            {doubleTapSide !== null && (
+              <View
+                style={[
+                  styles.doubleTapFeedback,
+                  doubleTapSide === 'back'
+                    ? { left: 0, right: '50%' }
+                    : { left: '50%', right: 0 },
+                ]}
+                pointerEvents="none"
+              >
+                <Text style={styles.doubleTapIcon}>
+                  {doubleTapSide === 'back' ? '« 10s' : '10s »'}
+                </Text>
+              </View>
+            )}
+          </View>
+        </GestureDetector>
       )}
 
       {/* ── Controls overlay (VOD: play/seek/back) ── */}
@@ -1876,6 +1912,18 @@ const styles = StyleSheet.create({
   bufferCircle: { width: 64, height: 64, borderRadius: 32, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' },
   bufferIcon: { fontSize: 24, color: '#fff' },
   bufferText: { fontSize: 14, color: 'rgba(255,255,255,0.7)', fontFamily: 'Inter_400Regular' },
+
+  // Double-tap seek feedback flash
+  doubleTapFeedback: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.25)',
+    borderRadius: 12,
+  },
+  doubleTapIcon: { fontSize: 22, color: '#fff', fontFamily: 'Inter_700Bold', letterSpacing: 0.5 },
 
   // Reconnecting overlay
   reconnectOverlay: { ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center', gap: 14, backgroundColor: 'rgba(0,0,0,0.55)' },
