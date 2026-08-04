@@ -1243,7 +1243,22 @@ export default function LiveTVScreen() {
               )}
             </View>
             {channelEpg.length > 0 ? (
-              <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: insets.bottom + 8 }}>
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+                style={{ flex: 1 }}
+                contentContainerStyle={{ paddingBottom: insets.bottom + 8 }}
+                ref={(ref) => {
+                  // Scroll to the currently-airing programme when the EPG data loads
+                  if (!ref) return;
+                  const nowIdx = channelEpg.findIndex(
+                    (p) => p.start.getTime() <= nowTs && nowTs < p.end.getTime()
+                  );
+                  if (nowIdx > 0) {
+                    // Each EPG row is approximately 68px tall; scroll past earlier rows
+                    setTimeout(() => ref.scrollTo({ y: Math.max(0, (nowIdx - 1) * 68), animated: false }), 80);
+                  }
+                }}
+              >
                 {channelEpg.map((prog, i) => {
                   const isCurrent = prog.start.getTime() <= nowTs && nowTs < prog.end.getTime();
                   const isFuture = prog.start.getTime() > nowTs;

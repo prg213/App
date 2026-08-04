@@ -629,7 +629,7 @@ export default function RemindersScreen() {
     (onAirReminders.length > 0 && (upcoming.length > 0 || pastReminders.length > 0)) ||
     (upcoming.length > 0 && pastReminders.length > 0);
   if (onAirReminders.length > 0) {
-    if (hasMultipleSections) flatItems.push({ kind: 'divider', label: 'ON NOW' });
+    if (hasMultipleSections) flatItems.push({ kind: 'divider', label: `ON NOW (${onAirReminders.length})` });
     onAirReminders.forEach((r) => flatItems.push({ kind: 'reminder', item: r }));
   }
   if (upcoming.length > 0) {
