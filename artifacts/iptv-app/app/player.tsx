@@ -1111,6 +1111,11 @@ export default function PlayerScreen() {
         <View style={styles.msgView}>
           <Text style={styles.msgIcon}>⚠</Text>
           <Text style={styles.msgTitle}>Stream Error</Text>
+          {!!params.title && (
+            <Text style={[styles.msgSub, { fontFamily: 'Inter_600SemiBold', marginBottom: 2 }]} numberOfLines={2}>
+              {params.title}
+            </Text>
+          )}
           <Text style={styles.msgSub}>Unable to load stream. Check your connection or try another channel.</Text>
           <TouchableOpacity
             style={styles.actionBtn}

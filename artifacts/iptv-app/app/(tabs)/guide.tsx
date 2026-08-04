@@ -741,7 +741,16 @@ function FullGuide({
           column and right programme area always scroll together — no JS-based
           sync needed, no de-sync possible.
           ──────────────────────────────────────────────────────────────────── */}
-      {!selectedDayEmpty && <View style={[styles.grid, { paddingRight: insets.right }]}>
+      {visibleChannels.length === 0 && chFilter.trim() ? (
+        <View style={[styles.empty, { paddingTop: 64 }]}>
+          <Text style={{ fontSize: 36 }}>🔍</Text>
+          <Text style={[styles.emptyTitle, { color: colors.foreground }]}>No channels match</Text>
+          <Text style={[styles.emptySub, { color: colors.mutedForeground }]}>
+            Clear the filter or try a different channel name.
+          </Text>
+        </View>
+      ) : null}
+      {!selectedDayEmpty && visibleChannels.length > 0 && <View style={[styles.grid, { paddingRight: insets.right }]}>
 
         {/* Fixed header row: corner cell + time labels */}
         <View style={styles.headerRow}>

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Alert,
   FlatList,
   RefreshControl,
   StyleSheet,
@@ -395,6 +396,15 @@ export default function MoviesScreen() {
                 isFav={favSet.has(item.id)}
                 compact={isFavsSelected}
                 onFavPress={() => handleToggleFav(item)}
+                onLongPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  const isFav = favSet.has(item.id);
+                  Alert.alert(item.name, undefined, [
+                    { text: isFav ? '♥ Remove Favourite' : '♡ Add to Favourites', onPress: () => handleToggleFav(item) },
+                    { text: '🎬 Open Details', onPress: () => router.push({ pathname: '/movie/[id]', params: { id: item.id, title: item.name, cover: item.cover ?? '', genre: item.genre ?? '', rating: item.rating ?? '', plot: item.plot ?? '', cast: item.cast ?? '', director: item.director ?? '', releaseDate: item.releaseDate ?? '', duration: item.duration ?? '', ext: item.containerExtension } }) },
+                    { text: 'Cancel', style: 'cancel' },
+                  ]);
+                }}
                 onPress={() => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                   router.push({ pathname: '/movie/[id]', params: { id: item.id, title: item.name, cover: item.cover ?? '', genre: item.genre ?? '', rating: item.rating ?? '', plot: item.plot ?? '', cast: item.cast ?? '', director: item.director ?? '', releaseDate: item.releaseDate ?? '', duration: item.duration ?? '', ext: item.containerExtension } });

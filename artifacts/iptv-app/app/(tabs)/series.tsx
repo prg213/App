@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Alert,
   FlatList,
   RefreshControl,
   StyleSheet,
@@ -393,6 +394,15 @@ export default function SeriesScreen() {
                 isFav={favSet.has(item.id)}
                 compact={isFavsSelected}
                 onFavPress={() => handleToggleFav(item)}
+                onLongPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  const isFav = favSet.has(item.id);
+                  Alert.alert(item.name, undefined, [
+                    { text: isFav ? '♥ Remove Favourite' : '♡ Add to Favourites', onPress: () => handleToggleFav(item) },
+                    { text: '📺 Open Details', onPress: () => router.push({ pathname: '/series/[id]', params: { id: item.id, title: item.name, cover: item.cover ?? '', rating: item.rating ?? '', genre: item.genre ?? '', plot: item.plot ?? '', cast: item.cast ?? '', director: item.director ?? '' } }) },
+                    { text: 'Cancel', style: 'cancel' },
+                  ]);
+                }}
                 onPress={() => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                   router.push({ pathname: '/series/[id]', params: { id: item.id, title: item.name, cover: item.cover ?? '', rating: item.rating ?? '', genre: item.genre ?? '', plot: item.plot ?? '', cast: item.cast ?? '', director: item.director ?? '' } });

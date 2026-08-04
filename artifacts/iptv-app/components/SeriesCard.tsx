@@ -43,11 +43,12 @@ interface SeriesCardProps {
   compact?: boolean;
   onPress: () => void;
   onFavPress?: () => void;
+  onLongPress?: () => void;
   /** #106: quick trailer shortcut shown as a small button on the poster */
   onTrailerPress?: () => void;
 }
 
-function SeriesCardComponent({ name, cover, rating, genre, query = '', isFav, compact, onPress, onFavPress, onTrailerPress }: SeriesCardProps) {
+function SeriesCardComponent({ name, cover, rating, genre, query = '', isFav, compact, onPress, onFavPress, onLongPress, onTrailerPress }: SeriesCardProps) {
   const colors = useColors();
   const isOnline = useIsOnline();
 
@@ -66,7 +67,7 @@ function SeriesCardComponent({ name, cover, rating, genre, query = '', isFav, co
   const posterUri = cover || tmdbPoster;
 
   return (
-    <TouchableOpacity style={[styles.card, compact && styles.cardCompact]} onPress={onPress} activeOpacity={0.75}>
+    <TouchableOpacity style={[styles.card, compact && styles.cardCompact]} onPress={onPress} onLongPress={onLongPress} delayLongPress={500} activeOpacity={0.75}>
       <View style={[styles.poster, { backgroundColor: colors.secondary }]}>
         {posterUri ? (
           <Image source={{ uri: posterUri }} style={StyleSheet.absoluteFill} resizeMode="cover" />
