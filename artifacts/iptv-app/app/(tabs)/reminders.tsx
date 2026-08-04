@@ -357,6 +357,12 @@ export default function RemindersScreen() {
         let channels: Channel[] = [];
         if (credentials.type === 'xtream') {
           channels = await getXtreamLiveStreams(buildCreds(credentials));
+          // Seed the React Query cache so the next Reminders focus (and Live TV /
+          // Catch-Up) can read a warm cache without another network round-trip.
+          // Key matches the Live TV convention: category = null means "all".
+          if (channels.length > 0) {
+            queryClient.setQueryData(['live-channels', null, credentials], channels);
+          }
         } else if (credentials.m3uUrl) {
           const parsed = await fetchAndParseM3U(credentials.m3uUrl);
           channels = parsed.channels;
