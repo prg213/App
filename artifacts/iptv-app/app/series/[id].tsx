@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -96,6 +96,9 @@ export default function SeriesDetailScreen() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('episodes');
   const [trailerUrl, setTrailerUrl] = useState<string | null>(null);
   const [coverError, setCoverError] = useState(false);
+  // Incremented whenever the series-info query delivers fresh data so that
+  // episode thumbnails which previously errored get a clean remount and retry.
+  const [thumbResetKey, setThumbResetKey] = useState(0);
 
   const params = useLocalSearchParams<{
     id: string; title: string; cover: string; rating: string;
@@ -139,6 +142,14 @@ export default function SeriesDetailScreen() {
     enabled: isXtream,
     staleTime: 10 * 60_000,
   });
+
+  // When the series-info query delivers fresh data (e.g. after staleTime expires),
+  // bump thumbResetKey so previously-errored episode thumbnails remount and retry.
+  useEffect(() => {
+    if (data !== undefined) {
+      setThumbResetKey((k) => k + 1);
+    }
+  }, [data]);
 
   const seasons = data?.seasons ?? [];
   const activeSeason = seasons[selectedSeason];
@@ -355,8 +366,10 @@ export default function SeriesDetailScreen() {
                     style={({ focused }) => [styles.epRow, { borderColor: focused ? '#00E5FF' : 'rgba(255,255,255,0.1)' }]}
                     onPress={() => handlePlayEpisode(ep)}
                   >
-                    {/* Thumbnail */}
+                    {/* Thumbnail — key includes thumbResetKey so a data refetch
+                        causes a clean remount, letting previously-errored URLs retry. */}
                     <ThumbnailWithFallback
+                      key={`ep-thumb-${ep.id}-${thumbResetKey}`}
                       uri={ep.info?.cover}
                       fallbackUri={displayCover}
                       style={styles.epThumb}
