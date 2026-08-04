@@ -591,10 +591,13 @@ export default function LiveTVScreen() {
     }
   }, [channelFilter, filteredChannels]);
 
+  // normalise strips accents so "bbc" matches "BBC España" etc.
+  const normalise = (s: string) =>
+    s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
   const filteredChannels: Channel[] = useMemo(() => {
-    const q = channelFilter.trim().toLowerCase();
+    const q = normalise(channelFilter.trim());
     if (!q) return channels;
-    return channels.filter((ch) => ch.name.toLowerCase().includes(q));
+    return channels.filter((ch) => normalise(ch.name).includes(q));
   }, [channels, channelFilter]);
 
   const filteredCategories = useMemo(() => {

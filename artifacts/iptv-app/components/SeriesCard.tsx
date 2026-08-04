@@ -68,7 +68,7 @@ function SeriesCardComponent({ name, cover, rating, genre, year, query = '', isF
   const posterUri = cover || tmdbPoster;
 
   return (
-    <TouchableOpacity style={[styles.card, compact && styles.cardCompact]} onPress={onPress} onLongPress={onLongPress} delayLongPress={500} activeOpacity={0.75}>
+    <TouchableOpacity style={[styles.card, compact && styles.cardCompact]} onPress={onPress} onLongPress={onLongPress} delayLongPress={500} activeOpacity={0.75} accessibilityLabel={name} accessibilityRole="button">
       <View style={[styles.poster, { backgroundColor: colors.secondary }]}>
         {posterUri ? (
           <Image source={{ uri: posterUri }} style={StyleSheet.absoluteFill} resizeMode="cover" />

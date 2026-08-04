@@ -683,7 +683,6 @@ function FullGuide({
           returnKeyType="search"
           onSubmitEditing={() => { /* keep filter as typed; just dismiss keyboard */ }}
           clearButtonMode="while-editing"
-          clearButtonMode="while-editing"
         />
         <Text style={[styles.chCountLabel, { color: colors.mutedForeground }]}>
           {visibleChannels.length}{chFilter.trim() ? `/${channels.length}` : ''} ch
