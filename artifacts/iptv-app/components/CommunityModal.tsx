@@ -10,7 +10,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
 
-const TELEGRAM_URL = 'https://t.me/s/twstqws';
+const TELEGRAM_URL = '';
 
 // Desktop Chrome UA so Telegram's web interface renders properly in the WebView.
 const CHROME_UA =
@@ -43,22 +43,32 @@ export function CommunityModal({ visible, onClose }: Props) {
           </Pressable>
         </View>
 
-        {/* ── Spinner overlay while page loads ── */}
-        {loading && (
-          <View style={styles.loaderOverlay}>
-            <ActivityIndicator size="large" color="#3B82F6" />
-            <Text style={styles.loaderText}>Opening community…</Text>
+        {TELEGRAM_URL ? (
+          <>
+            {loading && (
+              <View style={styles.loaderOverlay}>
+                <ActivityIndicator size="large" color="#3B82F6" />
+                <Text style={styles.loaderText}>Opening community…</Text>
+              </View>
+            )}
+            <WebView
+              source={{ uri: TELEGRAM_URL }}
+              style={styles.webview}
+              userAgent={CHROME_UA}
+              onLoadEnd={() => setLoading(false)}
+              javaScriptEnabled
+              domStorageEnabled
+            />
+          </>
+        ) : (
+          <View style={styles.empty}>
+            <Text style={styles.emptyIcon}>💬</Text>
+            <Text style={styles.emptyTitle}>No community channel</Text>
+            <Text style={styles.emptyText}>
+              A Telegram channel hasn't been set up for your account yet.
+            </Text>
           </View>
         )}
-
-        <WebView
-          source={{ uri: TELEGRAM_URL }}
-          style={styles.webview}
-          userAgent={CHROME_UA}
-          onLoadEnd={() => setLoading(false)}
-          javaScriptEnabled
-          domStorageEnabled
-        />
       </View>
     </Modal>
   );
@@ -113,4 +123,8 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#0A0A0F',
   },
+  empty: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 40, gap: 12 },
+  emptyIcon: { fontSize: 48, textAlign: 'center' },
+  emptyTitle: { fontSize: 18, fontFamily: 'Inter_600SemiBold', color: '#F2F2F2', textAlign: 'center' },
+  emptyText: { fontSize: 13, fontFamily: 'Inter_400Regular', color: 'rgba(255,255,255,0.5)', textAlign: 'center', lineHeight: 20 },
 });
