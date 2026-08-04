@@ -365,7 +365,10 @@ export default function SeriesDetailScreen() {
                           onError={() => setEpThumbErrors((prev) => ({ ...prev, [ep.id]: true }))}
                         />
                       ) : displayCover ? (
-                        <Image source={{ uri: displayCover }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+                        <>
+                          <Image source={{ uri: displayCover }} style={StyleSheet.absoluteFill} resizeMode="cover" blurRadius={12} />
+                          <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.55)' }]} />
+                        </>
                       ) : (
                         <Text style={{ fontSize: 20 }}>📺</Text>
                       )}
