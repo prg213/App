@@ -111,16 +111,20 @@ export default function SeriesScreen() {
     staleTime: 5 * 60_000,
   });
 
+  const refreshWatchHistory = useCallback(() => {
+    StorageService.getWatchHistory().then((h) =>
+      setWatchHistory(h.filter((e) => e.type === 'series')),
+    );
+  }, []);
+
   // Silently refresh the list + reload history whenever the user navigates here.
   useFocusEffect(
     useCallback(() => {
-      StorageService.getWatchHistory().then((h) =>
-        setWatchHistory(h.filter((e) => e.type === 'series')),
-      );
+      refreshWatchHistory();
       if (credentials && isXtream && !isFavsSelected && !isRecentSelected) {
         refetch();
       }
-    }, [credentials, isXtream, isFavsSelected, isRecentSelected, refetch]),
+    }, [credentials, isXtream, isFavsSelected, isRecentSelected, refetch, refreshWatchHistory]),
   );
 
   // Sort fetched series newest first (highest series_id = most recently added)

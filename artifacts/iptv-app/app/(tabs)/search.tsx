@@ -333,7 +333,7 @@ export default function SearchScreen() {
   const { channels, movies, series } = useMemo(() => {
     if (!hasQuery) return { channels: [], movies: [], series: [] };
 
-    const q = query.trim().toLowerCase();
+    const q = debouncedQuery.trim().toLowerCase();
 
     const channels = showLive
       ? allChannels
@@ -354,7 +354,7 @@ export default function SearchScreen() {
       : [];
 
     return { channels, movies, series };
-  }, [hasQuery, query, showLive, showMovies, showSeries, allChannels, allMovies, allSeries, blockedSet, blockedCatSet, maxRating]);
+  }, [hasQuery, debouncedQuery, showLive, showMovies, showSeries, allChannels, allMovies, allSeries, blockedSet, blockedCatSet, maxRating]);
 
   // ── Build flat list data ──────────────────────────────────────────────────
 
