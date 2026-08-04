@@ -30,6 +30,9 @@ import { lastNetworkRefreshByCredential, NETWORK_REFRESH_INTERVAL_MS } from '@/s
 import type { Reminder, Channel } from '@/types';
 import { SIDEBAR_W } from './_layout';
 
+/** #152: minimum wait after a background URL-refresh failure before retrying (5 min). */
+const REFRESH_FAILURE_BACKOFF_MS = 5 * 60_000;
+
 function credentialSig(c: ReturnType<typeof useAppContext>['credentials']): string {
   // Xtream accounts are identified by host + username.
   // M3U accounts have no host/username — use the playlist URL as the unique key.
@@ -293,7 +296,6 @@ export default function RemindersScreen() {
   const prunedKeyRef = useRef('');
   // #152: track last background refresh failure timestamp to enforce a 5-min backoff
   const lastRefreshFailureRef = useRef<number>(0);
-  const REFRESH_FAILURE_BACKOFF_MS = 5 * 60_000;
   useFocusEffect(
     useCallback(() => {
       StorageService.getReminderLeadMins().then(setReminderLeadMins);
@@ -513,7 +515,7 @@ export default function RemindersScreen() {
         lastRefreshFailureRef.current = Date.now();
       });
     });
-  }, [backfillStreamUrls, REFRESH_FAILURE_BACKOFF_MS]);
+  }, [backfillStreamUrls]);
 
   useFocusEffect(load);
 
