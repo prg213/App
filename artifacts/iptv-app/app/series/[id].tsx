@@ -154,6 +154,28 @@ export default function SeriesDetailScreen() {
   const seasons = data?.seasons ?? [];
   const activeSeason = seasons[selectedSeason];
 
+  // Prefetch episode thumbnails for the adjacent seasons (N-1, N+1) so that
+  // switching seasons shows images immediately instead of waiting for downloads.
+  useEffect(() => {
+    if (seasons.length === 0) return;
+
+    const adjacentIndices = [selectedSeason - 1, selectedSeason + 1].filter(
+      (i) => i >= 0 && i < seasons.length,
+    );
+
+    for (const idx of adjacentIndices) {
+      const season = seasons[idx];
+      if (!season) continue;
+      for (const ep of season.episodes) {
+        const thumbUri = ep.info?.cover;
+        if (thumbUri) {
+          // Fire-and-forget — errors are silently ignored; this is best-effort.
+          Image.prefetch(thumbUri).catch(() => {});
+        }
+      }
+    }
+  }, [selectedSeason, seasons]);
+
   const doPlayEpisode = useCallback((ep: Episode, startAt?: number) => {
     const url = getXtreamSeriesUrl(
       { host: credentials!.host!, username: credentials!.username!, password: credentials!.password! },
