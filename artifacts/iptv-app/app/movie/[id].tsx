@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { ThumbnailWithFallback } from '@/components/ThumbnailWithFallback';
 import { TrailerModal } from '@/components/TrailerModal';
-import { getTmdbTrailerVideoId, getTmdbPosterUrl } from '@/services/tmdb';
+import { getTmdbTrailerCandidates, getTmdbPosterUrl } from '@/services/tmdb';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -103,7 +103,7 @@ export default function MovieDetailScreen() {
   const [isFav, setIsFav] = useState(false);
   const [savedPosition, setSavedPosition] = useState<number | null>(null);
   const [showPinGate, setShowPinGate] = useState(false);
-  const [trailerUrl, setTrailerUrl] = useState<string | null>(null);
+  const [trailerIds, setTrailerIds] = useState<string[] | 'loading' | null>(null);
   const [pendingStartAt, setPendingStartAt] = useState<number | undefined>(undefined);
 
   const params = useLocalSearchParams<{
@@ -304,15 +304,14 @@ export default function MovieDetailScreen() {
                 Alert.alert('No Internet', 'No internet connection — trailer unavailable.', [{ text: 'OK' }]);
                 return;
               }
-              setTrailerUrl('loading');
-              const videoId = await getTmdbTrailerVideoId(params.title, 'movie');
-              if (videoId) { setTrailerUrl(`https://www.youtube.com/watch?v=${videoId}`); return; }
-              const rawTrailer = vodInfo?.trailerUrl;
-              if (rawTrailer) {
-                setTrailerUrl(rawTrailer.startsWith('http') ? rawTrailer : `https://www.youtube.com/watch?v=${rawTrailer}`);
-              } else {
-                setTrailerUrl(null);
-              }
+              setTrailerIds('loading');
+              const ids = await getTmdbTrailerCandidates(params.title, 'movie');
+              const raw = vodInfo?.trailerUrl;
+              const provId = raw ? (raw.startsWith('http')
+                ? (raw.match(/[?&]v=([^&#]+)/)?.[1] ?? raw.match(/youtu\.be\/([^?&#]+)/)?.[1] ?? null)
+                : raw) : null;
+              const all = provId && !ids.includes(provId) ? [...ids, provId] : ids;
+              setTrailerIds(all.length > 0 ? all : null);
             }}
           >
             <Text style={[styles.outlineBtnText, !isOnline && { opacity: 0.45 }]}>
@@ -337,7 +336,7 @@ export default function MovieDetailScreen() {
           onCancel={() => setShowPinGate(false)}
         />
       </Modal>
-      <TrailerModal url={trailerUrl} onClose={() => setTrailerUrl(null)} />
+      <TrailerModal videoIds={trailerIds} onClose={() => setTrailerIds(null)} />
     </View>
   );
 }

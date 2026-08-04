@@ -13,7 +13,7 @@ import {
   View,
 } from 'react-native';
 import { TrailerModal } from '@/components/TrailerModal';
-import { getTmdbTrailerVideoId, getTmdbPosterUrl } from '@/services/tmdb';
+import { getTmdbTrailerCandidates, getTmdbPosterUrl } from '@/services/tmdb';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -95,7 +95,7 @@ export default function SeriesDetailScreen() {
   const [isFav, setIsFav] = useState(false);
   const [episodeHistory, setEpisodeHistory] = useState<Record<string, WatchHistoryEntry>>({});
   const [activeTab, setActiveTab] = useState<ActiveTab>('episodes');
-  const [trailerUrl, setTrailerUrl] = useState<string | null>(null);
+  const [trailerIds, setTrailerIds] = useState<string[] | 'loading' | null>(null);
   const [coverError, setCoverError] = useState(false);
   // #165: Store the TMDB poster URL in a ref so it is set only once on first
   // successful fetch and never cleared when series data re-fetches in the background.
@@ -383,15 +383,14 @@ export default function SeriesDetailScreen() {
                 Alert.alert('No Internet', 'No internet connection — trailer unavailable.', [{ text: 'OK' }]);
                 return;
               }
-              setTrailerUrl('loading');
-              const videoId = await getTmdbTrailerVideoId(params.title, 'tv');
-              if (videoId) { setTrailerUrl(`https://www.youtube.com/watch?v=${videoId}`); return; }
-              const rawTrailer = data?.series?.trailerUrl;
-              if (rawTrailer) {
-                setTrailerUrl(rawTrailer.startsWith('http') ? rawTrailer : `https://www.youtube.com/watch?v=${rawTrailer}`);
-              } else {
-                setTrailerUrl(null);
-              }
+              setTrailerIds('loading');
+              const ids = await getTmdbTrailerCandidates(params.title, 'tv');
+              const raw = data?.series?.trailerUrl;
+              const provId = raw ? (raw.startsWith('http')
+                ? (raw.match(/[?&]v=([^&#]+)/)?.[1] ?? raw.match(/youtu\.be\/([^?&#]+)/)?.[1] ?? null)
+                : raw) : null;
+              const all = provId && !ids.includes(provId) ? [...ids, provId] : ids;
+              setTrailerIds(all.length > 0 ? all : null);
             }}
           >
             <Text style={[styles.outlineBtnText, !isOnline && { opacity: 0.45 }]}>
@@ -574,7 +573,7 @@ export default function SeriesDetailScreen() {
           onCancel={() => { setShowEpPinGate(false); setPendingEpisode(null); }}
         />
       </Modal>
-      <TrailerModal url={trailerUrl} onClose={() => setTrailerUrl(null)} />
+      <TrailerModal videoIds={trailerIds} onClose={() => setTrailerIds(null)} />
     </View>
   );
 }

@@ -15,7 +15,7 @@ import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { Alert } from 'react-native';
 import { TrailerModal } from '@/components/TrailerModal';
-import { getTmdbTrailerVideoId } from '@/services/tmdb';
+import { getTmdbTrailerCandidates } from '@/services/tmdb';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { useIsOnline } from '@/hooks/useIsOnline';
@@ -218,7 +218,7 @@ export default function SearchScreen() {
 
   const [query, setQuery] = useState('');
   const [searchType, setSearchType] = useState<SearchType>('all');
-  const [trailerUrl, setTrailerUrl] = useState<string | null>(null);
+  const [trailerIds, setTrailerIds] = useState<string[] | 'loading' | null>(null);
   const inputRef = useRef<TextInput>(null);
 
   // Restore the last-used search filter and query from storage on mount
@@ -448,14 +448,14 @@ export default function SearchScreen() {
             colors={colors}
             onPress={() => handleMoviePress(item.item)}
             onTrailer={() => {
-              setTrailerUrl('loading');
-              getTmdbTrailerVideoId(item.item.name, 'movie').then((videoId) => {
-                if (videoId) { setTrailerUrl(`https://www.youtube.com/watch?v=${videoId}`); return; }
-                const providerUrl = item.item.trailerUrl
-                  ? (item.item.trailerUrl.startsWith('http') ? item.item.trailerUrl : `https://www.youtube.com/watch?v=${item.item.trailerUrl}`)
-                  : null;
-                setTrailerUrl(providerUrl);
-              });
+              setTrailerIds('loading');
+              getTmdbTrailerCandidates(item.item.name, 'movie').then((ids) => {
+                const raw = item.item.trailerUrl;
+                const provId = raw ? (raw.startsWith('http')
+                  ? (raw.match(/[?&]v=([^&#]+)/)?.[1] ?? raw.match(/youtu\.be\/([^?&#]+)/)?.[1] ?? null)
+                  : raw) : null;
+                const all = provId && !ids.includes(provId) ? [...ids, provId] : ids;
+                setTrailerIds(all.length > 0 ? all : null);
             }}
           />
         );
@@ -471,14 +471,14 @@ export default function SearchScreen() {
             colors={colors}
             onPress={() => handleSeriesPress(item.item)}
             onTrailer={() => {
-              setTrailerUrl('loading');
-              getTmdbTrailerVideoId(item.item.name, 'tv').then((videoId) => {
-                if (videoId) { setTrailerUrl(`https://www.youtube.com/watch?v=${videoId}`); return; }
-                const providerUrl = item.item.trailerUrl
-                  ? (item.item.trailerUrl.startsWith('http') ? item.item.trailerUrl : `https://www.youtube.com/watch?v=${item.item.trailerUrl}`)
-                  : null;
-                setTrailerUrl(providerUrl);
-              });
+              setTrailerIds('loading');
+              getTmdbTrailerCandidates(item.item.name, 'tv').then((ids) => {
+                const raw = item.item.trailerUrl;
+                const provId = raw ? (raw.startsWith('http')
+                  ? (raw.match(/[?&]v=([^&#]+)/)?.[1] ?? raw.match(/youtu\.be\/([^?&#]+)/)?.[1] ?? null)
+                  : raw) : null;
+                const all = provId && !ids.includes(provId) ? [...ids, provId] : ids;
+                setTrailerIds(all.length > 0 ? all : null);
             }}
           />
         );
@@ -623,7 +623,7 @@ export default function SearchScreen() {
         ]}
         removeClippedSubviews={false}
       />
-      <TrailerModal url={trailerUrl} onClose={() => setTrailerUrl(null)} />
+      <TrailerModal videoIds={trailerIds} onClose={() => setTrailerIds(null)} />
     </View>
   );
 }
