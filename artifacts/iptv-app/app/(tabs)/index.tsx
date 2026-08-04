@@ -1133,6 +1133,8 @@ export default function LiveTVScreen() {
             maxToRenderPerBatch={20}
             contentContainerStyle={{ paddingBottom: insets.bottom + 8 }}
             removeClippedSubviews={false}
+            keyboardShouldPersistTaps="handled"
+            onScrollBeginDrag={Keyboard.dismiss}
           />
         )}
       </View>

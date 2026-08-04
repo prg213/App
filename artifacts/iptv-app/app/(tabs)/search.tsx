@@ -509,7 +509,9 @@ export default function SearchScreen() {
         return (
           <View style={styles.center}>
             <Text style={{ fontSize: 40, marginBottom: 12 }}>🔍</Text>
-            <Text style={[styles.emptyTitle, { color: colors.foreground }]}>No results found</Text>
+            <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
+              No results for "{query.trim()}"
+            </Text>
             <Text style={[styles.emptySub, { color: colors.mutedForeground }]}>
               Try a different name or check your spelling.
             </Text>

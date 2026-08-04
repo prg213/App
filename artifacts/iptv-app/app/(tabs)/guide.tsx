@@ -630,6 +630,9 @@ function FullGuide({
           <Text style={[styles.backLabel, { color: colors.foreground }]}>Categories</Text>
         </TouchableOpacity>
         <Text style={[styles.screenTitle, { color: colors.foreground }]} numberOfLines={1}>{categoryName}</Text>
+        <Text style={[styles.guideClockText, { color: colors.mutedForeground }]}>
+          {new Date(now).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+        </Text>
 
         {epgLoading && (
           <View style={styles.loadingBadge}>
@@ -1104,6 +1107,7 @@ const styles = StyleSheet.create({
   guideChFilter: { flex: 1, height: 30, borderRadius: 8, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: 8, fontSize: 12, fontFamily: 'Inter_400Regular' },
   epgLoadingOverlay: { justifyContent: 'center', alignItems: 'center', gap: 10, backgroundColor: 'rgba(0,0,0,0.45)', zIndex: 10 },
   epgLoadingText: { fontSize: 13, fontFamily: 'Inter_400Regular' },
+  guideClockText: { fontSize: 12, fontFamily: 'Inter_500Medium', marginLeft: 'auto' },
   chCountLabel: { fontSize: 11, fontFamily: 'Inter_400Regular' },
   backBtn: {
     width: SIDEBAR_W,

@@ -48,11 +48,29 @@ export function ContinueWatchingRail({ type }: Props) {
 
   if (history.length === 0) return null;
 
+  const handleClearAll = useCallback(async () => {
+    // Clear only entries matching the current type filter, or all if no filter
+    const all = await StorageService.getWatchHistory();
+    const keep = type ? all.filter((e) => e.type !== type) : [];
+    await StorageService.clearHistory();
+    if (keep.length > 0) {
+      // Restore entries that don't match this rail's type
+      for (const e of keep) await StorageService.addToHistory(e);
+    }
+    setHistory([]);
+    setToastMsg('Continue Watching cleared');
+  }, [type]);
+
   return (
     <View style={[styles.container, { borderBottomColor: colors.border }]}>
-      <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>
-        CONTINUE WATCHING
-      </Text>
+      <View style={styles.header}>
+        <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>
+          CONTINUE WATCHING
+        </Text>
+        <TouchableOpacity onPress={handleClearAll} hitSlop={8} activeOpacity={0.6}>
+          <Text style={[styles.clearAll, { color: colors.mutedForeground }]}>Clear all</Text>
+        </TouchableOpacity>
+      </View>
       {toastMsg !== null && (
         <Toast message={toastMsg} visible duration={2500} onHide={() => setToastMsg(null)} />
       )}
@@ -146,13 +164,9 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  sectionTitle: {
-    fontSize: 9,
-    fontFamily: 'Inter_600SemiBold',
-    letterSpacing: 1.5,
-    paddingHorizontal: 12,
-    marginBottom: 8,
-  },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, marginBottom: 8 },
+  sectionTitle: { fontSize: 9, fontFamily: 'Inter_600SemiBold', letterSpacing: 1.5 },
+  clearAll: { fontSize: 11, fontFamily: 'Inter_400Regular' },
   list: { paddingHorizontal: 8, gap: 8 },
   card: { width: 92 },
   thumb: {

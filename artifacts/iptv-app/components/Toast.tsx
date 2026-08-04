@@ -6,10 +6,11 @@
  *
  * The banner fades in, stays for `duration` ms, then fades out and calls
  * onHide so the parent can clear its state.
+ * Tapping the toast dismisses it immediately.
  */
 
 import React, { useEffect, useRef } from 'react';
-import { Animated, StyleSheet, Text } from 'react-native';
+import { Animated, StyleSheet, Text, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface ToastProps {
@@ -24,6 +25,13 @@ export function Toast({ message, visible, duration = 3000, onHide }: ToastProps)
   const insets = useSafeAreaInsets();
   const opacity = useRef(new Animated.Value(0)).current;
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const dismiss = () => {
+    if (hideTimer.current !== null) { clearTimeout(hideTimer.current); hideTimer.current = null; }
+    Animated.timing(opacity, { toValue: 0, duration: 200, useNativeDriver: true }).start(({ finished }) => {
+      if (finished) onHide();
+    });
+  };
 
   useEffect(() => {
     if (!visible) return;
@@ -56,9 +64,10 @@ export function Toast({ message, visible, duration = 3000, onHide }: ToastProps)
   return (
     <Animated.View
       style={[styles.container, { opacity, bottom: Math.max(80, insets.bottom + 16) }]}
-      pointerEvents="none"
     >
-      <Text style={styles.text}>{message}</Text>
+      <TouchableOpacity onPress={dismiss} activeOpacity={0.85} style={{ flex: 1 }}>
+        <Text style={styles.text}>{message}</Text>
+      </TouchableOpacity>
     </Animated.View>
   );
 }
