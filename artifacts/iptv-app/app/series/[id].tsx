@@ -99,8 +99,9 @@ export default function SeriesDetailScreen() {
   const [coverError, setCoverError] = useState(false);
   // #165: Store the TMDB poster URL in a ref so it is set only once on first
   // successful fetch and never cleared when series data re-fetches in the background.
+  // A companion state counter is bumped when the ref is set to trigger a re-render.
   const tmdbPosterRef = useRef<string | null>(null);
-  const [tmdbPosterReady, setTmdbPosterReady] = useState(false);
+  const [, forceUpdateForPoster] = useState(0);
   // Incremented whenever the series-info query delivers fresh data so that
   // episode thumbnails which previously errored get a clean remount and retry.
   const [thumbResetKey, setThumbResetKey] = useState(0);
@@ -140,7 +141,7 @@ export default function SeriesDetailScreen() {
     setIsFav(updated.some((f) => f.id === params.id));
   };
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, refetch } = useQuery({
     queryKey: ['series-info', params.id, credentials],
     queryFn: () => getXtreamSeriesInfo(
       { host: credentials!.host!, username: credentials!.username!, password: credentials!.password! },
@@ -241,14 +242,22 @@ export default function SeriesDetailScreen() {
   const releaseDate = data?.info?.releaseDate || '';
   const genreDisplay = genre ? genre.split(',').slice(0, 2).map((g) => g.trim()).join(' / ') : '';
 
-  // Fetch TMDB poster as fallback — only when no provider cover exists or the provider image errored.
-  const { data: tmdbPoster } = useQuery({
-    queryKey: ['tmdb-poster', params.title, 'tv'],
-    queryFn: () => getTmdbPosterUrl(params.title, 'tv'),
-    enabled: !params.cover || coverError,
-    staleTime: 30 * 60_000,
-  });
-  const displayCover = (!params.cover || coverError) ? (tmdbPoster || '') : params.cover;
+  // #165: Fetch TMDB poster as fallback only when needed, and store it in a ref
+  // so a background data refresh never clears the poster we already resolved.
+  useEffect(() => {
+    if (tmdbPosterRef.current) return; // already fetched — never overwrite
+    if (params.cover && !coverError) return; // provider cover is fine
+    getTmdbPosterUrl(params.title, 'tv').then((url) => {
+      if (url && !tmdbPosterRef.current) {
+        tmdbPosterRef.current = url;
+        forceUpdateForPoster((n) => n + 1); // trigger a re-render
+      }
+    }).catch(() => {});
+  }, [params.title, params.cover, coverError]);
+
+  const displayCover = (!params.cover || coverError)
+    ? (tmdbPosterRef.current || '')
+    : params.cover;
 
   // Cast list for Cast tab
   const castList = cast ? cast.split(',').map((c) => c.trim()).filter(Boolean) : [];
@@ -282,7 +291,28 @@ export default function SeriesDetailScreen() {
         </Pressable>
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: insets.bottom + 32 }}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: insets.bottom + 32 }}
+        refreshControl={
+          // #166: Pull-to-refresh refetches series data and resets episode thumbnail errors.
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={async () => {
+              setIsRefreshing(true);
+              // Reset thumbnail error states so fresh thumbnails are fetched.
+              setThumbResetKey((k) => k + 1);
+              try {
+                await refetch();
+              } finally {
+                setIsRefreshing(false);
+              }
+            }}
+            tintColor="#3B82F6"
+            colors={['#3B82F6']}
+          />
+        }
+      >
         {/* ── Two-column section ── */}
         <View style={styles.topSection}>
           {/* Poster + stars */}
