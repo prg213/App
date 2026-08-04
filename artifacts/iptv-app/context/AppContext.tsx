@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { getDeviceMac } from '@/services/macAddress';
 import { StorageService } from '@/services/storage';
+import { clearTmdbTrailerCache } from '@/services/tmdb';
 import type { Credentials } from '@/types';
 
 interface AppContextValue {
@@ -62,6 +63,7 @@ export function AppContextProvider({
 
   const logout = async () => {
     await StorageService.clearCredentials();
+    clearTmdbTrailerCache();
     setCredentials(null);
     setIsActivated(false);
   };
