@@ -414,7 +414,8 @@ export default function SeriesScreen() {
                 }}
                 onPress={() => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  router.push({ pathname: '/series/[id]', params: { id: item.id, title: item.name, cover: item.cover ?? '', rating: item.rating ?? '', genre: item.genre ?? '', plot: item.plot ?? '', cast: item.cast ?? '', director: item.director ?? '' } });
+                  const histEntry = isRecentSelected ? watchHistory.find((e) => e.parentId === item.id || e.id === item.id) : undefined;
+                  router.push({ pathname: '/series/[id]', params: { id: item.id, title: item.name, cover: item.cover ?? '', rating: item.rating ?? '', genre: item.genre ?? '', plot: item.plot ?? '', cast: item.cast ?? '', director: item.director ?? '', ...(histEntry ? { resumeEpisodeId: histEntry.id, resumePosition: String(Math.floor(histEntry.position ?? 0)) } : {}) } });
                 }}
                 onTrailerPress={() => {
                   setTrailerIds('loading');

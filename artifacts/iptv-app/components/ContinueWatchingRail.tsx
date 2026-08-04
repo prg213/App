@@ -47,6 +47,8 @@ export function ContinueWatchingRail({ type }: Props) {
       const filtered = h
         .filter((e) => {
           if (!e.position || !e.duration || e.position <= 0) return false;
+          // Exclude entries that are 95%+ complete — considered fully watched
+          if (e.position / e.duration >= 0.95) return false;
           if (type && e.type !== type) return false;
           return true;
         })
@@ -92,7 +94,12 @@ export function ContinueWatchingRail({ type }: Props) {
             if (item.type === 'movie') {
               router.push({
                 pathname: '/movie/[id]',
-                params: { id: item.id, title: item.title, cover: item.cover ?? '' },
+                params: {
+                  id: item.id,
+                  title: item.title,
+                  cover: item.cover ?? '',
+                  resumePosition: String(Math.floor(item.position ?? 0)),
+                },
               });
             } else {
               router.push({
@@ -101,6 +108,8 @@ export function ContinueWatchingRail({ type }: Props) {
                   id: item.parentId ?? item.id,
                   title: item.title.split(' - ')[0] ?? item.title,
                   cover: item.cover ?? '',
+                  resumeEpisodeId: item.id,
+                  resumePosition: String(Math.floor(item.position ?? 0)),
                 },
               });
             }

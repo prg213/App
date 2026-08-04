@@ -630,7 +630,10 @@ export default function RemindersScreen() {
   // #118: use nowTs so cards move between sections when the 30 s ticker fires
   const upcoming = reminders.filter((r) => new Date(r.start).getTime() > nowTs);
   const onAirReminders = reminders.filter((r) => new Date(r.start).getTime() <= nowTs && new Date(r.end).getTime() > nowTs);
-  const pastReminders = reminders.filter((r) => new Date(r.end).getTime() <= nowTs);
+  // Past reminders sorted most-recent first so the freshest history is at the top
+  const pastReminders = reminders
+    .filter((r) => new Date(r.end).getTime() <= nowTs)
+    .sort((a, b) => new Date(b.start).getTime() - new Date(a.start).getTime());
   const hasPast = pastReminders.length > 0;
 
   // Build a flat list with injected section-header rows

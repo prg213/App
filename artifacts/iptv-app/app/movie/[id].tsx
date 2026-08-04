@@ -109,7 +109,7 @@ export default function MovieDetailScreen() {
   const params = useLocalSearchParams<{
     id: string; title: string; cover: string; genre: string; rating: string;
     plot: string; cast: string; director: string; releaseDate: string;
-    duration: string; ext: string;
+    duration: string; ext: string; resumePosition?: string;
   }>();
 
   const isXtream =
@@ -123,7 +123,10 @@ export default function MovieDetailScreen() {
       });
       StorageService.getWatchHistory().then((h) => {
         const entry = h.find((e) => e.id === params.id);
-        setSavedPosition(entry?.position && entry.position > 5 ? entry.position : null);
+        // Allow route param to seed the resume position (e.g. from ContinueWatchingRail)
+        const routePos = params.resumePosition ? Number(params.resumePosition) : 0;
+        const pos = entry?.position ?? routePos;
+        setSavedPosition(pos > 5 ? pos : null);
       });
     }, [params.id]),
   );

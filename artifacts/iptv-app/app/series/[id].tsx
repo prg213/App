@@ -112,6 +112,7 @@ export default function SeriesDetailScreen() {
   const params = useLocalSearchParams<{
     id: string; title: string; cover: string; rating: string;
     genre: string; plot: string; cast: string; director: string;
+    resumeEpisodeId?: string; resumePosition?: string;
   }>();
 
   const isXtream =
@@ -159,6 +160,27 @@ export default function SeriesDetailScreen() {
       setThumbResetKey((k) => k + 1);
     }
   }, [data]);
+
+  // Auto-play a specific episode when navigated from Continue Watching rail.
+  // Only fires once: when series data first arrives with a resumeEpisodeId param.
+  const didAutoResumeRef = useRef(false);
+  useEffect(() => {
+    if (didAutoResumeRef.current || !data || !params.resumeEpisodeId) return;
+    const epId = params.resumeEpisodeId;
+    const startAt = params.resumePosition ? Number(params.resumePosition) : 0;
+    for (let si = 0; si < (data.seasons ?? []).length; si++) {
+      const ep = data.seasons[si].episodes.find((e) => String(e.streamId) === epId || String(e.id) === epId);
+      if (ep) {
+        didAutoResumeRef.current = true;
+        setSelectedSeason(si);
+        // Defer play until the season state settles
+        setTimeout(() => handlePlayEpisode(ep, startAt > 5 ? startAt : undefined), 300);
+        break;
+      }
+    }
+  // handlePlayEpisode is stable (useCallback); data changes trigger this
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, params.resumeEpisodeId, params.resumePosition]);
 
   const seasons = data?.seasons ?? [];
   const activeSeason = seasons[selectedSeason];

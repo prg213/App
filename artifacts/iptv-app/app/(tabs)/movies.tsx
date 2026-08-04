@@ -417,7 +417,8 @@ export default function MoviesScreen() {
                 }}
                 onPress={() => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  router.push({ pathname: '/movie/[id]', params: { id: item.id, title: item.name, cover: item.cover ?? '', genre: item.genre ?? '', rating: item.rating ?? '', plot: item.plot ?? '', cast: item.cast ?? '', director: item.director ?? '', releaseDate: item.releaseDate ?? '', duration: item.duration ?? '', ext: item.containerExtension } });
+                  const histEntry = isRecentSelected ? watchHistory.find((e) => e.id === item.id) : undefined;
+                  router.push({ pathname: '/movie/[id]', params: { id: item.id, title: item.name, cover: item.cover ?? '', genre: item.genre ?? '', rating: item.rating ?? '', plot: item.plot ?? '', cast: item.cast ?? '', director: item.director ?? '', releaseDate: item.releaseDate ?? '', duration: item.duration ?? '', ext: item.containerExtension, ...(histEntry?.position ? { resumePosition: String(Math.floor(histEntry.position)) } : {}) } });
                 }}
                 onTrailerPress={() => {
                   setTrailerIds('loading');
