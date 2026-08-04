@@ -659,7 +659,7 @@ export default function LiveTVScreen() {
         }))
       : fetchedChannels;
     return base.filter((ch) => !blockedSet.has(ch.id) && !blockedCatNames.has(ch.groupTitle));
-  }, [isFavsSelected, favorites, fetchedChannels, blockedSet]);
+  }, [isFavsSelected, favorites, fetchedChannels, blockedSet, blockedCatNames]);
 
   const { data: epgMap } = useQuery<Map<string, EpgProgram[]>>({
     queryKey: ['xmltv-epg', credentials],

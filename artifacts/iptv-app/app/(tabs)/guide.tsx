@@ -7,6 +7,7 @@ import React, {
 } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   DeviceEventEmitter,
   FlatList,
   Image,
@@ -20,6 +21,8 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
+import * as Haptics from 'expo-haptics';
+import { Toast } from '@/components/Toast';
 import { useQuery } from '@tanstack/react-query';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -150,10 +153,10 @@ function ChannelCell({
 // ─── Program cell ─────────────────────────────────────────────────────────────
 
 const ProgramCell = React.memo(function ProgramCell({
-  program, left, width, now, colors, onPress,
+  program, left, width, now, colors, onPress, onLongPress,
 }: {
   program: EpgProgram; left: number; width: number; now: number;
-  colors: any; onPress: () => void;
+  colors: any; onPress: () => void; onLongPress?: () => void;
 }) {
   if (width < 6) return null;
   const isNow = program.start.getTime() <= now && now < program.end.getTime();
@@ -169,6 +172,8 @@ const ProgramCell = React.memo(function ProgramCell({
         borderColor: isNow ? '#3B82F6' : colors.border,
       }]}
       onPress={onPress}
+      onLongPress={onLongPress}
+      delayLongPress={500}
       activeOpacity={0.7}
     >
       {isNow && <View style={[styles.progressBar, { width: `${progress * 100}%` as any }]} />}
@@ -189,10 +194,11 @@ const ProgramCell = React.memo(function ProgramCell({
 // ─── Program row ─────────────────────────────────────────────────────────────
 
 const ProgramRow = React.memo(function ProgramRow({
-  channel, programs, dayStartMs, now, colors, onProgramPress,
+  channel, programs, dayStartMs, now, colors, onProgramPress, onProgramLongPress,
 }: {
   channel: Channel; programs: EpgProgram[]; dayStartMs: number; now: number;
   colors: any; onProgramPress: (p: EpgProgram, ch: Channel) => void;
+  onProgramLongPress?: (p: EpgProgram, ch: Channel) => void;
 }) {
   const dayEndMs = dayStartMs + DAY_MINS * 60_000;
 
@@ -212,6 +218,7 @@ const ProgramRow = React.memo(function ProgramRow({
           <ProgramCell
             key={i} program={prog} left={left} width={width} now={now} colors={colors}
             onPress={() => onProgramPress(prog, channel)}
+            onLongPress={onProgramLongPress ? () => onProgramLongPress(prog, channel) : undefined}
           />
         );
       })}
@@ -469,6 +476,53 @@ function FullGuide({
   const [selectedDay, setSelectedDay] = useState(0);
   const [selected, setSelected] = useState<{ program: EpgProgram; channel: Channel } | null>(null);
   const [now, setNow] = useState(Date.now());
+  const [guideToast, setGuideToast] = useState<string | null>(null);
+
+  const handleProgramLongPress = useCallback(async (prog: EpgProgram, ch: Channel) => {
+    const isFuture = prog.start > new Date();
+    if (!isFuture) return; // can only set reminders for future programmes
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const reminderId = `${ch.id}_${prog.start.toISOString()}`;
+    const hasReminder = await StorageService.hasReminder(reminderId);
+    if (hasReminder) {
+      Alert.alert(
+        'Remove Reminder',
+        `Remove reminder for "${prog.title}"?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Remove',
+            style: 'destructive',
+            onPress: async () => {
+              const reminder = (await StorageService.getReminders()).find((r) => r.id === reminderId);
+              if (reminder?.notificationId) await cancelReminderNotification(reminder.notificationId);
+              await StorageService.removeReminder(reminderId);
+              setGuideToast(`Reminder removed for "${prog.title}"`);
+            },
+          },
+        ],
+      );
+    } else {
+      const leadMins = await StorageService.getReminderLeadMins();
+      const notifTime = new Date(prog.start.getTime() - leadMins * 60_000);
+      const notificationId = notifTime > new Date()
+        ? await scheduleReminderNotification({ title: ch.name, body: `Starting in ${leadMins} min: ${prog.title}`, date: notifTime })
+        : null;
+      await StorageService.addReminder({
+        id: reminderId,
+        channelId: ch.id,
+        channelName: ch.name,
+        channelLogo: ch.logo,
+        programTitle: prog.title,
+        programDesc: prog.desc ?? '',
+        start: prog.start.toISOString(),
+        end: prog.end.toISOString(),
+        streamUrl: ch.streamUrl,
+        notificationId,
+      });
+      setGuideToast(`🔔 Reminder set for "${prog.title}"`);
+    }
+  }, []);
 
   // 3 day labels
   const days = useMemo(() =>
@@ -718,6 +772,7 @@ function FullGuide({
                       now={now}
                       colors={colors}
                       onProgramPress={(p, c) => setSelected({ program: p, channel: c })}
+                      onProgramLongPress={handleProgramLongPress}
                     />
                   );
                 })}
@@ -727,6 +782,10 @@ function FullGuide({
           </View>
         </ScrollView>
       </View>}
+
+      {guideToast !== null && (
+        <Toast message={guideToast} visible duration={2500} onHide={() => setGuideToast(null)} />
+      )}
 
       {selected && (
         <ProgramModal

@@ -282,7 +282,7 @@ export default function SeriesDetailScreen() {
         <Pressable
           focusable
           style={({ focused }) => [styles.headerBtn, focused && styles.focusRing]}
-          onPress={() => router.back()}
+          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.back(); }}
         >
           <Text style={styles.headerBtnIcon}>←</Text>
         </Pressable>
