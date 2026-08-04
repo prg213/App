@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { Image, StyleSheet, Text, View, type ViewStyle } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { Animated, Image, StyleSheet, Text, View, type ViewStyle } from 'react-native';
 
 interface ThumbnailWithFallbackProps {
   /** Primary thumbnail URI — shown when present and not errored. */
@@ -26,6 +26,10 @@ interface ThumbnailWithFallbackProps {
  *   1. `uri`       — the episode / clip thumbnail (hidden on load error)
  *   2. `fallbackUri` — the series / movie poster, blurred + darkened
  *   3. 📺 emoji   — last-resort plain placeholder
+ *
+ * The primary image fades in (opacity 0→1, ~150 ms) once it finishes loading,
+ * hiding any brief flash of the blurred fallback that appears while the image
+ * is in-flight.
  */
 export function ThumbnailWithFallback({
   uri,
@@ -34,27 +38,32 @@ export function ThumbnailWithFallback({
   showPlayOverlay = false,
 }: ThumbnailWithFallbackProps) {
   const [primaryError, setPrimaryError] = useState(false);
+  const fadeAnim = useRef(new Animated.Value(0)).current;
 
-  // Reset error state whenever the URI changes so a new episode that happens
-  // to share the same component instance (same React key, different season)
-  // gets a fresh load attempt instead of inheriting a stale failure.
+  // Reset error state and opacity whenever the URI changes so a new episode
+  // that happens to share the same component instance (same React key,
+  // different season) gets a fresh load attempt instead of inheriting a stale
+  // failure or a fully-opaque image that shows the wrong frame momentarily.
   useEffect(() => {
     setPrimaryError(false);
+    fadeAnim.setValue(0);
   }, [uri]);
 
   const showPrimary = !!uri && !primaryError;
   const showFallback = !showPrimary && !!fallbackUri;
 
+  const handlePrimaryLoad = () => {
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 150,
+      useNativeDriver: true,
+    }).start();
+  };
+
   return (
     <View style={[styles.container, style]}>
-      {showPrimary ? (
-        <Image
-          source={{ uri: uri! }}
-          style={StyleSheet.absoluteFill}
-          resizeMode="cover"
-          onError={() => setPrimaryError(true)}
-        />
-      ) : showFallback ? (
+      {/* Always render fallback / emoji underneath so it shows while primary loads */}
+      {showFallback ? (
         <>
           <Image
             source={{ uri: fallbackUri! }}
@@ -64,8 +73,19 @@ export function ThumbnailWithFallback({
           />
           <View style={[StyleSheet.absoluteFill, styles.fallbackOverlay]} />
         </>
-      ) : (
+      ) : !showPrimary ? (
         <Text style={styles.emptyIcon}>📺</Text>
+      ) : null}
+
+      {/* Primary image fades in on top once it has loaded */}
+      {showPrimary && (
+        <Animated.Image
+          source={{ uri: uri! }}
+          style={[StyleSheet.absoluteFill, { opacity: fadeAnim }]}
+          resizeMode="cover"
+          onLoad={handlePrimaryLoad}
+          onError={() => setPrimaryError(true)}
+        />
       )}
 
       {showPlayOverlay && (
