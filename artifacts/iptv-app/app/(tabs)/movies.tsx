@@ -302,7 +302,7 @@ export default function MoviesScreen() {
             placeholder="Search movies..."
             placeholderTextColor={colors.mutedForeground}
             value={search}
-            onChangeText={setSearch}
+            onChangeText={(t) => { setSearch(t); gridRef.current?.scrollToOffset({ offset: 0, animated: false }); }}
           />
           {!isFavsSelected && !isRecentSelected && (
             <TouchableOpacity

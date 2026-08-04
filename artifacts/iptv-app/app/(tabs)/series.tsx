@@ -299,7 +299,7 @@ export default function SeriesScreen() {
             placeholder="Search series..."
             placeholderTextColor={colors.mutedForeground}
             value={search}
-            onChangeText={setSearch}
+            onChangeText={(t) => { setSearch(t); gridRef.current?.scrollToOffset({ offset: 0, animated: false }); }}
           />
           {!isFavsSelected && !isRecentSelected && (
             <TouchableOpacity
