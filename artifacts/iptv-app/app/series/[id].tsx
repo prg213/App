@@ -94,6 +94,7 @@ export default function SeriesDetailScreen() {
   const [episodeHistory, setEpisodeHistory] = useState<Record<string, WatchHistoryEntry>>({});
   const [activeTab, setActiveTab] = useState<ActiveTab>('episodes');
   const [trailerUrl, setTrailerUrl] = useState<string | null>(null);
+  const [coverError, setCoverError] = useState(false);
 
   const params = useLocalSearchParams<{
     id: string; title: string; cover: string; rating: string;
@@ -183,14 +184,14 @@ export default function SeriesDetailScreen() {
   const releaseDate = data?.info?.releaseDate || '';
   const genreDisplay = genre ? genre.split(',').slice(0, 2).map((g) => g.trim()).join(' / ') : '';
 
-  // Fetch TMDB poster when the provider hasn't supplied a cover image.
+  // Fetch TMDB poster as fallback — always pre-fetched so it's ready if the provider image errors.
   const { data: tmdbPoster } = useQuery({
     queryKey: ['tmdb-poster', params.title, 'tv'],
     queryFn: () => getTmdbPosterUrl(params.title, 'tv'),
-    enabled: !params.cover,
+    enabled: true,
     staleTime: 30 * 60_000,
   });
-  const displayCover = params.cover || tmdbPoster || '';
+  const displayCover = (!params.cover || coverError) ? (tmdbPoster || '') : params.cover;
 
   // Cast list for Cast tab
   const castList = cast ? cast.split(',').map((c) => c.trim()).filter(Boolean) : [];
@@ -230,7 +231,12 @@ export default function SeriesDetailScreen() {
           {/* Poster + stars */}
           <View style={styles.posterCol}>
             {displayCover ? (
-              <Image source={{ uri: displayCover }} style={styles.poster} resizeMode="cover" />
+              <Image
+                source={{ uri: displayCover }}
+                style={styles.poster}
+                resizeMode="cover"
+                onError={() => setCoverError(true)}
+              />
             ) : (
               <View style={[styles.poster, { backgroundColor: '#1A1A2E', justifyContent: 'center', alignItems: 'center' }]}>
                 <Text style={{ fontSize: 36 }}>📺</Text>

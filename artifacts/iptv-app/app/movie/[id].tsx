@@ -104,6 +104,7 @@ export default function MovieDetailScreen() {
   const [showPinGate, setShowPinGate] = useState(false);
   const [trailerUrl, setTrailerUrl] = useState<string | null>(null);
   const [pendingStartAt, setPendingStartAt] = useState<number | undefined>(undefined);
+  const [coverError, setCoverError] = useState(false);
 
   const params = useLocalSearchParams<{
     id: string; title: string; cover: string; genre: string; rating: string;
@@ -151,14 +152,14 @@ export default function MovieDetailScreen() {
   const duration    = params.duration    || vodInfo?.duration    || '';
   const ext         = params.ext         || vodInfo?.containerExtension || 'mp4';
 
-  // Fetch TMDB poster when the provider hasn't supplied a cover image.
+  // Fetch TMDB poster as fallback — always pre-fetched so it's ready if the provider image errors.
   const { data: tmdbPoster } = useQuery({
     queryKey: ['tmdb-poster', params.title, 'movie'],
     queryFn: () => getTmdbPosterUrl(params.title, 'movie'),
-    enabled: !cover,
+    enabled: true,
     staleTime: 30 * 60_000,
   });
-  const displayCover = cover || tmdbPoster || '';
+  const displayCover = (!cover || coverError) ? (tmdbPoster || '') : cover;
 
   const handleToggleFav = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -239,7 +240,12 @@ export default function MovieDetailScreen() {
           {/* Left: poster + stars */}
           <View style={styles.posterCol}>
             {displayCover ? (
-              <Image source={{ uri: displayCover }} style={styles.poster} resizeMode="cover" />
+              <Image
+                source={{ uri: displayCover }}
+                style={styles.poster}
+                resizeMode="cover"
+                onError={() => setCoverError(true)}
+              />
             ) : (
               <View style={[styles.poster, { backgroundColor: '#1A1A2E', justifyContent: 'center', alignItems: 'center' }]}>
                 <Text style={{ fontSize: 36 }}>🎬</Text>
