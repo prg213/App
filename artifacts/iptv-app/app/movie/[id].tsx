@@ -11,6 +11,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import { ThumbnailWithFallback } from '@/components/ThumbnailWithFallback';
 import { TrailerModal } from '@/components/TrailerModal';
 import { getTmdbTrailerVideoId, getTmdbPosterUrl } from '@/services/tmdb';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
@@ -104,7 +105,6 @@ export default function MovieDetailScreen() {
   const [showPinGate, setShowPinGate] = useState(false);
   const [trailerUrl, setTrailerUrl] = useState<string | null>(null);
   const [pendingStartAt, setPendingStartAt] = useState<number | undefined>(undefined);
-  const [coverError, setCoverError] = useState(false);
 
   const params = useLocalSearchParams<{
     id: string; title: string; cover: string; genre: string; rating: string;
@@ -152,14 +152,16 @@ export default function MovieDetailScreen() {
   const duration    = params.duration    || vodInfo?.duration    || '';
   const ext         = params.ext         || vodInfo?.containerExtension || 'mp4';
 
-  // Fetch TMDB poster as fallback — only when no provider cover exists or the provider image errored.
+  // Fetch TMDB poster — used as the blurred fallback inside ThumbnailWithFallback when
+  // the provider cover is absent or fails to load at render time.
   const { data: tmdbPoster } = useQuery({
     queryKey: ['tmdb-poster', params.title, 'movie'],
     queryFn: () => getTmdbPosterUrl(params.title, 'movie'),
-    enabled: !cover || coverError,
+    enabled: isXtream || !cover,
     staleTime: 30 * 60_000,
   });
-  const displayCover = (!cover || coverError) ? (tmdbPoster || '') : cover;
+  // Background blur uses the best available image; poster rendering is handled by ThumbnailWithFallback.
+  const displayCover = cover || tmdbPoster || '';
 
   const handleToggleFav = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -239,18 +241,11 @@ export default function MovieDetailScreen() {
         <View style={styles.topSection}>
           {/* Left: poster + stars */}
           <View style={styles.posterCol}>
-            {displayCover ? (
-              <Image
-                source={{ uri: displayCover }}
-                style={styles.poster}
-                resizeMode="cover"
-                onError={() => setCoverError(true)}
-              />
-            ) : (
-              <View style={[styles.poster, { backgroundColor: '#1A1A2E', justifyContent: 'center', alignItems: 'center' }]}>
-                <Text style={{ fontSize: 36 }}>🎬</Text>
-              </View>
-            )}
+            <ThumbnailWithFallback
+              uri={cover || undefined}
+              fallbackUri={tmdbPoster || undefined}
+              style={styles.poster}
+            />
             {ratingNum > 0 && <StarRow value={ratingNum / 2} />}
           </View>
 
