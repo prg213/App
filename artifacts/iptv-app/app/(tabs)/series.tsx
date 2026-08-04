@@ -336,7 +336,7 @@ export default function SeriesScreen() {
                     const providerUrl = item.trailerUrl
                       ? (item.trailerUrl.startsWith('http') ? item.trailerUrl : `https://www.youtube.com/watch?v=${item.trailerUrl}`)
                       : null;
-                    setTrailerUrl(providerUrl ?? `https://www.youtube.com/results?search_query=${encodeURIComponent(`${item.name} official trailer`)}`);
+                    setTrailerUrl(providerUrl);
                   });
                 }}
               />

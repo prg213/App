@@ -58,58 +58,108 @@ interface TmdbVideo {
 }
 
 /**
- * Look up the official YouTube trailer video ID for a given title on TMDB.
+ * Scrape the first video ID from a YouTube search results page.
  *
- * Priority: official Trailer → any Trailer → official Teaser → any YouTube video.
- * Returns null when the key is missing, TMDB can't find the title, or the
- * network request fails.
+ * YouTube embeds all video data in the page HTML as a JSON blob. We fetch the
+ * search page with a desktop Chrome UA (same as the WebView) and pull the first
+ * `"videoId":"XXXXXXXXXXX"` match. This avoids showing the YouTube search UI
+ * when TMDB has no trailer entry for a title.
+ */
+async function youtubeSearchVideoId(query: string): Promise<string | null> {
+  try {
+    const url =
+      `https://www.youtube.com/results?search_query=${encodeURIComponent(query + ' official trailer')}` +
+      `&sp=EgIQAQ%3D%3D`; // filter: videos only
+    const res = await fetch(url, {
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) ' +
+          'AppleWebKit/537.36 (KHTML, like Gecko) ' +
+          'Chrome/125.0.0.0 Safari/537.36',
+        'Accept-Language': 'en-US,en;q=0.9',
+      },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) return null;
+    const html = await res.text();
+    // YouTube inlines video IDs in multiple places; the first match is the top result.
+    const match = html.match(/"videoId":"([A-Za-z0-9_-]{11})"/);
+    return match?.[1] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Look up the official YouTube trailer video ID for a given title.
+ *
+ * Priority:
+ *   1. TMDB official Trailer → any Trailer → official Teaser → any YouTube video
+ *   2. YouTube search scrape (first result) — so callers always get a playable
+ *      video ID instead of falling back to a search-results page.
+ *
+ * Returns null only when every attempt fails or the TMDB key is missing.
  */
 export async function getTmdbTrailerVideoId(
   title: string,
   kind: 'movie' | 'tv',
 ): Promise<string | null> {
-  if (!TMDB_KEY || !title) return null;
+  if (!title) return null;
 
   const cacheKey = `${title}:${kind}`;
   const cached = cacheGet(cacheKey);
   if (cached.hit) return cached.value;
 
-  try {
-    // ── 1. Search for the title ──────────────────────────────────────────────
-    const searchRes = await fetch(
-      `${BASE}/search/${kind}?api_key=${TMDB_KEY}&query=${encodeURIComponent(title)}&page=1`,
-      { signal: AbortSignal.timeout(8_000) },
-    );
-    if (!searchRes.ok) { cacheSet(cacheKey, null); return null; }
+  let videoId: string | null = null;
 
-    const searchData = (await searchRes.json()) as { results: TmdbSearchResult[] };
-    const tmdbId = searchData.results?.[0]?.id;
-    if (!tmdbId) { cacheSet(cacheKey, null); return null; }
+  if (TMDB_KEY) {
+    try {
+      // ── 1. Search for the title on TMDB ────────────────────────────────────
+      const searchRes = await fetch(
+        `${BASE}/search/${kind}?api_key=${TMDB_KEY}&query=${encodeURIComponent(title)}&page=1`,
+        { signal: AbortSignal.timeout(8_000) },
+      );
 
-    // ── 2. Fetch videos for that title ───────────────────────────────────────
-    const videosRes = await fetch(
-      `${BASE}/${kind}/${tmdbId}/videos?api_key=${TMDB_KEY}`,
-      { signal: AbortSignal.timeout(8_000) },
-    );
-    if (!videosRes.ok) { cacheSet(cacheKey, null); return null; }
+      if (searchRes.ok) {
+        const searchData = (await searchRes.json()) as { results: TmdbSearchResult[] };
+        const tmdbId = searchData.results?.[0]?.id;
 
-    const videosData = (await videosRes.json()) as { results: TmdbVideo[] };
-    const yt = videosData.results.filter((v) => v.site === 'YouTube');
+        if (tmdbId) {
+          // ── 2. Fetch videos for that title ───────────────────────────────────
+          const videosRes = await fetch(
+            `${BASE}/${kind}/${tmdbId}/videos?api_key=${TMDB_KEY}`,
+            { signal: AbortSignal.timeout(8_000) },
+          );
 
-    // ── 3. Pick the best result ───────────────────────────────────────────────
-    const best =
-      yt.find((v) => v.type === 'Trailer' && v.official) ??
-      yt.find((v) => v.type === 'Trailer') ??
-      yt.find((v) => v.type === 'Teaser' && v.official) ??
-      yt.find((v) => v.type === 'Teaser') ??
-      yt[0];
+          if (videosRes.ok) {
+            const videosData = (await videosRes.json()) as { results: TmdbVideo[] };
+            const yt = videosData.results.filter((v) => v.site === 'YouTube');
 
-    const videoId = best?.key ?? null;
-    cacheSet(cacheKey, videoId);
-    return videoId;
-  } catch {
-    return null;
+            const best =
+              yt.find((v) => v.type === 'Trailer' && v.official) ??
+              yt.find((v) => v.type === 'Trailer') ??
+              yt.find((v) => v.type === 'Teaser' && v.official) ??
+              yt.find((v) => v.type === 'Teaser') ??
+              yt[0];
+
+            videoId = best?.key ?? null;
+          }
+        }
+      }
+    } catch {
+      // fall through to YouTube scrape
+    }
   }
+
+  // ── 3. YouTube search scrape fallback ──────────────────────────────────────
+  // Runs when TMDB key is absent, the title isn't in TMDB yet, or TMDB has no
+  // video entries — ensures users always see a playing trailer, never a search page.
+  if (!videoId) {
+    videoId = await youtubeSearchVideoId(title);
+  }
+
+  cacheSet(cacheKey, videoId);
+  return videoId;
 }
 
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/w500';

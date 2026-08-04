@@ -390,7 +390,7 @@ export default function SeriesDetailScreen() {
               if (rawTrailer) {
                 setTrailerUrl(rawTrailer.startsWith('http') ? rawTrailer : `https://www.youtube.com/watch?v=${rawTrailer}`);
               } else {
-                setTrailerUrl(`https://www.youtube.com/results?search_query=${encodeURIComponent(`${params.title} official trailer`)}`);
+                setTrailerUrl(null);
               }
             }}
           >

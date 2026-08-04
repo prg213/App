@@ -41,8 +41,7 @@ function toEmbedUrl(url: string): string {
       `&origin=https%3A%2F%2Fwww.youtube.com`
     );
   }
-  // Search-results fallback → mobile YouTube for a better in-app experience
-  return url.replace('//www.youtube.com/results', '//m.youtube.com/results');
+  return url;
 }
 
 export function TrailerModal({ url, onClose }: Props) {

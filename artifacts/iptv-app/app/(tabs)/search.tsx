@@ -454,7 +454,7 @@ export default function SearchScreen() {
                 const providerUrl = item.item.trailerUrl
                   ? (item.item.trailerUrl.startsWith('http') ? item.item.trailerUrl : `https://www.youtube.com/watch?v=${item.item.trailerUrl}`)
                   : null;
-                setTrailerUrl(providerUrl ?? `https://www.youtube.com/results?search_query=${encodeURIComponent(`${item.item.name} official trailer`)}`);
+                setTrailerUrl(providerUrl);
               });
             }}
           />
@@ -477,7 +477,7 @@ export default function SearchScreen() {
                 const providerUrl = item.item.trailerUrl
                   ? (item.item.trailerUrl.startsWith('http') ? item.item.trailerUrl : `https://www.youtube.com/watch?v=${item.item.trailerUrl}`)
                   : null;
-                setTrailerUrl(providerUrl ?? `https://www.youtube.com/results?search_query=${encodeURIComponent(`${item.item.name} official trailer`)}`);
+                setTrailerUrl(providerUrl);
               });
             }}
           />
