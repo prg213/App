@@ -23,13 +23,15 @@ interface ThumbnailWithFallbackProps {
  * Shared thumbnail component used wherever content art can be missing.
  *
  * Render priority:
- *   1. `uri`       — the episode / clip thumbnail (hidden on load error)
+ *   1. `uri`       — the episode / clip thumbnail (fades in once loaded)
  *   2. `fallbackUri` — the series / movie poster, blurred + darkened
- *   3. 📺 emoji   — last-resort plain placeholder
+ *                     (shown immediately while primary loads OR if primary errors)
+ *   3. shimmer     — animated shimmer when no fallback is available
+ *   4. 📺 emoji   — last-resort plain placeholder (no shimmer possible)
  *
- * The primary image fades in (opacity 0→1, ~150 ms) once it finishes loading,
- * hiding any brief flash of the blurred fallback that appears while the image
- * is in-flight.
+ * The primary image fades in (opacity 0→1, ~150 ms) once it finishes loading.
+ * While it is still in-flight the blurred fallback (or shimmer) is already
+ * visible, eliminating the blank/dark gap on slow connections.
  */
 export function ThumbnailWithFallback({
   uri,
@@ -38,21 +40,61 @@ export function ThumbnailWithFallback({
   showPlayOverlay = false,
 }: ThumbnailWithFallbackProps) {
   const [primaryError, setPrimaryError] = useState(false);
+  const [primaryLoaded, setPrimaryLoaded] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const shimmerAnim = useRef(new Animated.Value(0)).current;
 
-  // Reset error state and opacity whenever the URI changes so a new episode
-  // that happens to share the same component instance (same React key,
-  // different season) gets a fresh load attempt instead of inheriting a stale
-  // failure or a fully-opaque image that shows the wrong frame momentarily.
+  // Reset error/loaded state and opacity whenever the URI changes so a new
+  // episode that shares the same component instance gets a fresh load attempt
+  // instead of inheriting a stale failure or a fully-opaque image.
   useEffect(() => {
     setPrimaryError(false);
+    setPrimaryLoaded(false);
     fadeAnim.setValue(0);
   }, [uri]);
 
+  // Run shimmer loop while waiting for the primary image (and no fallback available)
+  useEffect(() => {
+    const needsShimmer = !!uri && !primaryLoaded && !primaryError && !fallbackUri;
+    if (!needsShimmer) {
+      shimmerAnim.stopAnimation();
+      shimmerAnim.setValue(0);
+      return;
+    }
+
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(shimmerAnim, {
+          toValue: 1,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+        Animated.timing(shimmerAnim, {
+          toValue: 0,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [uri, primaryLoaded, primaryError, fallbackUri]);
+
   const showPrimary = !!uri && !primaryError;
-  const showFallback = !showPrimary && !!fallbackUri;
+
+  // Show the blurred fallback layer whenever:
+  //   a) primary hasn't finished loading yet (loading placeholder), OR
+  //   b) primary errored / no primary URI at all (permanent fallback)
+  const showFallbackLayer = !!fallbackUri && (!showPrimary || !primaryLoaded);
+
+  // Show shimmer when primary is loading but there's no fallback to show
+  const showShimmer = showPrimary && !primaryLoaded && !fallbackUri;
+
+  // Show emoji only when there's nothing else at all
+  const showEmoji = !showPrimary && !fallbackUri;
 
   const handlePrimaryLoad = () => {
+    setPrimaryLoaded(true);
     Animated.timing(fadeAnim, {
       toValue: 1,
       duration: 150,
@@ -60,10 +102,15 @@ export function ThumbnailWithFallback({
     }).start();
   };
 
+  const shimmerOpacity = shimmerAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.3, 0.7],
+  });
+
   return (
     <View style={[styles.container, style]}>
-      {/* Always render fallback / emoji underneath so it shows while primary loads */}
-      {showFallback ? (
+      {/* Blurred fallback — visible immediately while primary loads, or on error */}
+      {showFallbackLayer && (
         <>
           <Image
             source={{ uri: fallbackUri! }}
@@ -73,9 +120,17 @@ export function ThumbnailWithFallback({
           />
           <View style={[StyleSheet.absoluteFill, styles.fallbackOverlay]} />
         </>
-      ) : !showPrimary ? (
-        <Text style={styles.emptyIcon}>📺</Text>
-      ) : null}
+      )}
+
+      {/* Shimmer placeholder when loading with no fallback */}
+      {showShimmer && (
+        <Animated.View
+          style={[StyleSheet.absoluteFill, styles.shimmer, { opacity: shimmerOpacity }]}
+        />
+      )}
+
+      {/* Emoji last resort */}
+      {showEmoji && <Text style={styles.emptyIcon}>📺</Text>}
 
       {/* Primary image fades in on top once it has loaded */}
       {showPrimary && (
@@ -106,6 +161,9 @@ const styles = StyleSheet.create({
   },
   fallbackOverlay: {
     backgroundColor: 'rgba(0,0,0,0.55)',
+  },
+  shimmer: {
+    backgroundColor: '#2A2A4A',
   },
   emptyIcon: {
     fontSize: 20,
