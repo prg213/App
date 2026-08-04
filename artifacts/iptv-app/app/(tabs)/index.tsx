@@ -1016,6 +1016,14 @@ export default function LiveTVScreen() {
               No channels found in this category. Try another category or check your provider settings.
             </Text>
           </View>
+        ) : filteredChannels.length === 0 && channelFilter.trim().length > 0 ? (
+          <View style={styles.noSel}>
+            <Text style={{ fontSize: 32, marginBottom: 8 }}>🔍</Text>
+            <Text style={[styles.noSelTitle, { color: colors.foreground }]}>No channels match</Text>
+            <Text style={[styles.noSelSub, { color: colors.mutedForeground }]}>
+              No channels found for "{channelFilter.trim()}". Try a different search term.
+            </Text>
+          </View>
         ) : channels.length === 0 && isFavsSelected ? (
           <View style={styles.noSel}>
             <Text style={{ fontSize: 32, marginBottom: 8 }}>♡</Text>

@@ -216,6 +216,9 @@ export default function SeriesScreen() {
         <View style={styles.empty}>
           <Text style={{ fontSize: 36, color: colors.mutedForeground }}>📺</Text>
           <Text style={[styles.emptyTitle, { color: colors.foreground }]}>Requires Xtream Codes</Text>
+          <Text style={[styles.emptySub, { color: colors.mutedForeground }]}>
+            M3U connections don't support series. Connect using Xtream Codes to browse series.
+          </Text>
         </View>
       </View>
     );
