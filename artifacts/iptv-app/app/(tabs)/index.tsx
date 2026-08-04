@@ -208,6 +208,7 @@ export default function LiveTVScreen() {
 
   const [selectedCatId, setSelectedCatId] = useState<string>(FAVS_CAT_ID);
   const [catSearch, setCatSearch] = useState('');
+  const [channelFilter, setChannelFilter] = useState('');
   const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null);
   const [playingChannel, setPlayingChannel] = useState<Channel | null>(null);
   const [favorites, setFavorites] = useState<FavoriteChannel[]>([]);
@@ -556,6 +557,15 @@ export default function LiveTVScreen() {
     ],
     [rawCategories],
   );
+
+  // Clear channel filter whenever the user switches category
+  useEffect(() => { setChannelFilter(''); }, [selectedCatId]);
+
+  const filteredChannels: Channel[] = useMemo(() => {
+    const q = channelFilter.trim().toLowerCase();
+    if (!q) return channels;
+    return channels.filter((ch) => ch.name.toLowerCase().includes(q));
+  }, [channels, channelFilter]);
 
   const filteredCategories = useMemo(() => {
     const q = catSearch.trim().toLowerCase();
@@ -972,6 +982,21 @@ export default function LiveTVScreen() {
           )}
         </View>
 
+        {/* Channel filter input — hidden during drag-reorder */}
+        {!isReordering && (
+          <View style={[styles.catSearchWrap, { borderBottomColor: colors.border }]}>
+            <TextInput
+              style={[styles.catSearchInput, { color: colors.foreground, backgroundColor: colors.secondary }]}
+              placeholder="Filter channels…"
+              placeholderTextColor={colors.mutedForeground}
+              value={channelFilter}
+              onChangeText={setChannelFilter}
+              clearButtonMode="while-editing"
+              returnKeyType="search"
+            />
+          </View>
+        )}
+
         {/* Recently Watched rail — shows up to 8 channels, hides itself when empty */}
         {!isReordering && (
           <RecentChannelsRail
@@ -1021,7 +1046,7 @@ export default function LiveTVScreen() {
           />
         ) : (
           <FlatList
-            data={channels}
+            data={filteredChannels}
             keyExtractor={(ch) => ch.id}
             renderItem={renderChannel}
             showsVerticalScrollIndicator={false}
