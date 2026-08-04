@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -96,6 +96,13 @@ export default function SeriesDetailScreen() {
   const [trailerUrl, setTrailerUrl] = useState<string | null>(null);
   const [coverError, setCoverError] = useState(false);
   const [epThumbErrors, setEpThumbErrors] = useState<Record<string, boolean>>({});
+
+  // Reset thumbnail error state whenever the user switches seasons so a valid
+  // thumbnail in the new season is never hidden by a stale error from a
+  // previous season that happened to share the same episode stream ID.
+  useEffect(() => {
+    setEpThumbErrors({});
+  }, [selectedSeason]);
 
   const params = useLocalSearchParams<{
     id: string; title: string; cover: string; rating: string;
