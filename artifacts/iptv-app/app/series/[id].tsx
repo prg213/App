@@ -184,11 +184,11 @@ export default function SeriesDetailScreen() {
   const releaseDate = data?.info?.releaseDate || '';
   const genreDisplay = genre ? genre.split(',').slice(0, 2).map((g) => g.trim()).join(' / ') : '';
 
-  // Fetch TMDB poster as fallback — always pre-fetched so it's ready if the provider image errors.
+  // Fetch TMDB poster as fallback — only when no provider cover exists or the provider image errored.
   const { data: tmdbPoster } = useQuery({
     queryKey: ['tmdb-poster', params.title, 'tv'],
     queryFn: () => getTmdbPosterUrl(params.title, 'tv'),
-    enabled: true,
+    enabled: !params.cover || coverError,
     staleTime: 30 * 60_000,
   });
   const displayCover = (!params.cover || coverError) ? (tmdbPoster || '') : params.cover;

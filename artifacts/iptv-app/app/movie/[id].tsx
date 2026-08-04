@@ -152,11 +152,11 @@ export default function MovieDetailScreen() {
   const duration    = params.duration    || vodInfo?.duration    || '';
   const ext         = params.ext         || vodInfo?.containerExtension || 'mp4';
 
-  // Fetch TMDB poster as fallback — always pre-fetched so it's ready if the provider image errors.
+  // Fetch TMDB poster as fallback — only when no provider cover exists or the provider image errored.
   const { data: tmdbPoster } = useQuery({
     queryKey: ['tmdb-poster', params.title, 'movie'],
     queryFn: () => getTmdbPosterUrl(params.title, 'movie'),
-    enabled: true,
+    enabled: !cover || coverError,
     staleTime: 30 * 60_000,
   });
   const displayCover = (!cover || coverError) ? (tmdbPoster || '') : cover;
