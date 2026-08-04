@@ -56,12 +56,13 @@ function MovieCardComponent({ name, cover, rating, genre, query = '', isFav, com
 
   useEffect(() => {
     if (cover) { setTmdbPoster(null); return; }
+    if (!isOnline) return;
     let cancelled = false;
     getTmdbPosterUrl(name, 'movie').then((url) => {
       if (!cancelled) setTmdbPoster(url);
     });
     return () => { cancelled = true; };
-  }, [name, cover]);
+  }, [name, cover, isOnline]);
 
   const posterUri = cover || tmdbPoster;
 

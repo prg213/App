@@ -55,12 +55,13 @@ function SeriesCardComponent({ name, cover, rating, genre, query = '', isFav, co
 
   useEffect(() => {
     if (cover) { setTmdbPoster(null); return; }
+    if (!isOnline) return;
     let cancelled = false;
     getTmdbPosterUrl(name, 'tv').then((url) => {
       if (!cancelled) setTmdbPoster(url);
     });
     return () => { cancelled = true; };
-  }, [name, cover]);
+  }, [name, cover, isOnline]);
 
   const posterUri = cover || tmdbPoster;
 
