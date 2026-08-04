@@ -1182,6 +1182,24 @@ export default function LiveTVScreen() {
           </Pressable>
         )}
 
+        {/* Channel info bar — logo + name below the mini-player */}
+        {playingChannel && (
+          <View style={[styles.chInfoBar, { borderBottomColor: colors.border }]}>
+            <View style={[styles.chInfoLogo, { backgroundColor: colors.secondary }]}>
+              {playingChannel.logo ? (
+                <Image source={{ uri: playingChannel.logo }} style={StyleSheet.absoluteFill} resizeMode="contain" />
+              ) : (
+                <Text style={[styles.chInfoInitials, { color: colors.primary }]}>
+                  {playingChannel.name.slice(0, 2).toUpperCase()}
+                </Text>
+              )}
+            </View>
+            <Text style={[styles.chInfoName, { color: colors.foreground }]} numberOfLines={1}>
+              {playingChannel.name}
+            </Text>
+          </View>
+        )}
+
         {selectedChannel ? (
           <>
             {/* ── EPG header row with optional Catch-up button ── */}
@@ -1396,6 +1414,10 @@ const styles = StyleSheet.create({
     paddingLeft: 12,
   },
 
+  chInfoBar: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6, paddingHorizontal: 2, marginBottom: 6, borderBottomWidth: StyleSheet.hairlineWidth },
+  chInfoLogo: { width: 28, height: 28, borderRadius: 4, overflow: 'hidden', justifyContent: 'center', alignItems: 'center' },
+  chInfoInitials: { fontSize: 9, fontFamily: 'Inter_700Bold' },
+  chInfoName: { flex: 1, fontSize: 13, fontFamily: 'Inter_600SemiBold' },
   videoWrap: {
     width: '100%',
     aspectRatio: 16 / 9,

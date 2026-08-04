@@ -101,6 +101,7 @@ export default function SeriesDetailScreen() {
   // successful fetch and never cleared when series data re-fetches in the background.
   // A companion state counter is bumped when the ref is set to trigger a re-render.
   const tmdbPosterRef = useRef<string | null>(null);
+  const scrollRef = useRef<import('react-native').ScrollView>(null);
   const [, forceUpdateForPoster] = useState(0);
   // Incremented whenever the series-info query delivers fresh data so that
   // episode thumbnails which previously errored get a clean remount and retry.
@@ -299,6 +300,7 @@ export default function SeriesDetailScreen() {
       </View>
 
       <ScrollView
+        ref={scrollRef}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: insets.bottom + 32 }}
         refreshControl={
@@ -550,6 +552,8 @@ export default function SeriesDetailScreen() {
                 setSelectedSeason(idx);
                 setShowSeasonPicker(false);
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                // Scroll episode list back to top when user switches seasons
+                scrollRef.current?.scrollTo({ y: 0, animated: false });
               }}
             >
               <Text style={[styles.pickerRowText, { color: idx === selectedSeason ? '#3B82F6' : '#fff' }]}>
