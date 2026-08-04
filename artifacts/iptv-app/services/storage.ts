@@ -27,6 +27,7 @@ const KEYS = {
   PREF_SEARCH_TYPE: 'sv_pref_search_type',
   PREF_SEARCH_QUERY: 'sv_pref_search_query',
   BACKFILL_TS: 'sv_backfill_ts',
+  RECENT_SEARCHES: 'sv_recent_searches',
   // Written just before a forced logout so the activation screen can show
   // a one-time explanation banner. Intentionally NOT cleared in clearCredentials
   // so it survives the logout and is readable on first render of activation.
@@ -449,5 +450,35 @@ export const StorageService = {
   /** Persists the current time as the last backfill timestamp. */
   async setLastBackfillTs(ts: number): Promise<void> {
     await AsyncStorage.setItem(KEYS.BACKFILL_TS, String(ts));
+  },
+
+  // ── Recent searches ────────────────────────────────────────────────────────
+  async getRecentSearches(): Promise<string[]> {
+    try {
+      const raw = await AsyncStorage.getItem(KEYS.RECENT_SEARCHES);
+      return raw ? (JSON.parse(raw) as string[]) : [];
+    } catch { return []; }
+  },
+
+  /** Prepends `query` to the recent-search list, deduplicating and capping at 10. */
+  async addRecentSearch(query: string): Promise<void> {
+    const q = query.trim();
+    if (!q) return;
+    try {
+      const existing = await this.getRecentSearches();
+      const updated = [q, ...existing.filter((s) => s !== q)].slice(0, 10);
+      await AsyncStorage.setItem(KEYS.RECENT_SEARCHES, JSON.stringify(updated));
+    } catch {}
+  },
+
+  async clearRecentSearches(): Promise<void> {
+    await AsyncStorage.removeItem(KEYS.RECENT_SEARCHES);
+  },
+
+  async removeRecentSearch(query: string): Promise<void> {
+    try {
+      const existing = await this.getRecentSearches();
+      await AsyncStorage.setItem(KEYS.RECENT_SEARCHES, JSON.stringify(existing.filter((s) => s !== query)));
+    } catch {}
   },
 };

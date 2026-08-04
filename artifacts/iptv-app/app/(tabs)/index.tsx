@@ -1352,13 +1352,16 @@ const styles = StyleSheet.create({
     includeFontPadding: false,
   } as any,
   catRow: {
-    height: 52,
+    minHeight: 52,
     justifyContent: 'center',
     paddingHorizontal: 12,
+    paddingVertical: 8,
     borderBottomWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'column',
+    gap: 2,
   },
   catRowText: { fontSize: 12, fontFamily: 'Inter_500Medium', lineHeight: 16 },
-  catCount: { fontSize: 9, fontFamily: 'Inter_400Regular', marginTop: 2 },
+  catCount: { fontSize: 9, fontFamily: 'Inter_400Regular' },
 
   // ── Channel panel ──
   chPanel: {

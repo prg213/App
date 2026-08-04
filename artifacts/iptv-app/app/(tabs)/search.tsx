@@ -219,13 +219,33 @@ export default function SearchScreen() {
   const [query, setQuery] = useState('');
   const [searchType, setSearchType] = useState<SearchType>('all');
   const [trailerIds, setTrailerIds] = useState<string[] | 'loading' | null>(null);
+  const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const inputRef = useRef<TextInput>(null);
 
   // Restore the last-used search filter and query from storage on mount
   useEffect(() => {
     StorageService.getPrefSearchType().then((saved) => setSearchType(saved));
     StorageService.getPrefSearchQuery().then((saved) => { if (saved) setQuery(saved); });
+    StorageService.getRecentSearches().then(setRecentSearches);
   }, []);
+
+  const handleSubmitSearch = () => {
+    const q = query.trim();
+    if (!q) return;
+    StorageService.addRecentSearch(q).then(() =>
+      StorageService.getRecentSearches().then(setRecentSearches)
+    );
+  };
+
+  const handleRemoveRecentSearch = (q: string) => {
+    StorageService.removeRecentSearch(q).then(() =>
+      setRecentSearches((prev) => prev.filter((s) => s !== q))
+    );
+  };
+
+  const handleClearAllRecentSearches = () => {
+    StorageService.clearRecentSearches().then(() => setRecentSearches([]));
+  };
 
   // #122: Clear the in-memory query when the user logs out or switches accounts.
   // credentials becomes null on logout; reset the query so the old search isn't
@@ -498,32 +518,58 @@ export default function SearchScreen() {
 
       case 'placeholder':
         return (
-          <View style={styles.center}>
-            {isLoading ? (
-              <>
-                <ActivityIndicator color={colors.primary} size="large" />
-                <Text style={[styles.emptySub, { color: colors.mutedForeground, marginTop: 12 }]}>
-                  Loading content…
-                </Text>
-              </>
-            ) : (
-              <>
-                <Text style={{ fontSize: 48, marginBottom: 16 }}>🔍</Text>
-                <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
-                  Search everything
-                </Text>
-                <Text style={[styles.emptySub, { color: colors.mutedForeground }]}>
-                  Find live channels, movies and series in one place.
-                </Text>
-                {isXtream && allChannels.length + allMovies.length + allSeries.length > 0 && (
-                  <View style={[styles.statRow, { marginTop: 24 }]}>
-                    <StatChip icon="📡" label={`${allChannels.length} channels`} colors={colors} />
-                    <StatChip icon="🎬" label={`${allMovies.length} movies`} colors={colors} />
-                    <StatChip icon="📺" label={`${allSeries.length} series`} colors={colors} />
-                  </View>
-                )}
-              </>
+          <View style={styles.placeholderWrap}>
+            {recentSearches.length > 0 && (
+              <View style={styles.recentSection}>
+                <View style={styles.recentHeader}>
+                  <Text style={[styles.recentHeading, { color: colors.mutedForeground }]}>RECENT SEARCHES</Text>
+                  <TouchableOpacity onPress={handleClearAllRecentSearches} hitSlop={8}>
+                    <Text style={[styles.recentClearAll, { color: colors.mutedForeground }]}>Clear all</Text>
+                  </TouchableOpacity>
+                </View>
+                {recentSearches.map((s) => (
+                  <TouchableOpacity
+                    key={s}
+                    style={[styles.recentRow, { borderBottomColor: colors.border }]}
+                    onPress={() => setQuery(s)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.recentIcon, { color: colors.mutedForeground }]}>🕐</Text>
+                    <Text style={[styles.recentText, { color: colors.foreground }]} numberOfLines={1}>{s}</Text>
+                    <TouchableOpacity onPress={() => handleRemoveRecentSearch(s)} hitSlop={8}>
+                      <Text style={[styles.recentRemove, { color: colors.mutedForeground }]}>✕</Text>
+                    </TouchableOpacity>
+                  </TouchableOpacity>
+                ))}
+              </View>
             )}
+            <View style={styles.center}>
+              {isLoading ? (
+                <>
+                  <ActivityIndicator color={colors.primary} size="large" />
+                  <Text style={[styles.emptySub, { color: colors.mutedForeground, marginTop: 12 }]}>
+                    Loading content…
+                  </Text>
+                </>
+              ) : (
+                <>
+                  <Text style={{ fontSize: 48, marginBottom: 16 }}>🔍</Text>
+                  <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
+                    Search everything
+                  </Text>
+                  <Text style={[styles.emptySub, { color: colors.mutedForeground }]}>
+                    Find live channels, movies and series in one place.
+                  </Text>
+                  {isXtream && allChannels.length + allMovies.length + allSeries.length > 0 && (
+                    <View style={[styles.statRow, { marginTop: 24 }]}>
+                      <StatChip icon="📡" label={`${allChannels.length} channels`} colors={colors} />
+                      <StatChip icon="🎬" label={`${allMovies.length} movies`} colors={colors} />
+                      <StatChip icon="📺" label={`${allSeries.length} series`} colors={colors} />
+                    </View>
+                  )}
+                </>
+              )}
+            </View>
           </View>
         );
 
@@ -566,6 +612,7 @@ export default function SearchScreen() {
             autoCapitalize="none"
             returnKeyType="search"
             clearButtonMode="while-editing"
+            onSubmitEditing={handleSubmitSearch}
           />
           {query.length > 0 && (
             <TouchableOpacity onPress={() => setQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
@@ -774,6 +821,17 @@ const styles = StyleSheet.create({
   trailerPillTextOffline: {
     color: '#6B7280',
   },
+
+  // ── Recent searches ──
+  placeholderWrap: { flex: 1 },
+  recentSection: { paddingTop: 12 },
+  recentHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingBottom: 8 },
+  recentHeading: { fontSize: 9, fontFamily: 'Inter_600SemiBold', letterSpacing: 1.5 },
+  recentClearAll: { fontSize: 11, fontFamily: 'Inter_400Regular', opacity: 0.7 },
+  recentRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 13, borderBottomWidth: StyleSheet.hairlineWidth },
+  recentIcon: { fontSize: 14 },
+  recentText: { flex: 1, fontSize: 14, fontFamily: 'Inter_400Regular' },
+  recentRemove: { fontSize: 12, fontFamily: 'Inter_400Regular', opacity: 0.5 },
 
   // ── Empty / placeholder ──
   center: {
