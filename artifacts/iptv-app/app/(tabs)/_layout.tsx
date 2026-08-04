@@ -25,6 +25,7 @@ const NAV = [
   { name: 'movies',    label: 'Movies',    icon: '🎬' },
   { name: 'series',    label: 'Series',    icon: '📺' },
   { name: 'reminders', label: 'Reminders', icon: '🔔' },
+  { name: 'telegram',  label: 'Telegram',  icon: '💬' },
   { name: 'search',    label: 'Search',    icon: '🔍' },
   { name: 'settings',  label: 'Settings',  icon: '⚙'  },
 ];
@@ -209,6 +210,7 @@ export default function TabLayout() {
       <Tabs.Screen name="movies"    options={{ title: 'Movies'    }} />
       <Tabs.Screen name="series"    options={{ title: 'Series'    }} />
       <Tabs.Screen name="reminders" options={{ title: 'Reminders' }} />
+      <Tabs.Screen name="telegram"  options={{ title: 'Telegram'  }} />
       <Tabs.Screen name="search"    options={{ title: 'Search'    }} />
       <Tabs.Screen name="settings"  options={{ title: 'Settings'  }} />
     </Tabs>
