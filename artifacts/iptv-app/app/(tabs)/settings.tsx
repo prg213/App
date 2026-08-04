@@ -23,6 +23,7 @@ import {
   parseXtreamCredsFromM3u,
 } from '@/services/xtreamApi';
 import { StorageService } from '@/services/storage';
+import { CommunityModal } from '@/components/CommunityModal';
 import { rescheduleRemindersForLeadTime } from '@/services/reminderReschedule';
 import { clearReminderRefreshCache } from '@/services/reminderUrlCache';
 import type { MaxRating } from '@/types';
@@ -61,6 +62,7 @@ export default function SettingsScreen() {
     setMaxRating,
   } = useParentalContext();
   const [loggingOut, setLoggingOut] = useState(false);
+  const [showCommunity, setShowCommunity] = useState(false);
   const [reminderLeadMins, setReminderLeadMins] = useState<5 | 10 | 15>(5);
   const [showLeadTimeSheet, setShowLeadTimeSheet] = useState(false);
 
@@ -542,6 +544,16 @@ export default function SettingsScreen() {
           )}
         </View>
 
+        <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>SUPPORT</Text>
+        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <ActionRow
+            title="Join our Community"
+            sub="Chat with other StreamVault users on Telegram"
+            icon="💬"
+            onPress={() => setShowCommunity(true)}
+          />
+        </View>
+
         <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>ABOUT</Text>
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <View style={[styles.infoRow, { borderBottomColor: colors.border }]}>
@@ -635,6 +647,9 @@ export default function SettingsScreen() {
           onCancel={() => { setPinFlow(null); setPendingRating(null); setPendingLock(null); }}
         />
       </Modal>
+
+      {/* ── Community / Telegram modal ── */}
+      <CommunityModal visible={showCommunity} onClose={() => setShowCommunity(false)} />
     </View>
   );
 }
