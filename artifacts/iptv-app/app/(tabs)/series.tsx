@@ -163,13 +163,21 @@ export default function SeriesScreen() {
     return sortedSeries;
   }, [isFavsSelected, isRecentSelected, favSeries, watchHistory, sortedSeries]);
 
+  const [sortOrder, setSortOrder] = useState<'newest' | 'name' | 'rating'>('newest');
+  const cycleSortOrder = useCallback(() => {
+    setSortOrder((s) => s === 'newest' ? 'name' : s === 'name' ? 'rating' : 'newest');
+  }, []);
+
   const filtered = useMemo(() => {
     let list = seriesList;
     if (search.trim()) list = list.filter((s) => s.name.toLowerCase().includes(search.toLowerCase()));
-    // Hide content above the parental rating ceiling
     if (maxRating !== 'all') list = list.filter((s) => !isContentBlocked(s.rating, maxRating));
+    if (!isFavsSelected && !isRecentSelected) {
+      if (sortOrder === 'name') list = [...list].sort((a, b) => a.name.localeCompare(b.name));
+      else if (sortOrder === 'rating') list = [...list].sort((a, b) => parseFloat(b.rating ?? '0') - parseFloat(a.rating ?? '0'));
+    }
     return list;
-  }, [seriesList, search, maxRating]);
+  }, [seriesList, search, maxRating, sortOrder, isFavsSelected, isRecentSelected]);
 
   // #158: Pre-warm TMDB poster cache for the first 20 visible items that have
   // no provider cover image. Fire-and-forget so the cache fills before the card
@@ -270,6 +278,17 @@ export default function SeriesScreen() {
             value={search}
             onChangeText={setSearch}
           />
+          {!isFavsSelected && !isRecentSelected && (
+            <TouchableOpacity
+              style={[styles.refreshBtn, { backgroundColor: colors.secondary, borderColor: colors.border }]}
+              onPress={cycleSortOrder}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.refreshIcon, { color: colors.primary, fontSize: 11 }]}>
+                {sortOrder === 'newest' ? 'NEW' : sortOrder === 'name' ? 'A-Z' : '★'}
+              </Text>
+            </TouchableOpacity>
+          )}
           <TouchableOpacity
             style={[styles.refreshBtn, { backgroundColor: colors.secondary, borderColor: colors.border }]}
             onPress={handleRefresh}

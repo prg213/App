@@ -1009,7 +1009,10 @@ export default function PlayerScreen() {
     .onEnd((e) => {
       if (isLive) return;
       const isLeft = e.x < screenWidth / 2;
-      seek(isLeft ? -10 : 10);
+      const delta = isLeft ? -10 : 10;
+      seek(delta);
+      // Optimistically update the scrubber so it doesn't lag until next timeUpdate
+      setCurrentTime((t) => Math.max(0, t + delta));
       if (doubleTapTimer.current) clearTimeout(doubleTapTimer.current);
       setDoubleTapSide(isLeft ? 'back' : 'forward');
       doubleTapTimer.current = setTimeout(() => setDoubleTapSide(null), 700);
