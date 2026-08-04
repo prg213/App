@@ -260,6 +260,17 @@ export default function RemindersScreen() {
   const [rescheduleTarget, setRescheduleTarget] = useState<Reminder | null>(null);
   // #100/#114: global lead time, reloaded on every focus
   const [reminderLeadMins, setReminderLeadMins] = useState(5);
+
+  // #135: update the lead-time badge immediately when Settings changes the value,
+  // even when the Reminders tab is already visible (e.g. tablet split-view).
+  // Uses a separate event so this listener never triggers a full reminder reload.
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener('leadtime:changed', () => {
+      StorageService.getReminderLeadMins().then(setReminderLeadMins);
+    });
+    return () => sub.remove();
+  }, []);
+
   // #116: undo banner shown after a deletion
   const [undoBanner, setUndoBanner] = useState<{ reminder: Reminder; timerId: ReturnType<typeof setTimeout> } | null>(null);
   const undoBannerRef = useRef(undoBanner);

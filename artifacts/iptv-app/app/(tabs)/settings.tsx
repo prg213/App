@@ -82,6 +82,11 @@ export default function SettingsScreen() {
     // a tablet split-view) useFocusEffect(load) will pick up the signal.
     DeviceEventEmitter.emit('reminders:changed');
 
+    // #135: Instant badge update on split-view / always-visible layouts.
+    // Distinct from 'reminders:changed' so the listener only refreshes the
+    // lead-time state and does NOT trigger a full reminder list reload.
+    DeviceEventEmitter.emit('leadtime:changed');
+
     // #110: Warn if any reminders start too soon to fire at the new lead time
     if (tooSoon > 0) {
       Alert.alert(
