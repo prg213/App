@@ -27,6 +27,10 @@ const KEYS = {
   PREF_SEARCH_TYPE: 'sv_pref_search_type',
   PREF_SEARCH_QUERY: 'sv_pref_search_query',
   BACKFILL_TS: 'sv_backfill_ts',
+  // Written just before a forced logout so the activation screen can show
+  // a one-time explanation banner. Intentionally NOT cleared in clearCredentials
+  // so it survives the logout and is readable on first render of activation.
+  LOGOUT_REASON: 'sv_logout_reason',
 };
 
 export const StorageService = {
@@ -396,6 +400,28 @@ export const StorageService = {
         await AsyncStorage.removeItem(KEYS.PREF_SEARCH_QUERY);
       }
     } catch {}
+  },
+
+  // ── Logout reason (AsyncStorage) ──────────────────────────────────────────
+
+  /** Persists the reason for a forced logout so the activation screen can show
+   *  a one-time explanation. Call before clearing credentials. */
+  async saveLogoutReason(reason: string): Promise<void> {
+    try {
+      await AsyncStorage.setItem(KEYS.LOGOUT_REASON, reason);
+    } catch {}
+  },
+
+  /** Returns the pending logout reason (if any) and clears it immediately so
+   *  the banner is shown only once. */
+  async consumeLogoutReason(): Promise<string | null> {
+    try {
+      const val = await AsyncStorage.getItem(KEYS.LOGOUT_REASON);
+      if (val) await AsyncStorage.removeItem(KEYS.LOGOUT_REASON);
+      return val;
+    } catch {
+      return null;
+    }
   },
 
   // ── Backfill timestamp (AsyncStorage) ─────────────────────────────────────

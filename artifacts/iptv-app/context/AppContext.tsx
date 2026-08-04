@@ -5,6 +5,8 @@ import { StorageService } from '@/services/storage';
 import { clearTmdbTrailerCache } from '@/services/tmdb';
 import type { Credentials } from '@/types';
 
+export type LogoutReason = 'deactivated' | null;
+
 interface AppContextValue {
   isLoading: boolean;
   isActivated: boolean;
@@ -65,7 +67,10 @@ export function AppContextProvider({ children }: { children: React.ReactNode }) 
   const isActivatedRef = useRef(false);
   const deviceMacRef = useRef('');
 
-  const doLogout = useCallback(async () => {
+  const doLogout = useCallback(async (reason?: LogoutReason) => {
+    if (reason) {
+      await StorageService.saveLogoutReason(reason);
+    }
     await StorageService.clearCredentials();
     clearTmdbTrailerCache();
     setCredentials(null);
@@ -92,8 +97,7 @@ export function AppContextProvider({ children }: { children: React.ReactNode }) 
           isActivatedRef.current = true;
         } else {
           // MAC was deleted while the app was closed — clear and show activation screen
-          await StorageService.clearCredentials();
-          clearTmdbTrailerCache();
+          await doLogout('deactivated');
         }
       }
       setIsLoading(false);
@@ -107,7 +111,7 @@ export function AppContextProvider({ children }: { children: React.ReactNode }) 
       if (!isActivatedRef.current || !deviceMacRef.current) return;
       const stillActive = await isMacStillRegistered(deviceMacRef.current);
       if (!stillActive) {
-        await doLogout();
+        await doLogout('deactivated');
       }
     });
     return () => sub.remove();

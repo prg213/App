@@ -14,6 +14,7 @@ import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import { useAppContext } from '@/context/AppContext';
+import { StorageService } from '@/services/storage';
 import type { Credentials } from '@/types';
 
 async function checkActivation(mac: string) {
@@ -38,7 +39,15 @@ export default function ActivationScreen() {
   const { deviceMac, setActivated, isActivated } = useAppContext();
   const [copied, setCopied] = useState(false);
   const [isPolling, setIsPolling] = useState(true);
+  const [deactivatedBanner, setDeactivatedBanner] = useState(false);
   const pulse = useRef(new Animated.Value(1)).current;
+
+  // Read and clear the one-time logout reason written by AppContext on forced logout
+  useEffect(() => {
+    StorageService.consumeLogoutReason().then((reason) => {
+      if (reason === 'deactivated') setDeactivatedBanner(true);
+    });
+  }, []);
 
   useEffect(() => {
     Animated.loop(
@@ -88,6 +97,18 @@ export default function ActivationScreen() {
 
   return (
     <View style={[styles.container, { paddingLeft: insets.left, paddingRight: insets.right }]}>
+      {/* Admin-removal banner — shown once after a forced logout */}
+      {deactivatedBanner && (
+        <View style={[styles.deactivatedBanner, { top: insets.top + 12 }]}>
+          <Text style={styles.deactivatedBannerText}>
+            ⚠️  Your access was removed by an administrator. Please contact support.
+          </Text>
+          <TouchableOpacity onPress={() => setDeactivatedBanner(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Text style={styles.deactivatedBannerDismiss}>✕</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* Left: Branding */}
       <View style={[styles.left, { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 20 }]}>
         <View style={styles.logo}>
@@ -243,4 +264,31 @@ const styles = StyleSheet.create({
   checkBtnDisabled: { opacity: 0.6 },
   checkBtnText: { fontSize: 15, fontFamily: 'Inter_600SemiBold', color: '#FFFFFF' },
   autoHint: { fontSize: 11, fontFamily: 'Inter_400Regular', color: '#6B7280', textAlign: 'center' },
+  deactivatedBanner: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    zIndex: 100,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#3B1A1A',
+    borderWidth: 1,
+    borderColor: '#7F1D1D',
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    gap: 10,
+  },
+  deactivatedBannerText: {
+    flex: 1,
+    fontSize: 13,
+    fontFamily: 'Inter_500Medium',
+    color: '#FCA5A5',
+    lineHeight: 18,
+  },
+  deactivatedBannerDismiss: {
+    fontSize: 14,
+    color: '#FCA5A5',
+    fontFamily: 'Inter_600SemiBold',
+  },
 });
