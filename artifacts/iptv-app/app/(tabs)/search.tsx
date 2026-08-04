@@ -29,6 +29,7 @@ import {
 } from '@/services/xtreamApi';
 import { fetchAndParseM3U } from '@/services/m3uParser';
 import type { Channel, Movie, Series } from '@/types';
+import { normaliseStr } from '@/utils/normalise';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -336,23 +337,23 @@ export default function SearchScreen() {
   const { channels, movies, series } = useMemo(() => {
     if (!hasQuery) return { channels: [], movies: [], series: [] };
 
-    const q = debouncedQuery.trim().toLowerCase();
+    const q = normaliseStr(debouncedQuery.trim());
 
     const channels = showLive
       ? allChannels
-          .filter((ch) => !blockedSet.has(ch.id) && !blockedCatSet.has(ch.groupTitle) && ch.name.toLowerCase().includes(q))
+          .filter((ch) => !blockedSet.has(ch.id) && !blockedCatSet.has(ch.groupTitle) && normaliseStr(ch.name).includes(q))
           .slice(0, 50)
       : [];
 
     const movies = showMovies
       ? allMovies
-          .filter((m) => !isContentBlocked(m.rating, maxRating) && m.name.toLowerCase().includes(q))
+          .filter((m) => !isContentBlocked(m.rating, maxRating) && normaliseStr(m.name).includes(q))
           .slice(0, 50)
       : [];
 
     const series = showSeries
       ? allSeries
-          .filter((s) => !isContentBlocked(s.rating, maxRating) && s.name.toLowerCase().includes(q))
+          .filter((s) => !isContentBlocked(s.rating, maxRating) && normaliseStr(s.name).includes(q))
           .slice(0, 50)
       : [];
 

@@ -39,6 +39,7 @@ import {
   scheduleReminderNotification,
 } from '@/services/notifications';
 import type { Channel, EpgProgram } from '@/types';
+import { normaliseStr } from '@/utils/normalise';
 
 // ─── Guide constants ────────────────────────────────────────────────────────
 const PX_PER_MIN = 2;
@@ -592,10 +593,10 @@ function FullGuide({
     Animated.timing(nowXAnim, { toValue: nowX, duration: 800, useNativeDriver: false }).start();
   }, [nowX]);
 
-  // Channel filter — applied on top of the category filter
+  // Channel filter — applied on top of the category filter (normalised to handle accented names)
   const visibleChannels = useMemo(() => {
-    const q = chFilter.trim().toLowerCase();
-    return q ? channels.filter((c) => c.name.toLowerCase().includes(q)) : channels;
+    const q = normaliseStr(chFilter.trim());
+    return q ? channels.filter((c) => normaliseStr(c.name).includes(q)) : channels;
   }, [channels, chFilter]);
 
   // Height of the full programme column — used for the "Now" indicator line

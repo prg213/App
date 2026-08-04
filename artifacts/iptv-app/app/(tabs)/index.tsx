@@ -51,6 +51,7 @@ import { fetchAndParseXmltv } from '@/services/epgService';
 import { CatchupSheet } from '@/components/CatchupSheet';
 import { RecentChannelsRail } from '@/components/RecentChannelsRail';
 import type { Channel, Category, EpgProgram, FavoriteChannel } from '@/types';
+import { normaliseStr } from '@/utils/normalise';
 
 const FAVS_CAT_ID = '__favs';
 const ALL_CAT_ID = '__all';
@@ -591,19 +592,16 @@ export default function LiveTVScreen() {
     }
   }, [channelFilter, filteredChannels]);
 
-  // normalise strips accents so "bbc" matches "BBC España" etc.
-  const normalise = (s: string) =>
-    s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
   const filteredChannels: Channel[] = useMemo(() => {
-    const q = normalise(channelFilter.trim());
+    const q = normaliseStr(channelFilter.trim());
     if (!q) return channels;
-    return channels.filter((ch) => normalise(ch.name).includes(q));
+    return channels.filter((ch) => normaliseStr(ch.name).includes(q));
   }, [channels, channelFilter]);
 
   const filteredCategories = useMemo(() => {
-    const q = catSearch.trim().toLowerCase();
+    const q = normaliseStr(catSearch.trim());
     if (!q) return allCategories;
-    return allCategories.filter((c) => c.name.toLowerCase().includes(q));
+    return allCategories.filter((c) => normaliseStr(c.name).includes(q));
   }, [allCategories, catSearch]);
 
   const currentCat = useMemo(

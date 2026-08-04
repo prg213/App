@@ -26,6 +26,7 @@ import { getXtreamSeriesCategories, getXtreamSeries } from '@/services/xtreamApi
 import { StorageService } from '@/services/storage';
 import { fetchRemoteFavourites, pushRemoteSeries, mergeFavourites } from '@/services/favoritesSync';
 import type { Series, Category, FavoriteSeries, WatchHistoryEntry } from '@/types';
+import { normaliseStr } from '@/utils/normalise';
 
 const ALL_CAT_ID = '__all';
 const FAVS_CAT_ID = '__favs';
@@ -190,7 +191,7 @@ export default function SeriesScreen() {
 
   const filtered = useMemo(() => {
     let list = seriesList;
-    if (search.trim()) list = list.filter((s) => s.name.toLowerCase().includes(search.toLowerCase()));
+    if (search.trim()) list = list.filter((s) => normaliseStr(s.name).includes(normaliseStr(search)));
     if (maxRating !== 'all') list = list.filter((s) => !isContentBlocked(s.rating, maxRating));
     if (!isFavsSelected && !isRecentSelected) {
       if (sortOrder === 'name') list = [...list].sort((a, b) => a.name.localeCompare(b.name));

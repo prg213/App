@@ -26,6 +26,7 @@ import { getXtreamVodCategories, getXtreamVodStreams } from '@/services/xtreamAp
 import { StorageService } from '@/services/storage';
 import { fetchRemoteFavourites, pushRemoteMovies, mergeFavourites } from '@/services/favoritesSync';
 import type { Movie, Category, FavoriteMovie, WatchHistoryEntry } from '@/types';
+import { normaliseStr } from '@/utils/normalise';
 
 const ALL_CAT_ID = '__all';
 const FAVS_CAT_ID = '__favs';
@@ -188,7 +189,7 @@ export default function MoviesScreen() {
 
   const filtered = useMemo(() => {
     let list = movies;
-    if (search.trim()) list = list.filter((m) => m.name.toLowerCase().includes(search.toLowerCase()));
+    if (search.trim()) list = list.filter((m) => normaliseStr(m.name).includes(normaliseStr(search)));
     if (maxRating !== 'all') list = list.filter((m) => !isContentBlocked(m.rating, maxRating));
     // Apply sort (skip for favourites/recent which have their own order)
     if (!isFavsSelected && !isRecentSelected) {
