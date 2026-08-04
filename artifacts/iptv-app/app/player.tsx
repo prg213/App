@@ -937,6 +937,9 @@ export default function PlayerScreen() {
 
   // ── Save history on exit and navigate back ────────────────────────────────
   const handleBack = useCallback(async () => {
+    // Clear hide/info timers before navigating so they don't fire on an unmounted component
+    if (hideTimer.current) { clearTimeout(hideTimer.current); hideTimer.current = null; }
+    if (infoTimer.current) { clearTimeout(infoTimer.current); infoTimer.current = null; }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (!isLive && params.contentId) {
       const pos = currentTimeRef.current;

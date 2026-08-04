@@ -221,6 +221,7 @@ export default function SearchScreen() {
   const [trailerIds, setTrailerIds] = useState<string[] | 'loading' | null>(null);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const inputRef = useRef<TextInput>(null);
+  const listRef = useRef<FlatList<ListItem>>(null);
 
   // Restore the last-used search filter and query from storage on mount
   useEffect(() => {
@@ -274,6 +275,8 @@ export default function SearchScreen() {
   const handleSearchTypeChange = (type: SearchType) => {
     setSearchType(type);
     StorageService.setPrefSearchType(type);
+    // Scroll results back to the top so the user starts from the beginning
+    listRef.current?.scrollToOffset({ offset: 0, animated: false });
   };
 
   // Debounce query by 200 ms so filtering doesn't recalculate on every keystroke
@@ -680,6 +683,7 @@ export default function SearchScreen() {
 
       {/* Results */}
       <FlatList
+        ref={listRef}
         data={listData}
         keyExtractor={(item, i) => {
           if (item.kind === 'header') return `hdr-${item.label}`;
