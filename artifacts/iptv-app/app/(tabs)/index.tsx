@@ -897,6 +897,20 @@ export default function LiveTVScreen() {
       [
         { text: 'Cancel', style: 'cancel' },
         {
+          text: 'Show Info',
+          onPress: () => {
+            Alert.alert(
+              ch.name,
+              [
+                `Category: ${ch.groupTitle || '—'}`,
+                `Stream ID: ${ch.id}`,
+                ch.epgId ? `EPG ID: ${ch.epgId}` : null,
+                ch.num != null ? `Channel #: ${ch.num}` : null,
+              ].filter(Boolean).join('\n'),
+            );
+          },
+        },
+        {
           text: action,
           style: isBlocked ? 'default' : 'destructive',
           onPress: () => {
