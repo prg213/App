@@ -257,6 +257,7 @@ export default function MovieDetailScreen() {
 
           {/* Right: metadata */}
           <View style={styles.metaCol}>
+            {releaseDate ? <MetaRow label="Year" value={releaseDate.slice(0, 4)} /> : null}
             {director ? <MetaRow label="Directed By" value={director} /> : null}
             {releaseDate ? <MetaRow label="Release Date" value={releaseDate} /> : null}
             {duration ? <MetaRow label="Duration" value={duration} badge /> : null}

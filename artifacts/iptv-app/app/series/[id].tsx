@@ -341,6 +341,7 @@ export default function SeriesDetailScreen() {
 
           {/* Metadata */}
           <View style={styles.metaCol}>
+            {releaseDate ? <MetaRow label="Year" value={releaseDate.slice(0, 4)} /> : null}
             {director ? <MetaRow label="Directed By" value={director} /> : null}
             {releaseDate ? <MetaRow label="Release Date" value={releaseDate} /> : null}
             {genreDisplay ? <MetaRow label="Genre" value={genreDisplay} /> : null}

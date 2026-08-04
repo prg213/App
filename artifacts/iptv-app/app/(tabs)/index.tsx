@@ -14,6 +14,7 @@ import {
   DeviceEventEmitter,
   FlatList,
   Image,
+  Keyboard,
   Platform,
   Pressable,
   ScrollView,
@@ -1007,6 +1008,7 @@ export default function LiveTVScreen() {
               onChangeText={setChannelFilter}
               clearButtonMode="while-editing"
               returnKeyType="search"
+              onSubmitEditing={() => Keyboard.dismiss()}
             />
           </View>
         )}
