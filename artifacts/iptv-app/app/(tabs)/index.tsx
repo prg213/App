@@ -11,6 +11,7 @@ import {
   Animated,
   AppState,
   AppStateStatus,
+  DeviceEventEmitter,
   FlatList,
   Image,
   Platform,
@@ -22,6 +23,10 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import {
+  scheduleReminderNotification,
+  cancelReminderNotification,
+} from '@/services/notifications';
 import { DraggableFavList } from '@/components/DraggableFavList';
 import { VideoView } from 'expo-video';
 import { useLivePlayer } from '@/context/LivePlayerContext';
@@ -649,6 +654,56 @@ export default function LiveTVScreen() {
     [channelEpg, nowTs],
   );
 
+  // ── Mini-guide reminder state ─────────────────────────────────────────────
+  const [miniReminderIds, setMiniReminderIds] = useState<Set<string>>(new Set());
+
+  // Reload which programs have reminders whenever the EPG list changes or the
+  // screen comes back into focus (e.g. after visiting the Reminders tab).
+  useEffect(() => {
+    if (!selectedChannel || channelEpg.length === 0) return;
+    StorageService.getReminders().then((all) => {
+      const ids = new Set(all.map((r) => r.id));
+      setMiniReminderIds(ids);
+    });
+  }, [channelEpg, selectedChannel]);
+
+  useFocusEffect(useCallback(() => {
+    StorageService.getReminders().then((all) => {
+      setMiniReminderIds(new Set(all.map((r) => r.id)));
+    });
+  }, []));
+
+  const handleToggleMiniReminder = useCallback(async (prog: EpgProgram) => {
+    if (!selectedChannel) return;
+    const reminderId = `${selectedChannel.id}_${prog.start.toISOString()}`;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    if (miniReminderIds.has(reminderId)) {
+      const nid = await StorageService.getReminderNotificationId(reminderId);
+      await cancelReminderNotification(nid);
+      await StorageService.removeReminder(reminderId);
+      setMiniReminderIds((prev) => { const s = new Set(prev); s.delete(reminderId); return s; });
+    } else {
+      const leadMins = await StorageService.getReminderLeadMins();
+      const reminder = {
+        id: reminderId,
+        channelId: selectedChannel.id,
+        channelName: selectedChannel.name,
+        channelLogo: selectedChannel.logo,
+        streamUrl: selectedChannel.streamUrl,
+        programTitle: prog.title,
+        programDescription: prog.description,
+        start: prog.start.toISOString(),
+        end: prog.end.toISOString(),
+        createdAt: new Date().toISOString(),
+        leadMins,
+      };
+      const notificationId = await scheduleReminderNotification(reminder, leadMins) ?? undefined;
+      await StorageService.addReminder({ ...reminder, notificationId });
+      setMiniReminderIds((prev) => new Set([...prev, reminderId]));
+    }
+    DeviceEventEmitter.emit('reminders:changed');
+  }, [selectedChannel, miniReminderIds]);
+
   // ── Handlers ──────────────────────────────────────────────────────────────
 
   const handleSelectCat = useCallback((catId: string) => {
@@ -1014,13 +1069,18 @@ export default function LiveTVScreen() {
               <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: insets.bottom + 8 }}>
                 {channelEpg.map((prog, i) => {
                   const isCurrent = prog.start.getTime() <= nowTs && nowTs < prog.end.getTime();
+                  const isFuture = prog.start.getTime() > nowTs;
+                  const reminderId = `${selectedChannel!.id}_${prog.start.toISOString()}`;
+                  const hasReminder = miniReminderIds.has(reminderId);
                   return (
-                    <View
+                    <Pressable
                       key={i}
-                      style={[
+                      onPress={isFuture ? () => handleToggleMiniReminder(prog) : undefined}
+                      style={({ pressed }) => [
                         styles.epgRow,
                         { borderBottomColor: colors.border },
                         isCurrent && { backgroundColor: 'rgba(59,130,246,0.08)' },
+                        isFuture && pressed && { backgroundColor: 'rgba(255,255,255,0.04)' },
                       ]}
                     >
                       <View style={styles.epgTimeCol}>
@@ -1049,7 +1109,12 @@ export default function LiveTVScreen() {
                           </Text>
                         ) : null}
                       </View>
-                    </View>
+                      {isFuture && (
+                        <Text style={[styles.epgBell, { color: hasReminder ? '#3B82F6' : colors.mutedForeground }]}>
+                          {hasReminder ? '🔔' : '🔕'}
+                        </Text>
+                      )}
+                    </Pressable>
                   );
                 })}
               </ScrollView>
@@ -1304,6 +1369,7 @@ const styles = StyleSheet.create({
   nowBadgeText: { color: '#fff', fontSize: 9, fontFamily: 'Inter_700Bold' },
   epgTitle: { fontSize: 12, fontFamily: 'Inter_600SemiBold', marginBottom: 2 },
   epgDesc: { fontSize: 10, fontFamily: 'Inter_400Regular', lineHeight: 14 },
+  epgBell: { fontSize: 14, flexShrink: 0, alignSelf: 'center', marginLeft: 4 },
   epgEmpty: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 6 },
 
   noSel: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 },
