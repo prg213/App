@@ -577,41 +577,59 @@ function FullGuide({
         </Text>
       </View>
 
-      {/* 7-day tab strip */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={[styles.dayBar, { borderBottomColor: colors.border, backgroundColor: colors.card }]}
-        contentContainerStyle={styles.dayBarContent}
-      >
-        {days.map((d, i) => {
-          const dayMs = dayStart(i).getTime();
-          const noData = latestEpgMs > 0 && dayMs >= latestEpgMs;
-          const isSelected = i === selectedDay;
-          return (
-            <TouchableOpacity
-              key={i}
-              style={[
-                styles.dayTab,
-                isSelected
-                  ? { backgroundColor: colors.primary, borderColor: colors.primary }
-                  : noData
-                  ? { backgroundColor: 'transparent', borderColor: colors.border, opacity: 0.35 }
-                  : { backgroundColor: 'transparent', borderColor: colors.border },
-              ]}
-              onPress={() => setSelectedDay(i)}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.dayTabText, { color: isSelected ? '#fff' : colors.mutedForeground }]}>
-                {d.short}
-              </Text>
-              {noData && !isSelected && (
-                <View style={styles.noDataDot} />
-              )}
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
+      {/* Day navigation: prev/next arrows + tab strip */}
+      <View style={[styles.dayBar, { borderBottomColor: colors.border, backgroundColor: colors.card, flexDirection: 'row', alignItems: 'center' }]}>
+        <TouchableOpacity
+          style={[styles.dayNavArrow, { opacity: selectedDay === 0 ? 0.25 : 1 }]}
+          onPress={() => setSelectedDay((d) => Math.max(0, d - 1))}
+          disabled={selectedDay === 0}
+          activeOpacity={0.7}
+        >
+          <Text style={[styles.dayNavArrowText, { color: colors.foreground }]}>‹</Text>
+        </TouchableOpacity>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={{ flex: 1 }}
+          contentContainerStyle={styles.dayBarContent}
+        >
+          {days.map((d, i) => {
+            const dayMs = dayStart(i).getTime();
+            const noData = latestEpgMs > 0 && dayMs >= latestEpgMs;
+            const isSelected = i === selectedDay;
+            return (
+              <TouchableOpacity
+                key={i}
+                style={[
+                  styles.dayTab,
+                  isSelected
+                    ? { backgroundColor: colors.primary, borderColor: colors.primary }
+                    : noData
+                    ? { backgroundColor: 'transparent', borderColor: colors.border, opacity: 0.35 }
+                    : { backgroundColor: 'transparent', borderColor: colors.border },
+                ]}
+                onPress={() => setSelectedDay(i)}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.dayTabText, { color: isSelected ? '#fff' : colors.mutedForeground }]}>
+                  {d.short}
+                </Text>
+                {noData && !isSelected && (
+                  <View style={styles.noDataDot} />
+                )}
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+        <TouchableOpacity
+          style={[styles.dayNavArrow, { opacity: selectedDay === days.length - 1 ? 0.25 : 1 }]}
+          onPress={() => setSelectedDay((d) => Math.min(days.length - 1, d + 1))}
+          disabled={selectedDay === days.length - 1}
+          activeOpacity={0.7}
+        >
+          <Text style={[styles.dayNavArrowText, { color: colors.foreground }]}>›</Text>
+        </TouchableOpacity>
+      </View>
 
       {/* ── Full-screen empty state when provider has no EPG for this day ── */}
       {selectedDayEmpty && !epgLoading && (
@@ -1028,6 +1046,13 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     gap: 16,
   },
+  dayNavArrow: {
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dayNavArrowText: { fontSize: 22, fontFamily: 'Inter_600SemiBold', lineHeight: 26 },
   dayTab: {
     flex: 1,
     alignItems: 'center',

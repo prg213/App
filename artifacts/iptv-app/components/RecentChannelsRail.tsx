@@ -10,6 +10,7 @@ import {
 import { useFocusEffect } from 'expo-router';
 import { useColors } from '@/hooks/useColors';
 import { StorageService } from '@/services/storage';
+import { Toast } from '@/components/Toast';
 import type { Channel, RecentChannel } from '@/types';
 
 /** Convert a stored RecentChannel to a Channel so it can be passed to handlers. */
@@ -97,6 +98,7 @@ export function RecentChannelsRail({
 }: Props) {
   const colors = useColors();
   const [recent, setRecent] = useState<RecentChannel[]>([]);
+  const [toastMsg, setToastMsg] = useState<string | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -110,9 +112,11 @@ export function RecentChannelsRail({
   );
 
   const handleRemove = useCallback(async (id: string) => {
+    const ch = recent.find((c) => c.id === id);
     await StorageService.removeFromRecentChannels(id);
-    setRecent((prev) => prev.filter((ch) => ch.id !== id));
-  }, []);
+    setRecent((prev) => prev.filter((c) => c.id !== id));
+    if (ch) setToastMsg(`"${ch.name}" removed from recently watched`);
+  }, [recent]);
 
   if (recent.length === 0) return null;
 
@@ -141,6 +145,14 @@ export function RecentChannelsRail({
           );
         }}
       />
+      {toastMsg !== null && (
+        <Toast
+          message={toastMsg}
+          visible
+          duration={2500}
+          onHide={() => setToastMsg(null)}
+        />
+      )}
     </View>
   );
 }
