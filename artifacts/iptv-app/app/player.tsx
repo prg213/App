@@ -1141,6 +1141,7 @@ export default function PlayerScreen() {
           <View style={styles.bufferCircle}>
             <Text style={styles.bufferIcon}>▶</Text>
           </View>
+          <Text style={styles.bufferText}>Buffering…</Text>
         </View>
       )}
 

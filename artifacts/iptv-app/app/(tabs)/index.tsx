@@ -562,6 +562,14 @@ export default function LiveTVScreen() {
   // Clear channel filter whenever the user switches category
   useEffect(() => { setChannelFilter(''); }, [selectedCatId]);
 
+  const channelListRef = useRef<FlatList<Channel>>(null);
+  // Scroll back to top whenever the filter changes so the first match is visible
+  useEffect(() => {
+    if (channelFilter.trim()) {
+      channelListRef.current?.scrollToOffset({ offset: 0, animated: false });
+    }
+  }, [channelFilter, filteredChannels]);
+
   const filteredChannels: Channel[] = useMemo(() => {
     const q = channelFilter.trim().toLowerCase();
     if (!q) return channels;
@@ -1070,6 +1078,7 @@ export default function LiveTVScreen() {
           />
         ) : (
           <FlatList
+            ref={channelListRef}
             data={filteredChannels}
             keyExtractor={(ch) => ch.id}
             renderItem={renderChannel}

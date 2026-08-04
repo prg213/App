@@ -20,6 +20,7 @@ import { useParentalContext, isContentBlocked } from '@/context/ParentalContext'
 import { MovieCard } from '@/components/MovieCard';
 import { MovieCardSkeleton } from '@/components/SkeletonCard';
 import { ContinueWatchingRail } from '@/components/ContinueWatchingRail';
+import { Toast } from '@/components/Toast';
 import { getXtreamVodCategories, getXtreamVodStreams } from '@/services/xtreamApi';
 import { StorageService } from '@/services/storage';
 import { fetchRemoteFavourites, pushRemoteMovies, mergeFavourites } from '@/services/favoritesSync';
@@ -161,8 +162,14 @@ export default function MoviesScreen() {
   }, [isFavsSelected, isRecentSelected, favMovies, watchHistory, sortedMovies]);
 
   const [sortOrder, setSortOrder] = useState<'newest' | 'name' | 'rating'>('newest');
+  const [sortToast, setSortToast] = useState<string | null>(null);
   const cycleSortOrder = useCallback(() => {
-    setSortOrder((s) => s === 'newest' ? 'name' : s === 'name' ? 'rating' : 'newest');
+    setSortOrder((s) => {
+      const next = s === 'newest' ? 'name' : s === 'name' ? 'rating' : 'newest';
+      const label = next === 'newest' ? 'Newest first' : next === 'name' ? 'Name A–Z' : 'Top rated';
+      setSortToast(label);
+      return next;
+    });
   }, []);
 
   const filtered = useMemo(() => {
@@ -235,6 +242,9 @@ export default function MoviesScreen() {
 
   return (
     <>
+    {sortToast !== null && (
+      <Toast message={sortToast} visible duration={1800} onHide={() => setSortToast(null)} />
+    )}
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       {/* Left category panel */}
       <View style={[styles.catPanel, { backgroundColor: '#0E0E1A', borderRightColor: colors.border, paddingTop: insets.top + 8 }]}>
