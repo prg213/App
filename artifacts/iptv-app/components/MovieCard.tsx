@@ -117,9 +117,9 @@ function MovieCardComponent({ name, cover, rating, genre, query = '', isFav, com
           compact={compact}
           style={[styles.title, { color: colors.foreground }, compact && styles.titleCompact]}
         />
-        {!compact && genre ? (
+        {!compact && (genre || year) ? (
           <Text style={[styles.genre, { color: colors.mutedForeground }]} numberOfLines={1}>
-            {genre.split(',')[0]}
+            {[genre?.split(',')[0], year ? year.slice(0, 4) : null].filter(Boolean).join(' · ')}
           </Text>
         ) : null}
       </View>

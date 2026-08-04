@@ -750,6 +750,13 @@ function FullGuide({
           </Text>
         </View>
       ) : null}
+      {/* EPG loading overlay — semi-transparent spinner over the grid */}
+      {epgLoading && visibleChannels.length > 0 && (
+        <View style={[StyleSheet.absoluteFill, styles.epgLoadingOverlay]} pointerEvents="none">
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={[styles.epgLoadingText, { color: colors.mutedForeground }]}>Loading guide data…</Text>
+        </View>
+      )}
       {!selectedDayEmpty && visibleChannels.length > 0 && <View style={[styles.grid, { paddingRight: insets.right }]}>
 
         {/* Fixed header row: corner cell + time labels */}
@@ -1092,6 +1099,8 @@ const styles = StyleSheet.create({
   },
   todayBtnText: { fontSize: 12, fontFamily: 'Inter_600SemiBold' },
   guideChFilter: { flex: 1, height: 30, borderRadius: 8, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: 8, fontSize: 12, fontFamily: 'Inter_400Regular' },
+  epgLoadingOverlay: { justifyContent: 'center', alignItems: 'center', gap: 10, backgroundColor: 'rgba(0,0,0,0.45)', zIndex: 10 },
+  epgLoadingText: { fontSize: 13, fontFamily: 'Inter_400Regular' },
   chCountLabel: { fontSize: 11, fontFamily: 'Inter_400Regular' },
   backBtn: {
     width: SIDEBAR_W,

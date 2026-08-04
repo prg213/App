@@ -11,6 +11,7 @@ import {
   Animated,
   AppState,
   AppStateStatus,
+  BackHandler,
   DeviceEventEmitter,
   FlatList,
   Image,
@@ -568,6 +569,19 @@ export default function LiveTVScreen() {
 
   // Clear channel filter whenever the user switches category
   useEffect(() => { setChannelFilter(''); }, [selectedCatId]);
+
+  // Android back button: clear the channel filter before navigating away
+  useEffect(() => {
+    const handler = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (channelFilter.trim()) {
+        setChannelFilter('');
+        Keyboard.dismiss();
+        return true; // consumed — don't navigate back
+      }
+      return false;
+    });
+    return () => handler.remove();
+  }, [channelFilter]);
 
   const channelListRef = useRef<FlatList<Channel>>(null);
   // Scroll back to top whenever the filter changes so the first match is visible

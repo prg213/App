@@ -1262,13 +1262,18 @@ export default function PlayerScreen() {
               <Text style={styles.seekIcon}>⏮</Text>
               <Text style={styles.seekLabel}>-30s</Text>
             </Pressable>
-            <Pressable
-              focusable
-              style={({ focused }) => [styles.playBtn, focused && styles.focusRing]}
-              onPress={togglePlay}
-            >
-              <Text style={styles.playIcon}>{isPlaying ? '⏸' : '▶'}</Text>
-            </Pressable>
+            <View style={{ alignItems: 'center' }}>
+              <Pressable
+                focusable
+                style={({ focused }) => [styles.playBtn, focused && styles.focusRing]}
+                onPress={togglePlay}
+              >
+                <Text style={styles.playIcon}>{isPlaying ? '⏸' : '▶'}</Text>
+              </Pressable>
+              {!isPlaying && !isLive && (
+                <Text style={styles.pausedLabel}>PAUSED</Text>
+              )}
+            </View>
             <Pressable
               focusable
               style={({ focused }) => [styles.seekBtn, focused && styles.focusRing]}
@@ -1927,6 +1932,7 @@ const styles = StyleSheet.create({
   bufferCircle: { width: 64, height: 64, borderRadius: 32, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' },
   bufferIcon: { fontSize: 24, color: '#fff' },
   bufferText: { fontSize: 14, color: 'rgba(255,255,255,0.7)', fontFamily: 'Inter_400Regular' },
+  pausedLabel: { fontSize: 10, color: 'rgba(255,255,255,0.65)', fontFamily: 'Inter_600SemiBold', letterSpacing: 1.5, marginTop: 4 },
 
   // Double-tap seek feedback flash
   doubleTapFeedback: {

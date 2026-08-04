@@ -38,6 +38,7 @@ interface SeriesCardProps {
   cover?: string;
   rating?: string;
   genre?: string;
+  year?: string;
   query?: string;
   isFav?: boolean;
   compact?: boolean;
@@ -48,7 +49,7 @@ interface SeriesCardProps {
   onTrailerPress?: () => void;
 }
 
-function SeriesCardComponent({ name, cover, rating, genre, query = '', isFav, compact, onPress, onFavPress, onLongPress, onTrailerPress }: SeriesCardProps) {
+function SeriesCardComponent({ name, cover, rating, genre, year, query = '', isFav, compact, onPress, onFavPress, onLongPress, onTrailerPress }: SeriesCardProps) {
   const colors = useColors();
   const isOnline = useIsOnline();
 
@@ -122,9 +123,9 @@ function SeriesCardComponent({ name, cover, rating, genre, query = '', isFav, co
           compact={compact}
           style={[styles.title, { color: colors.foreground }, compact && styles.titleCompact]}
         />
-        {!compact && genre ? (
+        {!compact && (genre || year) ? (
           <Text style={[styles.genre, { color: colors.mutedForeground }]} numberOfLines={1}>
-            {genre.split(',')[0]}
+            {[genre?.split(',')[0], year].filter(Boolean).join(' · ')}
           </Text>
         ) : null}
       </View>
@@ -133,6 +134,7 @@ function SeriesCardComponent({ name, cover, rating, genre, query = '', isFav, co
 }
 
 export const SeriesCard = memo(SeriesCardComponent);
+
 
 const styles = StyleSheet.create({
   card: {
