@@ -566,6 +566,16 @@ export default function SearchScreen() {
                     Loading content…
                   </Text>
                 </>
+              ) : !credentials ? (
+                <>
+                  <Text style={{ fontSize: 48, marginBottom: 16 }}>📡</Text>
+                  <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
+                    No account linked
+                  </Text>
+                  <Text style={[styles.emptySub, { color: colors.mutedForeground }]}>
+                    Add your IPTV credentials in Settings to start searching live channels, movies and series.
+                  </Text>
+                </>
               ) : (
                 <>
                   <Text style={{ fontSize: 48, marginBottom: 16 }}>🔍</Text>

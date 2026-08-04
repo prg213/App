@@ -1389,6 +1389,13 @@ export default function PlayerScreen() {
                 <Text style={styles.ccActiveBadgeText}>{ccLabel}</Text>
               </View>
             )}
+            {!!params.logo && (
+              <Image
+                source={{ uri: params.logo as string }}
+                style={styles.infoChannelLogo}
+                resizeMode="contain"
+              />
+            )}
             <Text style={styles.infoChannel} numberOfLines={1}>{activeTitle}</Text>
             {currentProg && (
               <>
@@ -1728,6 +1735,7 @@ const styles = StyleSheet.create({
   },
   liveDot: { width: 5, height: 5, borderRadius: 99, backgroundColor: '#EF4444' },
   liveText: { fontSize: 9, fontFamily: 'Inter_700Bold', color: '#EF4444', letterSpacing: 1 },
+  infoChannelLogo: { width: 28, height: 20, marginRight: 6, flexShrink: 0 },
   infoChannel: { fontSize: 14, fontFamily: 'Inter_700Bold', color: '#fff', flexShrink: 1 },
   infoSep: { width: StyleSheet.hairlineWidth, height: 16, backgroundColor: 'rgba(255,255,255,0.25)', flexShrink: 0 },
   infoNowLabel: { fontSize: 10, fontFamily: 'Inter_700Bold', color: '#3B82F6', letterSpacing: 0.5, flexShrink: 0 },

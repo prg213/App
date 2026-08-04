@@ -8,6 +8,7 @@ import React, {
 import {
   ActivityIndicator,
   Alert,
+  Animated,
   DeviceEventEmitter,
   FlatList,
   Image,
@@ -585,6 +586,12 @@ function FullGuide({
   const dayStartMs = useMemo(() => dayStart(selectedDay).getTime(), [selectedDay]);
   const nowX = ((now - dayStartMs) / 60_000) * PX_PER_MIN;
 
+  // Animated value for the NOW line so position transitions smoothly each minute
+  const nowXAnim = useRef(new Animated.Value(nowX)).current;
+  useEffect(() => {
+    Animated.timing(nowXAnim, { toValue: nowX, duration: 800, useNativeDriver: false }).start();
+  }, [nowX]);
+
   // Channel filter — applied on top of the category filter
   const visibleChannels = useMemo(() => {
     const q = chFilter.trim().toLowerCase();
@@ -756,7 +763,13 @@ function FullGuide({
           </Text>
           <TouchableOpacity
             style={[styles.clearFilterBtn, { backgroundColor: colors.secondary, borderColor: colors.border }]}
-            onPress={() => setChFilter('')}
+            onPress={() => {
+              setChFilter('');
+              // Also scroll back to the current time
+              const scrollX = Math.max(0, nowX - SLOT_W * 2);
+              gridHorizRef.current?.scrollTo({ x: scrollX, animated: true });
+              timeHeaderRef.current?.scrollTo({ x: scrollX, animated: true });
+            }}
             activeOpacity={0.7}
           >
             <Text style={[styles.clearFilterBtnText, { color: colors.primary }]}>✕ Clear filter</Text>
@@ -824,9 +837,9 @@ function FullGuide({
               onScroll={onGridHorizScroll}
               style={{ flex: 1 }}
             >
-              {/* "Now" red indicator line */}
+              {/* "Now" red indicator line — position animated so it transitions smoothly each minute */}
               {selectedDay === 0 && nowX >= 0 && nowX <= TOTAL_DAY_W && nowLineH > 0 && (
-                <View pointerEvents="none" style={[styles.nowLine, { left: nowX, height: nowLineH }]} />
+                <Animated.View pointerEvents="none" style={[styles.nowLine, { left: nowXAnim, height: nowLineH }]} />
               )}
               <View style={{ width: TOTAL_DAY_W }}>
                 {visibleChannels.map((ch) => {
