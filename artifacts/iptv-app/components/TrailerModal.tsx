@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
+  AppState,
   ActivityIndicator,
   Modal,
   Pressable,
@@ -119,6 +120,13 @@ export function TrailerModal({ videoIds, onClose }: Props) {
     webviewKey.current += 1;
   }, [videoIds]);
 
+  // Pause the YouTube WebView when the app goes to the background
+  const [appActive, setAppActive] = useState(true);
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => setAppActive(state === 'active'));
+    return () => sub.remove();
+  }, []);
+
   // Advance to the next candidate; mark allFailed when the last one errors.
   const advance = () => {
     const ids = Array.isArray(videoIds) ? videoIds : [];
@@ -201,6 +209,8 @@ export function TrailerModal({ videoIds, onClose }: Props) {
               domStorageEnabled
               originWhitelist={['*']}
               mixedContentMode="always"
+              // Pause the YouTube iframe when the app goes to the background
+              injectedJavaScript={!appActive ? `(function(){ try { document.querySelector('iframe')?.contentWindow?.postMessage('{"event":"command","func":"pauseVideo","args":""}','*'); } catch(e){} })(); true;` : ''}
             />
           </>
         )}

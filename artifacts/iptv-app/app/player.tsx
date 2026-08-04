@@ -1216,6 +1216,13 @@ export default function PlayerScreen() {
       {/* ── Controls overlay (VOD: play/seek/back) ── */}
       {showControls && !isWeb && !isLive && (
         <Animated.View style={[StyleSheet.absoluteFill, { opacity: controlsOpacity }]} pointerEvents="box-none">
+          {/* VOD title bar — top-centre */}
+          <View style={styles.vodTitleBar} pointerEvents="none">
+            {params.parentTitle ? (
+              <Text style={styles.vodParentTitle} numberOfLines={1}>{params.parentTitle}</Text>
+            ) : null}
+            <Text style={styles.vodTitle} numberOfLines={1}>{params.title}</Text>
+          </View>
           {/* Back button + casting pill — absolute top-left */}
           <View style={{ position: 'absolute', top: insets.top + 8, left: 16, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <TouchableOpacity style={styles.backBtn} onPress={handleBack} activeOpacity={0.8}>
@@ -1738,6 +1745,9 @@ const styles = StyleSheet.create({
   },
   liveDot: { width: 5, height: 5, borderRadius: 99, backgroundColor: '#EF4444' },
   liveText: { fontSize: 9, fontFamily: 'Inter_700Bold', color: '#EF4444', letterSpacing: 1 },
+  vodTitleBar: { position: 'absolute', top: 0, left: 80, right: 80, alignItems: 'center', paddingTop: 12 },
+  vodParentTitle: { fontSize: 11, fontFamily: 'Inter_400Regular', color: 'rgba(255,255,255,0.6)', letterSpacing: 0.3 },
+  vodTitle: { fontSize: 15, fontFamily: 'Inter_600SemiBold', color: '#fff', textAlign: 'center' },
   infoChannelLogo: { width: 28, height: 20, marginRight: 6, flexShrink: 0 },
   infoChannel: { fontSize: 14, fontFamily: 'Inter_700Bold', color: '#fff', flexShrink: 1 },
   infoSep: { width: StyleSheet.hairlineWidth, height: 16, backgroundColor: 'rgba(255,255,255,0.25)', flexShrink: 0 },

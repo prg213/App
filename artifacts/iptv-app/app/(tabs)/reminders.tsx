@@ -633,11 +633,11 @@ export default function RemindersScreen() {
     onAirReminders.forEach((r) => flatItems.push({ kind: 'reminder', item: r }));
   }
   if (upcoming.length > 0) {
-    if (hasMultipleSections) flatItems.push({ kind: 'divider', label: 'UPCOMING' });
+    if (hasMultipleSections) flatItems.push({ kind: 'divider', label: `UPCOMING (${upcoming.length})` });
     upcoming.forEach((r) => flatItems.push({ kind: 'reminder', item: r }));
   }
   if (pastReminders.length > 0) {
-    flatItems.push({ kind: 'divider', label: 'PAST' });
+    flatItems.push({ kind: 'divider', label: `PAST (${pastReminders.length})` });
     pastReminders.forEach((r) => flatItems.push({ kind: 'reminder', item: r }));
   }
 
