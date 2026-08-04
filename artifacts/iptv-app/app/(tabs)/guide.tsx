@@ -1107,7 +1107,7 @@ const styles = StyleSheet.create({
   guideChFilter: { flex: 1, height: 30, borderRadius: 8, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: 8, fontSize: 12, fontFamily: 'Inter_400Regular' },
   epgLoadingOverlay: { justifyContent: 'center', alignItems: 'center', gap: 10, backgroundColor: 'rgba(0,0,0,0.45)', zIndex: 10 },
   epgLoadingText: { fontSize: 13, fontFamily: 'Inter_400Regular' },
-  guideClockText: { fontSize: 12, fontFamily: 'Inter_500Medium', marginLeft: 'auto' },
+  guideClockText: { fontSize: 12, fontFamily: 'Inter_500Medium', flex: 1, textAlign: 'right' },
   chCountLabel: { fontSize: 11, fontFamily: 'Inter_400Regular' },
   backBtn: {
     width: SIDEBAR_W,

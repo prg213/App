@@ -112,15 +112,20 @@ export default function MoviesScreen() {
   });
 
   // Silently refresh the list + reload history whenever the user navigates here.
+  // Refresh callback also re-loads watch history so pull-to-refresh works for Recent
+  const refreshWatchHistory = useCallback(() => {
+    StorageService.getWatchHistory().then((h) =>
+      setWatchHistory(h.filter((e) => e.type === 'movie')),
+    );
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
-      StorageService.getWatchHistory().then((h) =>
-        setWatchHistory(h.filter((e) => e.type === 'movie')),
-      );
+      refreshWatchHistory();
       if (credentials && isXtream && !isFavsSelected && !isRecentSelected) {
         refetch();
       }
-    }, [credentials, isXtream, isFavsSelected, isRecentSelected, refetch]),
+    }, [credentials, isXtream, isFavsSelected, isRecentSelected, refetch, refreshWatchHistory]),
   );
 
   // Sort fetched movies newest first (highest stream_id = most recently added)

@@ -276,9 +276,16 @@ export default function SearchScreen() {
     StorageService.setPrefSearchType(type);
   };
 
+  // Debounce query by 200 ms so filtering doesn't recalculate on every keystroke
+  const [debouncedQuery, setDebouncedQuery] = useState(query);
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQuery(query), 200);
+    return () => clearTimeout(t);
+  }, [query]);
+
   const isXtream = credentials?.type === 'xtream';
   const creds = isXtream ? buildCreds(credentials) : null;
-  const hasQuery = query.trim().length > 0;
+  const hasQuery = debouncedQuery.trim().length > 0;
 
   const showLive    = searchType === 'all' || searchType === 'live';
   const showMovies  = searchType === 'all' || searchType === 'movies';

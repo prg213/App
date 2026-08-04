@@ -31,35 +31,33 @@ export function ContinueWatchingRail({ type }: Props) {
   const [history, setHistory] = useState<WatchHistoryEntry[]>([]);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
-  useFocusEffect(
-    useCallback(() => {
-      StorageService.getWatchHistory().then((h) => {
-        const filtered = h
-          .filter((e) => {
-            if (!e.position || !e.duration || e.position <= 0) return false;
-            if (type && e.type !== type) return false;
-            return true;
-          })
-          .slice(0, 10);
-        setHistory(filtered);
-      });
-    }, [type]),
-  );
+  useFocusEffect(useCallback(() => { loadHistory(); }, [loadHistory]));
 
   if (history.length === 0) return null;
 
+  const loadHistory = useCallback(() => {
+    StorageService.getWatchHistory().then((h) => {
+      const filtered = h
+        .filter((e) => {
+          if (!e.position || !e.duration || e.position <= 0) return false;
+          if (type && e.type !== type) return false;
+          return true;
+        })
+        .slice(0, 10);
+      setHistory(filtered);
+    });
+  }, [type]);
+
   const handleClearAll = useCallback(async () => {
-    // Clear only entries matching the current type filter, or all if no filter
+    // Preserve entries that don't match this rail's type
     const all = await StorageService.getWatchHistory();
     const keep = type ? all.filter((e) => e.type !== type) : [];
     await StorageService.clearHistory();
-    if (keep.length > 0) {
-      // Restore entries that don't match this rail's type
-      for (const e of keep) await StorageService.addToHistory(e);
-    }
-    setHistory([]);
+    for (const e of keep) await StorageService.addToHistory(e);
+    // Re-load display from storage so it reflects the cleared+restored state
+    loadHistory();
     setToastMsg('Continue Watching cleared');
-  }, [type]);
+  }, [type, loadHistory]);
 
   return (
     <View style={[styles.container, { borderBottomColor: colors.border }]}>
