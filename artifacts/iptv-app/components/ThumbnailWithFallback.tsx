@@ -1,5 +1,6 @@
+import { Image } from 'expo-image';
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, Image, StyleSheet, Text, View, type ViewStyle } from 'react-native';
+import { Animated, StyleSheet, Text, View, type ViewStyle } from 'react-native';
 
 interface ThumbnailWithFallbackProps {
   /** Primary thumbnail URI — shown when present and not errored. */
@@ -22,16 +23,18 @@ interface ThumbnailWithFallbackProps {
 /**
  * Shared thumbnail component used wherever content art can be missing.
  *
- * Render priority:
- *   1. `uri`       — the episode / clip thumbnail (fades in once loaded)
- *   2. `fallbackUri` — the series / movie poster, blurred + darkened
- *                     (shown immediately while primary loads OR if primary errors)
- *   3. shimmer     — animated shimmer when no fallback is available
- *   4. 📺 emoji   — last-resort plain placeholder (no shimmer possible)
+ * Uses expo-image with cachePolicy="memory-disk" so thumbnails that have
+ * already been loaded are served instantly from the persistent disk cache on
+ * every subsequent navigation — no re-download, no blurred fallback flash.
  *
- * The primary image fades in (opacity 0→1, ~150 ms) once it finishes loading.
- * While it is still in-flight the blurred fallback (or shimmer) is already
- * visible, eliminating the blank/dark gap on slow connections.
+ * Render priority:
+ *   1. `uri`         — the episode / clip thumbnail (fades in on first load
+ *                      only; cached images appear instantly)
+ *   2. `fallbackUri` — the series / movie poster, blurred + darkened
+ *                      (shown immediately while primary loads OR if primary
+ *                      errors; also cached for instant display)
+ *   3. shimmer       — animated shimmer when no fallback is available
+ *   4. 📺 emoji     — last-resort plain placeholder
  */
 export function ThumbnailWithFallback({
   uri,
@@ -41,16 +44,14 @@ export function ThumbnailWithFallback({
 }: ThumbnailWithFallbackProps) {
   const [primaryError, setPrimaryError] = useState(false);
   const [primaryLoaded, setPrimaryLoaded] = useState(false);
-  const fadeAnim = useRef(new Animated.Value(0)).current;
   const shimmerAnim = useRef(new Animated.Value(0)).current;
 
-  // Reset error/loaded state and opacity whenever the URI changes so a new
-  // episode that shares the same component instance gets a fresh load attempt
-  // instead of inheriting a stale failure or a fully-opaque image.
+  // Reset error/loaded state whenever the URI changes so a new episode that
+  // shares the same component instance gets a fresh load attempt instead of
+  // inheriting a stale failure or assuming it is already loaded.
   useEffect(() => {
     setPrimaryError(false);
     setPrimaryLoaded(false);
-    fadeAnim.setValue(0);
   }, [uri]);
 
   // Run shimmer loop while waiting for the primary image (and no fallback available)
@@ -93,15 +94,6 @@ export function ThumbnailWithFallback({
   // Show emoji only when there's nothing else at all
   const showEmoji = !showPrimary && !fallbackUri;
 
-  const handlePrimaryLoad = () => {
-    setPrimaryLoaded(true);
-    Animated.timing(fadeAnim, {
-      toValue: 1,
-      duration: 150,
-      useNativeDriver: true,
-    }).start();
-  };
-
   const shimmerOpacity = shimmerAnim.interpolate({
     inputRange: [0, 1],
     outputRange: [0.3, 0.7],
@@ -109,14 +101,16 @@ export function ThumbnailWithFallback({
 
   return (
     <View style={[styles.container, style]}>
-      {/* Blurred fallback — visible immediately while primary loads, or on error */}
+      {/* Blurred fallback — visible immediately while primary loads, or on error.
+          Cached on disk so repeat visits show it instantly without a network hit. */}
       {showFallbackLayer && (
         <>
           <Image
             source={{ uri: fallbackUri! }}
             style={StyleSheet.absoluteFill}
-            resizeMode="cover"
+            contentFit="cover"
             blurRadius={12}
+            cachePolicy="memory-disk"
           />
           <View style={[StyleSheet.absoluteFill, styles.fallbackOverlay]} />
         </>
@@ -132,13 +126,17 @@ export function ThumbnailWithFallback({
       {/* Emoji last resort */}
       {showEmoji && <Text style={styles.emptyIcon}>📺</Text>}
 
-      {/* Primary image fades in on top once it has loaded */}
+      {/* Primary image — uses memory-disk cache so previously-seen thumbnails
+          load instantly on revisit. The transition fade only fires when the
+          image isn't already in cache (i.e. the very first load). */}
       {showPrimary && (
-        <Animated.Image
+        <Image
           source={{ uri: uri! }}
-          style={[StyleSheet.absoluteFill, { opacity: fadeAnim }]}
-          resizeMode="cover"
-          onLoad={handlePrimaryLoad}
+          style={StyleSheet.absoluteFill}
+          contentFit="cover"
+          cachePolicy="memory-disk"
+          transition={{ duration: 150 }}
+          onLoad={() => setPrimaryLoaded(true)}
           onError={() => setPrimaryError(true)}
         />
       )}
