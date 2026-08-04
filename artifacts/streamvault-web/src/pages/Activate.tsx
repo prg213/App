@@ -47,14 +47,13 @@ export default function Activate() {
   const [submitStage, setSubmitStage] = useState<'idle' | 'verifying' | 'saving'>('idle');
   const [toast, setToast] = useState<{ msg: string; kind: 'success' | 'error' } | null>(null);
 
-  // Form state
+  // Form state — connection type is always 'xtream'
   const [mac, setMac] = useState('');
   const [name, setName] = useState('');
-  const [type, setType] = useState<'xtream' | 'm3u'>('xtream');
-  const [host, setHost] = useState('');
+  const [hostSuffix, setHostSuffix] = useState(''); // user types domain:port; https:// is prepended
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [m3uUrl, setM3uUrl] = useState('');
+  const [telegramChannel, setTelegramChannel] = useState(''); // user types channel name; prefix prepended
 
   function showToast(msg: string, kind: 'success' | 'error') {
     setToast({ msg, kind });
@@ -85,14 +84,10 @@ export default function Activate() {
     setMac(grouped.slice(0, 17));
   }
 
-  // While typing: only lowercase the scheme so the user can still type "://"
-  function lowercaseScheme(val: string) {
-    return val.replace(/^([a-zA-Z][a-zA-Z0-9+\-.]*):/, (_, s) => `${s.toLowerCase()}:`);
-  }
 
-  // At submit time: lowercase scheme + strip trailing slash
-  function normaliseHost(val: string) {
-    return lowercaseScheme(val).replace(/\/+$/, '');
+  /** Builds the full host URL by prepending the hardcoded https:// scheme. */
+  function buildHost(suffix: string) {
+    return `https://${suffix.replace(/\/+$/, '')}`;
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -101,29 +96,30 @@ export default function Activate() {
 
     try {
       // Step 1: verify Xtream credentials before saving
-      if (type === 'xtream') {
-        setSubmitStage('verifying');
-        const vRes = await fetch(`${API}/verify-credentials`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ type, host: normaliseHost(host), username, password }),
-        });
-        const vData = await vRes.json();
-        if (!vData.ok) {
-          showToast(vData.error ?? 'Credential check failed', 'error');
-          return;
-        }
+      setSubmitStage('verifying');
+      const vRes = await fetch(`${API}/verify-credentials`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'xtream', host: buildHost(hostSuffix), username, password }),
+      });
+      const vData = await vRes.json();
+      if (!vData.ok) {
+        showToast(vData.error ?? 'Credential check failed', 'error');
+        return;
       }
 
       // Step 2: save the device
       setSubmitStage('saving');
-      const body: Record<string, string> = {
+      const body: Record<string, string | null> = {
         mac_address: mac.toUpperCase(),
-        type,
+        type: 'xtream',
         name,
-        ...(type === 'xtream'
-          ? { host: normaliseHost(host), username, password }
-          : { m3u_url: m3uUrl }),
+        host: buildHost(hostSuffix),
+        username,
+        password,
+        telegram_channel: telegramChannel.trim()
+          ? `https://t.me/s/${telegramChannel.trim().replace(/^@/, '')}`
+          : null,
       };
       const res = await fetch(`${API}/devices`, {
         method: 'POST',
@@ -132,7 +128,7 @@ export default function Activate() {
       });
       if (res.ok) {
         showToast('Device verified and activated ✓', 'success');
-        setMac(''); setName(''); setHost(''); setUsername(''); setPassword(''); setM3uUrl('');
+        setMac(''); setName(''); setHostSuffix(''); setUsername(''); setPassword(''); setTelegramChannel('');
         loadDevices();
       } else {
         const err = await res.json();
@@ -231,55 +227,59 @@ export default function Activate() {
                 />
               </Field>
 
-              <Field label="Device Name">
+              <Field label="Name">
                 <input
                   type="text"
                   value={name}
                   onChange={e => setName(e.target.value)}
-                  placeholder="Living Room TV"
+                  placeholder="Name"
                   required
                   className={inputClass}
                 />
               </Field>
 
-              <Field label="Connection Type">
-                <select
-                  value={type}
-                  onChange={e => setType(e.target.value as 'xtream' | 'm3u')}
-                  className={inputClass}
-                  required
-                >
-                  <option value="xtream">Xtream Codes</option>
-                  <option value="m3u">M3U URL</option>
-                </select>
+              <Field label="Host / Panel URL">
+                <div className="flex items-center bg-white/[0.04] border border-white/8 rounded-xl focus-within:border-primary/60 focus-within:bg-white/[0.06] transition-all overflow-hidden">
+                  <span className="pl-4 pr-1 text-sm text-white/40 select-none whitespace-nowrap">https://</span>
+                  <input
+                    type="text"
+                    value={hostSuffix}
+                    onChange={e => setHostSuffix(e.target.value.replace(/^https?:\/\//i, ''))}
+                    placeholder="provider.com:8080"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    required
+                    className="flex-1 bg-transparent text-white text-sm py-2.5 pr-4 outline-none placeholder:text-white/20"
+                  />
+                </div>
               </Field>
 
-              {type === 'xtream' ? (
-                <>
-                  <Field label="Host / Panel URL">
-                    <input type="text" value={host}
-                      onChange={e => setHost(lowercaseScheme(e.target.value))}
-                      placeholder="http://provider.com:8080"
-                      autoCapitalize="none"
-                      autoCorrect="off"
-                      spellCheck={false}
-                      required className={inputClass} />
-                  </Field>
-                  <Field label="Username">
-                    <input type="text" value={username} onChange={e => setUsername(e.target.value)}
-                      placeholder="username" required className={inputClass} />
-                  </Field>
-                  <Field label="Password">
-                    <input type="password" value={password} onChange={e => setPassword(e.target.value)}
-                      placeholder="••••••••" required className={inputClass} />
-                  </Field>
-                </>
-              ) : (
-                <Field label="M3U Playlist URL">
-                  <input type="url" value={m3uUrl} onChange={e => setM3uUrl(e.target.value)}
-                    placeholder="http://provider.com/get.php?..." required className={inputClass} />
-                </Field>
-              )}
+              <Field label="Username">
+                <input type="text" value={username} onChange={e => setUsername(e.target.value)}
+                  placeholder="username" required className={inputClass} />
+              </Field>
+
+              <Field label="Password">
+                <input type="password" value={password} onChange={e => setPassword(e.target.value)}
+                  placeholder="••••••••" required className={inputClass} />
+              </Field>
+
+              <Field label="Telegram Channel (optional)">
+                <div className="flex items-center bg-white/[0.04] border border-white/8 rounded-xl focus-within:border-primary/60 focus-within:bg-white/[0.06] transition-all overflow-hidden">
+                  <span className="pl-4 pr-1 text-sm text-white/40 select-none whitespace-nowrap">https://t.me/s/</span>
+                  <input
+                    type="text"
+                    value={telegramChannel}
+                    onChange={e => setTelegramChannel(e.target.value.replace(/^@/, '').replace(/\s/g, ''))}
+                    placeholder="channelname"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    className="flex-1 bg-transparent text-white text-sm py-2.5 pr-4 outline-none placeholder:text-white/20"
+                  />
+                </div>
+              </Field>
 
               <button
                 type="submit"

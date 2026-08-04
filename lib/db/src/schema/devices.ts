@@ -12,6 +12,7 @@ export const devicesTable = pgTable("devices", {
   username: text("username"),
   password: text("password"),
   m3uUrl: text("m3u_url"),
+  telegramChannel: text("telegram_channel"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

@@ -29,6 +29,7 @@ async function checkActivation(mac: string) {
     username?: string;
     password?: string;
     m3u_url?: string;
+    telegram_channel?: string | null;
   }>;
 }
 
@@ -65,6 +66,7 @@ export default function ActivationScreen() {
         username: data.username ?? null,
         password: data.password ?? null,
         m3uUrl: data.m3u_url ?? null,
+        telegramChannel: data.telegram_channel ?? null,
       };
       setActivated(creds);
     }

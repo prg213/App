@@ -45,6 +45,8 @@ export interface Credentials {
   username?: string | null;
   password?: string | null;
   m3uUrl?: string | null;
+  /** Full Telegram channel URL set by the admin, e.g. https://t.me/s/mychannel */
+  telegramChannel?: string | null;
 }
 
 export interface Channel {

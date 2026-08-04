@@ -35,6 +35,7 @@ router.get("/activate", async (req, res): Promise<void> => {
     username: device.username ?? null,
     password: device.password ?? null,
     m3u_url: device.m3uUrl ?? null,
+    telegram_channel: device.telegramChannel ?? null,
   });
 });
 

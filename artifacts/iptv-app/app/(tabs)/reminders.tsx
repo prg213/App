@@ -35,7 +35,7 @@ import { SIDEBAR_W } from './_layout';
 /** #152: minimum wait after a background URL-refresh failure before retrying (5 min). */
 const REFRESH_FAILURE_BACKOFF_MS = 5 * 60_000;
 
-const TELEGRAM_URL = 'https://t.me/s/twstqws';
+const TELEGRAM_FALLBACK_URL = 'https://t.me/s/twstqws';
 const CHROME_UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) ' +
   'AppleWebKit/537.36 (KHTML, like Gecko) ' +
@@ -755,7 +755,7 @@ export default function RemindersScreen() {
                 </View>
               )}
               <WebView
-                source={{ uri: TELEGRAM_URL }}
+                source={{ uri: credentials?.telegramChannel ?? TELEGRAM_FALLBACK_URL }}
                 style={{ flex: 1 }}
                 userAgent={CHROME_UA}
                 onLoadEnd={() => setTelegramLoading(false)}

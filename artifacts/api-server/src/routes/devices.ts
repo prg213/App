@@ -46,6 +46,7 @@ function formatDevice(d: typeof devicesTable.$inferSelect) {
     username: d.username ?? null,
     password: d.password ?? null,
     m3u_url: d.m3uUrl ?? null,
+    telegram_channel: d.telegramChannel ?? null,
     created_at: d.createdAt.toISOString(),
   };
 }
@@ -62,7 +63,7 @@ router.get("/devices", requireAuth, async (req: any, res): Promise<void> => {
 });
 
 router.post("/devices", requireAuth, async (req: any, res): Promise<void> => {
-  const { mac_address, name, type, host, username, password, m3u_url } = req.body;
+  const { mac_address, name, type, host, username, password, m3u_url, telegram_channel } = req.body;
   if (!mac_address || !type) {
     res.status(400).json({ error: "mac_address and type are required" });
     return;
@@ -78,6 +79,7 @@ router.post("/devices", requireAuth, async (req: any, res): Promise<void> => {
       username: username ?? null,
       password: password ?? null,
       m3uUrl: m3u_url ?? null,
+      telegramChannel: telegram_channel ?? null,
     })
     .returning();
   res.status(201).json(formatDevice(device));
