@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Modal,
@@ -8,35 +8,72 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { WebView } from 'react-native-webview';
+import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 
 interface Props {
   /**
-   * null  → modal is closed
-   * 'loading' → modal open, showing a full-screen spinner while the caller
-   *              fetches the real URL asynchronously
-   * string URL → modal open, rendering the video in a WebView
+   * null        → modal is closed
+   * 'loading'   → modal open, spinner while caller fetches IDs
+   * string[]    → ordered candidate video IDs; modal tries each on embed error
    */
-  url: string | null;
+  videoIds: string[] | 'loading' | null;
   onClose: () => void;
 }
 
 /**
- * Build a self-contained HTML page that embeds the YouTube player inside a
- * proper <iframe> with the correct `allow` attribute. Injecting HTML with
- * baseUrl="https://www.youtube.com" makes YouTube treat the embed as
- * originating from youtube.com, which avoids Error 153 ("Video player
- * configuration error") that occurs when the player is loaded as a bare URI
- * in a WebView (no real page origin → YouTube blocks playback).
+ * Build a YouTube IFrame Player API page for a single video ID.
+ *
+ * Uses the IFrame API (not a bare embed URL) so we get a proper `onError`
+ * callback. When the player fires an error (e.g. 150/152 = embedding disabled)
+ * the page posts a message to React Native so we can advance to the next
+ * candidate without closing the modal.
+ *
+ * baseUrl is set to https://www.youtube.com so the player sees a valid page
+ * origin — this fixes error 153 (player configuration error).
  */
-function buildEmbedHtml(url: string): string {
-  const videoMatch = url.match(
-    /(?:youtube\.com\/(?:watch\?v=|shorts\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/,
-  );
-  const src = videoMatch
-    ? `https://www.youtube.com/embed/${videoMatch[1]}?autoplay=1&rel=0&modestbranding=1&playsinline=1`
-    : url;
+function buildYtHtml(videoId: string): string {
+  return `<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:100%;height:100%;background:#000;overflow:hidden}
+  #player{position:absolute;top:0;left:0;width:100%;height:100%}
+</style>
+</head>
+<body>
+<div id="player"></div>
+<script>
+  var tag = document.createElement('script');
+  tag.src = 'https://www.youtube.com/iframe_api';
+  document.head.appendChild(tag);
 
+  function onYouTubeIframeAPIReady() {
+    new YT.Player('player', {
+      videoId: '${videoId}',
+      width: '100%',
+      height: '100%',
+      playerVars: { autoplay: 1, rel: 0, modestbranding: 1, playsinline: 1 },
+      events: {
+        onReady: function(e) { e.target.playVideo(); },
+        onError: function(e) {
+          try {
+            window.ReactNativeWebView.postMessage(
+              JSON.stringify({ type: 'yt-error', code: e.data, videoId: '${videoId}' })
+            );
+          } catch(_) {}
+        }
+      }
+    });
+  }
+</script>
+</body>
+</html>`;
+}
+
+/** For non-YouTube URLs (provider trailers) keep the original iframe approach. */
+function buildGenericHtml(url: string): string {
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -51,7 +88,7 @@ function buildEmbedHtml(url: string): string {
 <body>
 <div class="wrap">
   <iframe
-    src="${src}"
+    src="${url}"
     frameborder="0"
     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
     allowfullscreen>
@@ -61,19 +98,54 @@ function buildEmbedHtml(url: string): string {
 </html>`;
 }
 
-export function TrailerModal({ url, onClose }: Props) {
+const YT_ID_RE = /^[A-Za-z0-9_-]{11}$/;
+
+function isVideoId(s: string): boolean {
+  return YT_ID_RE.test(s);
+}
+
+export function TrailerModal({ videoIds, onClose }: Props) {
   const insets = useSafeAreaInsets();
+  const [idx, setIdx] = useState(0);
   const [webviewLoading, setWebviewLoading] = useState(true);
+  const webviewKey = useRef(0); // increment to force remount on ID change
 
-  // Reset spinner each time a new URL is set
+  // Reset to first candidate whenever a new set arrives
   useEffect(() => {
-    if (url && url !== 'loading') setWebviewLoading(true);
-  }, [url]);
+    setIdx(0);
+    setWebviewLoading(true);
+    webviewKey.current += 1;
+  }, [videoIds]);
 
-  if (!url) return null;
+  // Also reset loading state when we advance to next candidate
+  const advance = () => {
+    const ids = Array.isArray(videoIds) ? videoIds : [];
+    if (idx < ids.length - 1) {
+      setIdx((i) => i + 1);
+      setWebviewLoading(true);
+      webviewKey.current += 1;
+    }
+    // If no more candidates just stay — YouTube's own error UI is already shown.
+  };
 
-  const isFetching = url === 'loading';
-  const embedHtml = isFetching ? '' : buildEmbedHtml(url);
+  const handleMessage = (e: WebViewMessageEvent) => {
+    try {
+      const data = JSON.parse(e.nativeEvent.data);
+      if (data.type === 'yt-error') advance();
+    } catch (_) {}
+  };
+
+  if (!videoIds) return null;
+
+  const isFetching = videoIds === 'loading';
+  const ids = isFetching ? [] : videoIds;
+  const current = ids[idx] ?? null;
+
+  const html = current
+    ? isVideoId(current)
+      ? buildYtHtml(current)
+      : buildGenericHtml(current)
+    : '';
 
   return (
     <Modal
@@ -91,11 +163,13 @@ export function TrailerModal({ url, onClose }: Props) {
           </Pressable>
         </View>
 
-        {/* ── Loading state (TMDB fetch in progress) ── */}
-        {isFetching ? (
+        {/* ── Loading state (fetch in progress) ── */}
+        {isFetching || !current ? (
           <View style={styles.loaderFull}>
             <ActivityIndicator size="large" color="#3B82F6" />
-            <Text style={styles.loaderText}>Finding trailer…</Text>
+            <Text style={styles.loaderText}>
+              {isFetching ? 'Finding trailer…' : 'No trailer found'}
+            </Text>
           </View>
         ) : (
           <>
@@ -105,9 +179,11 @@ export function TrailerModal({ url, onClose }: Props) {
               </View>
             )}
             <WebView
-              source={{ html: embedHtml, baseUrl: 'https://www.youtube.com' }}
+              key={webviewKey.current}
+              source={{ html, baseUrl: 'https://www.youtube.com' }}
               style={styles.webview}
               onLoadEnd={() => setWebviewLoading(false)}
+              onMessage={handleMessage}
               allowsFullscreenVideo
               allowsInlineMediaPlayback
               mediaPlaybackRequiresUserAction={false}

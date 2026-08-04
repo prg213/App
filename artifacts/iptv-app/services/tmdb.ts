@@ -57,48 +57,129 @@ interface TmdbVideo {
   official: boolean;
 }
 
+const YT_SEARCH_UA =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) ' +
+  'AppleWebKit/537.36 (KHTML, like Gecko) ' +
+  'Chrome/125.0.0.0 Safari/537.36';
+
 /**
- * Scrape the first video ID from a YouTube search results page.
+ * Scrape the top N video IDs from a YouTube search results page.
  *
  * YouTube embeds all video data in the page HTML as a JSON blob. We fetch the
- * search page with a desktop Chrome UA (same as the WebView) and pull the first
- * `"videoId":"XXXXXXXXXXX"` match. This avoids showing the YouTube search UI
- * when TMDB has no trailer entry for a title.
+ * search page with a desktop Chrome UA and pull up to `max` unique video IDs.
+ * Returning multiple candidates lets the player auto-advance when a video has
+ * embedding disabled (error 150/152).
  */
-async function youtubeSearchVideoId(query: string): Promise<string | null> {
+async function youtubeSearchVideoIds(query: string, max = 6): Promise<string[]> {
   try {
     const url =
       `https://www.youtube.com/results?search_query=${encodeURIComponent(query + ' official trailer')}` +
       `&sp=EgIQAQ%3D%3D`; // filter: videos only
     const res = await fetch(url, {
-      headers: {
-        'User-Agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) ' +
-          'AppleWebKit/537.36 (KHTML, like Gecko) ' +
-          'Chrome/125.0.0.0 Safari/537.36',
-        'Accept-Language': 'en-US,en;q=0.9',
-      },
+      headers: { 'User-Agent': YT_SEARCH_UA, 'Accept-Language': 'en-US,en;q=0.9' },
       signal: AbortSignal.timeout(10_000),
     });
-    if (!res.ok) return null;
+    if (!res.ok) return [];
     const html = await res.text();
-    // YouTube inlines video IDs in multiple places; the first match is the top result.
-    const match = html.match(/"videoId":"([A-Za-z0-9_-]{11})"/);
-    return match?.[1] ?? null;
+    const seen = new Set<string>();
+    const ids: string[] = [];
+    for (const m of html.matchAll(/"videoId":"([A-Za-z0-9_-]{11})"/g)) {
+      if (!seen.has(m[1])) { seen.add(m[1]); ids.push(m[1]); }
+      if (ids.length >= max) break;
+    }
+    return ids;
   } catch {
-    return null;
+    return [];
   }
+}
+
+// Kept for backward compat — callers that only want one ID.
+async function youtubeSearchVideoId(query: string): Promise<string | null> {
+  const ids = await youtubeSearchVideoIds(query, 1);
+  return ids[0] ?? null;
+}
+
+// ── Candidates cache ──────────────────────────────────────────────────────────
+// Stores ordered arrays of YouTube video IDs so TrailerModal can retry on error.
+const candidatesCache = new Map<string, string[]>();
+
+/**
+ * Return an ordered list of YouTube video ID candidates for a title.
+ *
+ * Priority inside the list:
+ *   1. TMDB official Trailer(s) → any Trailer → official Teaser → any YouTube video
+ *   2. YouTube search scrape top results (up to 6)
+ *
+ * Having multiple candidates lets the player auto-advance when a video has
+ * embedding disabled (YouTube error 150/152) without closing the modal.
+ *
+ * Returns [] when every attempt fails or both keys are missing.
+ */
+export async function getTmdbTrailerCandidates(
+  title: string,
+  kind: 'movie' | 'tv',
+): Promise<string[]> {
+  if (!title) return [];
+
+  const cacheKey = `cands:${title}:${kind}`;
+  const cached = candidatesCache.get(cacheKey);
+  if (cached) return cached;
+
+  const seen = new Set<string>();
+  const push = (id: string) => { if (id && !seen.has(id)) { seen.add(id); candidates.push(id); } };
+  const candidates: string[] = [];
+
+  if (TMDB_KEY) {
+    try {
+      const searchRes = await fetch(
+        `${BASE}/search/${kind}?api_key=${TMDB_KEY}&query=${encodeURIComponent(title)}&page=1`,
+        { signal: AbortSignal.timeout(8_000) },
+      );
+      if (searchRes.ok) {
+        const searchData = (await searchRes.json()) as { results: TmdbSearchResult[] };
+        const tmdbId = searchData.results?.[0]?.id;
+        if (tmdbId) {
+          const videosRes = await fetch(
+            `${BASE}/${kind}/${tmdbId}/videos?api_key=${TMDB_KEY}`,
+            { signal: AbortSignal.timeout(8_000) },
+          );
+          if (videosRes.ok) {
+            const videosData = (await videosRes.json()) as { results: TmdbVideo[] };
+            const yt = videosData.results.filter((v) => v.site === 'YouTube');
+            // Ranked order: official trailer → any trailer → official teaser → rest
+            const ranked = [
+              ...yt.filter((v) => v.type === 'Trailer' && v.official),
+              ...yt.filter((v) => v.type === 'Trailer' && !v.official),
+              ...yt.filter((v) => v.type === 'Teaser' && v.official),
+              ...yt.filter((v) => v.type === 'Teaser' && !v.official),
+              ...yt.filter((v) => v.type !== 'Trailer' && v.type !== 'Teaser'),
+            ];
+            ranked.forEach((v) => push(v.key));
+          }
+        }
+      }
+    } catch {
+      // fall through to scrape
+    }
+  }
+
+  // YouTube scrape gives us more candidates when TMDB has none or few
+  const scraped = await youtubeSearchVideoIds(title, 6);
+  scraped.forEach(push);
+
+  if (candidatesCache.size >= CACHE_MAX) {
+    const oldest = candidatesCache.keys().next().value;
+    if (oldest !== undefined) candidatesCache.delete(oldest);
+  }
+  candidatesCache.set(cacheKey, candidates);
+  return candidates;
 }
 
 /**
  * Look up the official YouTube trailer video ID for a given title.
  *
- * Priority:
- *   1. TMDB official Trailer → any Trailer → official Teaser → any YouTube video
- *   2. YouTube search scrape (first result) — so callers always get a playable
- *      video ID instead of falling back to a search-results page.
- *
- * Returns null only when every attempt fails or the TMDB key is missing.
+ * @deprecated Prefer getTmdbTrailerCandidates — it returns multiple IDs so the
+ * player can auto-retry when a video has embedding disabled.
  */
 export async function getTmdbTrailerVideoId(
   title: string,
@@ -110,54 +191,8 @@ export async function getTmdbTrailerVideoId(
   const cached = cacheGet(cacheKey);
   if (cached.hit) return cached.value;
 
-  let videoId: string | null = null;
-
-  if (TMDB_KEY) {
-    try {
-      // ── 1. Search for the title on TMDB ────────────────────────────────────
-      const searchRes = await fetch(
-        `${BASE}/search/${kind}?api_key=${TMDB_KEY}&query=${encodeURIComponent(title)}&page=1`,
-        { signal: AbortSignal.timeout(8_000) },
-      );
-
-      if (searchRes.ok) {
-        const searchData = (await searchRes.json()) as { results: TmdbSearchResult[] };
-        const tmdbId = searchData.results?.[0]?.id;
-
-        if (tmdbId) {
-          // ── 2. Fetch videos for that title ───────────────────────────────────
-          const videosRes = await fetch(
-            `${BASE}/${kind}/${tmdbId}/videos?api_key=${TMDB_KEY}`,
-            { signal: AbortSignal.timeout(8_000) },
-          );
-
-          if (videosRes.ok) {
-            const videosData = (await videosRes.json()) as { results: TmdbVideo[] };
-            const yt = videosData.results.filter((v) => v.site === 'YouTube');
-
-            const best =
-              yt.find((v) => v.type === 'Trailer' && v.official) ??
-              yt.find((v) => v.type === 'Trailer') ??
-              yt.find((v) => v.type === 'Teaser' && v.official) ??
-              yt.find((v) => v.type === 'Teaser') ??
-              yt[0];
-
-            videoId = best?.key ?? null;
-          }
-        }
-      }
-    } catch {
-      // fall through to YouTube scrape
-    }
-  }
-
-  // ── 3. YouTube search scrape fallback ──────────────────────────────────────
-  // Runs when TMDB key is absent, the title isn't in TMDB yet, or TMDB has no
-  // video entries — ensures users always see a playing trailer, never a search page.
-  if (!videoId) {
-    videoId = await youtubeSearchVideoId(title);
-  }
-
+  const candidates = await getTmdbTrailerCandidates(title, kind);
+  const videoId = candidates[0] ?? null;
   cacheSet(cacheKey, videoId);
   return videoId;
 }
