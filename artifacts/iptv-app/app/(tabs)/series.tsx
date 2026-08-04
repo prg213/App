@@ -168,6 +168,12 @@ export default function SeriesScreen() {
   const [sortToast, setSortToast] = useState<string | null>(null);
   const [showScrollTop, setShowScrollTop] = useState(false);
   const gridRef = useRef<FlatList<Series>>(null);
+
+  // Scroll back to top whenever the category changes
+  useEffect(() => {
+    gridRef.current?.scrollToOffset({ offset: 0, animated: false });
+    setShowScrollTop(false);
+  }, [selectedCat]);
   const cycleSortOrder = useCallback(() => {
     setSortOrder((s) => {
       const next = s === 'newest' ? 'name' : s === 'name' ? 'rating' : 'newest';
