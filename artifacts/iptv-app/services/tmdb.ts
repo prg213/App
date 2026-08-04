@@ -15,33 +15,39 @@ const BASE = 'https://api.themoviedb.org/3';
 // A sentinel of null means "we looked and found nothing" — avoids re-fetching.
 const CACHE_MAX = 200;
 const trailerCache = new Map<string, string | null>();
+const posterCache = new Map<string, string | null>();
 
-function cacheGet(key: string): { hit: true; value: string | null } | { hit: false } {
-  if (!trailerCache.has(key)) return { hit: false };
+function lruGet(cache: Map<string, string | null>, key: string): { hit: true; value: string | null } | { hit: false } {
+  if (!cache.has(key)) return { hit: false };
   // Move to end (most-recently-used) to maintain LRU order.
-  const value = trailerCache.get(key)!;
-  trailerCache.delete(key);
-  trailerCache.set(key, value);
+  const value = cache.get(key)!;
+  cache.delete(key);
+  cache.set(key, value);
   return { hit: true, value };
 }
 
-function cacheSet(key: string, value: string | null): void {
-  if (trailerCache.has(key)) trailerCache.delete(key);
-  else if (trailerCache.size >= CACHE_MAX) {
-    // Evict the oldest entry (first key in insertion order).
-    const oldest = trailerCache.keys().next().value;
-    if (oldest !== undefined) trailerCache.delete(oldest);
+function lruSet(cache: Map<string, string | null>, key: string, value: string | null): void {
+  if (cache.has(key)) cache.delete(key);
+  else if (cache.size >= CACHE_MAX) {
+    const oldest = cache.keys().next().value;
+    if (oldest !== undefined) cache.delete(oldest);
   }
-  trailerCache.set(key, value);
+  cache.set(key, value);
 }
 
-/** Clear the trailer cache (call on logout or account switch). */
+// Keep the old names as thin wrappers so existing callers are unaffected.
+function cacheGet(key: string) { return lruGet(trailerCache, key); }
+function cacheSet(key: string, value: string | null) { lruSet(trailerCache, key, value); }
+
+/** Clear the trailer and poster caches (call on logout or account switch). */
 export function clearTmdbTrailerCache(): void {
   trailerCache.clear();
+  posterCache.clear();
 }
 
 interface TmdbSearchResult {
   id: number;
+  poster_path?: string | null;
 }
 
 interface TmdbVideo {
@@ -101,6 +107,44 @@ export async function getTmdbTrailerVideoId(
     const videoId = best?.key ?? null;
     cacheSet(cacheKey, videoId);
     return videoId;
+  } catch {
+    return null;
+  }
+}
+
+const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/w500';
+
+/**
+ * Look up the TMDB poster URL for a given title.
+ *
+ * Returns a full `https://image.tmdb.org/t/p/w500/{poster_path}` URL, or null
+ * when the key is missing, TMDB can't find the title, or the network fails.
+ * Results are cached with the same LRU strategy as the trailer lookup.
+ */
+export async function getTmdbPosterUrl(
+  title: string,
+  kind: 'movie' | 'tv',
+): Promise<string | null> {
+  if (!TMDB_KEY || !title) return null;
+
+  const cacheKey = `poster:${title}:${kind}`;
+  const cached = lruGet(posterCache, cacheKey);
+  if (cached.hit) return cached.value;
+
+  try {
+    const searchRes = await fetch(
+      `${BASE}/search/${kind}?api_key=${TMDB_KEY}&query=${encodeURIComponent(title)}&page=1`,
+      { signal: AbortSignal.timeout(8_000) },
+    );
+    if (!searchRes.ok) { lruSet(posterCache, cacheKey, null); return null; }
+
+    const searchData = (await searchRes.json()) as { results: TmdbSearchResult[] };
+    const result = searchData.results?.[0];
+    if (!result?.poster_path) { lruSet(posterCache, cacheKey, null); return null; }
+
+    const url = `${TMDB_IMAGE_BASE}${result.poster_path}`;
+    lruSet(posterCache, cacheKey, url);
+    return url;
   } catch {
     return null;
   }

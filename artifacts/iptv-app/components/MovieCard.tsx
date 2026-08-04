@@ -1,4 +1,4 @@
-import React, { memo } from 'react';
+import React, { memo, useEffect, useState } from 'react';
 import {
   Image,
   StyleSheet,
@@ -8,6 +8,7 @@ import {
 } from 'react-native';
 import { useColors } from '@/hooks/useColors';
 import { useIsOnline } from '@/hooks/useIsOnline';
+import { getTmdbPosterUrl } from '@/services/tmdb';
 
 function HighlightedText({ text, query, style, compact }: { text: string; query: string; style: any; compact?: boolean }) {
   const colors = useColors();
@@ -51,12 +52,25 @@ function MovieCardComponent({ name, cover, rating, genre, query = '', isFav, com
   const colors = useColors();
   const isOnline = useIsOnline();
 
+  const [tmdbPoster, setTmdbPoster] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (cover) { setTmdbPoster(null); return; }
+    let cancelled = false;
+    getTmdbPosterUrl(name, 'movie').then((url) => {
+      if (!cancelled) setTmdbPoster(url);
+    });
+    return () => { cancelled = true; };
+  }, [name, cover]);
+
+  const posterUri = cover || tmdbPoster;
+
   return (
     <TouchableOpacity style={[styles.card, compact && styles.cardCompact]} onPress={onPress} activeOpacity={0.75}>
       {/* Poster */}
       <View style={[styles.poster, { backgroundColor: colors.secondary }]}>
-        {cover ? (
-          <Image source={{ uri: cover }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+        {posterUri ? (
+          <Image source={{ uri: posterUri }} style={StyleSheet.absoluteFill} resizeMode="cover" />
         ) : (
           <View style={[StyleSheet.absoluteFill, styles.noImage]}>
             <Text style={[styles.noImageIcon, { color: colors.mutedForeground }]}>▶</Text>
