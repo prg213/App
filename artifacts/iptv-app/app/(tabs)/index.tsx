@@ -1184,7 +1184,7 @@ export default function LiveTVScreen() {
           </Pressable>
         )}
 
-        {/* Channel info bar — logo + name below the mini-player */}
+        {/* Channel info bar — logo + name + now-playing EPG title below the mini-player */}
         {playingChannel && (
           <View style={[styles.chInfoBar, { borderBottomColor: colors.border }]}>
             <View style={[styles.chInfoLogo, { backgroundColor: colors.secondary }]}>
@@ -1196,9 +1196,19 @@ export default function LiveTVScreen() {
                 </Text>
               )}
             </View>
-            <Text style={[styles.chInfoName, { color: colors.foreground }]} numberOfLines={1}>
-              {playingChannel.name}
-            </Text>
+            <View style={{ flex: 1, gap: 1 }}>
+              <Text style={[styles.chInfoName, { color: colors.foreground }]} numberOfLines={1}>
+                {playingChannel.name}
+              </Text>
+              {(() => {
+                const nowTitle = nowPlayingMap.get(playingChannel.epgId ?? playingChannel.id);
+                return nowTitle ? (
+                  <Text style={[styles.chInfoNow, { color: colors.primary }]} numberOfLines={1}>
+                    ▶ {nowTitle}
+                  </Text>
+                ) : null;
+              })()}
+            </View>
           </View>
         )}
 
@@ -1419,7 +1429,8 @@ const styles = StyleSheet.create({
   chInfoBar: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6, paddingHorizontal: 2, marginBottom: 6, borderBottomWidth: StyleSheet.hairlineWidth },
   chInfoLogo: { width: 28, height: 28, borderRadius: 4, overflow: 'hidden', justifyContent: 'center', alignItems: 'center' },
   chInfoInitials: { fontSize: 9, fontFamily: 'Inter_700Bold' },
-  chInfoName: { flex: 1, fontSize: 13, fontFamily: 'Inter_600SemiBold' },
+  chInfoName: { fontSize: 13, fontFamily: 'Inter_600SemiBold' },
+  chInfoNow: { fontSize: 10, fontFamily: 'Inter_400Regular' },
   videoWrap: {
     width: '100%',
     aspectRatio: 16 / 9,

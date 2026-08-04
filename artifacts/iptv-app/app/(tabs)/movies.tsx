@@ -309,6 +309,17 @@ export default function MoviesScreen() {
               </Text>
             </TouchableOpacity>
           )}
+          {isRecentSelected && (
+            <TouchableOpacity
+              style={[styles.refreshBtn, { backgroundColor: colors.secondary, borderColor: colors.border }]}
+              onPress={() => {
+                StorageService.clearHistory().then(() => queryClient.invalidateQueries({ queryKey: ['watch-history'] }));
+              }}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.refreshIcon, { color: '#EF4444', fontSize: 10 }]}>🗑</Text>
+            </TouchableOpacity>
+          )}
           <TouchableOpacity
             style={[styles.refreshBtn, { backgroundColor: colors.secondary, borderColor: colors.border }]}
             onPress={handleRefresh}
