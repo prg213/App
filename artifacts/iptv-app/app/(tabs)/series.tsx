@@ -426,7 +426,13 @@ export default function SeriesScreen() {
               />
             )}
             contentContainerStyle={[styles.grid, { paddingBottom: insets.bottom + 8 }]}
-            refreshControl={!isFavsSelected ? <RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={colors.primary} /> : undefined}
+            refreshControl={!isFavsSelected ? (
+              <RefreshControl
+                refreshing={isRefetching}
+                onRefresh={() => { refetch(); if (isRecentSelected) refreshWatchHistory(); }}
+                tintColor={colors.primary}
+              />
+            ) : undefined}
             showsVerticalScrollIndicator={false}
             initialNumToRender={16}
             maxToRenderPerBatch={16}
