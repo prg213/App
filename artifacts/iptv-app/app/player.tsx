@@ -107,6 +107,7 @@ function VodScrubber({
       if (durationRef.current <= 0 || !isFinite(durationRef.current)) return;
       setScrubFrac(clamp(e.x / Math.max(trackW.current, 1)));
       setScrubbing(true);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     })
     .onUpdate((e) => {
       if (durationRef.current <= 0) return;
@@ -116,6 +117,7 @@ function VodScrubber({
       const frac = clamp(e.x / Math.max(trackW.current, 1));
       setScrubbing(false);
       onSeekRef.current(frac * durationRef.current);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     })
     .onFinalize(() => {
       setScrubbing(false);
@@ -378,6 +380,8 @@ export default function PlayerScreen() {
   // hasErrorRef: mirrors hasError so the AppState handler can read it
   // synchronously without stale closure issues.
   const hasErrorRef = useRef(false);
+  // didAutoBackRef: prevents the VOD auto-back from firing more than once
+  const didAutoBackRef = useRef(false);
   useEffect(() => {
     if (isWeb) return;
     const sub = AppState.addEventListener('change', (state: AppStateStatus) => {
@@ -752,6 +756,11 @@ export default function PlayerScreen() {
       else if (knownDurationSecs > 0) setDuration(knownDurationSecs);
       const t = player.currentTime;
       if (typeof t === 'number' && t > 0) setCurrentTime(t);
+      // VOD auto-back: navigate when content finishes (within last 2 s of duration)
+      if (!isLive && d && isFinite(d) && d > 0 && typeof t === 'number' && d - t < 2 && !didAutoBackRef.current) {
+        didAutoBackRef.current = true;
+        handleBack();
+      }
     }, 500);
     return () => {
       subs.forEach((s) => s.remove());

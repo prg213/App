@@ -390,6 +390,7 @@ export default function SeriesScreen() {
                 cover={item.cover}
                 rating={item.rating}
                 genre={item.genre}
+                year={item.releaseDate ? item.releaseDate.slice(0, 4) : undefined}
                 query={search}
                 isFav={favSet.has(item.id)}
                 compact={isFavsSelected}

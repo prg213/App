@@ -140,7 +140,10 @@ function ChannelCell({
         )}
       </View>
       <View style={{ flex: 1, gap: 1 }}>
-        <Text style={[styles.chName, { color: colors.foreground }]} numberOfLines={1}>{channel.name}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+          <Text style={[styles.chName, { color: colors.foreground, flex: 1 }]} numberOfLines={1}>{channel.name}</Text>
+          {nowTitle && <View style={styles.chLiveDot} />}
+        </View>
         {nowTitle ? (
           <Text style={[styles.chNow, { color: '#3B82F6' }]} numberOfLines={1}>▶ {nowTitle}</Text>
         ) : nextTitle ? (
@@ -1215,6 +1218,7 @@ const styles = StyleSheet.create({
   chInitials: { fontSize: 10, fontFamily: 'Inter_700Bold' },
   chName: { fontSize: 11, fontFamily: 'Inter_500Medium', lineHeight: 14 },
   chNow:  { fontSize: 9,  fontFamily: 'Inter_400Regular', lineHeight: 12 },
+  chLiveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#EF4444' },
   timeHeader: { flexDirection: 'row', borderBottomWidth: StyleSheet.hairlineWidth },
   timeSlot: {
     width: SLOT_W, height: TIME_H, justifyContent: 'center',
