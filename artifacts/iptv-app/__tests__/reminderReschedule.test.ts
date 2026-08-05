@@ -18,6 +18,7 @@ jest.mock('../services/storage', () => ({
   StorageService: {
     getReminders: jest.fn(),
     saveReminders: jest.fn(),
+    getReminderLeadMins: jest.fn(async () => 5),
   },
 }));
 
