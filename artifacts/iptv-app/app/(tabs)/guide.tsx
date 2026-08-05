@@ -937,6 +937,10 @@ function FullGuide({
                 channelId: selected!.channel.id,
                 channelsJson: JSON.stringify(chList),
                 channelIndex: String(idx),
+                // Launched from Guide — no mini-player to collapse to on this
+                // tab, so pause the shared player and go back cleanly instead
+                // of leaving audio running in the background.
+                stopOnBack: 'true',
               },
             });
           }}

@@ -648,6 +648,9 @@ export default function RemindersScreen() {
         channelId: reminder.channelId,
         channelsJson: '[]',
         channelIndex: '-1',
+        // Launched from Reminders — no mini-player on this tab, so pause and
+        // go back cleanly rather than leaving audio running in the background.
+        stopOnBack: 'true',
       },
     });
   }, [router]);

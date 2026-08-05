@@ -418,6 +418,9 @@ export default function SearchScreen() {
         channelId: ch.id,
         channelsJson: JSON.stringify(chList),
         channelIndex: String(idx),
+        // Launched from Search — no mini-player on this tab, so pause and
+        // go back cleanly rather than leaving audio running in the background.
+        stopOnBack: 'true',
       },
     });
   };
