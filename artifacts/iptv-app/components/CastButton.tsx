@@ -7,16 +7,18 @@ interface Props {
 }
 
 /**
- * Cast button for iOS and web.
+ * Cast button for iOS only.
  *
  * iOS:  Uses expo-video's VideoAirPlayButton which renders the native
  *       AVRoutePickerView — tapping it opens the system AirPlay picker
  *       inline, no Alert or Control Centre trip needed (#24).
  *
- * Web:  Casting is not supported; returns null.
+ * Android / Web: AirPlay is not available; returns null.
+ *       VideoAirPlayButton is an iOS-native component and must NOT be
+ *       rendered on Android — it will crash the app.
  */
 export default function CastButton({ wrapStyle }: Props) {
-  if (Platform.OS === 'web') return null;
+  if (Platform.OS !== 'ios') return null;
 
   return (
     <View style={[styles.btn, wrapStyle]}>
