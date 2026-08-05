@@ -857,7 +857,9 @@ function FullGuide({
                     onFavPress={async () => {
                       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                       const updated = await StorageService.toggleFavorite({ id: ch.id, name: ch.name, logo: ch.logo ?? '', streamUrl: ch.streamUrl, groupTitle: ch.groupTitle ?? '', epgId: ch.epgId ?? '', streamId: ch.streamId ?? 0 });
+                      const isFaved = updated.some((f) => f.id === ch.id);
                       setGuideFavIds(new Set(updated.map((f) => f.id)));
+                      setGuideToast(isFaved ? `♥ ${ch.name} added to Favourites` : `${ch.name} removed from Favourites`);
                     }}
                   />
                 );

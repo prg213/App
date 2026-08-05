@@ -16,6 +16,7 @@ import {
   FlatList,
   Image,
   Keyboard,
+  RefreshControl,
   Platform,
   Pressable,
   ScrollView,
@@ -630,7 +631,7 @@ export default function LiveTVScreen() {
 
   const isFavsSelected = selectedCatId === FAVS_CAT_ID;
 
-  const { data: fetchedChannels = [], isLoading: channelsLoading } = useQuery<Channel[]>({
+  const { data: fetchedChannels = [], isLoading: channelsLoading, isRefetching, refetch } = useQuery<Channel[]>({
     queryKey: ['live-channels', selectedCatId, credentials],
     queryFn: async () => {
       if (!credentials) return [];
@@ -978,9 +979,11 @@ export default function LiveTVScreen() {
         {
           text: 'Show Info',
           onPress: () => {
+            const nowProg = nowPlayingMap.get(ch.epgId ?? ch.id);
             Alert.alert(
               ch.name,
               [
+                nowProg ? `▶ Now: ${nowProg.title}` : null,
                 `Category: ${ch.groupTitle || '—'}`,
                 `Stream ID: ${ch.id}`,
                 ch.epgId ? `EPG ID: ${ch.epgId}` : null,
@@ -1001,7 +1004,7 @@ export default function LiveTVScreen() {
         },
       ],
     );
-  }, [blockedChannels, setBlockedChannelIds]);
+  }, [blockedChannels, setBlockedChannelIds, nowPlayingMap]);
 
   const renderChannel = useCallback(({ item }: { item: Channel }) => (
     <ChannelRow
@@ -1170,6 +1173,13 @@ export default function LiveTVScreen() {
             removeClippedSubviews={false}
             keyboardShouldPersistTaps="handled"
             onScrollBeginDrag={Keyboard.dismiss}
+            refreshControl={
+              <RefreshControl
+                refreshing={isRefetching}
+                onRefresh={() => refetch()}
+                tintColor={colors.primary}
+              />
+            }
           />
         )}
       </View>
