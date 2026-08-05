@@ -129,6 +129,16 @@ export default function MoviesScreen() {
     }, [credentials, isXtream, isFavsSelected, isRecentSelected, refetch, refreshWatchHistory]),
   );
 
+  // Persist sort order across sessions
+  useEffect(() => {
+    import('@react-native-async-storage/async-storage').then(({ default: AS }) =>
+      AS.getItem('@pref_movie_sort').then((v) => {
+        if (v === 'name' || v === 'rating' || v === 'newest') setSortOrder(v as 'newest' | 'name' | 'rating');
+      })
+    );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Sort fetched movies newest first (highest stream_id = most recently added)
   const sortedMovies: Movie[] = useMemo(
     () => [...fetchedMovies].sort((a, b) => parseInt(b.id) - parseInt(a.id)),
@@ -184,6 +194,9 @@ export default function MoviesScreen() {
       const next = s === 'newest' ? 'name' : s === 'name' ? 'rating' : 'newest';
       const label = next === 'newest' ? 'Newest first' : next === 'name' ? 'Name A–Z' : 'Top rated';
       setSortToast(label);
+      import('@react-native-async-storage/async-storage').then(({ default: AS }) =>
+        AS.setItem('@pref_movie_sort', next)
+      );
       return next;
     });
   }, []);
@@ -240,8 +253,20 @@ export default function MoviesScreen() {
 
   const handleRefresh = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    queryClient.invalidateQueries({ queryKey: ['vod-categories'] });
-    queryClient.invalidateQueries({ queryKey: ['vod-streams'] });
+    if (isFavsSelected && credentials?.deviceMac) {
+      // Re-sync remote favourites when the user pull-to-refreshes in Favs mode
+      fetchRemoteFavourites(credentials.deviceMac).then(async (remote) => {
+        if (remote?.movies?.length) {
+          const local = await StorageService.getMovieFavorites();
+          const merged = mergeFavourites(remote.movies, local);
+          await StorageService.saveMovieFavorites(merged);
+          setFavMovies(merged);
+        }
+      }).catch(() => {});
+    } else {
+      queryClient.invalidateQueries({ queryKey: ['vod-categories'] });
+      queryClient.invalidateQueries({ queryKey: ['vod-streams'] });
+    }
   };
 
   if (!isXtream) {

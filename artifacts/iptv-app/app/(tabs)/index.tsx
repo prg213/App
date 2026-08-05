@@ -1206,9 +1206,18 @@ export default function LiveTVScreen() {
                   </View>
                 )}
                 {hasError && (
-                  <View style={styles.videoOverlay}>
+                  <Pressable
+                    style={styles.videoOverlay}
+                    onPress={() => {
+                      if (!selectedChannel) return;
+                      setHasError(false);
+                      setIsBuffering(true);
+                      try { player.replace(selectedChannel.streamUrl); player.play(); } catch {}
+                    }}
+                  >
                     <Text style={styles.errText}>Stream unavailable</Text>
-                  </View>
+                    <Text style={[styles.errText, { fontSize: 11, marginTop: 4, opacity: 0.7 }]}>Tap to retry</Text>
+                  </Pressable>
                 )}
                 {/* Expand hint — bottom-right corner; brightens on D-pad focus */}
                 {!isBuffering && !hasError && (

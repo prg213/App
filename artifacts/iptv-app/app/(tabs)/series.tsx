@@ -128,6 +128,16 @@ export default function SeriesScreen() {
     }, [credentials, isXtream, isFavsSelected, isRecentSelected, refetch, refreshWatchHistory]),
   );
 
+  // Persist sort order across sessions
+  useEffect(() => {
+    import('@react-native-async-storage/async-storage').then(({ default: AS }) =>
+      AS.getItem('@pref_series_sort').then((v) => {
+        if (v === 'name' || v === 'rating' || v === 'newest') setSortOrder(v as 'newest' | 'name' | 'rating');
+      })
+    );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Sort fetched series newest first (highest series_id = most recently added)
   const sortedSeries: Series[] = useMemo(
     () => [...fetchedSeries].sort((a, b) => parseInt(b.id) - parseInt(a.id)),
@@ -186,6 +196,9 @@ export default function SeriesScreen() {
       const next = s === 'newest' ? 'name' : s === 'name' ? 'rating' : 'newest';
       const label = next === 'newest' ? 'Newest first' : next === 'name' ? 'Name A–Z' : 'Top rated';
       setSortToast(label);
+      import('@react-native-async-storage/async-storage').then(({ default: AS }) =>
+        AS.setItem('@pref_series_sort', next)
+      );
       return next;
     });
   }, []);
@@ -236,8 +249,19 @@ export default function SeriesScreen() {
 
   const handleRefresh = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    queryClient.invalidateQueries({ queryKey: ['series-categories'] });
-    queryClient.invalidateQueries({ queryKey: ['series-list'] });
+    if (isFavsSelected && credentials?.deviceMac) {
+      fetchRemoteFavourites(credentials.deviceMac).then(async (remote) => {
+        if (remote?.series?.length) {
+          const local = await StorageService.getSeriesFavorites();
+          const merged = mergeFavourites(remote.series, local);
+          await StorageService.saveSeriesFavorites(merged);
+          setFavSeries(merged);
+        }
+      }).catch(() => {});
+    } else {
+      queryClient.invalidateQueries({ queryKey: ['series-categories'] });
+      queryClient.invalidateQueries({ queryKey: ['series-list'] });
+    }
   };
 
   if (!isXtream) {
