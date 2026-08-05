@@ -67,8 +67,10 @@ export default function SettingsScreen() {
   const [showLeadTimeSheet, setShowLeadTimeSheet] = useState(false);
   const [prefAudioLang, setPrefAudioLang] = useState<string>('');
   const [showAudioLangSheet, setShowAudioLangSheet] = useState(false);
+  const [prefSubtitleLang, setPrefSubtitleLang] = useState<string>('');
+  const [showSubtitleLangSheet, setShowSubtitleLangSheet] = useState(false);
 
-  const AUDIO_LANG_OPTIONS = [
+  const LANG_OPTIONS = [
     { value: '', label: 'Auto (stream default)' },
     { value: 'en', label: 'English' },
     { value: 'fr', label: 'French' },
@@ -82,10 +84,12 @@ export default function SettingsScreen() {
     { value: 'pl', label: 'Polish' },
     { value: 'nl', label: 'Dutch' },
   ];
+  const AUDIO_LANG_OPTIONS = LANG_OPTIONS;
 
   useEffect(() => {
     StorageService.getReminderLeadMins().then((v) => setReminderLeadMins(v as 5 | 10 | 15));
     StorageService.getPrefAudioLanguage().then((v) => setPrefAudioLang(v ?? ''));
+    StorageService.getPrefSubtitleLang().then((v) => setPrefSubtitleLang(v ?? ''));
   }, []);
 
   const handleLeadTimeSelect = async (value: 5 | 10 | 15) => {
@@ -488,17 +492,30 @@ export default function SettingsScreen() {
         <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>PLAYBACK</Text>
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <TouchableOpacity
-            style={[styles.actionRow, { borderBottomWidth: 0 }]}
+            style={[styles.actionRow, { borderBottomColor: colors.border }]}
             onPress={() => setShowAudioLangSheet(true)}
             activeOpacity={0.7}
           >
             <View style={{ flex: 1 }}>
               <Text style={[styles.actionTitle, { color: colors.foreground }]}>Preferred Audio Language</Text>
               <Text style={[styles.actionSub, { color: colors.mutedForeground }]}>
-                {AUDIO_LANG_OPTIONS.find((o) => o.value === prefAudioLang)?.label ?? 'Auto (stream default)'}
+                {LANG_OPTIONS.find((o) => o.value === prefAudioLang)?.label ?? 'Auto (stream default)'}
               </Text>
             </View>
             <Text style={{ color: colors.mutedForeground, fontSize: 18 }}>🔊</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.actionRow, { borderBottomWidth: 0 }]}
+            onPress={() => setShowSubtitleLangSheet(true)}
+            activeOpacity={0.7}
+          >
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.actionTitle, { color: colors.foreground }]}>Preferred Subtitle Language</Text>
+              <Text style={[styles.actionSub, { color: colors.mutedForeground }]}>
+                {LANG_OPTIONS.find((o) => o.value === prefSubtitleLang)?.label ?? 'Auto (stream default)'}
+              </Text>
+            </View>
+            <Text style={{ color: colors.mutedForeground, fontSize: 18 }}>CC</Text>
           </TouchableOpacity>
         </View>
 
@@ -657,6 +674,40 @@ export default function SettingsScreen() {
             >
               <Text style={[styles.sheetRowText, { color: colors.foreground }]}>{opt.label}</Text>
               {prefAudioLang === opt.value && <Text style={{ color: '#3B82F6', fontSize: 18 }}>✓</Text>}
+            </TouchableOpacity>
+          ))}
+        </View>
+      </Modal>
+
+      {/* ── Preferred Subtitle Language picker sheet ── */}
+      <Modal
+        visible={showSubtitleLangSheet}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowSubtitleLangSheet(false)}
+      >
+        <TouchableOpacity
+          style={styles.sheetBackdrop}
+          activeOpacity={1}
+          onPress={() => setShowSubtitleLangSheet(false)}
+        />
+        <View style={[styles.sheet, { backgroundColor: colors.card, paddingBottom: insets.bottom + 16 }]}>
+          <View style={styles.sheetHandle} />
+          <Text style={[styles.sheetTitle, { color: colors.mutedForeground }]}>PREFERRED SUBTITLE LANGUAGE</Text>
+          {LANG_OPTIONS.map((opt) => (
+            <TouchableOpacity
+              key={opt.value}
+              style={[styles.sheetRow, { borderBottomColor: colors.border }]}
+              onPress={async () => {
+                Haptics.selectionAsync();
+                await StorageService.setPrefSubtitleLang(opt.value);
+                setPrefSubtitleLang(opt.value);
+                setShowSubtitleLangSheet(false);
+              }}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.sheetRowText, { color: colors.foreground }]}>{opt.label}</Text>
+              {prefSubtitleLang === opt.value && <Text style={{ color: '#3B82F6', fontSize: 18 }}>✓</Text>}
             </TouchableOpacity>
           ))}
         </View>

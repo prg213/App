@@ -244,7 +244,9 @@ export default function SeriesScreen() {
       cast: item.cast,
       director: item.director,
     });
+    const wasAdded = updated.some((f) => f.id === item.id);
     setFavSeries(updated);
+    setSortToast(wasAdded ? `♥ Added to Favourites` : `Removed from Favourites`);
     setFavSyncState('syncing');
     // #22/#23: show indicator + queue for retry if server rejects
     pushRemoteSeries(deviceMac, updated).then((ok) => {
@@ -438,6 +440,7 @@ export default function SeriesScreen() {
                   const isFav = favSet.has(item.id);
                   Alert.alert(item.name, undefined, [
                     { text: isFav ? '♥ Remove Favourite' : '♡ Add to Favourites', onPress: () => handleToggleFav(item) },
+                    ...(isFav ? [{ text: '⬆ Move to Top', onPress: async () => { const updated = await StorageService.moveSeriesToTop(item.id); if (updated) setFavSeries(updated); } }] : []),
                     { text: '📺 Open Details', onPress: () => router.push({ pathname: '/series/[id]', params: { id: item.id, title: item.name, cover: item.cover ?? '', rating: item.rating ?? '', genre: item.genre ?? '', plot: item.plot ?? '', cast: item.cast ?? '', director: item.director ?? '' } }) },
                     ...(isRecentSelected ? [{ text: '🗑 Remove from History', style: 'destructive' as const, onPress: () => { StorageService.removeFromHistory(item.id).then(refreshWatchHistory); } }] : []),
                     { text: 'Cancel', style: 'cancel' },

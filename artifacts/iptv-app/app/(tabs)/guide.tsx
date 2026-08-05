@@ -492,6 +492,13 @@ function FullGuide({
   const [guideToast, setGuideToast] = useState<string | null>(null);
   const [guideReminderIds, setGuideReminderIds] = useState<Set<string>>(new Set());
   const [chFilter, setChFilter] = useState('');
+  const [debouncedChFilter, setDebouncedChFilter] = useState('');
+
+  // Debounce chFilter so rapid keystrokes don't thrash visibleChannels useMemo
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedChFilter(chFilter), 180);
+    return () => clearTimeout(t);
+  }, [chFilter]);
 
   // Load current reminder IDs so ProgramCells can show 🔔 badge
   const refreshGuideReminderIds = useCallback(() => {
@@ -595,9 +602,9 @@ function FullGuide({
 
   // Channel filter — applied on top of the category filter (normalised to handle accented names)
   const visibleChannels = useMemo(() => {
-    const q = normaliseStr(chFilter.trim());
+    const q = normaliseStr(debouncedChFilter.trim());
     return q ? channels.filter((c) => normaliseStr(c.name).includes(q)) : channels;
-  }, [channels, chFilter]);
+  }, [channels, debouncedChFilter]);
 
   // Height of the full programme column — used for the "Now" indicator line
   const nowLineH = visibleChannels.length * ROW_H;

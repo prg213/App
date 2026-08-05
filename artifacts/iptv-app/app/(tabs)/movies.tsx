@@ -249,7 +249,9 @@ export default function MoviesScreen() {
       releaseDate: item.releaseDate,
       duration: item.duration,
     });
+    const wasAdded = updated.some((f) => f.id === item.id);
     setFavMovies(updated);
+    setSortToast(wasAdded ? `♥ Added to Favourites` : `Removed from Favourites`);
     setFavSyncState('syncing');
     // #22/#23: show indicator + queue for retry if server rejects
     pushRemoteMovies(deviceMac, updated).then((ok) => {

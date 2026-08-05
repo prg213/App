@@ -170,6 +170,16 @@ export const StorageService = {
     return updated;
   },
 
+  async moveSeriesToTop(id: string): Promise<FavoriteSeries[] | null> {
+    const current = await StorageService.getSeriesFavorites();
+    const idx = current.findIndex((f) => f.id === id);
+    if (idx <= 0) return null;
+    const item = current[idx];
+    const updated = [item, ...current.slice(0, idx), ...current.slice(idx + 1)];
+    await AsyncStorage.setItem(KEYS.SERIES_FAVORITES, JSON.stringify(updated));
+    return updated;
+  },
+
   // ── Series Favourites (AsyncStorage) ──────────────────────────────────────
 
   async getSeriesFavorites(): Promise<FavoriteSeries[]> {
