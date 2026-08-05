@@ -49,7 +49,7 @@ interface MovieCardProps {
   onTrailerPress?: () => void;
 }
 
-function MovieCardComponent({ name, cover, rating, genre, query = '', isFav, compact, onPress, onFavPress, onLongPress, onTrailerPress }: MovieCardProps) {
+function MovieCardComponent({ name, cover, rating, genre, year, query = '', isFav, compact, onPress, onFavPress, onLongPress, onTrailerPress }: MovieCardProps) {
   const colors = useColors();
   const isOnline = useIsOnline();
 
@@ -68,7 +68,7 @@ function MovieCardComponent({ name, cover, rating, genre, query = '', isFav, com
   const posterUri = cover || tmdbPoster;
 
   return (
-    <TouchableOpacity style={[styles.card, compact && styles.cardCompact]} onPress={onPress} onLongPress={onLongPress} delayLongPress={500} activeOpacity={0.75} accessibilityLabel={title} accessibilityRole="button">
+    <TouchableOpacity style={[styles.card, compact && styles.cardCompact]} onPress={onPress} onLongPress={onLongPress} delayLongPress={500} activeOpacity={0.75} accessibilityLabel={name} accessibilityRole="button">
       {/* Poster */}
       <View style={[styles.poster, { backgroundColor: colors.secondary }]}>
         {posterUri ? (

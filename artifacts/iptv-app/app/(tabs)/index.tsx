@@ -131,6 +131,7 @@ const ChannelRow = React.memo(function ChannelRow({
   colors,
   onPress,
   onHeartPress,
+  onLongPress,
   hideHeart = false,
 }: {
   channel: Channel;
