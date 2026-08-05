@@ -123,15 +123,22 @@ function TimeHeader({ dayStartMs, colors }: { dayStartMs: number; colors: any })
 // ─── Channel cell ─────────────────────────────────────────────────────────────
 
 function ChannelCell({
-  channel, nowTitle, nextTitle, colors,
+  channel, nowTitle, nextTitle, colors, isFav, onFavPress,
 }: {
   channel: Channel;
   nowTitle?: string | null;
   nextTitle?: string | null;
   colors: any;
+  isFav?: boolean;
+  onFavPress?: () => void;
 }) {
   return (
-    <View style={[styles.channelCell, { borderBottomColor: colors.border, backgroundColor: colors.card }]}>
+    <TouchableOpacity
+      onLongPress={onFavPress}
+      delayLongPress={400}
+      activeOpacity={0.85}
+      style={[styles.channelCell, { borderBottomColor: colors.border, backgroundColor: colors.card }]}
+    >
       <View style={[styles.chLogo, { backgroundColor: colors.secondary }]}>
         {channel.logo ? (
           <Image source={{ uri: channel.logo }} style={StyleSheet.absoluteFill} resizeMode="contain" />
@@ -152,7 +159,8 @@ function ChannelCell({
           <Text style={[styles.chNow, { color: colors.mutedForeground }]} numberOfLines={1}>Next: {nextTitle}</Text>
         ) : null}
       </View>
-    </View>
+      {isFav && <Text style={{ position: 'absolute', right: 4, top: 4, fontSize: 10, color: '#EF4444' }}>♥</Text>}
+    </TouchableOpacity>
   );
 }
 
@@ -661,6 +669,15 @@ function FullGuide({
           </TouchableOpacity>
         )}
 
+        {/* Refresh EPG button */}
+        <TouchableOpacity
+          style={[styles.todayBtn, { backgroundColor: colors.secondary, borderColor: colors.border }]}
+          onPress={() => refetchEpg()}
+          activeOpacity={0.7}
+        >
+          <Text style={[styles.todayBtnText, { color: colors.mutedForeground }]}>↺</Text>
+        </TouchableOpacity>
+
         {/* Jump-to-now button — always visible so the user can navigate back to Today */}
         <TouchableOpacity
           style={[styles.todayBtn, { backgroundColor: colors.secondary, borderColor: colors.border }]}
@@ -836,6 +853,12 @@ function FullGuide({
                     nowTitle={nowIdx >= 0 ? progs[nowIdx].title : null}
                     nextTitle={nowIdx >= 0 && progs[nowIdx + 1] ? progs[nowIdx + 1].title : null}
                     colors={colors}
+                    isFav={guideFavIds.has(ch.id)}
+                    onFavPress={async () => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                      const updated = await StorageService.toggleFavorite({ id: ch.id, name: ch.name, logo: ch.logo ?? '', streamUrl: ch.streamUrl, groupTitle: ch.groupTitle ?? '', epgId: ch.epgId ?? '', streamId: ch.streamId ?? 0 });
+                      setGuideFavIds(new Set(updated.map((f) => f.id)));
+                    }}
                   />
                 );
               })}
@@ -956,6 +979,11 @@ export default function GuideScreen() {
   const [selectedCat, setSelectedCat] = useState<string | null>(null);
   // Channel to auto-highlight after notification tap
   const [pendingHighlightId, setPendingHighlightId] = useState<string | null>(notifChannelId ?? null);
+  // Favourite channels — loaded once so the guide can show ♥ badge and toggle
+  const [guideFavIds, setGuideFavIds] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    StorageService.getFavorites().then((favs) => setGuideFavIds(new Set(favs.map((f) => f.id))));
+  }, []);
 
   // #128: When the Guide tab comes back into focus (e.g. user just cancelled a
   // reminder from the Reminders screen), broadcast reminders:changed so any

@@ -342,6 +342,11 @@ export default function MoviesScreen() {
             onChangeText={(t) => { setSearch(t); gridRef.current?.scrollToOffset({ offset: 0, animated: false }); }}
             clearButtonMode="while-editing"
           />
+          {search.trim() && !isFavsSelected && !isRecentSelected && (
+            <Text style={[styles.resultCount, { color: colors.mutedForeground }]}>
+              {filtered.length} result{filtered.length === 1 ? '' : 's'}
+            </Text>
+          )}
           {!isFavsSelected && !isRecentSelected && (
             <TouchableOpacity
               style={[styles.refreshBtn, { backgroundColor: colors.secondary, borderColor: colors.border }]}
@@ -511,6 +516,7 @@ const styles = StyleSheet.create({
   searchInput: { flex: 1, borderRadius: 8, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 8, fontSize: 13, fontFamily: 'Inter_400Regular', textAlignVertical: 'center', height: 38 },
   refreshBtn: { width: 34, height: 34, borderRadius: 8, borderWidth: 1, justifyContent: 'center', alignItems: 'center' },
   refreshIcon: { fontSize: 17, fontWeight: '600' },
+  resultCount: { fontSize: 11, marginHorizontal: 4, flexShrink: 1 },
   grid: { paddingHorizontal: 8, paddingTop: 8 },
   empty: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 8 },
   emptyTitle: { fontSize: 15, fontFamily: 'Inter_500Medium' },
