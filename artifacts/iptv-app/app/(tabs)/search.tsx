@@ -13,7 +13,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import { Alert } from 'react-native';
+import { Alert, DeviceEventEmitter } from 'react-native';
 import { TrailerModal } from '@/components/TrailerModal';
 import { getTmdbTrailerCandidates } from '@/services/tmdb';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -229,6 +229,14 @@ export default function SearchScreen() {
     StorageService.getPrefSearchType().then((saved) => setSearchType(saved));
     StorageService.getPrefSearchQuery().then((saved) => { if (saved) setQuery(saved); });
     StorageService.getRecentSearches().then(setRecentSearches);
+  }, []);
+
+  // Refresh recent searches instantly when the user clears them from Settings
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener('search-history:cleared', () => {
+      setRecentSearches([]);
+    });
+    return () => sub.remove();
   }, []);
 
   const handleSubmitSearch = () => {

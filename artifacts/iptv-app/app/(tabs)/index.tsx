@@ -467,6 +467,18 @@ export default function LiveTVScreen() {
   const lastWatchedUrlRef = useRef(lastWatchedUrl);
   useEffect(() => { lastWatchedUrlRef.current = lastWatchedUrl; }, [lastWatchedUrl]);
 
+  // When the fullscreen player switches channels (prev/next), keep mini-player in sync
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener('channel:switched', ({ url }: { url: string }) => {
+      const found = channelsRef.current.find((ch) => ch.streamUrl === url);
+      if (found) {
+        setSelectedChannel(found);
+        setPlayingChannel(found);
+      }
+    });
+    return () => sub.remove();
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
       if (!isWeb && player) {

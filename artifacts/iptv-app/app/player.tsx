@@ -849,6 +849,8 @@ export default function PlayerScreen() {
     setActiveLogo(entry.logo ?? '');
     setActiveEpgId(entry.epgId);
     setActiveUrl(entry.url);   // keeps cast hook in sync with the new stream
+    // Notify the Live TV tab so its mini-player title/logo stay in sync
+    { const { DeviceEventEmitter } = require('react-native'); DeviceEventEmitter.emit('channel:switched', { url: entry.url, logo: entry.logo ?? '', title: entry.title }); }
     activeUrlRef.current = entry.url; // keep ref in sync so reconnect targets the right channel
     setIsBuffering(true);
     setHasError(false);

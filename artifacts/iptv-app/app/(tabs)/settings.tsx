@@ -65,9 +65,27 @@ export default function SettingsScreen() {
   const [showCommunity, setShowCommunity] = useState(false);
   const [reminderLeadMins, setReminderLeadMins] = useState<5 | 10 | 15>(5);
   const [showLeadTimeSheet, setShowLeadTimeSheet] = useState(false);
+  const [prefAudioLang, setPrefAudioLang] = useState<string>('');
+  const [showAudioLangSheet, setShowAudioLangSheet] = useState(false);
+
+  const AUDIO_LANG_OPTIONS = [
+    { value: '', label: 'Auto (stream default)' },
+    { value: 'en', label: 'English' },
+    { value: 'fr', label: 'French' },
+    { value: 'de', label: 'German' },
+    { value: 'es', label: 'Spanish' },
+    { value: 'ar', label: 'Arabic' },
+    { value: 'it', label: 'Italian' },
+    { value: 'pt', label: 'Portuguese' },
+    { value: 'ru', label: 'Russian' },
+    { value: 'tr', label: 'Turkish' },
+    { value: 'pl', label: 'Polish' },
+    { value: 'nl', label: 'Dutch' },
+  ];
 
   useEffect(() => {
     StorageService.getReminderLeadMins().then((v) => setReminderLeadMins(v as 5 | 10 | 15));
+    StorageService.getPrefAudioLanguage().then((v) => setPrefAudioLang(v ?? ''));
   }, []);
 
   const handleLeadTimeSelect = async (value: 5 | 10 | 15) => {
@@ -458,11 +476,30 @@ export default function SettingsScreen() {
                 {
                   text: 'Clear', style: 'destructive', onPress: () => {
                     StorageService.clearRecentSearches();
+                    DeviceEventEmitter.emit('search-history:cleared');
                   }
                 },
               ]);
             }}
           />
+        </View>
+
+        {/* ── Playback ── */}
+        <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>PLAYBACK</Text>
+        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <TouchableOpacity
+            style={[styles.actionRow, { borderBottomWidth: 0 }]}
+            onPress={() => setShowAudioLangSheet(true)}
+            activeOpacity={0.7}
+          >
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.actionTitle, { color: colors.foreground }]}>Preferred Audio Language</Text>
+              <Text style={[styles.actionSub, { color: colors.mutedForeground }]}>
+                {AUDIO_LANG_OPTIONS.find((o) => o.value === prefAudioLang)?.label ?? 'Auto (stream default)'}
+              </Text>
+            </View>
+            <Text style={{ color: colors.mutedForeground, fontSize: 18 }}>🔊</Text>
+          </TouchableOpacity>
         </View>
 
         {/* ── Notifications ── */}
@@ -590,6 +627,40 @@ export default function SettingsScreen() {
           </TouchableOpacity>
         </View>
       </ScrollView>
+
+      {/* ── Preferred Audio Language picker sheet ── */}
+      <Modal
+        visible={showAudioLangSheet}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowAudioLangSheet(false)}
+      >
+        <TouchableOpacity
+          style={styles.sheetBackdrop}
+          activeOpacity={1}
+          onPress={() => setShowAudioLangSheet(false)}
+        />
+        <View style={[styles.sheet, { backgroundColor: colors.card, paddingBottom: insets.bottom + 16 }]}>
+          <View style={styles.sheetHandle} />
+          <Text style={[styles.sheetTitle, { color: colors.mutedForeground }]}>PREFERRED AUDIO LANGUAGE</Text>
+          {AUDIO_LANG_OPTIONS.map((opt) => (
+            <TouchableOpacity
+              key={opt.value}
+              style={[styles.sheetRow, { borderBottomColor: colors.border }]}
+              onPress={async () => {
+                Haptics.selectionAsync();
+                await StorageService.setPrefAudioLanguage(opt.value);
+                setPrefAudioLang(opt.value);
+                setShowAudioLangSheet(false);
+              }}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.sheetRowText, { color: colors.foreground }]}>{opt.label}</Text>
+              {prefAudioLang === opt.value && <Text style={{ color: '#3B82F6', fontSize: 18 }}>✓</Text>}
+            </TouchableOpacity>
+          ))}
+        </View>
+      </Modal>
 
       {/* ── Reminder lead time picker sheet ── */}
       <Modal
