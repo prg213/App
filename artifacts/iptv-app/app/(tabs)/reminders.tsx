@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
+  AppState,
   DeviceEventEmitter,
   FlatList,
   Image,
@@ -290,6 +291,17 @@ export default function RemindersScreen() {
         );
         setReminders(sorted);
       });
+    });
+    return () => sub.remove();
+  }, []);
+
+  // #142: reload lead-time when the app returns from background while the
+  // Reminders tab is already focused — useFocusEffect doesn't fire in that case.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        StorageService.getReminderLeadMins().then(setReminderLeadMins);
+      }
     });
     return () => sub.remove();
   }, []);

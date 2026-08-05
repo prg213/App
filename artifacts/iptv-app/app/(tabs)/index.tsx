@@ -751,6 +751,17 @@ export default function LiveTVScreen() {
     });
   }, []));
 
+  // #125: keep miniReminderIds in sync when a reminder is set/removed from another
+  // screen (e.g. TV Guide) while the Live TV tab is already focused.
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener('reminders:changed', () => {
+      StorageService.getReminders().then((all) => {
+        setMiniReminderIds(new Set(all.map((r) => r.id)));
+      });
+    });
+    return () => sub.remove();
+  }, []);
+
   const handleToggleMiniReminder = useCallback(async (prog: EpgProgram) => {
     if (!selectedChannel) return;
     const reminderId = `${selectedChannel.id}_${prog.start.toISOString()}`;
