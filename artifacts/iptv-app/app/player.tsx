@@ -369,9 +369,16 @@ export default function PlayerScreen() {
 
   // Load the saved audio + subtitle language preferences on mount so the chip
   // labels are correct as soon as the settings tray is opened.
+  // Also restore the last-used playback speed.
   useEffect(() => {
     StorageService.getPrefAudioLanguage().then(setPrefAudioLang).catch(() => {});
     StorageService.getPrefSubtitleLang().then(setPrefSubtitleLang).catch(() => {}); // #43
+    import('@react-native-async-storage/async-storage').then(({ default: AS }) =>
+      AS.getItem('@pref_playback_speed').then((v) => {
+        const n = v ? parseFloat(v) : NaN;
+        if (!isNaN(n) && n > 0) setSpeed(n);
+      })
+    ).catch(() => {});
   }, []);
 
   // ── AppState — background suppression (#31) + foreground retry (#30) ─────
@@ -1614,7 +1621,13 @@ export default function PlayerScreen() {
                 key={s}
                 focusable
                 style={({ focused }) => [styles.chip, speed === s && styles.chipActive, focused && styles.chipFocus]}
-                onPress={() => { setSpeed(s); player.playbackRate = s; }}
+                onPress={() => {
+                  setSpeed(s);
+                  player.playbackRate = s;
+                  import('@react-native-async-storage/async-storage').then(({ default: AS }) =>
+                    AS.setItem('@pref_playback_speed', String(s))
+                  ).catch(() => {});
+                }}
               >
                 <Text style={[styles.chipText, speed === s && styles.chipTextActive]}>
                   {s === 1 ? '1× Normal' : `${s}×`}

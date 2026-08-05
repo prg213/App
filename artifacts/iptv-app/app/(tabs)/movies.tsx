@@ -462,14 +462,14 @@ export default function MoviesScreen() {
                   router.push({ pathname: '/movie/[id]', params: { id: item.id, title: item.name, cover: item.cover ?? '', genre: item.genre ?? '', rating: item.rating ?? '', plot: item.plot ?? '', cast: item.cast ?? '', director: item.director ?? '', releaseDate: item.releaseDate ?? '', duration: item.duration ?? '', ext: item.containerExtension, ...(histEntry?.position ? { resumePosition: String(Math.floor(histEntry.position)) } : {}) } });
                 }}
                 onTrailerPress={() => {
+                  // #124: prefer the provider's own trailer URL; only fall back to TMDB when absent
+                  const providerUrl = item.trailerUrl
+                    ? (item.trailerUrl.startsWith('http') ? item.trailerUrl : `https://www.youtube.com/watch?v=${item.trailerUrl}`)
+                    : null;
+                  if (providerUrl) { setTrailerIds([providerUrl]); return; }
                   setTrailerIds('loading');
                   getTmdbTrailerCandidates(item.name, 'movie').then((ids) => {
-                    if (ids.length > 0) { setTrailerIds(ids); return; }
-                    // Fall back to provider URL as a single-item list
-                    const providerUrl = item.trailerUrl
-                      ? (item.trailerUrl.startsWith('http') ? item.trailerUrl : `https://www.youtube.com/watch?v=${item.trailerUrl}`)
-                      : null;
-                    setTrailerIds(providerUrl ? [providerUrl] : null);
+                    setTrailerIds(ids.length > 0 ? ids : null);
                   });
                 }}
               />

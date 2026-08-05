@@ -457,14 +457,14 @@ export default function SeriesScreen() {
                   router.push({ pathname: '/series/[id]', params: { id: item.id, title: item.name, cover: item.cover ?? '', rating: item.rating ?? '', genre: item.genre ?? '', plot: item.plot ?? '', cast: item.cast ?? '', director: item.director ?? '', ...(histEntry ? { resumeEpisodeId: histEntry.id, resumePosition: String(Math.floor(histEntry.position ?? 0)) } : {}) } });
                 }}
                 onTrailerPress={() => {
+                  // #124: prefer the provider's own trailer URL; only fall back to TMDB when absent
+                  const providerUrl = item.trailerUrl
+                    ? (item.trailerUrl.startsWith('http') ? item.trailerUrl : `https://www.youtube.com/watch?v=${item.trailerUrl}`)
+                    : null;
+                  if (providerUrl) { setTrailerIds([providerUrl]); return; }
                   setTrailerIds('loading');
                   getTmdbTrailerCandidates(item.name, 'tv').then((ids) => {
-                    if (ids.length > 0) { setTrailerIds(ids); return; }
-                    // Fall back to provider URL as a single-item list
-                    const providerUrl = item.trailerUrl
-                      ? (item.trailerUrl.startsWith('http') ? item.trailerUrl : `https://www.youtube.com/watch?v=${item.trailerUrl}`)
-                      : null;
-                    setTrailerIds(providerUrl ? [providerUrl] : null);
+                    setTrailerIds(ids.length > 0 ? ids : null);
                   });
                 }}
               />
