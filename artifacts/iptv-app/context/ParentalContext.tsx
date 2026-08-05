@@ -41,6 +41,9 @@ interface ParentalContextValue {
   setBlockedChannelIds: (ids: string[]) => Promise<void>;
   /** Toggle a whole category in/out of the blocked list. */
   toggleBlockedCategory: (catId: string) => Promise<void>;
+  /** #11: Remove any blockedCategoryIds that no longer appear in the provider's list. */
+  /** #11: Remove any blockedCategoryIds that no longer appear in the provider's list. */
+  pruneBlockedCategories: (validCatIds: string[]) => Promise<void>;
   /** Provided by the root layout — clears credentials (logout) as the forgot-PIN escape. */
   resetAndLogout: () => void;
 }
@@ -62,6 +65,7 @@ const ParentalContext = createContext<ParentalContextValue>({
   toggleBlockedChannel: async () => {},
   setBlockedChannelIds: async () => {},
   toggleBlockedCategory: async () => {},
+  pruneBlockedCategories: async () => {},
   resetAndLogout: () => {},
 });
 
@@ -197,6 +201,20 @@ export function ParentalContextProvider({
     setBlockedCategoryIds(updated);
   }, []);
 
+  // #11: Remove any blockedCategoryIds whose category no longer exists in the
+  // provider's live list (e.g. after a credential change or provider update).
+  const pruneBlockedCategories = useCallback(async (validCatIds: string[]) => {
+    const validSet = new Set(validCatIds);
+    setBlockedCategoryIds((prev) => {
+      const pruned = prev.filter((id) => validSet.has(id));
+      if (pruned.length === prev.length) return prev; // nothing to do
+      StorageService.getParentalSettings().then((settings) =>
+        StorageService.saveParentalSettings({ ...settings, blockedCategories: pruned })
+      );
+      return pruned;
+    });
+  }, []);
+
   return (
     <ParentalContext.Provider
       value={{
@@ -216,6 +234,7 @@ export function ParentalContextProvider({
         toggleBlockedChannel,
         setBlockedChannelIds,
         toggleBlockedCategory,
+        pruneBlockedCategories,
         resetAndLogout: onForgotPin,
       }}
     >

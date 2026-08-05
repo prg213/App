@@ -210,7 +210,7 @@ export default function LiveTVScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { credentials, lastWatchedUrl, deviceMac } = useAppContext();
-  const { blockedChannels, blockedCategoryIds, setBlockedChannelIds, toggleBlockedCategory } = useParentalContext();
+  const { blockedChannels, blockedCategoryIds, setBlockedChannelIds, toggleBlockedCategory, pruneBlockedCategories } = useParentalContext();
   const isWeb = Platform.OS === 'web';
 
   const isXtream = credentials?.type === 'xtream';
@@ -680,6 +680,12 @@ export default function LiveTVScreen() {
     rawCategories.forEach((cat) => { if (blockedCategoryIds.includes(cat.id)) s.add(cat.name); });
     return s;
   }, [blockedCategoryIds, rawCategories]);
+
+  // #11: prune orphaned blocked-category IDs whenever the category list refreshes
+  useEffect(() => {
+    if (rawCategories.length === 0) return;
+    pruneBlockedCategories(rawCategories.map((c) => c.id));
+  }, [rawCategories, pruneBlockedCategories]);
 
   // When Favourites is selected, use stored favourites as the channel list.
   // Always filter out blocked channels so they don't appear in any category.
