@@ -50,7 +50,6 @@ import {
 import { fetchAndParseM3U } from '@/services/m3uParser';
 import { fetchAndParseXmltv } from '@/services/epgService';
 import { CatchupSheet } from '@/components/CatchupSheet';
-import { RecentChannelsRail } from '@/components/RecentChannelsRail';
 import type { Channel, Category, EpgProgram, FavoriteChannel } from '@/types';
 import { normaliseStr } from '@/utils/normalise';
 
@@ -1132,15 +1131,6 @@ export default function LiveTVScreen() {
               onSubmitEditing={() => Keyboard.dismiss()}
             />
           </View>
-        )}
-
-        {/* Recently Watched rail — shows up to 8 channels, hides itself when empty */}
-        {!isReordering && (
-          <RecentChannelsRail
-            blockedIds={blockedSet}
-            nowPlayingMap={nowPlayingMap}
-            onWatchFullscreen={handleWatchChannel}
-          />
         )}
 
         {channelsLoading && !isFavsSelected ? (
