@@ -31,3 +31,16 @@ Files fixed (for reference only — check current code):
 
 ## Class 3 — StyleSheet.absoluteFillObject (removed in newer RN types)
 `StyleSheet.absoluteFillObject` is valid at runtime in the RN version used but missing from the TS types. Replace with `{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }` in `StyleSheet.create` spreads, and `StyleSheet.absoluteFill` in JSX style arrays.
+
+## Class 4 — Hook declared after conditional early return ("Rendered more hooks than during the previous render")
+**Rule:** Any `useCallback`/`useState`/`useEffect`/`useMemo`/`useRef` declared *after* an `if (...) return null` inside a component body causes React to see a different hook count between the first render (took the early return) and the second (didn't). React throws "Rendered more hooks than during the previous render."
+
+**Why TypeScript misses it:** TS has no rule about hook call ordering relative to early returns. The linter rule `react-hooks/rules-of-hooks` would catch it, but it's not enforced in CI for this project.
+
+**Pattern to watch for:** Components that load async data (useState = []) and guard `if (data.length === 0) return null` — any hook declared after that guard is a ticking bomb.
+
+**Files fixed:**
+- `components/RecentChannelsRail.tsx` — `handleClearAll` useCallback was after `if (recent.length === 0) return null`
+- `components/ContinueWatchingRail.tsx` — `handleClearAll` useCallback was after `if (history.length === 0) return null`
+
+**How to apply:** Grep for `return null` inside component functions, then check whether any hook call appears below it in the same function body. All hooks must be declared before any conditional return.
