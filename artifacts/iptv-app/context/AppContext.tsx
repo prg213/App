@@ -107,16 +107,39 @@ export function AppContextProvider({ children }: { children: React.ReactNode }) 
   }, []);
 
   // ── Foreground check: re-verify whenever the app becomes active ───────────
+  // lastForegroundCheckRef: timestamp of the most-recent foreground MAC check.
+  // Used by the periodic timer below to skip a redundant call.
+  const lastForegroundCheckRef = useRef(0);
   useEffect(() => {
     const sub = AppState.addEventListener('change', async (state: AppStateStatus) => {
       if (state !== 'active') return;
       if (!isActivatedRef.current || !deviceMacRef.current) return;
+      lastForegroundCheckRef.current = Date.now();
       const stillActive = await isMacStillRegistered(deviceMacRef.current);
       if (!stillActive) {
         await doLogout('deactivated');
       }
     });
     return () => sub.remove();
+  }, [doLogout]);
+
+  // ── Periodic check (#189/#190): re-verify MAC every 10 min in background ──
+  // Skips the call if a foreground check ran within the last 2 min so we never
+  // double-fire right after AppState brings the app back to the foreground.
+  useEffect(() => {
+    const INTERVAL_MS = 10 * 60_000; // 10 minutes
+    const SKIP_AFTER_FOREGROUND_MS = 2 * 60_000; // 2 min grace window
+    const timer = setInterval(async () => {
+      if (!isActivatedRef.current || !deviceMacRef.current) return;
+      // #189: skip if a foreground check just ran
+      if (Date.now() - lastForegroundCheckRef.current < SKIP_AFTER_FOREGROUND_MS) return;
+      const stillActive = await isMacStillRegistered(deviceMacRef.current);
+      if (!stillActive) {
+        // #190: MAC deregistered during a background cycle — force logout
+        await doLogout('deactivated');
+      }
+    }, INTERVAL_MS);
+    return () => clearInterval(timer);
   }, [doLogout]);
 
   const setActivated = async (creds: Credentials) => {

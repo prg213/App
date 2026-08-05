@@ -315,6 +315,7 @@ export default function RemindersScreen() {
   const autoRemovedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // #95/#121: brief startup prune notice (replaces Alert.alert)
   const [prunedCount, setPrunedCount] = useState(0);
+  const [isManualRefreshing, setIsManualRefreshing] = useState(false); // #127: pull-to-refresh spinner
   const prunedBannerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // #117: dedup prune alert so it only fires once per unique set of removed reminders
   const prunedKeyRef = useRef('');
@@ -446,14 +447,14 @@ export default function RemindersScreen() {
    * - Cache cold + any URL missing: network fetch to fill the gap.
    */
   const backfillStreamUrls = useCallback(
-    async (loaded: Reminder[]): Promise<Reminder[]> => {
+    async (loaded: Reminder[], force = false): Promise<Reminder[]> => {
       const now = Date.now();
       const active = loaded.filter((r) => new Date(r.end).getTime() > now);
       if (active.length === 0) return loaded;
 
       const mySig = credentialSig(credentials);
       const lastRefresh = lastNetworkRefreshByCredential.get(mySig) ?? 0;
-      const gateExpired = now - lastRefresh > NETWORK_REFRESH_INTERVAL_MS;
+      const gateExpired = force || now - lastRefresh > NETWORK_REFRESH_INTERVAL_MS;
       const hasMissingUrls = active.some((r) => !r.streamUrl);
 
       // Peek at the cache — scoped to current credentials.
@@ -467,11 +468,10 @@ export default function RemindersScreen() {
       });
 
       // Skip only when: cache is cold AND all URLs present AND gate hasn't expired.
-      if (!cacheIsWarm && !hasMissingUrls && !gateExpired) return loaded;
+      if (!force && !cacheIsWarm && !hasMissingUrls && !gateExpired) return loaded;
 
-      // Pass gateExpired as forceNetwork so an expired gate always bypasses the
-      // React Query cache and hits the provider directly, re-seeding the cache
-      // with fresh stream URLs for the next NETWORK_REFRESH_INTERVAL_MS window.
+      // Pass gateExpired as forceNetwork so an expired gate (or manual force) always
+      // bypasses the React Query cache and hits the provider directly.
       const result = await fetchChannelUrlMap(gateExpired);
       if (!result) return loaded;
       const { map: urlMap } = result;
@@ -608,6 +608,17 @@ export default function RemindersScreen() {
     if (!reminder) return;
     setRescheduleTarget(null);
 
+    // #110: warn if the new lead time exceeds the time left until the programme starts
+    const msUntilStart = new Date(reminder.start).getTime() - Date.now();
+    if (leadMins * 60_000 >= msUntilStart) {
+      Alert.alert(
+        'Reminder Can\'t Fire',
+        `The programme starts in less than ${leadMins} min, so this reminder won't have time to fire.`,
+        [{ text: 'OK' }],
+      );
+      return; // leave rescheduling modal closed; nothing to persist
+    }
+
     // Cancel the existing notification
     await cancelReminderNotification(reminder.notificationId);
 
@@ -694,7 +705,28 @@ export default function RemindersScreen() {
           extraData={nowTs}
           contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 80, gap: 10 }}
           refreshControl={
-            <RefreshControl refreshing={false} onRefresh={load} tintColor={colors.primary} />
+            <RefreshControl
+            refreshing={isManualRefreshing}
+            onRefresh={() => {
+              // #127: user explicitly pulled to refresh — bypass both the failure
+              // backoff and the 15-minute network gate for an immediate URL check.
+              setIsManualRefreshing(true);
+              lastRefreshFailureRef.current = 0; // clear failure backoff
+              StorageService.getReminders().then((r) => {
+                const sorted = [...r].sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
+                setReminders(sorted);
+                return backfillStreamUrls(r, true); // force = true bypasses gate
+              }).then((backfilled) => {
+                const sorted = [...backfilled].sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
+                setReminders(sorted);
+              }).catch(() => {
+                lastRefreshFailureRef.current = Date.now();
+              }).finally(() => {
+                setIsManualRefreshing(false);
+              });
+            }}
+            tintColor={colors.primary}
+          />
           }
           renderItem={({ item }) => {
             if (item.kind === 'divider') {
