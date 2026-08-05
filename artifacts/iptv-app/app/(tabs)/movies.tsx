@@ -45,6 +45,7 @@ export default function MoviesScreen() {
   const { maxRating } = useParentalContext();
   const [selectedCat, setSelectedCat] = useState<string>(ALL_CAT_ID);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [favMovies, setFavMovies] = useState<FavoriteMovie[]>([]);
   const [watchHistory, setWatchHistory] = useState<WatchHistoryEntry[]>([]);
   const [favSyncState, setFavSyncState] = useState<'idle' | 'syncing' | 'synced'>('idle');
@@ -201,10 +202,17 @@ export default function MoviesScreen() {
     });
   }, []);
 
+  // Debounce search so rapid keystrokes don't thrash the filter useMemo
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 180);
+    return () => clearTimeout(timer);
+  }, [search]);
+
   const filtered = useMemo(() => {
     let list = movies;
-    if (search.trim()) list = list.filter((m) => normaliseStr(m.name).includes(normaliseStr(search)));
+    if (debouncedSearch.trim()) list = list.filter((m) => normaliseStr(m.name).includes(normaliseStr(debouncedSearch)));
     if (maxRating !== 'all') list = list.filter((m) => !isContentBlocked(m.rating, maxRating));
+
     // Apply sort (skip for favourites/recent which have their own order)
     if (!isFavsSelected && !isRecentSelected) {
       if (sortOrder === 'name') list = [...list].sort((a, b) => a.name.localeCompare(b.name));
@@ -212,7 +220,7 @@ export default function MoviesScreen() {
       // 'newest' is already the default order from sortedMovies
     }
     return list;
-  }, [movies, search, maxRating, sortOrder, isFavsSelected, isRecentSelected]);
+  }, [movies, debouncedSearch, maxRating, sortOrder, isFavsSelected, isRecentSelected]);
 
   // #158: Pre-warm TMDB poster cache for the first 20 visible items that have
   // no provider cover image. Fire-and-forget so the cache fills before the card
@@ -435,6 +443,7 @@ export default function MoviesScreen() {
                   const isFav = favSet.has(item.id);
                   Alert.alert(item.name, undefined, [
                     { text: isFav ? '♥ Remove Favourite' : '♡ Add to Favourites', onPress: () => handleToggleFav(item) },
+                    ...(isFav ? [{ text: '⬆ Move to Top', onPress: async () => { const updated = await StorageService.moveMovieToTop(item.id); if (updated) setFavMovies(updated); } }] : []),
                     { text: '🎬 Open Details', onPress: () => router.push({ pathname: '/movie/[id]', params: { id: item.id, title: item.name, cover: item.cover ?? '', genre: item.genre ?? '', rating: item.rating ?? '', plot: item.plot ?? '', cast: item.cast ?? '', director: item.director ?? '', releaseDate: item.releaseDate ?? '', duration: item.duration ?? '', ext: item.containerExtension } }) },
                     ...(isRecentSelected ? [{ text: '🗑 Remove from History', style: 'destructive' as const, onPress: () => { StorageService.removeFromHistory(item.id).then(refreshWatchHistory); } }] : []),
                     { text: 'Cancel', style: 'cancel' },

@@ -160,6 +160,15 @@ export const StorageService = {
     await AsyncStorage.setItem(KEYS.MOVIE_FAVORITES, JSON.stringify(updated));
     return updated;
   },
+  async moveMovieToTop(id: string): Promise<FavoriteMovie[] | null> {
+    const current = await StorageService.getMovieFavorites();
+    const idx = current.findIndex((f) => f.id === id);
+    if (idx <= 0) return null; // already at top or not found
+    const item = current[idx];
+    const updated = [item, ...current.slice(0, idx), ...current.slice(idx + 1)];
+    await AsyncStorage.setItem(KEYS.MOVIE_FAVORITES, JSON.stringify(updated));
+    return updated;
+  },
 
   // ── Series Favourites (AsyncStorage) ──────────────────────────────────────
 

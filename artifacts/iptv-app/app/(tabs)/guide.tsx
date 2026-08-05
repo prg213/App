@@ -26,7 +26,7 @@ import {
 import * as Haptics from 'expo-haptics';
 import { Toast } from '@/components/Toast';
 import { useQuery } from '@tanstack/react-query';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { useAppContext } from '@/context/AppContext';
@@ -942,9 +942,13 @@ export default function GuideScreen() {
   const router = useRouter();
   const { credentials } = useAppContext();
   const isXtream = credentials?.type === 'xtream';
+  // Receive channelId from notification deep-links (passed by _layout.tsx)
+  const { channelId: notifChannelId } = useLocalSearchParams<{ channelId?: string }>();
 
   // selectedCat stores the category_id (numeric string from groupTitle)
   const [selectedCat, setSelectedCat] = useState<string | null>(null);
+  // Channel to auto-highlight after notification tap
+  const [pendingHighlightId, setPendingHighlightId] = useState<string | null>(notifChannelId ?? null);
 
   // #128: When the Guide tab comes back into focus (e.g. user just cancelled a
   // reminder from the Reminders screen), broadcast reminders:changed so any
@@ -1009,6 +1013,18 @@ export default function GuideScreen() {
     () => (selectedCat ? channels.filter((c) => c.groupTitle === selectedCat) : channels),
     [channels, selectedCat],
   );
+
+  // Auto-select the channel that triggered a reminder notification tap
+  useEffect(() => {
+    if (!pendingHighlightId || channels.length === 0) return;
+    const ch = channels.find((c) => c.id === pendingHighlightId || c.epgId === pendingHighlightId);
+    if (!ch) return;
+    setPendingHighlightId(null);
+    // Switch to the channel's category so it's visible in the list
+    if (ch.groupTitle) setSelectedCat(ch.groupTitle);
+    // Open the mini-EPG panel for this channel
+    // (FullGuide component will show its programmes once the category is set)
+  }, [pendingHighlightId, channels]);
 
   // Build a fuzzy-resolved copy of epgMap so channels whose epgId doesn't
   // exactly match any XMLTV key (e.g. "BBC Two HD" ↔ "BBC2.uk") still get

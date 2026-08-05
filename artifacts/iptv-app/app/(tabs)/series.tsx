@@ -45,6 +45,7 @@ export default function SeriesScreen() {
   const { maxRating } = useParentalContext();
   const [selectedCat, setSelectedCat] = useState<string>(ALL_CAT_ID);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [favSeries, setFavSeries] = useState<FavoriteSeries[]>([]);
   const [watchHistory, setWatchHistory] = useState<WatchHistoryEntry[]>([]);
   const [favSyncState, setFavSyncState] = useState<'idle' | 'syncing' | 'synced'>('idle');
@@ -203,16 +204,22 @@ export default function SeriesScreen() {
     });
   }, []);
 
+  // Debounce search so rapid keystrokes don't thrash the filter useMemo
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 180);
+    return () => clearTimeout(timer);
+  }, [search]);
+
   const filtered = useMemo(() => {
     let list = seriesList;
-    if (search.trim()) list = list.filter((s) => normaliseStr(s.name).includes(normaliseStr(search)));
+    if (debouncedSearch.trim()) list = list.filter((s) => normaliseStr(s.name).includes(normaliseStr(debouncedSearch)));
     if (maxRating !== 'all') list = list.filter((s) => !isContentBlocked(s.rating, maxRating));
     if (!isFavsSelected && !isRecentSelected) {
       if (sortOrder === 'name') list = [...list].sort((a, b) => a.name.localeCompare(b.name));
       else if (sortOrder === 'rating') list = [...list].sort((a, b) => parseFloat(b.rating ?? '0') - parseFloat(a.rating ?? '0'));
     }
     return list;
-  }, [seriesList, search, maxRating, sortOrder, isFavsSelected, isRecentSelected]);
+  }, [seriesList, debouncedSearch, maxRating, sortOrder, isFavsSelected, isRecentSelected]);
 
   // #158: Pre-warm TMDB poster cache for the first 20 visible items that have
   // no provider cover image. Fire-and-forget so the cache fills before the card

@@ -81,10 +81,9 @@ function RootLayoutNav() {
     // alarms at device reboot.
     rescheduleStaleReminders();
     return addNotificationTapListener(({ channelId, start }) => {
-      // Navigate to the TV Guide tab; the deep-link carries channelId + start
-      // so the guide can highlight the right programme when task #85 lands.
-      // For now we navigate to guide which is sufficient.
-      router.push('/(tabs)/guide');
+      // Navigate to the TV Guide tab; pass channelId + start so the guide
+      // can auto-select the relevant channel and highlight its programme.
+      router.push({ pathname: '/(tabs)/guide', params: { channelId: channelId ?? '', start: start ? String(start) : '' } });
     });
   }, [isActivated, router]);
 

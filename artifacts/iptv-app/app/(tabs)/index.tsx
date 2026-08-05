@@ -217,6 +217,13 @@ export default function LiveTVScreen() {
   const xmltvUrl = creds ? getXtreamXmltvUrl(creds) : null;
 
   const [selectedCatId, setSelectedCatId] = useState<string>(FAVS_CAT_ID);
+  // Persist and restore the last-selected category so the user lands where they left off
+  useEffect(() => {
+    import('@react-native-async-storage/async-storage').then(({ default: AS }) =>
+      AS.getItem('@pref_live_cat').then((v) => { if (v) setSelectedCatId(v); })
+    );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [catSearch, setCatSearch] = useState('');
   const [channelFilter, setChannelFilter] = useState('');
   const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null);
@@ -776,6 +783,9 @@ export default function LiveTVScreen() {
   // ── Handlers ──────────────────────────────────────────────────────────────
 
   const handleSelectCat = useCallback((catId: string) => {
+    import('@react-native-async-storage/async-storage').then(({ default: AS }) =>
+      AS.setItem('@pref_live_cat', catId)
+    );
     Haptics.selectionAsync();
     setSelectedCatId(catId);
     setSelectedChannel(null);
