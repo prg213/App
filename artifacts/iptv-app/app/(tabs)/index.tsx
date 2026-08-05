@@ -440,7 +440,8 @@ export default function LiveTVScreen() {
           const gen = loadGenRef.current;
           if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
           retryTimerRef.current = setTimeout(() => {
-            if (gen !== loadGenRef.current || isAppBackgroundRef.current) return;
+            // #138: skip if the fullscreen player is open — it handles re-resolution itself
+            if (gen !== loadGenRef.current || isAppBackgroundRef.current || goingToPlayerRef.current) return;
             const url = selectedChannelRef.current?.streamUrl;
             if (!url) return;
             setHasError(false);

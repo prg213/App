@@ -569,6 +569,9 @@ export default function PlayerScreen() {
   useEffect(() => {
     if (!isLive || isWeb) return;
     if (liveUrlRef.current === params.url) {
+      // #138: always allow a fresh stale-URL re-resolve attempt when entering
+      // fullscreen, even if the URL matches (stream may already be failing).
+      didResolveStaleUrlRef.current = false;
       try { if (!player.playing) player.play(); } catch {}
     } else {
       liveUrlRef.current = params.url;
