@@ -76,6 +76,18 @@ export function ErrorFallback({ error, resetError }: ErrorFallbackProps) {
           Please reload the app to continue.
         </Text>
 
+        {/* Always show the error message so it can be reported */}
+        <ScrollView style={styles.errorBox} contentContainerStyle={{ padding: 12 }}>
+          <Text style={[styles.errorBoxText, { color: '#EF4444', fontFamily: 'monospace' }]} selectable>
+            {error.message}
+          </Text>
+          {error.stack ? (
+            <Text style={[styles.errorBoxText, { color: colors.mutedForeground, fontFamily: 'monospace', marginTop: 8 }]} selectable>
+              {error.stack.split('\n').slice(0, 8).join('\n')}
+            </Text>
+          ) : null}
+        </ScrollView>
+
         <Pressable
           onPress={handleRestart}
           style={({ pressed }) => [
@@ -193,6 +205,18 @@ const styles = StyleSheet.create({
     fontSize: 16,
     textAlign: 'center',
     lineHeight: 24,
+  },
+  errorBox: {
+    maxHeight: 180,
+    width: '100%',
+    borderRadius: 8,
+    backgroundColor: 'rgba(239,68,68,0.08)',
+    marginTop: 12,
+    marginBottom: 4,
+  },
+  errorBoxText: {
+    fontSize: 11,
+    lineHeight: 16,
   },
   topButton: {
     position: 'absolute',

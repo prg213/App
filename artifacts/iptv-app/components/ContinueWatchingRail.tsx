@@ -108,7 +108,7 @@ export function ContinueWatchingRail({ type }: Props) {
                 pathname: '/series/[id]',
                 params: {
                   id: item.parentId ?? item.id,
-                  title: item.title.split(' - ')[0] ?? item.title,
+                  title: (item.title ?? '').split(' - ')[0] || (item.title ?? ''),
                   cover: item.cover ?? '',
                   resumeEpisodeId: item.id,
                   resumePosition: String(Math.floor(item.position ?? 0)),
