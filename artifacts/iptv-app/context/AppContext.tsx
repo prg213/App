@@ -3,6 +3,7 @@ import { AppState, type AppStateStatus } from 'react-native';
 import { getDeviceMac } from '@/services/macAddress';
 import { StorageService } from '@/services/storage';
 import { clearTmdbTrailerCache } from '@/services/tmdb';
+import { clearReminderRefreshCache } from '@/services/reminderUrlCache';
 import type { Credentials } from '@/types';
 
 export type LogoutReason = 'deactivated' | null;
@@ -73,6 +74,7 @@ export function AppContextProvider({ children }: { children: React.ReactNode }) 
     }
     await StorageService.clearCredentials();
     clearTmdbTrailerCache();
+    clearReminderRefreshCache(); // #126: reset backfill gate so fresh credentials always get a new URL check
     setCredentials(null);
     setIsActivated(false);
     isActivatedRef.current = false;

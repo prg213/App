@@ -1,11 +1,11 @@
 import React, { memo, useEffect, useState } from 'react';
 import {
-  Image,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { useColors } from '@/hooks/useColors';
 import { useIsOnline } from '@/hooks/useIsOnline';
 import { getTmdbPosterUrl } from '@/services/tmdb';
@@ -71,7 +71,7 @@ function SeriesCardComponent({ name, cover, rating, genre, year, query = '', isF
     <TouchableOpacity style={[styles.card, compact && styles.cardCompact]} onPress={onPress} onLongPress={onLongPress} delayLongPress={500} activeOpacity={0.75} accessibilityLabel={name} accessibilityRole="button">
       <View style={[styles.poster, { backgroundColor: colors.secondary }]}>
         {posterUri ? (
-          <Image source={{ uri: posterUri }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+          <Image source={{ uri: posterUri }} style={StyleSheet.absoluteFill} contentFit="cover" cachePolicy="memory-disk" />
         ) : (
           <View style={[StyleSheet.absoluteFill, styles.noImage]}>
             <Text style={[styles.noImageIcon, { color: colors.mutedForeground }]}>◼</Text>

@@ -412,6 +412,13 @@ export default function PlayerScreen() {
             setIsBuffering(true);
             try { player.replace(activeUrlRef.current); player.play(); } catch {}
           }
+        } else if (hasErrorRef.current) {
+          // #31: VOD/series — if an error was suppressed while backgrounded,
+          // retry playback on foreground return instead of showing the error screen.
+          setHasError(false);
+          hasErrorRef.current = false;
+          setIsBuffering(true);
+          try { player.replace(activeUrlRef.current); player.play(); } catch {}
         }
       }
     });

@@ -1,11 +1,11 @@
 import React, { memo, useEffect, useState } from 'react';
 import {
-  Image,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { useColors } from '@/hooks/useColors';
 import { useIsOnline } from '@/hooks/useIsOnline';
 import { getTmdbPosterUrl } from '@/services/tmdb';
@@ -72,7 +72,7 @@ function MovieCardComponent({ name, cover, rating, genre, query = '', isFav, com
       {/* Poster */}
       <View style={[styles.poster, { backgroundColor: colors.secondary }]}>
         {posterUri ? (
-          <Image source={{ uri: posterUri }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+          <Image source={{ uri: posterUri }} style={StyleSheet.absoluteFill} contentFit="cover" cachePolicy="memory-disk" />
         ) : (
           <View style={[StyleSheet.absoluteFill, styles.noImage]}>
             <Text style={[styles.noImageIcon, { color: colors.mutedForeground }]}>▶</Text>
