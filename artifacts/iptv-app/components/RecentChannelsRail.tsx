@@ -118,12 +118,12 @@ export function RecentChannelsRail({
     if (ch) setToastMsg(`"${ch.name}" removed from recently watched`);
   }, [recent]);
 
-  if (recent.length === 0) return null;
-
   const handleClearAll = useCallback(async () => {
     await StorageService.clearRecentChannels();
     setRecent([]);
   }, []);
+
+  if (recent.length === 0) return null;
 
   return (
     <View style={[styles.container, { borderBottomColor: colors.border, paddingTop: topInset + 8 }]}>

@@ -57,8 +57,6 @@ export function ContinueWatchingRail({ type }: Props) {
     return () => sub.remove();
   }, [loadHistory]);
 
-  if (history.length === 0) return null;
-
   const handleClearAll = useCallback(async () => {
     // Preserve entries that don't match this rail's type
     const all = await StorageService.getWatchHistory();
@@ -69,6 +67,8 @@ export function ContinueWatchingRail({ type }: Props) {
     loadHistory();
     setToastMsg('Continue Watching cleared');
   }, [type, loadHistory]);
+
+  if (history.length === 0) return null;
 
   return (
     <View style={[styles.container, { borderBottomColor: colors.border }]}>
