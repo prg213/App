@@ -22,40 +22,83 @@ interface Props {
 }
 
 /**
- * Injected into each YouTube page to detect "Video unavailable" errors and
- * report them back so we can advance to the next candidate.
+ * Build a YouTube IFrame Player API page.
  *
- * We load m.youtube.com/watch?v=... (the real mobile site, not an iframe embed)
- * so there are no 150/152 embedding restrictions. The only remaining failure
- * mode is an actually deleted / private / geo-blocked video.
+ * Uses the IFrame API so we get a proper `onError` callback (150/152 =
+ * embedding disabled). On error the page posts a message back so we can
+ * advance to the next candidate without closing the modal.
+ *
+ * `onReady` immediately calls unMute() + setVolume(100) to override the
+ * autoplay-muted behaviour YouTube applies by default in embedded players.
+ *
+ * baseUrl is set to https://www.youtube.com so the player origin check passes.
  */
-const YT_ERROR_DETECTOR = `
-(function() {
-  var reported = false;
-  function report() {
-    if (reported) return;
-    reported = true;
-    window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'yt-error', code: 150 }));
+function buildYtHtml(videoId: string): string {
+  return `<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:100%;height:100%;background:#000;overflow:hidden}
+  #player{position:absolute;top:0;left:0;width:100%;height:100%}
+</style>
+</head>
+<body>
+<div id="player"></div>
+<script>
+  var tag = document.createElement('script');
+  tag.src = 'https://www.youtube.com/iframe_api';
+  document.head.appendChild(tag);
+
+  var player;
+  function onYouTubeIframeAPIReady() {
+    player = new YT.Player('player', {
+      videoId: '${videoId}',
+      width: '100%',
+      height: '100%',
+      playerVars: {
+        autoplay: 1,
+        mute: 0,
+        controls: 1,
+        rel: 0,
+        modestbranding: 1,
+        playsinline: 1,
+        fs: 0,
+        iv_load_policy: 3
+      },
+      events: {
+        onReady: function(e) {
+          /* Force unmuted at full volume – overrides YouTube's autoplay policy */
+          e.target.unMute();
+          e.target.setVolume(100);
+          e.target.playVideo();
+        },
+        onError: function(e) {
+          /* 150/152 = embedding disabled; 100 = not found; 101 = not embeddable */
+          try {
+            window.ReactNativeWebView.postMessage(
+              JSON.stringify({ type: 'yt-error', code: e.data, videoId: '${videoId}' })
+            );
+          } catch(_) {}
+        }
+      }
+    });
   }
-  function check() {
-    if (reported) return;
-    var text = (document.body && document.body.innerText) || '';
-    if (
-      text.indexOf('Video unavailable') !== -1 ||
-      text.indexOf('not available') !== -1 ||
-      text.indexOf('This video is private') !== -1 ||
-      document.querySelector('#error-screen') ||
-      document.querySelector('yt-alert-with-actions-renderer')
-    ) {
-      report();
-    }
-  }
-  document.addEventListener('DOMContentLoaded', function() { setTimeout(check, 1500); });
-  setTimeout(check, 3000);
-  setTimeout(check, 7000);
-})();
-true;
-`;
+
+  /* Pause / resume when the host tells us to */
+  document.addEventListener('message', function(e) {
+    try {
+      var msg = JSON.parse(e.data);
+      if (!player) return;
+      if (msg.cmd === 'pause') player.pauseVideo();
+      if (msg.cmd === 'play')  player.playVideo();
+    } catch(_) {}
+  });
+</script>
+</body>
+</html>`;
+}
 
 /** For non-YouTube URLs (provider trailers) keep the original iframe approach. */
 function buildGenericHtml(url: string): string {
@@ -94,7 +137,8 @@ export function TrailerModal({ videoIds, onClose }: Props) {
   const [idx, setIdx] = useState(0);
   const [webviewLoading, setWebviewLoading] = useState(true);
   const [allFailed, setAllFailed] = useState(false);
-  const webviewKey = useRef(0); // increment to force remount on ID change
+  const webviewKey = useRef(0);
+  const webviewRef = useRef<WebView>(null);
 
   // Reset to first candidate whenever a new set arrives
   useEffect(() => {
@@ -104,10 +148,13 @@ export function TrailerModal({ videoIds, onClose }: Props) {
     webviewKey.current += 1;
   }, [videoIds]);
 
-  // Pause the YouTube WebView when the app goes to the background
-  const [appActive, setAppActive] = useState(true);
+  // Pause the YouTube player when the app goes to the background
   useEffect(() => {
-    const sub = AppState.addEventListener('change', (state) => setAppActive(state === 'active'));
+    const sub = AppState.addEventListener('change', (state) => {
+      if (!webviewRef.current) return;
+      const cmd = state === 'active' ? 'play' : 'pause';
+      webviewRef.current.postMessage(JSON.stringify({ cmd }));
+    });
     return () => sub.remove();
   }, []);
 
@@ -137,9 +184,10 @@ export function TrailerModal({ videoIds, onClose }: Props) {
   const current = ids[idx] ?? null;
   const isYt = current ? isVideoId(current) : false;
 
-  // Pause script injected when app goes to background
-  const pauseScript = !appActive && isYt
-    ? `(function(){ try { var v = document.querySelector('video'); if(v) v.pause(); } catch(e){} })(); true;`
+  const html = current
+    ? isYt
+      ? buildYtHtml(current)
+      : buildGenericHtml(current)
     : '';
 
   return (
@@ -180,18 +228,12 @@ export function TrailerModal({ videoIds, onClose }: Props) {
               </View>
             )}
             <WebView
+              ref={webviewRef}
               key={webviewKey.current}
-              source={
-                isYt
-                  ? // Load the real YouTube mobile page — no embedding restrictions apply
-                    { uri: `https://m.youtube.com/watch?v=${current}&autoplay=1` }
-                  : // Provider trailer URL — keep iframe approach
-                    { html: buildGenericHtml(current), baseUrl: 'about:blank' }
-              }
+              source={{ html, baseUrl: 'https://www.youtube.com' }}
               style={styles.webview}
               onLoadEnd={() => setWebviewLoading(false)}
               onMessage={handleMessage}
-              onError={() => advance()}
               allowsFullscreenVideo
               allowsInlineMediaPlayback
               mediaPlaybackRequiresUserAction={false}
@@ -199,8 +241,6 @@ export function TrailerModal({ videoIds, onClose }: Props) {
               domStorageEnabled
               originWhitelist={['*']}
               mixedContentMode="always"
-              injectedJavaScript={isYt ? YT_ERROR_DETECTOR : ''}
-              injectedJavaScriptBeforeContentLoaded={pauseScript}
             />
           </>
         )}
