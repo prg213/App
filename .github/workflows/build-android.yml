@@ -39,6 +39,7 @@ jobs:
         env:
           CI: 1
           EXPO_PUBLIC_DOMAIN: streamvault.rip
+          EXPO_PUBLIC_TMDB_API_KEY: 312ee14dd7f250471da1174324be2bda
 
       - name: Install NDK
         run: |
@@ -67,6 +68,7 @@ jobs:
           ANDROID_HOME: ${{ env.ANDROID_HOME }}
           ANDROID_NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/27.1.12297006
           EXPO_PUBLIC_DOMAIN: streamvault.rip
+          EXPO_PUBLIC_TMDB_API_KEY: 312ee14dd7f250471da1174324be2bda
           GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=512m"
 
       - name: Rename APK
