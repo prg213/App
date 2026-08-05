@@ -15,6 +15,8 @@ import {
   Modal,
   NativeScrollEvent,
   NativeSyntheticEvent,
+  Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -131,13 +133,19 @@ function ChannelCell({
   colors: any;
   isFav?: boolean;
   onFavPress?: () => void;
+  onPress?: () => void;
 }) {
   return (
-    <TouchableOpacity
+    <Pressable
+      onPress={onPress}
       onLongPress={onFavPress}
       delayLongPress={400}
-      activeOpacity={0.85}
-      style={[styles.channelCell, { borderBottomColor: colors.border, backgroundColor: colors.card }]}
+      focusable
+      style={({ focused }: any) => [
+        styles.channelCell,
+        { borderBottomColor: colors.border, backgroundColor: colors.card },
+        focused && styles.tvFocused,
+      ]}
     >
       <View style={[styles.chLogo, { backgroundColor: colors.secondary }]}>
         {channel.logo ? (
@@ -160,7 +168,7 @@ function ChannelCell({
         ) : null}
       </View>
       {isFav && <Text style={{ position: 'absolute', right: 4, top: 4, fontSize: 10, color: '#EF4444' }}>♥</Text>}
-    </TouchableOpacity>
+    </Pressable>
   );
 }
 
@@ -382,6 +390,8 @@ function ProgramModal({ program, channel, onClose, onWatch, colors }: {
             <TouchableOpacity
               style={[styles.closeBtn, { backgroundColor: colors.secondary, borderColor: colors.border }]}
               onPress={onClose} activeOpacity={0.7}
+              focusable
+              hasTVPreferredFocus
             >
               <Text style={[styles.closeBtnText, { color: colors.foreground }]}>Close</Text>
             </TouchableOpacity>
@@ -390,6 +400,7 @@ function ProgramModal({ program, channel, onClose, onWatch, colors }: {
                 style={[styles.watchBtn, hasReminder && { backgroundColor: '#6B7280' }]}
                 onPress={handleToggleReminder}
                 activeOpacity={0.8}
+                focusable
               >
                 <Text style={styles.watchBtnText}>
                   {hasReminder ? '🔔 Remove Reminder' : `🔔 Set Reminder · ${leadMins} min before`}
@@ -397,7 +408,7 @@ function ProgramModal({ program, channel, onClose, onWatch, colors }: {
               </TouchableOpacity>
             )}
             {isNow && (
-              <TouchableOpacity style={styles.watchBtn} onPress={onWatch} activeOpacity={0.8}>
+              <TouchableOpacity style={styles.watchBtn} onPress={onWatch} activeOpacity={0.8} focusable hasTVPreferredFocus>
                 <Text style={styles.watchBtnText}>▶  Watch Live</Text>
               </TouchableOpacity>
             )}
@@ -431,10 +442,14 @@ function CategoryGrid({
     const icon = getCatIcon(name);
     const count = channelCountByCategory[catId] ?? 0;
     return (
-      <TouchableOpacity
-        style={[styles.catCard, { backgroundColor: colors.card, borderColor: colors.border, width: colW }]}
+      <Pressable
+        style={({ focused }: any) => [
+          styles.catCard,
+          { backgroundColor: colors.card, borderColor: colors.border, width: colW },
+          focused && styles.tvFocused,
+        ]}
         onPress={() => onSelect(catId)}
-        activeOpacity={0.75}
+        focusable
       >
         {/* Icon bubble */}
         <View style={[styles.catIconBubble, { backgroundColor: colors.secondary }]}>
@@ -446,7 +461,7 @@ function CategoryGrid({
         <View style={[styles.catCountBadge, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
           <Text style={[styles.catCount, { color: colors.mutedForeground }]}>{count} channels</Text>
         </View>
-      </TouchableOpacity>
+      </Pressable>
     );
   }, [colors, colW, categoryNameMap, channelCountByCategory, onSelect]);
 
@@ -664,6 +679,7 @@ function FullGuide({
                 style={[styles.catNavBtn, { opacity: hasPrev ? 1 : 0.25 }]}
                 onPress={() => hasPrev ? onChangeCat(categoryIds[catIndex - 1]) : onBack()}
                 activeOpacity={0.7}
+                focusable
               >
                 <Text style={[styles.catNavArrow, { color: colors.foreground }]}>‹</Text>
               </TouchableOpacity>
@@ -675,6 +691,7 @@ function FullGuide({
                 onPress={() => { if (hasNext) onChangeCat(categoryIds[catIndex + 1]); }}
                 disabled={!hasNext}
                 activeOpacity={0.7}
+                focusable
               >
                 <Text style={[styles.catNavArrow, { color: colors.foreground }]}>›</Text>
               </TouchableOpacity>
@@ -702,6 +719,7 @@ function FullGuide({
           style={[styles.todayBtn, { backgroundColor: colors.secondary, borderColor: colors.border }]}
           onPress={() => refetchEpg()}
           activeOpacity={0.7}
+          focusable
         >
           <Text style={[styles.todayBtnText, { color: colors.mutedForeground }]}>↺</Text>
         </TouchableOpacity>
@@ -709,6 +727,7 @@ function FullGuide({
         {/* Jump-to-now button — always visible so the user can navigate back to Today */}
         <TouchableOpacity
           style={[styles.todayBtn, { backgroundColor: colors.secondary, borderColor: colors.border }]}
+          focusable
           onPress={() => {
             // If on a future day, snap back to Today first
             setSelectedDay(0);
@@ -748,6 +767,7 @@ function FullGuide({
           onPress={() => setSelectedDay((d) => Math.max(0, d - 1))}
           disabled={selectedDay === 0}
           activeOpacity={0.7}
+          focusable
         >
           <Text style={[styles.dayNavArrowText, { color: colors.foreground }]}>‹</Text>
         </TouchableOpacity>
@@ -774,6 +794,7 @@ function FullGuide({
                 ]}
                 onPress={() => setSelectedDay(i)}
                 activeOpacity={0.7}
+                focusable
               >
                 <Text style={[styles.dayTabText, { color: isSelected ? '#fff' : colors.mutedForeground }]}>
                   {d.short}
@@ -790,6 +811,7 @@ function FullGuide({
           onPress={() => setSelectedDay((d) => Math.min(days.length - 1, d + 1))}
           disabled={selectedDay === days.length - 1}
           activeOpacity={0.7}
+          focusable
         >
           <Text style={[styles.dayNavArrowText, { color: colors.foreground }]}>›</Text>
         </TouchableOpacity>
@@ -882,6 +904,27 @@ function FullGuide({
                     nextTitle={nowIdx >= 0 && progs[nowIdx + 1] ? progs[nowIdx + 1].title : null}
                     colors={colors}
                     isFav={guideFavIds.has(ch.id)}
+                    onPress={Platform.isTV ? () => {
+                      const chList = channels.map((c) => ({
+                        url: c.streamUrl, title: c.name,
+                        epgId: c.epgId ?? c.id, channelId: c.id,
+                      }));
+                      const idx = channels.findIndex((c) => c.id === ch.id);
+                      router.push({
+                        pathname: '/player',
+                        params: {
+                          url: ch.streamUrl,
+                          title: ch.name,
+                          type: 'live',
+                          logo: ch.logo ?? '',
+                          epgId: ch.epgId ?? ch.id,
+                          channelId: ch.id,
+                          channelsJson: JSON.stringify(chList),
+                          channelIndex: String(idx),
+                          stopOnBack: 'true',
+                        },
+                      });
+                    } : undefined}
                     onFavPress={async () => {
                       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                       const updated = await StorageService.toggleFavorite({ id: ch.id, name: ch.name, logo: ch.logo ?? '', streamUrl: ch.streamUrl, groupTitle: ch.groupTitle ?? '', epgId: ch.epgId ?? '', streamId: ch.streamId ?? 0 });
@@ -1440,5 +1483,12 @@ const styles = StyleSheet.create({
     top: 4, right: 4,
     width: 5, height: 5, borderRadius: 99,
     backgroundColor: '#6B7280',
+  },
+
+  // ── TV / Fire TV remote focus highlight ──
+  tvFocused: {
+    borderWidth: 2,
+    borderColor: '#3B82F6',
+    borderRadius: 6,
   },
 });
