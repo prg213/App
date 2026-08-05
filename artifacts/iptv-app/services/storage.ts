@@ -11,7 +11,9 @@ const SECURE_CREDS_KEY = 'sv_credentials';
 const SECURE_PIN_KEY = 'sv_pin';
 
 // Everything else (favourites, history, cache) stays in AsyncStorage.
-const KEYS = {
+// Exported so tests can iterate the full key list and catch any key added to
+// KEYS that is missing from clearCredentials.
+export const KEYS = {
   FAVORITES: 'sv_favorites',
   MOVIE_FAVORITES: 'sv_movie_favorites',
   SERIES_FAVORITES: 'sv_series_favorites',
@@ -65,10 +67,16 @@ export const StorageService = {
       KEYS.MOVIES_CACHE,
       KEYS.PARENTAL,
       KEYS.RECENT_CHANNELS,
+      KEYS.REMINDERS,
       KEYS.PREF_AUDIO_LANG,
       KEYS.PREF_SUBTITLE_LANG,
+      KEYS.PREF_REMINDER_LEAD_MINS,
+      KEYS.PREF_SEARCH_TYPE,
       KEYS.PREF_SEARCH_QUERY, // #122: clear saved search query on logout
+      KEYS.BACKFILL_TS,
       KEYS.RECENT_SEARCHES,  // #122: also clear recent search history on logout
+      // NOTE: LOGOUT_REASON is intentionally excluded — it must survive logout
+      // so the activation screen can display a one-time explanation banner.
     ]);
   },
 
