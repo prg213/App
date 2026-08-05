@@ -33,6 +33,7 @@ import { getXtreamXmltvUrl, getXtreamCatchupUrls, getXtreamLiveStreams } from '@
 import { fetchAndParseM3U } from '@/services/m3uParser';
 import { fetchAndParseXmltv } from '@/services/epgService';
 import type { EpgProgram } from '@/types';
+import { Image } from 'expo-image';
 import { useCast } from '@/hooks/useCast';
 import CastButton from '@/components/CastButton';
 
@@ -1424,7 +1425,8 @@ export default function PlayerScreen() {
               <Image
                 source={{ uri: activeLogo }}
                 style={styles.infoChannelLogo}
-                resizeMode="contain"
+                contentFit="contain"
+                cachePolicy="memory-disk"
               />
             )}
             <Text style={styles.infoChannel} numberOfLines={1}>{activeTitle}</Text>

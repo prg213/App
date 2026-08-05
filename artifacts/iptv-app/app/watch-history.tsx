@@ -12,7 +12,7 @@ import { useRouter } from 'expo-router';
 import { useFocusEffect } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Swipeable } from 'react-native-gesture-handler';
+// Swipeable removed in gesture-handler v3 — long-press triggers delete instead
 import { useColors } from '@/hooks/useColors';
 import { StorageService } from '@/services/storage';
 import type { WatchHistoryEntry } from '@/types';
@@ -48,36 +48,21 @@ interface RowProps {
 }
 
 const HistoryRow = React.memo(function HistoryRow({ item, colors, onDelete, onPress }: RowProps) {
-  const swipeRef = useRef<Swipeable>(null);
   const progress = item.position && item.duration ? item.position / Math.max(item.duration, 1) : 0;
 
-  const renderRightActions = () => (
-    <TouchableOpacity
-      style={styles.deleteAction}
-      onPress={() => {
-        swipeRef.current?.close();
-        onDelete(item.id);
-      }}
-      activeOpacity={0.8}
-    >
-      <Text style={styles.deleteIcon}>🗑</Text>
-      <Text style={styles.deleteLabel}>Remove</Text>
-    </TouchableOpacity>
-  );
-
   return (
-    <Swipeable
-      ref={swipeRef}
-      renderRightActions={renderRightActions}
-      rightThreshold={60}
-      overshootRight={false}
-      friction={2}
+    <TouchableOpacity
+      style={[styles.row, { backgroundColor: colors.background, borderBottomColor: colors.border }]}
+      onPress={() => onPress(item)}
+      onLongPress={() => {
+        Alert.alert('Remove', `Remove "${item.title}" from history?`, [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Remove', style: 'destructive', onPress: () => onDelete(item.id) },
+        ]);
+      }}
+      delayLongPress={500}
+      activeOpacity={0.75}
     >
-      <TouchableOpacity
-        style={[styles.row, { backgroundColor: colors.background, borderBottomColor: colors.border }]}
-        onPress={() => onPress(item)}
-        activeOpacity={0.75}
-      >
         {/* Thumbnail */}
         <View style={[styles.thumb, { backgroundColor: colors.secondary }]}>
           {item.cover ? (
@@ -135,10 +120,9 @@ const HistoryRow = React.memo(function HistoryRow({ item, colors, onDelete, onPr
           </View>
         </View>
 
-        {/* Swipe hint */}
-        <Text style={[styles.swipeHint, { color: colors.mutedForeground }]}>‹</Text>
+        {/* Long-press hint */}
+        <Text style={[styles.swipeHint, { color: colors.mutedForeground }]}>⋯</Text>
       </TouchableOpacity>
-    </Swipeable>
   );
 });
 
