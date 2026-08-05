@@ -481,41 +481,28 @@ function CategoryGrid({
 // ─── Full 7-day guide ──────────────────────────────────────────────────────────
 
 function FullGuide({
-  channels, epgMap, epgLoading, epgError, refetchEpg, colors, insets, router,
-  guideFavIds, setGuideFavIds, categoryIds, categoryNameMap, initialCat,
+  channels, epgMap, epgLoading, epgError, refetchEpg, onBack, categoryName,
+  categoryIds, categoryNameMap, selectedCat, onChangeCat,
+  colors, insets, router, guideFavIds, setGuideFavIds,
 }: {
   channels: Channel[];
   epgMap: Map<string, EpgProgram[]> | undefined;
   epgLoading: boolean;
   epgError: any;
   refetchEpg: () => void;
+  onBack: () => void;
+  categoryName: string;
+  /** All category IDs in display order — used for ‹ › prev/next navigation */
+  categoryIds: string[];
+  categoryNameMap: Record<string, string>;
+  selectedCat: string;
+  onChangeCat: (catId: string) => void;
   colors: any;
   insets: any;
   router: any;
-  /** Favourite channel IDs — owned by GuideScreen, passed in so FullGuide can read and update them */
   guideFavIds: Set<string>;
   setGuideFavIds: (s: Set<string>) => void;
-  /** Category IDs in display order */
-  categoryIds: string[];
-  /** Map from category ID → display name */
-  categoryNameMap: Record<string, string>;
-  /** Category to pre-select (e.g. from a notification deep-link) */
-  initialCat?: string | null;
 }) {
-  const [localSelectedCat, setLocalSelectedCat] = useState<string | null>(initialCat ?? null);
-  const catScrollRef = useRef<ScrollView>(null);
-
-  // Filter channels by the locally-selected category
-  const catFilteredChannels = useMemo(
-    () => (localSelectedCat ? channels.filter((c) => c.groupTitle === localSelectedCat) : channels),
-    [channels, localSelectedCat],
-  );
-
-  // When initialCat changes (notification deep-link), update selection
-  useEffect(() => {
-    if (initialCat) setLocalSelectedCat(initialCat);
-  }, [initialCat]);
-
   const [selectedDay, setSelectedDay] = useState(0);
   const [selected, setSelected] = useState<{ program: EpgProgram; channel: Channel } | null>(null);
   const [now, setNow] = useState(Date.now());
@@ -630,11 +617,11 @@ function FullGuide({
     Animated.timing(nowXAnim, { toValue: nowX, duration: 800, useNativeDriver: false }).start();
   }, [nowX]);
 
-  // Channel filter — applied on top of the local category filter
+  // Channel filter — applied on top of the already-filtered channels prop
   const visibleChannels = useMemo(() => {
     const q = normaliseStr(debouncedChFilter.trim());
-    return q ? catFilteredChannels.filter((c) => normaliseStr(c.name).includes(q)) : catFilteredChannels;
-  }, [catFilteredChannels, debouncedChFilter]);
+    return q ? channels.filter((c) => normaliseStr(c.name).includes(q)) : channels;
+  }, [channels, debouncedChFilter]);
 
   // Height of the full programme column — used for the "Now" indicator line
   const nowLineH = visibleChannels.length * ROW_H;
@@ -666,7 +653,34 @@ function FullGuide({
     <View style={{ flex: 1, backgroundColor: colors.background }}>
       {/* Top bar */}
       <View style={[styles.topBar, { borderBottomColor: colors.border, paddingTop: insets.top + 4 }]}>
-        <Text style={[styles.screenTitle, { color: colors.foreground }]}>TV Guide</Text>
+        {/* ‹ Category Name › prev/next navigation */}
+        {(() => {
+          const catIndex = categoryIds.indexOf(selectedCat);
+          const hasPrev = catIndex > 0;
+          const hasNext = catIndex >= 0 && catIndex < categoryIds.length - 1;
+          return (
+            <>
+              <TouchableOpacity
+                style={[styles.catNavBtn, { opacity: hasPrev ? 1 : 0.25 }]}
+                onPress={() => hasPrev ? onChangeCat(categoryIds[catIndex - 1]) : onBack()}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.catNavArrow, { color: colors.foreground }]}>‹</Text>
+              </TouchableOpacity>
+              <Text style={[styles.screenTitle, { color: colors.foreground, flex: 1, textAlign: 'center' }]} numberOfLines={1}>
+                {categoryName}
+              </Text>
+              <TouchableOpacity
+                style={[styles.catNavBtn, { opacity: hasNext ? 1 : 0.25 }]}
+                onPress={() => { if (hasNext) onChangeCat(categoryIds[catIndex + 1]); }}
+                disabled={!hasNext}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.catNavArrow, { color: colors.foreground }]}>›</Text>
+              </TouchableOpacity>
+            </>
+          );
+        })()}
         <Text style={[styles.guideClockText, { color: colors.mutedForeground }]}>
           {new Date(now).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
         </Text>
@@ -723,57 +737,9 @@ function FullGuide({
           clearButtonMode="while-editing"
         />
         <Text style={[styles.chCountLabel, { color: colors.mutedForeground }]}>
-          {visibleChannels.length}{chFilter.trim() ? `/${catFilteredChannels.length}` : ''} ch
+          {visibleChannels.length}{chFilter.trim() ? `/${channels.length}` : ''} ch
         </Text>
       </View>
-
-      {/* Category scroll bar */}
-      {categoryIds.length > 0 && (
-        <ScrollView
-          ref={catScrollRef}
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={[styles.catBar, { borderBottomColor: colors.border, backgroundColor: colors.card }]}
-          contentContainerStyle={styles.catBarContent}
-        >
-          {/* "All" pill */}
-          <TouchableOpacity
-            style={[
-              styles.catPill,
-              !localSelectedCat
-                ? { backgroundColor: colors.primary, borderColor: colors.primary }
-                : { backgroundColor: 'transparent', borderColor: colors.border },
-            ]}
-            onPress={() => setLocalSelectedCat(null)}
-            activeOpacity={0.75}
-          >
-            <Text style={[styles.catPillText, { color: !localSelectedCat ? '#fff' : colors.mutedForeground }]}>
-              All
-            </Text>
-          </TouchableOpacity>
-
-          {categoryIds.map((catId) => {
-            const active = localSelectedCat === catId;
-            return (
-              <TouchableOpacity
-                key={catId}
-                style={[
-                  styles.catPill,
-                  active
-                    ? { backgroundColor: colors.primary, borderColor: colors.primary }
-                    : { backgroundColor: 'transparent', borderColor: colors.border },
-                ]}
-                onPress={() => setLocalSelectedCat(active ? null : catId)}
-                activeOpacity={0.75}
-              >
-                <Text style={[styles.catPillText, { color: active ? '#fff' : colors.mutedForeground }]} numberOfLines={1}>
-                  {categoryNameMap[catId] ?? catId}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-      )}
 
       {/* Day navigation: prev/next arrows + tab strip */}
       <View style={[styles.dayBar, { borderBottomColor: colors.border, backgroundColor: colors.card, flexDirection: 'row', alignItems: 'center' }]}>
@@ -1043,8 +1009,7 @@ export default function GuideScreen() {
   // Receive channelId from notification deep-links (passed by _layout.tsx)
   const { channelId: notifChannelId } = useLocalSearchParams<{ channelId?: string }>();
 
-  // Category to pre-select when opened from a notification deep-link
-  const [pendingHighlightCat, setPendingHighlightCat] = useState<string | null>(null);
+  const [selectedCat, setSelectedCat] = useState<string | null>(null);
   // Channel to auto-highlight after notification tap
   const [pendingHighlightId, setPendingHighlightId] = useState<string | null>(notifChannelId ?? null);
   // Favourite channels — loaded once so the guide can show ♥ badge and toggle
@@ -1112,13 +1077,18 @@ export default function GuideScreen() {
     return map;
   }, [channels]);
 
+  const filteredChannels = useMemo(
+    () => (selectedCat ? channels.filter((c) => c.groupTitle === selectedCat) : channels),
+    [channels, selectedCat],
+  );
+
   // Auto-select the channel's category when opened from a notification deep-link
   useEffect(() => {
     if (!pendingHighlightId || channels.length === 0) return;
     const ch = channels.find((c) => c.id === pendingHighlightId || c.epgId === pendingHighlightId);
     if (!ch) return;
     setPendingHighlightId(null);
-    if (ch.groupTitle) setPendingHighlightCat(ch.groupTitle);
+    if (ch.groupTitle) setSelectedCat(ch.groupTitle);
   }, [pendingHighlightId, channels]);
 
   // Build a fuzzy-resolved copy of epgMap so channels whose epgId doesn't
@@ -1180,24 +1150,38 @@ export default function GuideScreen() {
     );
   }
 
-  // Always show the full guide with the category bar at the top.
-  // initialCat is derived from pendingHighlightId so the guide pre-selects
-  // the right category when opened from a notification deep-link.
+  if (selectedCat) {
+    return (
+      <FullGuide
+        channels={filteredChannels}
+        epgMap={resolvedEpgMap}
+        epgLoading={epgLoading}
+        epgError={epgError}
+        refetchEpg={refetchEpg}
+        onBack={() => setSelectedCat(null)}
+        categoryName={categoryNameMap[selectedCat] ?? selectedCat}
+        categoryIds={categoryIds}
+        categoryNameMap={categoryNameMap}
+        selectedCat={selectedCat}
+        onChangeCat={(catId) => setSelectedCat(catId)}
+        colors={colors}
+        insets={insets}
+        router={router}
+        guideFavIds={guideFavIds}
+        setGuideFavIds={setGuideFavIds}
+      />
+    );
+  }
+
   return (
-    <FullGuide
-      channels={channels}
-      epgMap={resolvedEpgMap}
-      epgLoading={epgLoading}
-      epgError={epgError}
-      refetchEpg={refetchEpg}
-      colors={colors}
-      insets={insets}
-      router={router}
-      guideFavIds={guideFavIds}
-      setGuideFavIds={setGuideFavIds}
+    <CategoryGrid
       categoryIds={categoryIds}
       categoryNameMap={categoryNameMap}
-      initialCat={pendingHighlightCat}
+      channelCountByCategory={channelCountByCategory}
+      colors={colors}
+      insets={insets}
+      onSelect={setSelectedCat}
+      epgLoading={epgLoading}
     />
   );
 }
@@ -1287,27 +1271,17 @@ const styles = StyleSheet.create({
   },
   catCount: { fontSize: 10, fontFamily: 'Inter_400Regular' },
 
-  // ── Category pill bar ──
-  catBar: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    maxHeight: 46,
-  },
-  catBarContent: {
-    flexDirection: 'row',
+  // ── Category prev/next arrows ──
+  catNavBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
     alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    gap: 6,
+    justifyContent: 'center',
   },
-  catPill: {
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    borderRadius: 20,
-    borderWidth: 1,
-  },
-  catPillText: {
-    fontSize: 12,
-    fontFamily: 'Inter_500Medium',
+  catNavArrow: {
+    fontSize: 26,
+    fontFamily: 'Inter_600SemiBold',
+    lineHeight: 30,
   },
 
   // ── Day tab bar ──
