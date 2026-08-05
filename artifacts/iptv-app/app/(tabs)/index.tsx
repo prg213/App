@@ -50,6 +50,7 @@ import {
 import { fetchAndParseM3U } from '@/services/m3uParser';
 import { fetchAndParseXmltv } from '@/services/epgService';
 import { CatchupSheet } from '@/components/CatchupSheet';
+import { TVLiveLayout } from '@/components/TVLiveLayout';
 import type { Channel, Category, EpgProgram, FavoriteChannel } from '@/types';
 import { normaliseStr } from '@/utils/normalise';
 
@@ -1048,7 +1049,74 @@ export default function LiveTVScreen() {
     />
   ), [selectedChannel?.id, favSet, nowPlayingMap, colors, handleSelectChannel, handleToggleFav, handleLongPressChannel]);
 
+  // ── TV remote (Fire TV / Android TV) direct navigation ───────────────────
+  // Navigate straight to the fullscreen player — no expand animation needed
+  // on a TV where there is no mini-player position to animate from.
+  const handleTVWatch = useCallback(() => {
+    if (!selectedChannel) return;
+    goingToPlayerRef.current = true;
+    const chList = channels.map((ch) => ({
+      url: ch.streamUrl,
+      title: ch.name,
+      epgId: ch.epgId ?? ch.id,
+      channelId: ch.id,
+    }));
+    const idx = channels.findIndex((ch) => ch.id === selectedChannel.id);
+    router.push({
+      pathname: '/player',
+      params: {
+        url: selectedChannel.streamUrl,
+        title: selectedChannel.name,
+        type: 'live',
+        logo: selectedChannel.logo ?? '',
+        epgId: selectedChannel.epgId ?? selectedChannel.id,
+        channelId: selectedChannel.id,
+        stopOnBack: 'true',
+        channelsJson: JSON.stringify(chList),
+        channelIndex: String(idx),
+      },
+    });
+  }, [selectedChannel, channels, router]);
+
   // ── Render ────────────────────────────────────────────────────────────────
+
+  // On Fire TV / Android TV use the 3-panel D-pad layout.
+  if (Platform.isTV) {
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.background }}>
+        <TVLiveLayout
+          allCategories={allCategories}
+          selectedCatId={selectedCatId}
+          onCatSelect={handleSelectCat}
+          channels={filteredChannels}
+          channelsLoading={channelsLoading}
+          epgMap={epgMap}
+          nowTs={nowTs}
+          selectedChannel={selectedChannel}
+          onChannelSelect={handleSelectChannel}
+          onWatchFullscreen={handleTVWatch}
+          onOpenCatchup={() => setShowCatchup(true)}
+          nowPlayingMap={nowPlayingMap}
+          colors={colors}
+          insets={insets}
+          player={player}
+          videoKey={videoKey}
+          isBuffering={isBuffering}
+          hasError={hasError}
+        />
+        {showCatchup && selectedChannel && creds && (
+          <CatchupSheet
+            key={selectedChannel.id}
+            visible={showCatchup}
+            channel={selectedChannel}
+            creds={creds}
+            epgMap={epgMap}
+            onClose={() => setShowCatchup(false)}
+          />
+        )}
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
