@@ -543,6 +543,21 @@ export default function RemindersScreen() {
 
   useFocusEffect(load);
 
+  // handleUndo must be declared before the useFocusEffect that lists it as a
+  // dependency — otherwise the const is in the temporal dead zone at that point.
+  const handleUndo = useCallback(async () => {
+    const banner = undoBannerRef.current;
+    if (!banner) return;
+    clearTimeout(banner.timerId);
+    setUndoBanner(null);
+    // Re-persist and re-schedule the deleted reminder
+    await StorageService.addReminder(banner.reminder);
+    const lead = banner.reminder.leadMins ?? reminderLeadMins;
+    await scheduleReminderNotification(banner.reminder, lead);
+    DeviceEventEmitter.emit('reminders:changed');
+    load();
+  }, [reminderLeadMins, load]);
+
   // #139: if the user navigates away while the undo banner is live, restore the
   // reminder automatically — they can always delete again from the new screen.
   useFocusEffect(
@@ -571,19 +586,6 @@ export default function RemindersScreen() {
     const timerId = setTimeout(() => setUndoBanner(null), 5000);
     setUndoBanner({ reminder, timerId });
   }, []);
-
-  const handleUndo = useCallback(async () => {
-    const banner = undoBannerRef.current;
-    if (!banner) return;
-    clearTimeout(banner.timerId);
-    setUndoBanner(null);
-    // Re-persist and re-schedule the deleted reminder
-    await StorageService.addReminder(banner.reminder);
-    const lead = banner.reminder.leadMins ?? reminderLeadMins;
-    await scheduleReminderNotification(banner.reminder, lead);
-    DeviceEventEmitter.emit('reminders:changed');
-    load();
-  }, [reminderLeadMins, load]);
 
   const handleClearPast = () => {
     const past = reminders.filter((r) => new Date(r.end) < new Date());

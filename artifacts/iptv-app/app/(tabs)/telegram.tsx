@@ -28,7 +28,7 @@ export default function TelegramScreen() {
       {url ? (
         <>
           {loading && (
-            <View style={[StyleSheet.absoluteFillObject, styles.loader]}>
+            <View style={[StyleSheet.absoluteFill, styles.loader]}>
               <ActivityIndicator size="large" color="#3B82F6" />
               <Text style={[styles.loaderText, { color: colors.mutedForeground }]}>
                 Opening community…

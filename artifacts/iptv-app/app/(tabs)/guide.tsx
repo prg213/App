@@ -482,6 +482,7 @@ function CategoryGrid({
 
 function FullGuide({
   channels, epgMap, epgLoading, epgError, refetchEpg, onBack, categoryName, colors, insets, router,
+  guideFavIds, setGuideFavIds,
 }: {
   channels: Channel[];
   epgMap: Map<string, EpgProgram[]> | undefined;
@@ -493,6 +494,9 @@ function FullGuide({
   colors: any;
   insets: any;
   router: any;
+  /** Favourite channel IDs — owned by GuideScreen, passed in so FullGuide can read and update them */
+  guideFavIds: Set<string>;
+  setGuideFavIds: (s: Set<string>) => void;
 }) {
   const [selectedDay, setSelectedDay] = useState(0);
   const [selected, setSelected] = useState<{ program: EpgProgram; channel: Channel } | null>(null);
@@ -1135,6 +1139,8 @@ export default function GuideScreen() {
         colors={colors}
         insets={insets}
         router={router}
+        guideFavIds={guideFavIds}
+        setGuideFavIds={setGuideFavIds}
       />
     );
   }

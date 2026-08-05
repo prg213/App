@@ -471,8 +471,10 @@ export default function LiveTVScreen() {
   const LIVE_EDGE_AWAY_THRESHOLD_MS = 30_000;
   const selectedChannelRef = useRef(selectedChannel);
   useEffect(() => { selectedChannelRef.current = selectedChannel; }, [selectedChannel]);
-  const channelsRef = useRef(channels);
-  useEffect(() => { channelsRef.current = channels; }, [channels]);
+  // Initialise with [] — channels is declared later via useMemo so it isn't in
+  // scope here. channelsRef.current is updated synchronously after channels is
+  // declared below (render-time assignment avoids the TDZ dep-array crash).
+  const channelsRef = useRef<Channel[]>([]);
   const lastWatchedUrlRef = useRef(lastWatchedUrl);
   useEffect(() => { lastWatchedUrlRef.current = lastWatchedUrl; }, [lastWatchedUrl]);
 
@@ -606,18 +608,8 @@ export default function LiveTVScreen() {
   }, [channelFilter]);
 
   const channelListRef = useRef<FlatList<Channel>>(null);
-  // Scroll back to top whenever the filter changes so the first match is visible
-  useEffect(() => {
-    if (channelFilter.trim()) {
-      channelListRef.current?.scrollToOffset({ offset: 0, animated: false });
-    }
-  }, [channelFilter, filteredChannels]);
-
-  const filteredChannels: Channel[] = useMemo(() => {
-    const q = normaliseStr(channelFilter.trim());
-    if (!q) return channels;
-    return channels.filter((ch) => normaliseStr(ch.name).includes(q));
-  }, [channels, channelFilter]);
+  // filteredChannels and its useEffect are declared AFTER channels (below) to
+  // avoid temporal dead zone crashes — see channels useMemo declaration.
 
   const filteredCategories = useMemo(() => {
     const q = normaliseStr(catSearch.trim());
@@ -702,6 +694,25 @@ export default function LiveTVScreen() {
       : fetchedChannels;
     return base.filter((ch) => !blockedSet.has(ch.id) && !blockedCatNames.has(ch.groupTitle));
   }, [isFavsSelected, favorites, fetchedChannels, blockedSet, blockedCatNames]);
+
+  // Keep channelsRef current synchronously so callbacks always see the latest
+  // list without stale closures (declared early with [], updated here each render).
+  channelsRef.current = channels;
+
+  // filteredChannels is declared here — after channels — so neither it nor its
+  // useEffect dep array ever hits a temporal dead zone.
+  const filteredChannels: Channel[] = useMemo(() => {
+    const q = normaliseStr(channelFilter.trim());
+    if (!q) return channels;
+    return channels.filter((ch) => normaliseStr(ch.name).includes(q));
+  }, [channels, channelFilter]);
+
+  // Scroll back to top whenever the filter changes so the first match is visible
+  useEffect(() => {
+    if (channelFilter.trim()) {
+      channelListRef.current?.scrollToOffset({ offset: 0, animated: false });
+    }
+  }, [channelFilter, filteredChannels]);
 
   const { data: epgMap } = useQuery<Map<string, EpgProgram[]>>({
     queryKey: ['xmltv-epg', credentials],
@@ -1581,7 +1592,8 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
   videoOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
     backgroundColor: 'rgba(0,0,0,0.55)',
     justifyContent: 'center',
     alignItems: 'center',

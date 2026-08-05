@@ -32,16 +32,8 @@ export function ContinueWatchingRail({ type }: Props) {
   const [history, setHistory] = useState<WatchHistoryEntry[]>([]);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
-  useFocusEffect(useCallback(() => { loadHistory(); }, [loadHistory]));
-
-  // Refresh instantly when settings clears history (no re-focus needed)
-  useEffect(() => {
-    const sub = DeviceEventEmitter.addListener('history:cleared', loadHistory);
-    return () => sub.remove();
-  }, [loadHistory]);
-
-  if (history.length === 0) return null;
-
+  // loadHistory declared first so the hooks below can list it as a dependency
+  // without hitting the temporal dead zone.
   const loadHistory = useCallback(() => {
     StorageService.getWatchHistory().then((h) => {
       const filtered = h
@@ -56,6 +48,16 @@ export function ContinueWatchingRail({ type }: Props) {
       setHistory(filtered);
     });
   }, [type]);
+
+  useFocusEffect(useCallback(() => { loadHistory(); }, [loadHistory]));
+
+  // Refresh instantly when settings clears history (no re-focus needed)
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener('history:cleared', loadHistory);
+    return () => sub.remove();
+  }, [loadHistory]);
+
+  if (history.length === 0) return null;
 
   const handleClearAll = useCallback(async () => {
     // Preserve entries that don't match this rail's type
