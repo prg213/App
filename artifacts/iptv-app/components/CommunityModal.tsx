@@ -107,7 +107,7 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   loaderOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    position: 'absolute', left: 0, right: 0, bottom: 0,
     top: 56,
     alignItems: 'center',
     justifyContent: 'center',

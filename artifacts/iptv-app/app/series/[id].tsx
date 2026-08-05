@@ -728,7 +728,7 @@ const styles = StyleSheet.create({
   },
 
   // Season picker
-  pickerBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.6)' },
+  pickerBackdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)' },
   pickerSheet: {
     position: 'absolute', bottom: 0, left: 0, right: 0,
     backgroundColor: '#1A1A2E', borderTopLeftRadius: 16, borderTopRightRadius: 16,

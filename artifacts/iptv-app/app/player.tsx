@@ -1673,7 +1673,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000' },
 
   overlay: {
-    ...StyleSheet.absoluteFillObject,
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
     flexDirection: 'column',
     justifyContent: 'flex-start',
   },
@@ -1849,7 +1849,7 @@ const styles = StyleSheet.create({
 
   // ── Settings tray ──
   settingsBackdrop: {
-    ...StyleSheet.absoluteFillObject,
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
     backgroundColor: 'rgba(0,0,0,0.5)',
   },
   settingsSheet: {
@@ -1985,7 +1985,7 @@ const styles = StyleSheet.create({
   },
 
   // Buffering
-  bufferWrap: { ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center', gap: 16 },
+  bufferWrap: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center', gap: 16 },
   bufferCircle: { width: 64, height: 64, borderRadius: 32, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' },
   bufferIcon: { fontSize: 24, color: '#fff' },
   bufferText: { fontSize: 14, color: 'rgba(255,255,255,0.7)', fontFamily: 'Inter_400Regular' },
@@ -2004,7 +2004,7 @@ const styles = StyleSheet.create({
   doubleTapIcon: { fontSize: 22, color: '#fff', fontFamily: 'Inter_700Bold', letterSpacing: 0.5 },
 
   // Reconnecting overlay
-  reconnectOverlay: { ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center', gap: 14, backgroundColor: 'rgba(0,0,0,0.55)' },
+  reconnectOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center', gap: 14, backgroundColor: 'rgba(0,0,0,0.55)' },
   reconnectText: { fontSize: 15, color: '#fff', fontFamily: 'Inter_600SemiBold', letterSpacing: 0.2 },
 
   // Error / web message

@@ -263,7 +263,7 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.5)',
   },
   loaderOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    position: 'absolute', left: 0, right: 0, bottom: 0,
     top: 56,
     alignItems: 'center',
     justifyContent: 'center',
