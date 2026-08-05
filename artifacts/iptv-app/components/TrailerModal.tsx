@@ -22,56 +22,40 @@ interface Props {
 }
 
 /**
- * Build a YouTube IFrame Player API page for a single video ID.
+ * Injected into each YouTube page to detect "Video unavailable" errors and
+ * report them back so we can advance to the next candidate.
  *
- * Uses the IFrame API (not a bare embed URL) so we get a proper `onError`
- * callback. When the player fires an error (e.g. 150/152 = embedding disabled)
- * the page posts a message to React Native so we can advance to the next
- * candidate without closing the modal.
- *
- * baseUrl is set to https://www.youtube.com so the player sees a valid page
- * origin — this fixes error 153 (player configuration error).
+ * We load m.youtube.com/watch?v=... (the real mobile site, not an iframe embed)
+ * so there are no 150/152 embedding restrictions. The only remaining failure
+ * mode is an actually deleted / private / geo-blocked video.
  */
-function buildYtHtml(videoId: string): string {
-  return `<!DOCTYPE html>
-<html>
-<head>
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
-<style>
-  *{margin:0;padding:0;box-sizing:border-box}
-  html,body{width:100%;height:100%;background:#000;overflow:hidden}
-  #player{position:absolute;top:0;left:0;width:100%;height:100%}
-</style>
-</head>
-<body>
-<div id="player"></div>
-<script>
-  var tag = document.createElement('script');
-  tag.src = 'https://www.youtube.com/iframe_api';
-  document.head.appendChild(tag);
-
-  function onYouTubeIframeAPIReady() {
-    new YT.Player('player', {
-      videoId: '${videoId}',
-      width: '100%',
-      height: '100%',
-      playerVars: { autoplay: 1, rel: 0, modestbranding: 1, playsinline: 1 },
-      events: {
-        onReady: function(e) { e.target.playVideo(); },
-        onError: function(e) {
-          try {
-            window.ReactNativeWebView.postMessage(
-              JSON.stringify({ type: 'yt-error', code: e.data, videoId: '${videoId}' })
-            );
-          } catch(_) {}
-        }
-      }
-    });
+const YT_ERROR_DETECTOR = `
+(function() {
+  var reported = false;
+  function report() {
+    if (reported) return;
+    reported = true;
+    window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'yt-error', code: 150 }));
   }
-</script>
-</body>
-</html>`;
-}
+  function check() {
+    if (reported) return;
+    var text = (document.body && document.body.innerText) || '';
+    if (
+      text.indexOf('Video unavailable') !== -1 ||
+      text.indexOf('not available') !== -1 ||
+      text.indexOf('This video is private') !== -1 ||
+      document.querySelector('#error-screen') ||
+      document.querySelector('yt-alert-with-actions-renderer')
+    ) {
+      report();
+    }
+  }
+  document.addEventListener('DOMContentLoaded', function() { setTimeout(check, 1500); });
+  setTimeout(check, 3000);
+  setTimeout(check, 7000);
+})();
+true;
+`;
 
 /** For non-YouTube URLs (provider trailers) keep the original iframe approach. */
 function buildGenericHtml(url: string): string {
@@ -135,7 +119,6 @@ export function TrailerModal({ videoIds, onClose }: Props) {
       setWebviewLoading(true);
       webviewKey.current += 1;
     } else {
-      // All candidates exhausted — show a clean error instead of YouTube's UI.
       setAllFailed(true);
     }
   };
@@ -152,11 +135,11 @@ export function TrailerModal({ videoIds, onClose }: Props) {
   const isFetching = videoIds === 'loading';
   const ids = isFetching ? [] : videoIds;
   const current = ids[idx] ?? null;
+  const isYt = current ? isVideoId(current) : false;
 
-  const html = current
-    ? isVideoId(current)
-      ? buildYtHtml(current)
-      : buildGenericHtml(current)
+  // Pause script injected when app goes to background
+  const pauseScript = !appActive && isYt
+    ? `(function(){ try { var v = document.querySelector('video'); if(v) v.pause(); } catch(e){} })(); true;`
     : '';
 
   return (
@@ -198,10 +181,17 @@ export function TrailerModal({ videoIds, onClose }: Props) {
             )}
             <WebView
               key={webviewKey.current}
-              source={{ html, baseUrl: 'https://www.youtube.com' }}
+              source={
+                isYt
+                  ? // Load the real YouTube mobile page — no embedding restrictions apply
+                    { uri: `https://m.youtube.com/watch?v=${current}&autoplay=1` }
+                  : // Provider trailer URL — keep iframe approach
+                    { html: buildGenericHtml(current), baseUrl: 'about:blank' }
+              }
               style={styles.webview}
               onLoadEnd={() => setWebviewLoading(false)}
               onMessage={handleMessage}
+              onError={() => advance()}
               allowsFullscreenVideo
               allowsInlineMediaPlayback
               mediaPlaybackRequiresUserAction={false}
@@ -209,8 +199,8 @@ export function TrailerModal({ videoIds, onClose }: Props) {
               domStorageEnabled
               originWhitelist={['*']}
               mixedContentMode="always"
-              // Pause the YouTube iframe when the app goes to the background
-              injectedJavaScript={!appActive ? `(function(){ try { document.querySelector('iframe')?.contentWindow?.postMessage('{"event":"command","func":"pauseVideo","args":""}','*'); } catch(e){} })(); true;` : ''}
+              injectedJavaScript={isYt ? YT_ERROR_DETECTOR : ''}
+              injectedJavaScriptBeforeContentLoaded={pauseScript}
             />
           </>
         )}
