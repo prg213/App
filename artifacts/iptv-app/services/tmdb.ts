@@ -104,14 +104,45 @@ async function youtubeSearchVideoId(query: string): Promise<string | null> {
 const candidatesCache = new Map<string, string[]>();
 
 /**
+ * Check whether a YouTube video allows embedding via the oEmbed endpoint.
+ *
+ * youtube.com/oembed returns:
+ *   200  → embeddable
+ *   401  → embedding disabled
+ *   403  → embedding disabled (age-restricted / policy)
+ *   404  → video not found
+ *
+ * Any non-2xx response is treated as "not embeddable" so we don't waste a
+ * player slot on a video that will immediately fire error 150/152.
+ *
+ * Times out quickly (3 s) so a slow network doesn't add noticeable latency.
+ */
+async function isYouTubeEmbeddable(videoId: string): Promise<boolean> {
+  try {
+    const url =
+      `https://www.youtube.com/oembed?url=${encodeURIComponent(
+        `https://www.youtube.com/watch?v=${videoId}`,
+      )}&format=json`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(3_000) });
+    return res.ok;
+  } catch {
+    // Network failure — assume embeddable so we don't discard potentially good
+    // candidates just because the oEmbed probe timed out.
+    return true;
+  }
+}
+
+/**
  * Return an ordered list of YouTube video ID candidates for a title.
  *
  * Priority inside the list:
  *   1. TMDB official Trailer(s) → any Trailer → official Teaser → any YouTube video
  *   2. YouTube search scrape top results (up to 6)
  *
- * Having multiple candidates lets the player auto-advance when a video has
- * embedding disabled (YouTube error 150/152) without closing the modal.
+ * After collecting candidates the function runs an oEmbed embeddability check
+ * on all IDs in parallel.  IDs that are confirmed not embeddable (error 401/403)
+ * are moved to the end of the list as a last-resort pool rather than discarded
+ * entirely, so the modal always has something to show.
  *
  * Returns [] when every attempt fails or both keys are missing.
  */
@@ -126,8 +157,8 @@ export async function getTmdbTrailerCandidates(
   if (cached) return cached;
 
   const seen = new Set<string>();
-  const push = (id: string) => { if (id && !seen.has(id)) { seen.add(id); candidates.push(id); } };
-  const candidates: string[] = [];
+  const push = (id: string) => { if (id && !seen.has(id)) { seen.add(id); rawCandidates.push(id); } };
+  const rawCandidates: string[] = [];
 
   if (TMDB_KEY) {
     try {
@@ -166,6 +197,24 @@ export async function getTmdbTrailerCandidates(
   // YouTube scrape gives us more candidates when TMDB has none or few
   const scraped = await youtubeSearchVideoIds(title, 6);
   scraped.forEach(push);
+
+  // ── oEmbed embeddability filter ──────────────────────────────────────────
+  // Run all checks in parallel to keep latency low.  Embeddable IDs are
+  // promoted to the front; blocked IDs are kept at the back as last-resort
+  // so the list is never completely empty.
+  let candidates: string[];
+  if (rawCandidates.length > 0) {
+    const embeddable = await Promise.all(rawCandidates.map(isYouTubeEmbeddable));
+    const good: string[] = [];
+    const blocked: string[] = [];
+    rawCandidates.forEach((id, i) => {
+      if (embeddable[i]) good.push(id);
+      else blocked.push(id);
+    });
+    candidates = good.length > 0 ? [...good, ...blocked] : blocked;
+  } else {
+    candidates = rawCandidates;
+  }
 
   if (candidatesCache.size >= CACHE_MAX) {
     const oldest = candidatesCache.keys().next().value;
