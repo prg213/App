@@ -260,6 +260,155 @@ const ProgramRow = React.memo(function ProgramRow({
   );
 });
 
+// ─── TV / Fire TV EPG grid ────────────────────────────────────────────────────
+// FlatList-based layout so every programme cell is D-pad focusable.
+// Only rendered when Platform.isTV is true.
+
+const TV_CELL_GAP = 2;   // horizontal gap between cells
+const TV_CH_W    = 160;  // fixed channel-info column width
+
+interface TVProgItem {
+  prog: EpgProgram;
+  width: number;   // rendered pixel width
+  offset: number;  // cumulative offset from day start (for getItemLayout)
+}
+
+const TVEpgRow = React.memo(function TVEpgRow({
+  channel, programs, dayStartMs, now, isToday, colors, reminderIds,
+  onProgramPress, onWatchChannel,
+}: {
+  channel: Channel;
+  programs: EpgProgram[];
+  dayStartMs: number;
+  now: number;
+  isToday: boolean;
+  colors: any;
+  reminderIds?: Set<string>;
+  onProgramPress: (p: EpgProgram, ch: Channel) => void;
+  onWatchChannel: (ch: Channel) => void;
+}) {
+  const flatRef = useRef<FlatList>(null);
+  const dayEndMs = dayStartMs + DAY_MINS * 60_000;
+
+  // Pre-compute widths + cumulative offsets so getItemLayout is O(1)
+  const items: TVProgItem[] = useMemo(() => {
+    const result: TVProgItem[] = [];
+    let cum = 0;
+    for (const p of programs) {
+      if (p.end.getTime() <= dayStartMs || p.start.getTime() >= dayEndMs) continue;
+      const startMs = Math.max(p.start.getTime(), dayStartMs);
+      const endMs   = Math.min(p.end.getTime(), dayEndMs);
+      const width   = Math.max(60, ((endMs - startMs) / 60_000) * PX_PER_MIN);
+      result.push({ prog: p, width, offset: cum });
+      cum += width + TV_CELL_GAP;
+    }
+    return result;
+  }, [programs, dayStartMs, dayEndMs]);
+
+  // Index of the current/upcoming programme — scroll there on mount
+  const initialIdx = useMemo(() => {
+    if (!isToday || items.length === 0) return undefined;
+    const idx = items.findIndex((it) => it.prog.end.getTime() > now);
+    return idx > 0 ? idx - 1 : idx >= 0 ? idx : undefined;
+  }, [items, now, isToday]);
+
+  useEffect(() => {
+    if (initialIdx == null || !flatRef.current) return;
+    const timer = setTimeout(() => {
+      try {
+        flatRef.current?.scrollToIndex({ index: initialIdx, animated: false, viewPosition: 0 });
+      } catch (_) {}
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [initialIdx]);
+
+  const getItemLayout = useCallback((_: any, index: number) => {
+    const it = items[index];
+    return { length: (it?.width ?? 0) + TV_CELL_GAP, offset: it?.offset ?? 0, index };
+  }, [items]);
+
+  return (
+    <View style={[styles.tvRow, { borderBottomColor: colors.border }]}>
+      {/* Channel info cell — OK/Select watches channel */}
+      <Pressable
+        focusable
+        style={({ focused }: any) => [
+          styles.tvChCell,
+          { backgroundColor: colors.card, borderRightColor: colors.border },
+          focused && styles.tvFocused,
+        ]}
+        onPress={() => onWatchChannel(channel)}
+      >
+        {channel.logo ? (
+          <Image source={{ uri: channel.logo }} style={styles.tvChLogo} resizeMode="contain" />
+        ) : (
+          <Text style={[styles.tvChInitials, { color: colors.primary }]}>
+            {channel.name.slice(0, 3).toUpperCase()}
+          </Text>
+        )}
+        <Text style={[styles.tvChName, { color: colors.foreground }]} numberOfLines={2}>
+          {channel.name}
+        </Text>
+      </Pressable>
+
+      {/* Programme cells */}
+      {items.length === 0 ? (
+        <View style={styles.tvNoProg}>
+          <Text style={[styles.tvNoProgText, { color: colors.mutedForeground }]}>No guide data</Text>
+        </View>
+      ) : (
+        <FlatList
+          ref={flatRef}
+          data={items}
+          horizontal
+          keyExtractor={(it) => it.prog.start.toISOString()}
+          getItemLayout={getItemLayout}
+          showsHorizontalScrollIndicator={false}
+          style={{ flex: 1 }}
+          renderItem={({ item: it }) => {
+            const isNow = it.prog.start.getTime() <= now && now < it.prog.end.getTime();
+            const progress = isNow
+              ? (now - it.prog.start.getTime()) / (it.prog.end.getTime() - it.prog.start.getTime())
+              : 0;
+            const hasReminder = reminderIds?.has(`${channel.id}_${it.prog.start.toISOString()}`);
+            return (
+              <Pressable
+                focusable
+                style={({ focused }: any) => [
+                  styles.tvProgCell,
+                  {
+                    width: it.width,
+                    backgroundColor: isNow ? '#1A2A4A' : colors.secondary,
+                    borderColor: isNow ? '#3B82F6' : colors.border,
+                  },
+                  focused && styles.tvFocused,
+                ]}
+                onPress={() => onProgramPress(it.prog, channel)}
+              >
+                {isNow && (
+                  <View style={[styles.progressBar, { width: `${progress * 100}%` as any }]} />
+                )}
+                {hasReminder && <Text style={styles.tvReminderDot}>🔔</Text>}
+                <Text
+                  style={[styles.tvProgTitle, { color: isNow ? '#F2F2F2' : colors.foreground }]}
+                  numberOfLines={1}
+                >
+                  {it.prog.title}
+                </Text>
+                {it.width > 80 && (
+                  <Text style={[styles.tvProgTime, { color: isNow ? '#93C5FD' : colors.mutedForeground }]}>
+                    {fmtTime(it.prog.start)} – {fmtTime(it.prog.end)}
+                  </Text>
+                )}
+              </Pressable>
+            );
+          }}
+        />
+      )}
+    </View>
+  );
+});
+
 // ─── Program info modal ───────────────────────────────────────────────────────
 
 function ProgramModal({ program, channel, onClose, onWatch, colors }: {
@@ -863,116 +1012,135 @@ function FullGuide({
           <Text style={[styles.epgLoadingText, { color: colors.mutedForeground }]}>Loading guide data…</Text>
         </View>
       )}
-      {!selectedDayEmpty && visibleChannels.length > 0 && <View style={[styles.grid, { paddingRight: insets.right }]}>
-
-        {/* Fixed header row: corner cell + time labels */}
-        <View style={styles.headerRow}>
-          <View style={[styles.cornerCell, { backgroundColor: colors.card, borderBottomColor: colors.border, borderRightColor: colors.border }]}>
-            <Text style={[styles.cornerText, { color: colors.mutedForeground }]}>CH</Text>
-          </View>
-          <ScrollView
-            ref={timeHeaderRef}
-            horizontal
-            scrollEnabled={false}
-            showsHorizontalScrollIndicator={false}
+      {!selectedDayEmpty && visibleChannels.length > 0 && (
+        Platform.isTV ? (
+          /* ── TV / Fire TV: FlatList rows — every cell is D-pad focusable ── */
+          <FlatList
+            data={visibleChannels}
+            keyExtractor={(ch) => ch.id}
             style={{ flex: 1 }}
-          >
-            <TimeHeader dayStartMs={dayStartMs} colors={colors} />
-          </ScrollView>
-        </View>
+            showsVerticalScrollIndicator={false}
+            renderItem={({ item: ch }) => (
+              <TVEpgRow
+                channel={ch}
+                programs={epgMap?.get(ch.epgId ?? ch.id) ?? []}
+                dayStartMs={dayStartMs}
+                now={now}
+                isToday={selectedDay === 0}
+                colors={colors}
+                reminderIds={guideReminderIds}
+                onProgramPress={(p, c) => setSelected({ program: p, channel: c })}
+                onWatchChannel={(c) => {
+                  const chList = channels.map((x) => ({
+                    url: x.streamUrl, title: x.name,
+                    epgId: x.epgId ?? x.id, channelId: x.id,
+                  }));
+                  const idx = channels.findIndex((x) => x.id === c.id);
+                  router.push({
+                    pathname: '/player',
+                    params: {
+                      url: c.streamUrl, title: c.name, type: 'live',
+                      logo: c.logo ?? '', epgId: c.epgId ?? c.id,
+                      channelId: c.id, channelsJson: JSON.stringify(chList),
+                      channelIndex: String(idx), stopOnBack: 'true',
+                    },
+                  });
+                }}
+              />
+            )}
+          />
+        ) : (
+          /* ── Phone / tablet: original nested-ScrollView grid ── */
+          <View style={[styles.grid, { paddingRight: insets.right }]}>
 
-        {/* Scrollable body — single ScrollView moves both columns together */}
-        <ScrollView
-          style={{ flex: 1 }}
-          showsVerticalScrollIndicator={false}
-          scrollEventThrottle={16}
-        >
-          <View style={{ flexDirection: 'row' }}>
-
-            {/* Left: channel name column */}
-            <View style={[styles.leftCol, { borderRightColor: colors.border }]}>
-              {visibleChannels.map((ch) => {
-                const progs = epgMap?.get(ch.epgId ?? ch.id) ?? [];
-                const nowIdx = progs.findIndex(
-                  (p) => p.start.getTime() <= now && now < p.end.getTime(),
-                );
-                return (
-                  <ChannelCell
-                    key={ch.id}
-                    channel={ch}
-                    nowTitle={nowIdx >= 0 ? progs[nowIdx].title : null}
-                    nextTitle={nowIdx >= 0 && progs[nowIdx + 1] ? progs[nowIdx + 1].title : null}
-                    colors={colors}
-                    isFav={guideFavIds.has(ch.id)}
-                    onPress={Platform.isTV ? () => {
-                      const chList = channels.map((c) => ({
-                        url: c.streamUrl, title: c.name,
-                        epgId: c.epgId ?? c.id, channelId: c.id,
-                      }));
-                      const idx = channels.findIndex((c) => c.id === ch.id);
-                      router.push({
-                        pathname: '/player',
-                        params: {
-                          url: ch.streamUrl,
-                          title: ch.name,
-                          type: 'live',
-                          logo: ch.logo ?? '',
-                          epgId: ch.epgId ?? ch.id,
-                          channelId: ch.id,
-                          channelsJson: JSON.stringify(chList),
-                          channelIndex: String(idx),
-                          stopOnBack: 'true',
-                        },
-                      });
-                    } : undefined}
-                    onFavPress={async () => {
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                      const updated = await StorageService.toggleFavorite({ id: ch.id, name: ch.name, logo: ch.logo ?? '', streamUrl: ch.streamUrl, groupTitle: ch.groupTitle ?? '', epgId: ch.epgId ?? '', streamId: ch.streamId ?? 0 });
-                      const isFaved = updated.some((f) => f.id === ch.id);
-                      setGuideFavIds(new Set(updated.map((f) => f.id)));
-                      setGuideToast(isFaved ? `♥ ${ch.name} added to Favourites` : `${ch.name} removed from Favourites`);
-                    }}
-                  />
-                );
-              })}
+            {/* Fixed header row: corner cell + time labels */}
+            <View style={styles.headerRow}>
+              <View style={[styles.cornerCell, { backgroundColor: colors.card, borderBottomColor: colors.border, borderRightColor: colors.border }]}>
+                <Text style={[styles.cornerText, { color: colors.mutedForeground }]}>CH</Text>
+              </View>
+              <ScrollView
+                ref={timeHeaderRef}
+                horizontal
+                scrollEnabled={false}
+                showsHorizontalScrollIndicator={false}
+                style={{ flex: 1 }}
+              >
+                <TimeHeader dayStartMs={dayStartMs} colors={colors} />
+              </ScrollView>
             </View>
 
-            {/* Right: horizontal scroll area for programmes */}
+            {/* Scrollable body — single ScrollView keeps columns in sync */}
             <ScrollView
-              ref={gridHorizRef}
-              horizontal
-              showsHorizontalScrollIndicator
-              scrollEventThrottle={16}
-              onScroll={onGridHorizScroll}
               style={{ flex: 1 }}
+              showsVerticalScrollIndicator={false}
+              scrollEventThrottle={16}
             >
-              {/* "Now" red indicator line — position animated so it transitions smoothly each minute */}
-              {selectedDay === 0 && nowX >= 0 && nowX <= TOTAL_DAY_W && nowLineH > 0 && (
-                <Animated.View pointerEvents="none" style={[styles.nowLine, { left: nowXAnim, height: nowLineH }]} />
-              )}
-              <View style={{ width: TOTAL_DAY_W }}>
-                {visibleChannels.map((ch) => {
-                  const programs = epgMap?.get(ch.epgId ?? ch.id) ?? [];
-                  return (
-                    <ProgramRow
-                      key={ch.id}
-                      channel={ch}
-                      programs={programs}
-                      dayStartMs={dayStartMs}
-                      now={now}
-                      colors={colors}
-                      reminderIds={guideReminderIds}
-                      onProgramPress={(p, c) => setSelected({ program: p, channel: c })}
-                      onProgramLongPress={handleProgramLongPress}
-                    />
-                  );
-                })}
+              <View style={{ flexDirection: 'row' }}>
+
+                {/* Left: channel name column */}
+                <View style={[styles.leftCol, { borderRightColor: colors.border }]}>
+                  {visibleChannels.map((ch) => {
+                    const progs = epgMap?.get(ch.epgId ?? ch.id) ?? [];
+                    const nowIdx = progs.findIndex(
+                      (p) => p.start.getTime() <= now && now < p.end.getTime(),
+                    );
+                    return (
+                      <ChannelCell
+                        key={ch.id}
+                        channel={ch}
+                        nowTitle={nowIdx >= 0 ? progs[nowIdx].title : null}
+                        nextTitle={nowIdx >= 0 && progs[nowIdx + 1] ? progs[nowIdx + 1].title : null}
+                        colors={colors}
+                        isFav={guideFavIds.has(ch.id)}
+                        onFavPress={async () => {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                          const updated = await StorageService.toggleFavorite({ id: ch.id, name: ch.name, logo: ch.logo ?? '', streamUrl: ch.streamUrl, groupTitle: ch.groupTitle ?? '', epgId: ch.epgId ?? '', streamId: ch.streamId ?? 0 });
+                          const isFaved = updated.some((f) => f.id === ch.id);
+                          setGuideFavIds(new Set(updated.map((f) => f.id)));
+                          setGuideToast(isFaved ? `♥ ${ch.name} added to Favourites` : `${ch.name} removed from Favourites`);
+                        }}
+                      />
+                    );
+                  })}
+                </View>
+
+                {/* Right: horizontal scroll area for programmes */}
+                <ScrollView
+                  ref={gridHorizRef}
+                  horizontal
+                  showsHorizontalScrollIndicator
+                  scrollEventThrottle={16}
+                  onScroll={onGridHorizScroll}
+                  style={{ flex: 1 }}
+                >
+                  {selectedDay === 0 && nowX >= 0 && nowX <= TOTAL_DAY_W && nowLineH > 0 && (
+                    <Animated.View pointerEvents="none" style={[styles.nowLine, { left: nowXAnim, height: nowLineH }]} />
+                  )}
+                  <View style={{ width: TOTAL_DAY_W }}>
+                    {visibleChannels.map((ch) => {
+                      const programs = epgMap?.get(ch.epgId ?? ch.id) ?? [];
+                      return (
+                        <ProgramRow
+                          key={ch.id}
+                          channel={ch}
+                          programs={programs}
+                          dayStartMs={dayStartMs}
+                          now={now}
+                          colors={colors}
+                          reminderIds={guideReminderIds}
+                          onProgramPress={(p, c) => setSelected({ program: p, channel: c })}
+                          onProgramLongPress={handleProgramLongPress}
+                        />
+                      );
+                    })}
+                  </View>
+                </ScrollView>
+
               </View>
             </ScrollView>
-
           </View>
-        </ScrollView>
-      </View>}
+        )
+      )}
 
       {guideToast !== null && (
         <Toast message={guideToast} visible duration={2500} onHide={() => setGuideToast(null)} />
@@ -1490,5 +1658,47 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#3B82F6',
     borderRadius: 6,
+  },
+
+  // ── TV EPG grid ──
+  tvRow: {
+    flexDirection: 'row',
+    height: ROW_H,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  tvChCell: {
+    width: TV_CH_W,
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+    gap: 3,
+    borderRightWidth: StyleSheet.hairlineWidth,
+  },
+  tvChLogo: { width: 52, height: 32, borderRadius: 4 },
+  tvChInitials: { fontSize: 11, fontFamily: 'Inter_700Bold' },
+  tvChName: {
+    fontSize: 9, fontFamily: 'Inter_400Regular',
+    textAlign: 'center', lineHeight: 12,
+  },
+  tvNoProg: {
+    flex: 1, justifyContent: 'center', paddingHorizontal: 16,
+  },
+  tvNoProgText: { fontSize: 11, fontFamily: 'Inter_400Regular' },
+  tvProgCell: {
+    height: ROW_H - 1,
+    marginRight: TV_CELL_GAP,
+    borderRadius: 5,
+    borderWidth: 1,
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+    overflow: 'hidden',
+    justifyContent: 'center',
+    gap: 2,
+  },
+  tvProgTitle: { fontSize: 11, fontFamily: 'Inter_600SemiBold' },
+  tvProgTime: { fontSize: 9, fontFamily: 'Inter_400Regular' },
+  tvReminderDot: {
+    position: 'absolute', top: 2, right: 3, fontSize: 8,
   },
 });
