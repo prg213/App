@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
+  Animated,
   AppState,
   ActivityIndicator,
   Linking,
@@ -53,6 +54,8 @@ function buildYtHtml(videoId: string): string {
   document.head.appendChild(tag);
 
   var player;
+  var pendingUnmute = false; // buffered if unmute arrives before onReady
+
   function onYouTubeIframeAPIReady() {
     player = new YT.Player('player', {
       videoId: '${videoId}',
@@ -73,6 +76,13 @@ function buildYtHtml(videoId: string): string {
       events: {
         onReady: function(e) {
           e.target.playVideo();
+          if (pendingUnmute) { e.target.unMute(); e.target.setVolume(100); }
+          /* Tell the native side the player is ready — pill can now be shown */
+          try {
+            window.ReactNativeWebView.postMessage(
+              JSON.stringify({ type: 'yt-ready' })
+            );
+          } catch(_) {}
         },
         onError: function(e) {
           /* 150/152 = embedding disabled; 100 = not found; 101 = not embeddable */
@@ -86,15 +96,21 @@ function buildYtHtml(videoId: string): string {
     });
   }
 
-  /* Pause / resume when the host tells us to */
-  document.addEventListener('message', function(e) {
+  /* Pause / resume / unmute when the host tells us to.
+     React Native WebView delivers via window on iOS, document on Android — listen to both. */
+  function handleHostMessage(e) {
     try {
       var msg = JSON.parse(e.data);
-      if (!player) return;
-      if (msg.cmd === 'pause') player.pauseVideo();
-      if (msg.cmd === 'play')  player.playVideo();
+      if (msg.cmd === 'pause')  { if (player) player.pauseVideo(); }
+      if (msg.cmd === 'play')   { if (player) player.playVideo(); }
+      if (msg.cmd === 'unmute') {
+        if (player) { player.unMute(); player.setVolume(100); }
+        else        { pendingUnmute = true; } /* apply once player is ready */
+      }
     } catch(_) {}
-  });
+  }
+  document.addEventListener('message', handleHostMessage);
+  window.addEventListener('message',   handleHostMessage);
 </script>
 </body>
 </html>`;
@@ -137,16 +153,69 @@ export function TrailerModal({ videoIds, onClose }: Props) {
   const [idx, setIdx] = useState(0);
   const [webviewLoading, setWebviewLoading] = useState(true);
   const [allFailed, setAllFailed] = useState(false);
+  const [showUnmute, setShowUnmute] = useState(false);
+  const unmuteFade = useRef(new Animated.Value(1)).current;
+  const unmuteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const webviewKey = useRef(0);
   const webviewRef = useRef<WebView>(null);
+
+  // Helper: dismiss the unmute pill and cancel its timer immediately
+  const dismissUnmute = () => {
+    if (unmuteTimer.current) {
+      clearTimeout(unmuteTimer.current);
+      unmuteTimer.current = null;
+    }
+    unmuteFade.stopAnimation();
+    unmuteFade.setValue(0);
+    setShowUnmute(false);
+  };
 
   // Reset to first candidate whenever a new set arrives
   useEffect(() => {
     setIdx(0);
     setWebviewLoading(true);
     setAllFailed(false);
+    dismissUnmute();
     webviewKey.current += 1;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [videoIds]);
+
+  // Dismiss the loading spinner once the WebView's HTML has loaded.
+  // The unmute pill is shown later, when the page posts 'yt-ready' (player.onReady fired).
+  const handleWebViewLoadEnd = () => {
+    setWebviewLoading(false);
+  };
+
+  // Show the unmute pill for 3 s (called when the page confirms player readiness).
+  const showUnmutePill = () => {
+    unmuteFade.setValue(1);
+    setShowUnmute(true);
+    if (unmuteTimer.current) clearTimeout(unmuteTimer.current);
+    unmuteTimer.current = setTimeout(() => {
+      Animated.timing(unmuteFade, {
+        toValue: 0,
+        duration: 400,
+        useNativeDriver: true,
+      }).start(() => setShowUnmute(false));
+    }, 3000);
+  };
+
+  // Clean up timer on unmount
+  useEffect(() => {
+    return () => {
+      if (unmuteTimer.current) clearTimeout(unmuteTimer.current);
+    };
+  }, []);
+
+  const handleUnmuteTap = () => {
+    if (unmuteTimer.current) clearTimeout(unmuteTimer.current);
+    webviewRef.current?.postMessage(JSON.stringify({ cmd: 'unmute' }));
+    Animated.timing(unmuteFade, {
+      toValue: 0,
+      duration: 200,
+      useNativeDriver: true,
+    }).start(() => setShowUnmute(false));
+  };
 
   // Pause the YouTube player when the app goes to the background
   useEffect(() => {
@@ -161,6 +230,7 @@ export function TrailerModal({ videoIds, onClose }: Props) {
   // Advance to the next candidate; mark allFailed when the last one errors.
   const advance = () => {
     const ids = Array.isArray(videoIds) ? videoIds : [];
+    dismissUnmute();
     if (idx < ids.length - 1) {
       setIdx((i) => i + 1);
       setWebviewLoading(true);
@@ -173,6 +243,7 @@ export function TrailerModal({ videoIds, onClose }: Props) {
   const handleMessage = (e: WebViewMessageEvent) => {
     try {
       const data = JSON.parse(e.nativeEvent.data);
+      if (data.type === 'yt-ready') showUnmutePill();
       if (data.type === 'yt-error') advance();
     } catch (_) {}
   };
@@ -245,7 +316,7 @@ export function TrailerModal({ videoIds, onClose }: Props) {
               key={webviewKey.current}
               source={{ html, baseUrl: 'https://www.youtube.com' }}
               style={styles.webview}
-              onLoadEnd={() => setWebviewLoading(false)}
+              onLoadEnd={handleWebViewLoadEnd}
               onMessage={handleMessage}
               allowsFullscreenVideo
               allowsInlineMediaPlayback
@@ -255,6 +326,13 @@ export function TrailerModal({ videoIds, onClose }: Props) {
               originWhitelist={['*']}
               mixedContentMode="always"
             />
+            {showUnmute && isYt && (
+              <Animated.View style={[styles.unmutePill, { opacity: unmuteFade }]} pointerEvents="box-none">
+                <Pressable onPress={handleUnmuteTap} style={styles.unmutePressable}>
+                  <Text style={styles.unmuteTxt}>🔊  Tap to unmute</Text>
+                </Pressable>
+              </Animated.View>
+            )}
           </>
         )}
       </View>
@@ -327,5 +405,25 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontFamily: 'Inter_600SemiBold',
     color: '#fff',
+  },
+  unmutePill: {
+    position: 'absolute',
+    bottom: 72,
+    alignSelf: 'center',
+    zIndex: 20,
+  },
+  unmutePressable: {
+    backgroundColor: 'rgba(0,0,0,0.72)',
+    borderRadius: 24,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+  },
+  unmuteTxt: {
+    fontSize: 14,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#fff',
+    letterSpacing: 0.2,
   },
 });
