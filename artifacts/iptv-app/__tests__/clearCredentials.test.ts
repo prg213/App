@@ -1,9 +1,14 @@
 /**
- * Integration-style tests for StorageService.clearCredentials.
+ * Integration-style tests for StorageService.clearCredentials and clearPin.
  *
- * Goal: guarantee that every per-user AsyncStorage key defined in KEYS is
- * wiped on logout, *except* LOGOUT_REASON which must survive so the
- * activation screen can display a one-time explanation banner.
+ * Goals:
+ * 1. Guarantee that every per-user AsyncStorage key defined in KEYS is wiped
+ *    on logout, *except* LOGOUT_REASON which must survive so the activation
+ *    screen can display a one-time explanation banner.
+ * 2. Guarantee that SecureStore keys (sv_credentials and sv_pin) are deleted
+ *    during clearCredentials and clearPin respectively.
+ * 3. Guarantee both SecureStore deletions swallow errors gracefully so a
+ *    failing deleteItemAsync call cannot crash the logout flow.
  *
  * If a developer adds a new key to KEYS but forgets to add it to the
  * multiRemove call inside clearCredentials, the "wipes every per-user key"
@@ -172,5 +177,39 @@ describe('StorageService.clearCredentials', () => {
   test('succeeds when storage is already empty (no keys to remove)', async () => {
     // All keys absent — clearCredentials must not throw.
     await expect(StorageService.clearCredentials()).resolves.not.toThrow();
+  });
+
+  // ── SecureStore assertions ───────────────────────────────────────────────
+
+  test('deletes sv_credentials from SecureStore', async () => {
+    const SecureStore = jest.requireMock<{ deleteItemAsync: jest.Mock }>('expo-secure-store');
+    await StorageService.clearCredentials();
+    expect(SecureStore.deleteItemAsync).toHaveBeenCalledWith('sv_credentials');
+  });
+
+  test('swallows a SecureStore error during clearCredentials so logout never crashes', async () => {
+    const SecureStore = jest.requireMock<{ deleteItemAsync: jest.Mock }>('expo-secure-store');
+    SecureStore.deleteItemAsync.mockRejectedValueOnce(new Error('SecureStore unavailable'));
+    await expect(StorageService.clearCredentials()).resolves.not.toThrow();
+  });
+});
+
+// ── StorageService.clearPin ────────────────────────────────────────────────────
+
+describe('StorageService.clearPin', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  test('deletes sv_pin from SecureStore', async () => {
+    const SecureStore = jest.requireMock<{ deleteItemAsync: jest.Mock }>('expo-secure-store');
+    await StorageService.clearPin();
+    expect(SecureStore.deleteItemAsync).toHaveBeenCalledWith('sv_pin');
+  });
+
+  test('swallows a SecureStore error during clearPin so the caller never crashes', async () => {
+    const SecureStore = jest.requireMock<{ deleteItemAsync: jest.Mock }>('expo-secure-store');
+    SecureStore.deleteItemAsync.mockRejectedValueOnce(new Error('SecureStore unavailable'));
+    await expect(StorageService.clearPin()).resolves.not.toThrow();
   });
 });
