@@ -1180,15 +1180,7 @@ export default function PlayerScreen() {
         />
       ) : null}
 
-      {/* Buffering spinner */}
-      {isBuffering && !hasError && !isReconnecting && !isWeb && (
-        <View style={styles.bufferWrap} pointerEvents="none">
-          <View style={styles.bufferCircle}>
-            <Text style={styles.bufferIcon}>▶</Text>
-          </View>
-          <Text style={styles.bufferText}>Buffering…</Text>
-        </View>
-      )}
+      {/* Buffering — no overlay; video surface stalls silently until stream resumes */}
 
       {/* Refreshing stream overlay — shown during silent URL re-resolve (#137) */}
       {isResolvingUrl && !isWeb && (
