@@ -240,6 +240,12 @@ importers:
       expo-clipboard:
         specifier: ^57.0.1
         version: 57.0.1(expo@57.0.9)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(react@19.2.3))(react@19.2.3)
+      expo-file-system:
+        specifier: ^57.0.1
+        version: 57.0.1(expo@57.0.9)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(react@19.2.3))
+      expo-intent-launcher:
+        specifier: ^57.0.1
+        version: 57.0.1(expo@57.0.9)
       expo-network:
         specifier: ~57.0.1
         version: 57.0.1(expo@57.0.9)(react@19.2.3)
@@ -3890,6 +3896,11 @@ packages:
     peerDependenciesMeta:
       react-native-web:
         optional: true
+
+  expo-intent-launcher@57.0.1:
+    resolution: {integrity: sha512-BYiPEOUeW3AkW/uxEESbS2UBw9LasJ8Heb6A8kF9Ueh6pqrXQHMNJFHzfrOP8qZfv9G2e8CTzrtzpN5p0vH5fA==}
+    peerDependencies:
+      expo: '*'
 
   expo-keep-awake@57.0.1:
     resolution: {integrity: sha512-28lkFImeXTS+bhAjuCFV7w7tW5bXg27BJVrxv+nC/nyYa86qEa0oFeHwqol6ha5k4pdVDQgBF09GM4A1k76Ssg==}
@@ -10423,6 +10434,10 @@ snapshots:
       sf-symbols-typescript: 2.2.0
     optionalDependencies:
       react-native-web: 0.21.2(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+
+  expo-intent-launcher@57.0.1(expo@57.0.9):
+    dependencies:
+      expo: 57.0.9(@babel/core@7.29.7)(@expo/metro-runtime@57.0.8)(expo-router@57.0.9)(react-dom@19.2.3(react@19.2.3))(react-native-web@0.21.2(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-native-webview@13.16.1(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(react@19.2.3))(react@19.2.3))(react-native-worklets@0.10.1(@babel/core@7.29.7)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(react@19.2.3))(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(react@19.2.3))(react@19.2.3)(typescript@6.0.3)
 
   expo-keep-awake@57.0.1(expo@57.0.9)(react@19.2.3):
     dependencies:

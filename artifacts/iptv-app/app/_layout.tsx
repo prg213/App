@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, View } from 'react-native';
+import { ActivityIndicator, Alert, Platform, View } from 'react-native';
+import { UpdateModal } from '@/components/UpdateModal';
+import { checkForUpdate, type UpdateInfo } from '@/services/updateService';
 import { Toast } from '@/components/Toast';
 import {
   addNotificationTapListener,
@@ -53,6 +55,7 @@ function RootLayoutNav() {
   const router = useRouter();
   const segments = useSegments();
   const [expiredToast, setExpiredToast] = useState<string | null>(null);
+  const [pendingUpdate, setPendingUpdate] = useState<UpdateInfo | null>(null);
 
   useEffect(() => {
     if (isLoading) return;
@@ -63,6 +66,14 @@ function RootLayoutNav() {
       router.replace('/(tabs)/home');
     }
   }, [isLoading, isActivated, segments]);
+
+  // Check for a newer APK on GitHub — Android only, shown once per session.
+  useEffect(() => {
+    if (!isActivated || Platform.OS !== 'android') return;
+    checkForUpdate().then((info) => {
+      if (info) setPendingUpdate(info);
+    });
+  }, [isActivated]);
 
   // Request notification permissions, reschedule any reminders lost on reboot,
   // and listen for notification taps once the app is ready.
@@ -122,6 +133,12 @@ function RootLayoutNav() {
           message={expiredToast}
           visible
           onHide={() => setExpiredToast(null)}
+        />
+      )}
+      {pendingUpdate && (
+        <UpdateModal
+          update={pendingUpdate}
+          onDismiss={() => setPendingUpdate(null)}
         />
       )}
     </View>
