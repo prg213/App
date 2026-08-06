@@ -13,8 +13,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import { Alert, DeviceEventEmitter } from 'react-native';
-import { TrailerModal } from '@/components/TrailerModal';
+import { Alert, DeviceEventEmitter, Linking } from 'react-native';
 import { getTmdbTrailerCandidates } from '@/services/tmdb';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
@@ -219,7 +218,7 @@ export default function SearchScreen() {
 
   const [query, setQuery] = useState('');
   const [searchType, setSearchType] = useState<SearchType>('all');
-  const [trailerIds, setTrailerIds] = useState<string[] | 'loading' | null>(null);
+  const [trailerLoading, setTrailerLoading] = useState(false);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const inputRef = useRef<TextInput>(null);
   const listRef = useRef<FlatList<ListItem>>(null);
@@ -489,16 +488,18 @@ export default function SearchScreen() {
             query={query}
             colors={colors}
             onPress={() => handleMoviePress(item.item)}
-            onTrailer={() => {
-              setTrailerIds('loading');
-              getTmdbTrailerCandidates(item.item.name, 'movie').then((ids) => {
+            onTrailer={async () => {
+              setTrailerLoading(true);
+              try {
                 const raw = item.item.trailerUrl;
-                const provId = raw ? (raw.startsWith('http')
-                  ? (raw.match(/[?&]v=([^&#]+)/)?.[1] ?? raw.match(/youtu\.be\/([^?&#]+)/)?.[1] ?? null)
-                  : raw) : null;
-                const all = provId && !ids.includes(provId) ? [...ids, provId] : ids;
-                setTrailerIds(all.length > 0 ? all : null);
-              });
+                const ytId = raw
+                  ? raw.startsWith('http')
+                    ? (raw.match(/[?&]v=([A-Za-z0-9_-]{11})/)?.[1] ?? raw.match(/youtu\.be\/([A-Za-z0-9_-]{11})/)?.[1] ?? null)
+                    : (raw.length === 11 ? raw : null)
+                  : null;
+                const resolved = ytId ?? (await getTmdbTrailerCandidates(item.item.name, 'movie'))[0] ?? null;
+                if (resolved) { Linking.openURL(`https://www.youtube.com/watch?v=${resolved}`); }
+              } finally { setTrailerLoading(false); }
             }}
           />
         );
@@ -513,16 +514,18 @@ export default function SearchScreen() {
             query={query}
             colors={colors}
             onPress={() => handleSeriesPress(item.item)}
-            onTrailer={() => {
-              setTrailerIds('loading');
-              getTmdbTrailerCandidates(item.item.name, 'tv').then((ids) => {
+            onTrailer={async () => {
+              setTrailerLoading(true);
+              try {
                 const raw = item.item.trailerUrl;
-                const provId = raw ? (raw.startsWith('http')
-                  ? (raw.match(/[?&]v=([^&#]+)/)?.[1] ?? raw.match(/youtu\.be\/([^?&#]+)/)?.[1] ?? null)
-                  : raw) : null;
-                const all = provId && !ids.includes(provId) ? [...ids, provId] : ids;
-                setTrailerIds(all.length > 0 ? all : null);
-              });
+                const ytId = raw
+                  ? raw.startsWith('http')
+                    ? (raw.match(/[?&]v=([A-Za-z0-9_-]{11})/)?.[1] ?? raw.match(/youtu\.be\/([A-Za-z0-9_-]{11})/)?.[1] ?? null)
+                    : (raw.length === 11 ? raw : null)
+                  : null;
+                const resolved = ytId ?? (await getTmdbTrailerCandidates(item.item.name, 'tv'))[0] ?? null;
+                if (resolved) { Linking.openURL(`https://www.youtube.com/watch?v=${resolved}`); }
+              } finally { setTrailerLoading(false); }
             }}
           />
         );
@@ -713,7 +716,6 @@ export default function SearchScreen() {
         ]}
         removeClippedSubviews={false}
       />
-      <TrailerModal videoIds={trailerIds} onClose={() => setTrailerIds(null)} />
     </View>
   );
 }

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Alert,
   FlatList,
+  Linking,
   RefreshControl,
   StyleSheet,
   Text,
@@ -12,7 +13,6 @@ import {
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter, useFocusEffect } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import { TrailerModal } from '@/components/TrailerModal';
 import { getTmdbTrailerCandidates, getTmdbPosterUrl } from '@/services/tmdb';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
@@ -52,7 +52,7 @@ export default function SeriesScreen() {
   // #23: queue a failed push so it retries next time this screen mounts
   const pendingFavPushRef = useRef<FavoriteSeries[] | null>(null);
   const isXtream = credentials?.type === 'xtream';
-  const [trailerIds, setTrailerIds] = useState<string[] | 'loading' | null>(null);
+  const [trailerLoading, setTrailerLoading] = useState(false);
 
   useEffect(() => {
     StorageService.getSeriesFavorites().then(async (local) => {
@@ -456,16 +456,24 @@ export default function SeriesScreen() {
                   const histEntry = isRecentSelected ? watchHistory.find((e) => e.parentId === item.id || e.id === item.id) : undefined;
                   router.push({ pathname: '/series/[id]', params: { id: item.id, title: item.name, cover: item.cover ?? '', rating: item.rating ?? '', genre: item.genre ?? '', plot: item.plot ?? '', cast: item.cast ?? '', director: item.director ?? '', ...(histEntry ? { resumeEpisodeId: histEntry.id, resumePosition: String(Math.floor(histEntry.position ?? 0)) } : {}) } });
                 }}
-                onTrailerPress={() => {
-                  // #124: prefer the provider's own trailer URL; only fall back to TMDB when absent
-                  const providerUrl = item.trailerUrl
-                    ? (item.trailerUrl.startsWith('http') ? item.trailerUrl : `https://www.youtube.com/watch?v=${item.trailerUrl}`)
-                    : null;
-                  if (providerUrl) { setTrailerIds([providerUrl]); return; }
-                  setTrailerIds('loading');
-                  getTmdbTrailerCandidates(item.name, 'tv').then((ids) => {
-                    setTrailerIds(ids.length > 0 ? ids : null);
-                  });
+                onTrailerPress={async () => {
+                  setTrailerLoading(true);
+                  try {
+                    const raw = item.trailerUrl;
+                    const ytId = raw
+                      ? raw.startsWith('http')
+                        ? (raw.match(/[?&]v=([A-Za-z0-9_-]{11})/)?.[1] ?? raw.match(/youtu\.be\/([A-Za-z0-9_-]{11})/)?.[1] ?? null)
+                        : (raw.length === 11 ? raw : null)
+                      : null;
+                    const resolved = ytId ?? (await getTmdbTrailerCandidates(item.name, 'tv'))[0] ?? null;
+                    if (resolved) {
+                      Linking.openURL(`https://www.youtube.com/watch?v=${resolved}`);
+                    } else {
+                      Alert.alert('No Trailer', 'No trailer found for this title.');
+                    }
+                  } finally {
+                    setTrailerLoading(false);
+                  }
                 }}
               />
             )}
@@ -484,7 +492,6 @@ export default function SeriesScreen() {
         )}
       </View>
     </View>
-    <TrailerModal videoIds={trailerIds} onClose={() => setTrailerIds(null)} />
     {showScrollTop && (
       <TouchableOpacity
         style={[styles.scrollTopFab, { backgroundColor: colors.primary }]}

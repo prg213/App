@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Linking,
   Modal,
   Platform,
   Pressable,
@@ -12,7 +13,6 @@ import {
   Text,
   View,
 } from 'react-native';
-import { TrailerModal } from '@/components/TrailerModal';
 import { getTmdbTrailerCandidates, getTmdbPosterUrl } from '@/services/tmdb';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
@@ -95,7 +95,7 @@ export default function SeriesDetailScreen() {
   const [isFav, setIsFav] = useState(false);
   const [episodeHistory, setEpisodeHistory] = useState<Record<string, WatchHistoryEntry>>({});
   const [activeTab, setActiveTab] = useState<ActiveTab>('episodes');
-  const [trailerIds, setTrailerIds] = useState<string[] | 'loading' | null>(null);
+  const [trailerLoading, setTrailerLoading] = useState(false);
   const [coverError, setCoverError] = useState(false);
   // #165: Store the TMDB poster URL in a ref so it is set only once on first
   // successful fetch and never cleared when series data re-fetches in the background.
@@ -410,24 +410,33 @@ export default function SeriesDetailScreen() {
 
           <Pressable
             focusable
-            style={({ focused }) => [styles.outlineBtn, { borderColor: focused ? '#00E5FF' : 'rgba(255,255,255,0.15)' }, !isOnline && styles.offlineBtn, focused && styles.focusRing]}
+            style={({ focused }) => [styles.outlineBtn, { borderColor: focused ? '#00E5FF' : 'rgba(255,255,255,0.15)' }, (!isOnline || trailerLoading) && styles.offlineBtn, focused && styles.focusRing]}
             onPress={async () => {
               if (!isOnline) {
                 Alert.alert('No Internet', 'No internet connection — trailer unavailable.', [{ text: 'OK' }]);
                 return;
               }
-              setTrailerIds('loading');
-              const ids = await getTmdbTrailerCandidates(params.title, 'tv');
-              const raw = data?.series?.trailerUrl;
-              const provId = raw ? (raw.startsWith('http')
-                ? (raw.match(/[?&]v=([A-Za-z0-9_-]{11})/)?.[1] ?? raw.match(/youtu\.be\/([A-Za-z0-9_-]{11})/)?.[1] ?? null)
-                : raw) : null;
-              const all = provId && !ids.includes(provId) ? [provId, ...ids] : ids;
-              setTrailerIds(all.length > 0 ? all : null);
+              setTrailerLoading(true);
+              try {
+                const raw = data?.series?.trailerUrl;
+                const ytId = raw
+                  ? raw.startsWith('http')
+                    ? (raw.match(/[?&]v=([A-Za-z0-9_-]{11})/)?.[1] ?? raw.match(/youtu\.be\/([A-Za-z0-9_-]{11})/)?.[1] ?? null)
+                    : (raw.length === 11 ? raw : null)
+                  : null;
+                const resolved = ytId ?? (await getTmdbTrailerCandidates(params.title, 'tv'))[0] ?? null;
+                if (resolved) {
+                  Linking.openURL(`https://www.youtube.com/watch?v=${resolved}`);
+                } else {
+                  Alert.alert('No Trailer', 'No trailer found for this series.');
+                }
+              } finally {
+                setTrailerLoading(false);
+              }
             }}
           >
-            <Text style={[styles.outlineBtnText, !isOnline && { opacity: 0.45 }]}>
-              {isOnline ? '▶  Watch Trailer' : '✕  No Connection'}
+            <Text style={[styles.outlineBtnText, (!isOnline || trailerLoading) && { opacity: 0.45 }]}>
+              {trailerLoading ? 'Loading…' : isOnline ? '▶  Watch Trailer' : '✕  No Connection'}
             </Text>
           </Pressable>
         </View>
@@ -615,7 +624,6 @@ export default function SeriesDetailScreen() {
           onCancel={() => { setShowEpPinGate(false); setPendingEpisode(null); }}
         />
       </Modal>
-      <TrailerModal videoIds={trailerIds} onClose={() => setTrailerIds(null)} />
     </View>
   );
 }
