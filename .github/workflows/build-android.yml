@@ -3,6 +3,10 @@ name: Build Android APK
 on:
   workflow_dispatch:
 
+concurrency:
+  group: android-build
+  cancel-in-progress: false
+
 jobs:
   build:
     name: Build Release APK
