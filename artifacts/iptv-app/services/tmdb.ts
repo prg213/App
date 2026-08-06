@@ -4,10 +4,16 @@
  * Uses the free TMDB API v3 to search for a title, then fetches its video
  * list and returns the YouTube key of the best official trailer.
  *
- * Env var: EXPO_PUBLIC_TMDB_API_KEY
+ * Env vars:
+ *   EXPO_PUBLIC_TMDB_API_KEY      — required for TMDB lookups
+ *   EXPO_PUBLIC_YOUTUBE_API_KEY   — optional; enables YouTube Data API v3
+ *                                   fallback when the HTML scrape returns no
+ *                                   results (e.g. on Android where YouTube
+ *                                   may serve a different page format).
  */
 
 const TMDB_KEY = process.env.EXPO_PUBLIC_TMDB_API_KEY ?? '';
+const YOUTUBE_API_KEY = process.env.EXPO_PUBLIC_YOUTUBE_API_KEY ?? '';
 const BASE = 'https://api.themoviedb.org/3';
 
 // ── In-memory LRU cache ──────────────────────────────────────────────────────
@@ -69,26 +75,73 @@ const YT_SEARCH_UA =
  * search page with a desktop Chrome UA and pull up to `max` unique video IDs.
  * Returning multiple candidates lets the player auto-advance when a video has
  * embedding disabled (error 150/152).
+ *
+ * On Android, YouTube may serve a different page format that the videoId regex
+ * doesn't match. When the scrape returns empty AND EXPO_PUBLIC_YOUTUBE_API_KEY
+ * is set, we fall back to the YouTube Data API v3 search.list endpoint with
+ * videoEmbeddable=true so all returned IDs are guaranteed embeddable.
  */
 async function youtubeSearchVideoIds(query: string, max = 6): Promise<string[]> {
-  try {
-    const url =
-      `https://www.youtube.com/results?search_query=${encodeURIComponent(query + ' official trailer')}` +
-      `&sp=EgIQAQ%3D%3D`; // filter: videos only
-    const res = await fetch(url, {
-      headers: { 'User-Agent': YT_SEARCH_UA, 'Accept-Language': 'en-US,en;q=0.9' },
-      signal: AbortSignal.timeout(10_000),
-    });
-    if (!res.ok) return [];
-    const html = await res.text();
-    const seen = new Set<string>();
-    const ids: string[] = [];
-    for (const m of html.matchAll(/"videoId":"([A-Za-z0-9_-]{11})"/g)) {
-      if (!seen.has(m[1])) { seen.add(m[1]); ids.push(m[1]); }
-      if (ids.length >= max) break;
+  // ── 1. HTML scrape ──────────────────────────────────────────────────────────
+  const scraped = await (async (): Promise<string[]> => {
+    try {
+      const url =
+        `https://www.youtube.com/results?search_query=${encodeURIComponent(query + ' official trailer')}` +
+        `&sp=EgIQAQ%3D%3D`; // filter: videos only
+      const res = await fetch(url, {
+        headers: { 'User-Agent': YT_SEARCH_UA, 'Accept-Language': 'en-US,en;q=0.9' },
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!res.ok) return [];
+      const html = await res.text();
+      const seen = new Set<string>();
+      const ids: string[] = [];
+      for (const m of html.matchAll(/"videoId":"([A-Za-z0-9_-]{11})"/g)) {
+        if (!seen.has(m[1])) { seen.add(m[1]); ids.push(m[1]); }
+        if (ids.length >= max) break;
+      }
+      return ids;
+    } catch {
+      return [];
     }
+  })();
+
+  if (scraped.length > 0) return scraped;
+
+  // ── 2. Warn & attempt YouTube Data API v3 fallback ─────────────────────────
+  console.warn(
+    `[tmdb] YouTube HTML scrape returned no results for "${query}". ` +
+    (YOUTUBE_API_KEY
+      ? 'Falling back to YouTube Data API v3.'
+      : 'Set EXPO_PUBLIC_YOUTUBE_API_KEY to enable the Data API v3 fallback.'),
+  );
+
+  if (!YOUTUBE_API_KEY) return [];
+
+  try {
+    const params = new URLSearchParams({
+      part: 'id',
+      q: `${query} official trailer`,
+      type: 'video',
+      videoEmbeddable: 'true',
+      maxResults: String(max),
+      key: YOUTUBE_API_KEY,
+    });
+    const res = await fetch(
+      `https://www.googleapis.com/youtube/v3/search?${params.toString()}`,
+      { signal: AbortSignal.timeout(10_000) },
+    );
+    if (!res.ok) {
+      console.warn(`[tmdb] YouTube Data API v3 fallback failed: HTTP ${res.status}`);
+      return [];
+    }
+    const json = await res.json() as { items?: Array<{ id?: { videoId?: string } }> };
+    const ids = (json.items ?? [])
+      .map((item) => item.id?.videoId)
+      .filter((id): id is string => typeof id === 'string' && id.length === 11);
     return ids;
-  } catch {
+  } catch (err) {
+    console.warn('[tmdb] YouTube Data API v3 fallback error:', err);
     return [];
   }
 }
