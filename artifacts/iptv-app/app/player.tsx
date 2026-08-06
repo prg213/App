@@ -346,6 +346,12 @@ export default function PlayerScreen() {
   const [duration, setDuration] = useState(knownDurationSecs > 0 ? knownDurationSecs : 0);
   const [showControls, setShowControls] = useState(false);
   const [showInfo, setShowInfo] = useState(true);
+  // Ref so BackHandler closure can read showInfo without going stale
+  const showInfoRef = useRef(true);
+  useEffect(() => { showInfoRef.current = showInfo; }, [showInfo]);
+  // Ref to block spurious onFocus channel-switch on initial TV mount
+  const tvNavReadyRef = useRef(false);
+  const tvCenterRef = useRef<View>(null);
   const [nowTs, setNowTs] = useState(Date.now());
   /** 'back' | 'forward' | null — brief double-tap seek visual indicator */
   const [doubleTapSide, setDoubleTapSide] = useState<'back' | 'forward' | null>(null);
@@ -945,17 +951,28 @@ export default function PlayerScreen() {
     triggerCollapse(() => router.back());
   }, [params.stopOnBack, sharedPlayer, triggerCollapse, router, controlsOpacity, infoOpacity]);
 
+  /** Immediately hide the info bar — used by the Back-press dismiss flow. */
+  const dismissInfoBar = useCallback(() => {
+    if (infoTimer.current) { clearTimeout(infoTimer.current); infoTimer.current = null; }
+    Animated.timing(infoOpacity, { toValue: 0, duration: 300, useNativeDriver: true }).start();
+    setTimeout(() => setShowInfo(false), 320);
+  }, [infoOpacity]);
+
   // ── Android hardware back button (live TV only) ───────────────────────────
-  // The system back gesture bypasses handleBackLive by default. Intercept it
-  // so the collapse animation always plays regardless of how the user exits.
+  // First Back press: dismiss the info bar if it is visible.
+  // Second Back press (info bar already hidden): collapse back to mini-player.
   useEffect(() => {
     if (!isLive || isWeb || Platform.OS !== 'android') return;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (showInfoRef.current) {
+        dismissInfoBar();
+        return true; // consumed — do not navigate back
+      }
       handleBackLive();
-      return true; // prevent default instant-dismiss
+      return true;
     });
     return () => sub.remove();
-  }, [isLive, isWeb, handleBackLive]);
+  }, [isLive, isWeb, handleBackLive, dismissInfoBar]);
 
   // ── Save history on exit and navigate back ────────────────────────────────
   const handleBack = useCallback(async () => {
@@ -1025,6 +1042,15 @@ export default function PlayerScreen() {
       if (infoTimer.current) clearTimeout(infoTimer.current);
     };
   }, [scheduleInfoHide]);
+
+  // Allow TV D-pad channel nav after a short settle — prevents spurious
+  // onFocus firing as the screen mounts from triggering an immediate switch.
+  useEffect(() => {
+    if (!Platform.isTV || !isLive) return;
+    tvNavReadyRef.current = false;
+    const t = setTimeout(() => { tvNavReadyRef.current = true; }, 900);
+    return () => clearTimeout(t);
+  }, [isLive]);
 
   const showInfoBar = useCallback(() => {
     setShowInfo(true);
@@ -1473,6 +1499,48 @@ export default function PlayerScreen() {
             </View>
           )}
         </Animated.View>
+      )}
+
+      {/* ── TV / Fire TV D-pad zones ─────────────────────────────────────────
+          Three transparent full-screen strips. Android TV's focus engine moves
+          focus between them when the user presses D-pad left / right.
+          • Left zone  → onFocus triggers prev-channel switch
+          • Center zone → hasTVPreferredFocus; OK (select) shows the info bar
+          • Right zone → onFocus triggers next-channel switch
+          After a switch the center zone reclaims focus after the nav cooldown.
+          ────────────────────────────────────────────────────────────────── */}
+      {Platform.isTV && isLive && !hasError && !isWeb && (
+        <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
+          {/* Left third — D-pad left lands here → prev channel */}
+          <Pressable
+            focusable={!!prevChannel}
+            style={styles.tvZoneLeft}
+            onFocus={() => {
+              if (!tvNavReadyRef.current) return;
+              handlePrevChannel();
+              // Return focus to center after cooldown so next press works
+              setTimeout(() => { (tvCenterRef.current as any)?.focus?.(); }, 1300);
+            }}
+          />
+          {/* Centre — preferred focus; OK shows/hides the info bar */}
+          <Pressable
+            ref={tvCenterRef as any}
+            focusable
+            hasTVPreferredFocus
+            style={styles.tvZoneCenter}
+            onPress={showInfo ? dismissInfoBar : showInfoBar}
+          />
+          {/* Right third — D-pad right lands here → next channel */}
+          <Pressable
+            focusable={!!nextChannel}
+            style={styles.tvZoneRight}
+            onFocus={() => {
+              if (!tvNavReadyRef.current) return;
+              handleNextChannel();
+              setTimeout(() => { (tvCenterRef.current as any)?.focus?.(); }, 1300);
+            }}
+          />
+        </View>
       )}
 
       {/* Web back button */}
@@ -2008,4 +2076,18 @@ const styles = StyleSheet.create({
   msgSub: { fontSize: 14, color: 'rgba(255,255,255,0.6)', textAlign: 'center', lineHeight: 20 },
   actionBtn: { marginTop: 8, backgroundColor: '#3B82F6', borderRadius: 10, paddingHorizontal: 28, paddingVertical: 12 },
   actionBtnText: { fontSize: 15, fontFamily: 'Inter_600SemiBold', color: '#fff' },
+
+  // ── TV / Fire TV D-pad navigation zones (transparent, pointerEvents=none on parent) ──
+  tvZoneLeft: {
+    position: 'absolute', top: 0, bottom: 0,
+    left: 0, width: '30%',
+  },
+  tvZoneCenter: {
+    position: 'absolute', top: 0, bottom: 0,
+    left: '30%', right: '30%',
+  },
+  tvZoneRight: {
+    position: 'absolute', top: 0, bottom: 0,
+    right: 0, width: '30%',
+  },
 });
