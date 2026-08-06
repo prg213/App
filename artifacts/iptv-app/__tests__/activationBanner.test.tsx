@@ -102,10 +102,13 @@ jest.mock('@/context/AppContext', () => ({
 }));
 
 // StorageService: we control consumeLogoutReason per test.
+// The `satisfies` annotation makes TypeScript verify that every key in this
+// object actually exists on the real StorageService — if a method is renamed
+// or removed the compiler will flag the stale mock key immediately.
 jest.mock('@/services/storage', () => ({
   StorageService: {
     consumeLogoutReason: jest.fn(async () => null),
-  },
+  } satisfies Partial<typeof import('@/services/storage').StorageService>,
 }));
 
 // ── Imports (AFTER mocks) ─────────────────────────────────────────────────

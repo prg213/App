@@ -14,12 +14,15 @@ import { rescheduleRemindersForLeadTime } from '../services/reminderReschedule';
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
+// The `satisfies` annotation makes TypeScript verify that every key in this
+// object actually exists on the real StorageService — if a method is renamed
+// or removed the compiler will flag the stale mock key immediately.
 jest.mock('../services/storage', () => ({
   StorageService: {
     getReminders: jest.fn(),
     saveReminders: jest.fn(),
     getReminderLeadMins: jest.fn(async () => 5),
-  },
+  } satisfies Partial<typeof import('../services/storage').StorageService>,
 }));
 
 jest.mock('../services/notifications', () => ({
