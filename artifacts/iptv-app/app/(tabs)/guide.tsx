@@ -125,7 +125,7 @@ function TimeHeader({ dayStartMs, colors }: { dayStartMs: number; colors: any })
 // ─── Channel cell ─────────────────────────────────────────────────────────────
 
 function ChannelCell({
-  channel, nowTitle, nextTitle, colors, isFav, onFavPress,
+  channel, nowTitle, nextTitle, colors, isFav, onFavPress, onPress,
 }: {
   channel: Channel;
   nowTitle?: string | null;
