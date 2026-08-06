@@ -44,7 +44,7 @@ const FITS = [
   { value: 'fill' as const, label: 'Stretch' },
 ];
 
-type ChannelEntry = { url: string; title: string; epgId: string; channelId?: string };
+type ChannelEntry = { url: string; title: string; epgId: string; logo?: string; channelId?: string };
 
 function buildCreds(c: ReturnType<typeof useAppContext>['credentials']) {
   return { host: c!.host!, username: c!.username!, password: c!.password! };
@@ -352,6 +352,14 @@ export default function PlayerScreen() {
   // Ref to block spurious onFocus channel-switch on initial TV mount
   const tvNavReadyRef = useRef(false);
   const tvCenterRef = useRef<View>(null);
+
+  // ── TV channel-switch preview overlay ────────────────────────────────────
+  // Shown for ~1 s when the user presses D-pad left/right so they can see
+  // which channel is coming before the stream actually switches.
+  const [tvPreviewChannel, setTvPreviewChannel] = useState<ChannelEntry | null>(null);
+  const [tvPreviewDir, setTvPreviewDir] = useState<'prev' | 'next' | null>(null);
+  const tvPreviewOpacity = useRef(new Animated.Value(0)).current;
+  const tvPreviewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [nowTs, setNowTs] = useState(Date.now());
   /** 'back' | 'forward' | null — brief double-tap seek visual indicator */
   const [doubleTapSide, setDoubleTapSide] = useState<'back' | 'forward' | null>(null);
@@ -1052,11 +1060,43 @@ export default function PlayerScreen() {
     return () => clearTimeout(t);
   }, [isLive]);
 
+  // Clean up the TV preview timer on unmount so it can't fire after the
+  // component has been destroyed.
+  useEffect(() => {
+    return () => {
+      if (tvPreviewTimerRef.current) { clearTimeout(tvPreviewTimerRef.current); tvPreviewTimerRef.current = null; }
+    };
+  }, []);
+
   const showInfoBar = useCallback(() => {
     setShowInfo(true);
     Animated.timing(infoOpacity, { toValue: 1, duration: 200, useNativeDriver: true }).start();
     scheduleInfoHide();
   }, [infoOpacity, scheduleInfoHide]);
+
+  // Show the TV channel-switch preview overlay, then call onCommit after ~1 s.
+  // Only relevant on TV (Platform.isTV) — phone/tablet paths never call this.
+  const showTvChannelPreview = useCallback((
+    channel: ChannelEntry,
+    dir: 'prev' | 'next',
+    onCommit: () => void,
+  ) => {
+    // Cancel any already-running preview timer
+    if (tvPreviewTimerRef.current) { clearTimeout(tvPreviewTimerRef.current); tvPreviewTimerRef.current = null; }
+    setTvPreviewChannel(channel);
+    setTvPreviewDir(dir);
+    // Fade in quickly
+    tvPreviewOpacity.setValue(0);
+    Animated.timing(tvPreviewOpacity, { toValue: 1, duration: 150, useNativeDriver: true }).start();
+    // After 1 s fade out and commit the channel switch
+    tvPreviewTimerRef.current = setTimeout(() => {
+      Animated.timing(tvPreviewOpacity, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => {
+        setTvPreviewChannel(null);
+        setTvPreviewDir(null);
+        onCommit();
+      });
+    }, 1000);
+  }, [tvPreviewOpacity]);
 
   const handleTap = useCallback(() => {
     showInfoBar();
@@ -1511,15 +1551,22 @@ export default function PlayerScreen() {
           ────────────────────────────────────────────────────────────────── */}
       {Platform.isTV && isLive && !hasError && !isWeb && (
         <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
-          {/* Left third — D-pad left lands here → prev channel */}
+          {/* Left third — D-pad left lands here → show prev-channel preview, then switch */}
           <Pressable
             focusable={!!prevChannel}
             style={styles.tvZoneLeft}
             onFocus={() => {
-              if (!tvNavReadyRef.current) return;
-              handlePrevChannel();
-              // Return focus to center after cooldown so next press works
-              setTimeout(() => { (tvCenterRef.current as any)?.focus?.(); }, 1300);
+              if (!tvNavReadyRef.current || !prevChannel || navCooldownRef.current) return;
+              // Claim the cooldown upfront so rapid D-pad presses during the preview are ignored
+              navCooldownRef.current = true;
+              setTimeout(() => { navCooldownRef.current = false; }, 1400);
+              const targetChannel = prevChannel;
+              const targetIdx = channelIdx - 1;
+              showTvChannelPreview(targetChannel, 'prev', () => {
+                switchChannel(targetChannel, targetIdx);
+              });
+              // Return focus to center after preview + cooldown
+              setTimeout(() => { (tvCenterRef.current as any)?.focus?.(); }, 1400);
             }}
           />
           {/* Centre — preferred focus; OK shows/hides the info bar */}
@@ -1530,17 +1577,46 @@ export default function PlayerScreen() {
             style={styles.tvZoneCenter}
             onPress={showInfo ? dismissInfoBar : showInfoBar}
           />
-          {/* Right third — D-pad right lands here → next channel */}
+          {/* Right third — D-pad right lands here → show next-channel preview, then switch */}
           <Pressable
             focusable={!!nextChannel}
             style={styles.tvZoneRight}
             onFocus={() => {
-              if (!tvNavReadyRef.current) return;
-              handleNextChannel();
-              setTimeout(() => { (tvCenterRef.current as any)?.focus?.(); }, 1300);
+              if (!tvNavReadyRef.current || !nextChannel || navCooldownRef.current) return;
+              navCooldownRef.current = true;
+              setTimeout(() => { navCooldownRef.current = false; }, 1400);
+              const targetChannel = nextChannel;
+              const targetIdx = channelIdx + 1;
+              showTvChannelPreview(targetChannel, 'next', () => {
+                switchChannel(targetChannel, targetIdx);
+              });
+              setTimeout(() => { (tvCenterRef.current as any)?.focus?.(); }, 1400);
             }}
           />
         </View>
+      )}
+
+      {/* ── TV channel-switch preview overlay ───────────────────────────────
+          Fades in for ~1 s when D-pad left/right is pressed so the viewer
+          knows which channel is coming before the stream switches.
+          Positioned at the bottom-centre, similar to the live info bar.
+          Only rendered on TV (Platform.isTV check is in the condition above). */}
+      {Platform.isTV && isLive && !hasError && !isWeb && tvPreviewChannel && (
+        <Animated.View
+          style={[styles.tvChannelPreview, { bottom: insets.bottom + 16, opacity: tvPreviewOpacity }]}
+          pointerEvents="none"
+        >
+          <Text style={styles.tvPreviewArrow}>{tvPreviewDir === 'prev' ? '‹' : '›'}</Text>
+          {!!tvPreviewChannel.logo && (
+            <Image
+              source={{ uri: tvPreviewChannel.logo }}
+              style={styles.tvPreviewLogo}
+              contentFit="contain"
+              cachePolicy="memory-disk"
+            />
+          )}
+          <Text style={styles.tvPreviewTitle} numberOfLines={1}>{tvPreviewChannel.title}</Text>
+        </Animated.View>
       )}
 
       {/* Web back button */}
@@ -2089,5 +2165,39 @@ const styles = StyleSheet.create({
   tvZoneRight: {
     position: 'absolute', top: 0, bottom: 0,
     right: 0, width: '30%',
+  },
+
+  // ── TV channel-switch preview overlay ──
+  tvChannelPreview: {
+    position: 'absolute',
+    left: 60,
+    right: 60,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    backgroundColor: 'rgba(0,0,0,0.80)',
+    borderRadius: 14,
+    paddingHorizontal: 22,
+    paddingVertical: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.12)',
+  },
+  tvPreviewArrow: {
+    fontSize: 32,
+    color: 'rgba(255,255,255,0.55)',
+    lineHeight: 36,
+    flexShrink: 0,
+  },
+  tvPreviewLogo: {
+    width: 52,
+    height: 36,
+    flexShrink: 0,
+  },
+  tvPreviewTitle: {
+    flex: 1,
+    fontSize: 24,
+    fontFamily: 'Inter_700Bold',
+    color: '#fff',
+    letterSpacing: 0.2,
   },
 });

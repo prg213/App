@@ -899,6 +899,7 @@ export default function LiveTVScreen() {
       url: ch.streamUrl,
       title: ch.name,
       epgId: ch.epgId ?? ch.id,
+      logo: ch.logo ?? '',
       channelId: ch.id,
     }));
     const idx = channels.findIndex((ch) => ch.id === selectedChannel.id);
@@ -934,6 +935,7 @@ export default function LiveTVScreen() {
       url: c.streamUrl,
       title: c.name,
       epgId: c.epgId ?? c.id,
+      logo: c.logo ?? '',
       channelId: c.id,
     }));
     const idx = channels.findIndex((c) => c.id === ch.id);
@@ -1059,6 +1061,7 @@ export default function LiveTVScreen() {
       url: ch.streamUrl,
       title: ch.name,
       epgId: ch.epgId ?? ch.id,
+      logo: ch.logo ?? '',
       channelId: ch.id,
     }));
     const idx = channels.findIndex((ch) => ch.id === selectedChannel.id);

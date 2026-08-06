@@ -1034,7 +1034,7 @@ function FullGuide({
                 onWatchChannel={(c) => {
                   const chList = channels.map((x) => ({
                     url: x.streamUrl, title: x.name,
-                    epgId: x.epgId ?? x.id, channelId: x.id,
+                    epgId: x.epgId ?? x.id, logo: x.logo ?? '', channelId: x.id,
                   }));
                   const idx = channels.findIndex((x) => x.id === c.id);
                   router.push({
@@ -1158,6 +1158,7 @@ function FullGuide({
               url: ch.streamUrl,
               title: ch.name,
               epgId: ch.epgId ?? ch.id,
+              logo: ch.logo ?? '',
               channelId: ch.id,
             }));
             const idx = channels.findIndex((ch) => ch.id === selected!.channel.id);

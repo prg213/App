@@ -403,6 +403,7 @@ export default function SearchScreen() {
       url: c.streamUrl,
       title: c.name,
       epgId: c.epgId ?? c.id,
+      logo: c.logo ?? '',
       channelId: c.id,
     }));
     const idx = allChannels.findIndex((c) => c.id === ch.id);
