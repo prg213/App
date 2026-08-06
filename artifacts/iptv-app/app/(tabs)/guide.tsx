@@ -898,15 +898,16 @@ function FullGuide({
         <TextInput
           value={chFilter}
           onChangeText={setChFilter}
-          placeholder="Filter channels…"
+          placeholder={
+            chFilter.trim()
+              ? `${visibleChannels.length} / ${channels.length} channels`
+              : `Filter ${channels.length} channels…`
+          }
           placeholderTextColor={colors.mutedForeground}
           style={[styles.guideChFilter, { backgroundColor: colors.secondary, color: colors.foreground, borderColor: colors.border }]}
           returnKeyType="search"
           clearButtonMode="while-editing"
         />
-        <Text style={[styles.chCountLabel, { color: colors.mutedForeground }]}>
-          {visibleChannels.length}{chFilter.trim() ? `/${channels.length}` : ''} ch
-        </Text>
       </View>
 
       {/* Day navigation: prev/next arrows + tab strip */}
