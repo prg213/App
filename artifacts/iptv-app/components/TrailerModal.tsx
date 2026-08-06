@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   AppState,
   ActivityIndicator,
+  Linking,
   Modal,
   Pressable,
   StyleSheet,
@@ -57,6 +58,7 @@ function buildYtHtml(videoId: string): string {
       videoId: '${videoId}',
       width: '100%',
       height: '100%',
+      host: 'https://www.youtube-nocookie.com',
       playerVars: {
         autoplay: 1,
         mute: 0,
@@ -65,7 +67,8 @@ function buildYtHtml(videoId: string): string {
         modestbranding: 1,
         playsinline: 1,
         fs: 0,
-        iv_load_policy: 3
+        iv_load_policy: 3,
+        origin: 'https://www.youtube-nocookie.com'
       },
       events: {
         onReady: function(e) {
@@ -215,10 +218,23 @@ export function TrailerModal({ videoIds, onClose }: Props) {
         ) : allFailed || !current ? (
           <View style={styles.loaderFull}>
             <Text style={{ fontSize: 40, marginBottom: 12 }}>🎬</Text>
-            <Text style={styles.loaderText}>No trailer available</Text>
-            <Text style={[styles.loaderText, { fontSize: 12, marginTop: 4, opacity: 0.5 }]}>
-              No playable trailer was found for this title.
+            <Text style={styles.loaderText}>Trailer can't be embedded</Text>
+            <Text style={[styles.loaderText, { fontSize: 12, marginTop: 4, opacity: 0.5, textAlign: 'center', paddingHorizontal: 32 }]}>
+              YouTube has disabled embedding for this video.{'\n'}Watch it directly in YouTube instead.
             </Text>
+            {/* First YT candidate — always try to offer a direct link */}
+            {(() => {
+              const firstYtId = (Array.isArray(videoIds) ? videoIds : []).find(isVideoId);
+              if (!firstYtId) return null;
+              return (
+                <Pressable
+                  style={styles.ytBtn}
+                  onPress={() => Linking.openURL(`https://www.youtube.com/watch?v=${firstYtId}`)}
+                >
+                  <Text style={styles.ytBtnText}>▶  Open in YouTube</Text>
+                </Pressable>
+              );
+            })()}
           </View>
         ) : (
           <>
@@ -302,5 +318,17 @@ const styles = StyleSheet.create({
   webview: {
     flex: 1,
     backgroundColor: '#000',
+  },
+  ytBtn: {
+    marginTop: 20,
+    paddingHorizontal: 28,
+    paddingVertical: 13,
+    borderRadius: 12,
+    backgroundColor: '#FF0000',
+  },
+  ytBtnText: {
+    fontSize: 15,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#fff',
   },
 });
