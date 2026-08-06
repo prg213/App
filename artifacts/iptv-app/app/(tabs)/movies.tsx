@@ -462,11 +462,18 @@ export default function MoviesScreen() {
                   router.push({ pathname: '/movie/[id]', params: { id: item.id, title: item.name, cover: item.cover ?? '', genre: item.genre ?? '', rating: item.rating ?? '', plot: item.plot ?? '', cast: item.cast ?? '', director: item.director ?? '', releaseDate: item.releaseDate ?? '', duration: item.duration ?? '', ext: item.containerExtension, ...(histEntry?.position ? { resumePosition: String(Math.floor(histEntry.position)) } : {}) } });
                 }}
                 onTrailerPress={() => {
-                  // #124: prefer the provider's own trailer URL; only fall back to TMDB when absent
-                  const providerUrl = item.trailerUrl
-                    ? (item.trailerUrl.startsWith('http') ? item.trailerUrl : `https://www.youtube.com/watch?v=${item.trailerUrl}`)
+                  // #124: prefer the provider's own trailer URL; fall back to TMDB when absent.
+                  // Normalise to a bare YouTube ID (or a non-YouTube URL) so TrailerModal
+                  // uses the IFrame API — iframing a full youtube.com/watch URL is blocked.
+                  const raw = item.trailerUrl;
+                  const provId = raw
+                    ? raw.startsWith('http')
+                      ? (raw.match(/[?&]v=([A-Za-z0-9_-]{11})/)?.[1] ??
+                         raw.match(/youtu\.be\/([A-Za-z0-9_-]{11})/)?.[1] ??
+                         raw)   // non-YouTube URL — pass as-is for buildGenericHtml
+                      : raw    // bare ID — pass as-is
                     : null;
-                  if (providerUrl) { setTrailerIds([providerUrl]); return; }
+                  if (provId) { setTrailerIds([provId]); return; }
                   setTrailerIds('loading');
                   getTmdbTrailerCandidates(item.name, 'movie').then((ids) => {
                     setTrailerIds(ids.length > 0 ? ids : null);
