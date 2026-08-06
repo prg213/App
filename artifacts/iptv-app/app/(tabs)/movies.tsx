@@ -31,6 +31,7 @@ import { normaliseStr } from '@/utils/normalise';
 const ALL_CAT_ID = '__all';
 const FAVS_CAT_ID = '__favs';
 const RECENT_CAT_ID = '__recent';
+const CONTINUE_CAT_ID = '__continue';
 
 function buildCreds(c: ReturnType<typeof useAppContext>['credentials']) {
   return { host: c!.host!, username: c!.username!, password: c!.password! };
@@ -85,6 +86,7 @@ export default function MoviesScreen() {
   const isFavsSelected = selectedCat === FAVS_CAT_ID;
   const isAllSelected = selectedCat === ALL_CAT_ID;
   const isRecentSelected = selectedCat === RECENT_CAT_ID;
+  const isContinueSelected = selectedCat === CONTINUE_CAT_ID;
 
   const { data: rawCategories = [] } = useQuery<Category[]>({
     queryKey: ['vod-categories', credentials],
@@ -98,18 +100,19 @@ export default function MoviesScreen() {
       { id: ALL_CAT_ID, name: '◈ All' },
       { id: FAVS_CAT_ID, name: '♥ Favourites' },
       { id: RECENT_CAT_ID, name: '🕒 Recently Watched' },
+      { id: CONTINUE_CAT_ID, name: '▶ Continue Watching' },
       ...rawCategories,
     ],
     [rawCategories],
   );
 
   // Pass undefined when All is selected so the API returns everything
-  const queryCategory = isAllSelected || isFavsSelected || isRecentSelected ? undefined : selectedCat;
+  const queryCategory = isAllSelected || isFavsSelected || isRecentSelected || isContinueSelected ? undefined : selectedCat;
 
   const { data: fetchedMovies = [], isLoading, refetch, isRefetching, isError } = useQuery<Movie[]>({
     queryKey: ['vod-streams', queryCategory, credentials],
     queryFn: () => getXtreamVodStreams(buildCreds(credentials), queryCategory),
-    enabled: !!credentials && isXtream && !isFavsSelected && !isRecentSelected,
+    enabled: !!credentials && isXtream && !isFavsSelected && !isRecentSelected && !isContinueSelected,
     staleTime: 5 * 60_000,
   });
 
@@ -124,10 +127,10 @@ export default function MoviesScreen() {
   useFocusEffect(
     useCallback(() => {
       refreshWatchHistory();
-      if (credentials && isXtream && !isFavsSelected && !isRecentSelected) {
+      if (credentials && isXtream && !isFavsSelected && !isRecentSelected && !isContinueSelected) {
         refetch();
       }
-    }, [credentials, isXtream, isFavsSelected, isRecentSelected, refetch, refreshWatchHistory]),
+    }, [credentials, isXtream, isFavsSelected, isRecentSelected, isContinueSelected, refetch, refreshWatchHistory]),
   );
 
   // Persist sort order across sessions
@@ -306,14 +309,26 @@ export default function MoviesScreen() {
           showsVerticalScrollIndicator={false}
           renderItem={({ item }) => {
             const active = selectedCat === item.id;
+            const isSub = item.id === CONTINUE_CAT_ID;
             return (
               <TouchableOpacity
-                style={[styles.catItem, active && { backgroundColor: 'rgba(59,130,246,0.15)' }]}
+                style={[
+                  styles.catItem,
+                  isSub && styles.catSubItem,
+                  active && { backgroundColor: 'rgba(59,130,246,0.15)' },
+                ]}
                 onPress={() => setSelectedCat(item.id)}
                 activeOpacity={0.7}
               >
-                {active && <View style={styles.catPip} />}
-                <Text style={[styles.catLabel, { color: active ? '#F2F2F2' : colors.mutedForeground }]} numberOfLines={1}>
+                {active && <View style={[styles.catPip, isSub && { left: 0 }]} />}
+                <Text
+                  style={[
+                    styles.catLabel,
+                    isSub && styles.catSubLabel,
+                    { color: active ? '#F2F2F2' : isSub ? 'rgba(255,255,255,0.38)' : colors.mutedForeground },
+                  ]}
+                  numberOfLines={1}
+                >
                   {item.name}
                 </Text>
               </TouchableOpacity>
@@ -378,10 +393,10 @@ export default function MoviesScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Continue Watching rail — hidden when viewing recently-watched (would duplicate entries) */}
-        {!isRecentSelected && <ContinueWatchingRail type="movie" />}
-
-        {isLoading && !isFavsSelected ? (
+        {/* Continue Watching — full page when sub-category is selected */}
+        {isContinueSelected ? (
+          <ContinueWatchingRail type="movie" fullPage />
+        ) : isLoading && !isFavsSelected ? (
           <FlatList
             data={Array.from({ length: 16 })}
             numColumns={4}
@@ -515,8 +530,10 @@ const styles = StyleSheet.create({
   catPanel: { width: 170, borderRightWidth: StyleSheet.hairlineWidth },
   catTitle: { fontSize: 9, fontFamily: 'Inter_600SemiBold', letterSpacing: 1.5, paddingHorizontal: 14, paddingBottom: 8 },
   catItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 14, position: 'relative' },
+  catSubItem: { paddingVertical: 7, paddingHorizontal: 14, paddingLeft: 26 },
   catPip: { position: 'absolute', left: 0, top: '20%', bottom: '20%', width: 3, backgroundColor: '#3B82F6', borderRadius: 99 },
   catLabel: { fontSize: 12, fontFamily: 'Inter_400Regular' },
+  catSubLabel: { fontSize: 11, fontFamily: 'Inter_400Regular' },
   content: { flex: 1 },
   header: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingBottom: 8, borderBottomWidth: StyleSheet.hairlineWidth },
   screenTitle: { fontSize: 18, fontFamily: 'Inter_700Bold', letterSpacing: -0.3, marginRight: 4 },
