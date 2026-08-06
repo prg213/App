@@ -42,14 +42,16 @@ interface MovieCardProps {
   query?: string;
   isFav?: boolean;
   compact?: boolean;
+  /** 0–1 resume progress bar shown at the bottom of the poster */
+  progress?: number;
   onPress: () => void;
   onFavPress?: () => void;
   onLongPress?: () => void;
-  /** #123: quick trailer shortcut shown as a small button on the poster */
+  /** kept for API compatibility — button no longer rendered on the poster */
   onTrailerPress?: () => void;
 }
 
-function MovieCardComponent({ name, cover, rating, genre, year, query = '', isFav, compact, onPress, onFavPress, onLongPress, onTrailerPress }: MovieCardProps) {
+function MovieCardComponent({ name, cover, rating, genre, year, query = '', isFav, compact, progress, onPress, onFavPress, onLongPress }: MovieCardProps) {
   const colors = useColors();
   const isOnline = useIsOnline();
 
@@ -96,16 +98,11 @@ function MovieCardComponent({ name, cover, rating, genre, year, query = '', isFa
             </Text>
           </TouchableOpacity>
         )}
-        {/* #123/#129: Trailer shortcut — dimmed when offline */}
-        {onTrailerPress && !compact && (
-          <TouchableOpacity
-            style={[styles.trailerBtn, !isOnline && styles.trailerBtnOffline]}
-            onPress={(e) => { e.stopPropagation(); onTrailerPress(); }}
-            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.trailerIcon}>{isOnline ? '▶' : '✕'}</Text>
-          </TouchableOpacity>
+        {/* Resume progress bar */}
+        {progress != null && progress > 0 && (
+          <View style={styles.progressRail}>
+            <View style={[styles.progressFill, { width: `${Math.max(2, Math.min(100, progress * 100))}%` as any }]} />
+          </View>
         )}
       </View>
 
@@ -179,22 +176,18 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 16,
   },
-  trailerBtn: {
+  progressRail: {
     position: 'absolute',
-    bottom: 6,
-    right: 6,
-    backgroundColor: 'rgba(139,92,246,0.85)',
-    borderRadius: 6,
-    paddingHorizontal: 6,
-    paddingVertical: 3,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 3,
+    backgroundColor: 'rgba(0,0,0,0.45)',
   },
-  trailerBtnOffline: {
-    backgroundColor: 'rgba(75,85,99,0.75)',
-  },
-  trailerIcon: {
-    color: '#fff',
-    fontSize: 10,
-    fontFamily: 'Inter_700Bold',
+  progressFill: {
+    height: '100%',
+    backgroundColor: '#3B82F6',
+    borderRadius: 1.5,
   },
   info: {
     marginTop: 7,
