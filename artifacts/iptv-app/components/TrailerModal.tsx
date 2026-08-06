@@ -61,20 +61,17 @@ function buildYtHtml(videoId: string): string {
       host: 'https://www.youtube-nocookie.com',
       playerVars: {
         autoplay: 1,
-        mute: 0,
+        mute: 1,
         controls: 1,
         rel: 0,
         modestbranding: 1,
         playsinline: 1,
-        fs: 0,
+        fs: 1,
         iv_load_policy: 3,
         origin: 'https://www.youtube-nocookie.com'
       },
       events: {
         onReady: function(e) {
-          /* Force unmuted at full volume – overrides YouTube's autoplay policy */
-          e.target.unMute();
-          e.target.setVolume(100);
           e.target.playVideo();
         },
         onError: function(e) {

@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   Alert,
   Image,
-  Linking,
   Modal,
   Platform,
   Pressable,
@@ -13,6 +12,7 @@ import {
   View,
 } from 'react-native';
 import { ThumbnailWithFallback } from '@/components/ThumbnailWithFallback';
+import { TrailerModal } from '@/components/TrailerModal';
 import { getTmdbTrailerCandidates, getTmdbPosterUrl } from '@/services/tmdb';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
@@ -103,7 +103,7 @@ export default function MovieDetailScreen() {
   const [isFav, setIsFav] = useState(false);
   const [savedPosition, setSavedPosition] = useState<number | null>(null);
   const [showPinGate, setShowPinGate] = useState(false);
-  const [trailerLoading, setTrailerLoading] = useState(false);
+  const [trailerIds, setTrailerIds] = useState<string[] | 'loading' | null>(null);
   const [pendingStartAt, setPendingStartAt] = useState<number | undefined>(undefined);
 
   const params = useLocalSearchParams<{
@@ -308,33 +308,24 @@ export default function MovieDetailScreen() {
           )}
           <Pressable
             focusable
-            style={({ focused }) => [styles.outlineBtn, { borderColor: 'rgba(255,255,255,0.15)' }, (!isOnline || trailerLoading) && styles.offlineBtn, focused && styles.focusRing]}
+            style={({ focused }) => [styles.outlineBtn, { borderColor: 'rgba(255,255,255,0.15)' }, !isOnline && styles.offlineBtn, focused && styles.focusRing]}
             onPress={async () => {
               if (!isOnline) {
                 Alert.alert('No Internet', 'No internet connection — trailer unavailable.', [{ text: 'OK' }]);
                 return;
               }
-              setTrailerLoading(true);
-              try {
-                const raw = vodInfo?.trailerUrl;
-                const provId = raw
-                  ? raw.startsWith('http')
-                    ? (raw.match(/[?&]v=([A-Za-z0-9_-]{11})/)?.[1] ?? raw.match(/youtu\.be\/([A-Za-z0-9_-]{11})/)?.[1] ?? null)
-                    : (raw.length === 11 ? raw : null)
-                  : null;
-                const ytId = provId ?? (await getTmdbTrailerCandidates(params.title, 'movie'))[0] ?? null;
-                if (ytId) {
-                  Linking.openURL(`https://www.youtube.com/watch?v=${ytId}`);
-                } else {
-                  Alert.alert('No Trailer', 'No trailer found for this title.');
-                }
-              } finally {
-                setTrailerLoading(false);
-              }
+              setTrailerIds('loading');
+              const ids = await getTmdbTrailerCandidates(params.title, 'movie');
+              const raw = vodInfo?.trailerUrl;
+              const provId = raw ? (raw.startsWith('http')
+                ? (raw.match(/[?&]v=([A-Za-z0-9_-]{11})/)?.[1] ?? raw.match(/youtu\.be\/([A-Za-z0-9_-]{11})/)?.[1] ?? null)
+                : raw) : null;
+              const all = provId && !ids.includes(provId) ? [provId, ...ids] : ids;
+              setTrailerIds(all.length > 0 ? all : null);
             }}
           >
-            <Text style={[styles.outlineBtnText, (!isOnline || trailerLoading) && { opacity: 0.45 }]}>
-              {trailerLoading ? 'Loading…' : isOnline ? '▶  Watch Trailer' : '✕  No Connection'}
+            <Text style={[styles.outlineBtnText, !isOnline && { opacity: 0.45 }]}>
+              {isOnline ? '▶  Watch Trailer' : '✕  No Connection'}
             </Text>
           </Pressable>
         </View>
@@ -355,6 +346,7 @@ export default function MovieDetailScreen() {
           onCancel={() => setShowPinGate(false)}
         />
       </Modal>
+      <TrailerModal videoIds={trailerIds} onClose={() => setTrailerIds(null)} />
     </View>
   );
 }

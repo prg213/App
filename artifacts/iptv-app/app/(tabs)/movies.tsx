@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Alert,
   FlatList,
-  Linking,
   RefreshControl,
   StyleSheet,
   Text,
@@ -13,6 +12,7 @@ import {
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter, useFocusEffect } from 'expo-router';
 import * as Haptics from 'expo-haptics';
+import { TrailerModal } from '@/components/TrailerModal';
 import { getTmdbTrailerCandidates, getTmdbPosterUrl } from '@/services/tmdb';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
@@ -52,7 +52,7 @@ export default function MoviesScreen() {
   // #23: queue a failed push so it retries next time this screen mounts
   const pendingFavPushRef = useRef<FavoriteMovie[] | null>(null);
   const isXtream = credentials?.type === 'xtream';
-  const [trailerLoading, setTrailerLoading] = useState(false);
+  const [trailerIds, setTrailerIds] = useState<string[] | 'loading' | null>(null);
 
   useEffect(() => {
     StorageService.getMovieFavorites().then(async (local) => {
@@ -461,24 +461,18 @@ export default function MoviesScreen() {
                   const histEntry = isRecentSelected ? watchHistory.find((e) => e.id === item.id) : undefined;
                   router.push({ pathname: '/movie/[id]', params: { id: item.id, title: item.name, cover: item.cover ?? '', genre: item.genre ?? '', rating: item.rating ?? '', plot: item.plot ?? '', cast: item.cast ?? '', director: item.director ?? '', releaseDate: item.releaseDate ?? '', duration: item.duration ?? '', ext: item.containerExtension, ...(histEntry?.position ? { resumePosition: String(Math.floor(histEntry.position)) } : {}) } });
                 }}
-                onTrailerPress={async () => {
-                  setTrailerLoading(true);
-                  try {
-                    const raw = item.trailerUrl;
-                    const provId = raw
-                      ? raw.startsWith('http')
-                        ? (raw.match(/[?&]v=([A-Za-z0-9_-]{11})/)?.[1] ?? raw.match(/youtu\.be\/([A-Za-z0-9_-]{11})/)?.[1] ?? null)
-                        : (raw.length === 11 ? raw : null)
-                      : null;
-                    const ytId = provId ?? (await getTmdbTrailerCandidates(item.name, 'movie'))[0] ?? null;
-                    if (ytId) {
-                      Linking.openURL(`https://www.youtube.com/watch?v=${ytId}`);
-                    } else {
-                      Alert.alert('No Trailer', 'No trailer found for this title.');
-                    }
-                  } finally {
-                    setTrailerLoading(false);
-                  }
+                onTrailerPress={() => {
+                  const raw = item.trailerUrl;
+                  const provId = raw
+                    ? raw.startsWith('http')
+                      ? (raw.match(/[?&]v=([A-Za-z0-9_-]{11})/)?.[1] ?? raw.match(/youtu\.be\/([A-Za-z0-9_-]{11})/)?.[1] ?? null)
+                      : raw
+                    : null;
+                  if (provId) { setTrailerIds([provId]); return; }
+                  setTrailerIds('loading');
+                  getTmdbTrailerCandidates(item.name, 'movie').then((ids) => {
+                    setTrailerIds(ids.length > 0 ? ids : null);
+                  });
                 }}
               />
             )}
@@ -497,6 +491,7 @@ export default function MoviesScreen() {
         )}
       </View>
     </View>
+    <TrailerModal videoIds={trailerIds} onClose={() => setTrailerIds(null)} />
     {showScrollTop && (
       <TouchableOpacity
         style={[styles.scrollTopFab, { backgroundColor: colors.primary }]}
