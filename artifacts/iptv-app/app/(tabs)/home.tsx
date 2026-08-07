@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import {
   ActivityIndicator,
@@ -21,7 +21,9 @@ import {
   getXtreamVodStreams,
   getXtreamSeries,
 } from '@/services/xtreamApi';
-import type { Movie, Series } from '@/types';
+import { StorageService } from '@/services/storage';
+import { buildMovieProgressMap, buildSeriesProgressMap } from '@/utils/progressMap';
+import type { Movie, Series, WatchHistoryEntry } from '@/types';
 
 function buildCreds(c: ReturnType<typeof useAppContext>['credentials']) {
   return { host: c!.host!, username: c!.username!, password: c!.password! };
@@ -163,6 +165,9 @@ export default function HomeScreen() {
   const { credentials } = useAppContext();
   const isXtream = credentials?.type === 'xtream';
 
+  // ── Watch history (for Continue Watching rail) ─────────────────────────────
+  const [watchHistory, setWatchHistory] = useState<WatchHistoryEntry[]>([]);
+
   // ── Latest movies ─────────────────────────────────────────────────────────
   const { data: allMovies = [], isLoading: moviesLoading, refetch: refetchMovies } = useQuery<Movie[]>({
     queryKey: ['vod-streams', null, credentials],
@@ -181,11 +186,43 @@ export default function HomeScreen() {
 
   // Refetch whenever the Home tab comes into focus — tab components stay
   // mounted so React Query's refetchOnMount never fires on re-navigation.
+  // Also reload watch history here so progress bars reflect the latest
+  // position after the user returns from the player.
   useFocusEffect(useCallback(() => {
+    StorageService.getWatchHistory().then(setWatchHistory);
     if (!credentials || !isXtream) return;
     refetchMovies();
     refetchSeries();
   }, [credentials, isXtream, refetchMovies, refetchSeries]));
+
+  // ── Progress maps for Continue Watching rail ─────────────────────────────
+  // Filter by type before building each map so a movie and a series that happen
+  // to share the same numeric ID cannot overwrite each other's progress value.
+  const movieProgressMap = useMemo(
+    () => buildMovieProgressMap(watchHistory.filter((e) => e.type === 'movie')),
+    [watchHistory],
+  );
+  const seriesProgressMap = useMemo(
+    () => buildSeriesProgressMap(watchHistory.filter((e) => e.type === 'series')),
+    [watchHistory],
+  );
+
+  // ── Continue Watching — items with recorded progress (newest first) ────────
+  const continueWatchingItems = useMemo<WatchHistoryEntry[]>(() => {
+    // Keep only entries with meaningful progress (position > 0, duration > 0)
+    // and deduplicate by the display key (parentId for series, id for movies).
+    const seen = new Set<string>();
+    const result: WatchHistoryEntry[] = [];
+    for (const e of watchHistory) {
+      if (!e.position || !e.duration || e.position <= 0) continue;
+      const key = e.type === 'series' ? (e.parentId ?? e.id) : e.id;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      result.push(e);
+      if (result.length >= 20) break;
+    }
+    return result;
+  }, [watchHistory]);
 
   const latestMovies = useMemo(
     () =>
@@ -244,6 +281,56 @@ export default function HomeScreen() {
       },
     });
   }, [router]);
+
+  // Navigate to the correct detail page from a history entry
+  const handleHistoryItemPress = useCallback((entry: WatchHistoryEntry) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (entry.type === 'movie') {
+      router.push({
+        pathname: '/movie/[id]',
+        params: { id: entry.id, title: entry.title, cover: entry.cover ?? '' },
+      });
+    } else {
+      router.push({
+        pathname: '/series/[id]',
+        params: { id: entry.parentId ?? entry.id, title: entry.parentTitle ?? entry.title, cover: entry.cover ?? '' },
+      });
+    }
+  }, [router]);
+
+  const renderContinueWatching = useCallback(({ item }: { item: WatchHistoryEntry }) => {
+    const progress = item.type === 'series'
+      ? seriesProgressMap.get(item.parentId ?? item.id)
+      : movieProgressMap.get(item.id);
+    const pct = progress != null ? Math.max(2, Math.min(100, progress * 100)) : 0;
+    return (
+      <Pressable
+        focusable
+        style={({ focused }) => [styles.banner, focused && styles.bannerFocused]}
+        onPress={() => handleHistoryItemPress(item)}
+      >
+        {item.cover ? (
+          <Image source={{ uri: item.cover }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+        ) : (
+          <View style={[StyleSheet.absoluteFill, styles.bannerPlaceholder, { backgroundColor: colors.secondary }]}>
+            <Text style={{ fontSize: 32 }}>{item.type === 'series' ? '📺' : '🎬'}</Text>
+          </View>
+        )}
+        <LinearGradient colors={['transparent', 'rgba(0,0,0,0.85)']} style={styles.bannerGrad} />
+        <View style={styles.bannerInfo}>
+          <Text style={styles.bannerTitle} numberOfLines={2}>
+            {item.type === 'series' ? (item.parentTitle ?? item.title) : item.title}
+          </Text>
+        </View>
+        {/* Progress bar */}
+        {pct > 0 && (
+          <View style={styles.progressRail}>
+            <View style={[styles.progressFill, { width: `${pct}%` as any }]} />
+          </View>
+        )}
+      </Pressable>
+    );
+  }, [colors, handleHistoryItemPress, movieProgressMap, seriesProgressMap]);
 
   const renderMovie = useCallback(({ item }: { item: Movie }) => (
     <MovieBanner movie={item} colors={colors} onPress={() => handleMoviePress(item)} />
@@ -312,6 +399,29 @@ export default function HomeScreen() {
             </View>
           </View>
         </Pressable>
+      )}
+
+      {/* ── Continue Watching ── */}
+      {continueWatchingItems.length > 0 && (
+        <Section
+          title="Continue Watching"
+          subtitle={`${continueWatchingItems.length} ${continueWatchingItems.length === 1 ? 'title' : 'titles'}`}
+          isLoading={false}
+          colors={colors}
+        >
+          <FlatList
+            data={continueWatchingItems}
+            keyExtractor={(e) => e.id}
+            renderItem={renderContinueWatching}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.bannerList}
+            getItemLayout={(_, i) => ({ length: BANNER_W + 10, offset: (BANNER_W + 10) * i, index: i })}
+            initialNumToRender={6}
+            maxToRenderPerBatch={8}
+            removeClippedSubviews={false}
+          />
+        </Section>
       )}
 
       {/* ── Latest Movies ── */}
@@ -455,6 +565,21 @@ const styles = StyleSheet.create({
   ratingText: { fontSize: 9, color: '#FCD34D', fontFamily: 'Inter_600SemiBold' },
   bannerTitle: { fontSize: 12, fontFamily: 'Inter_700Bold', color: '#fff', lineHeight: 16 },
   bannerMeta: { fontSize: 10, color: 'rgba(255,255,255,0.55)', fontFamily: 'Inter_400Regular' },
+
+  // ── Continue Watching progress bar ──
+  progressRail: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 3,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+  },
+  progressFill: {
+    height: 3,
+    backgroundColor: '#3B82F6',
+    borderRadius: 2,
+  },
 
   // ── Empty state ──
   empty: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 32, gap: 8 },
