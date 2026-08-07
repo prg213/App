@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { FocusablePressable } from '@/components/FocusablePressable';
 import {
   Alert,
   AppState,
@@ -171,8 +172,8 @@ function ReminderCard({
   const isOnAir = startMs <= nowTs && nowTs < endMs;
 
   return (
-    <TouchableOpacity
-      activeOpacity={isPast ? 0.65 : 1}
+    <FocusablePressable
+      style={{ opacity: isPast && !isOnAir ? 0.65 : 1 }}
       onPress={isPast && !isOnAir ? () => {
         Alert.alert(
           reminder.programTitle,
@@ -225,13 +226,12 @@ function ReminderCard({
 
         {/* Watch Live button — shown when programme is currently airing */}
         {isOnAir && reminder.streamUrl && onWatchLive && (
-          <TouchableOpacity
+          <FocusablePressable
             style={styles.watchLiveBtn}
             onPress={onWatchLive}
-            activeOpacity={0.8}
           >
             <Text style={styles.watchLiveBtnText}>▶  Watch Live</Text>
-          </TouchableOpacity>
+          </FocusablePressable>
         )}
         {/* Graceful fallback when on-air but channel URL could not be resolved */}
         {isOnAir && !reminder.streamUrl && (
@@ -244,24 +244,22 @@ function ReminderCard({
       {/* Right: edit + delete buttons */}
       <View style={styles.actions}>
         {!isPast && (
-          <TouchableOpacity
+          <FocusablePressable
             style={[styles.actionBtn, { borderColor: colors.border }]}
             onPress={onReschedule}
-            activeOpacity={0.7}
           >
             <Text style={styles.actionBtnText}>✎</Text>
-          </TouchableOpacity>
+          </FocusablePressable>
         )}
-        <TouchableOpacity
+        <FocusablePressable
           style={[styles.actionBtn, { borderColor: colors.border }]}
           onPress={onDelete}
-          activeOpacity={0.7}
         >
           <Text style={styles.actionBtnText}>✕</Text>
-        </TouchableOpacity>
+        </FocusablePressable>
       </View>
     </View>
-    </TouchableOpacity>
+    </FocusablePressable>
   );
 }
 
@@ -691,9 +689,9 @@ export default function RemindersScreen() {
       <View style={[styles.header, { paddingTop: insets.top + 12, borderBottomColor: colors.border }]}>
         <Text style={[styles.title, { color: colors.foreground }]}>🔔  Reminders</Text>
         {hasPast && (
-          <TouchableOpacity onPress={handleClearPast} style={styles.clearBtn} activeOpacity={0.7}>
+          <FocusablePressable onPress={handleClearPast} style={styles.clearBtn}>
             <Text style={[styles.clearBtnText, { color: '#EF4444' }]}>Clear past</Text>
-          </TouchableOpacity>
+          </FocusablePressable>
         )}
       </View>
 
@@ -780,9 +778,9 @@ export default function RemindersScreen() {
       {undoBanner && (
         <View style={[styles.undoBanner, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <Text style={[styles.undoText, { color: colors.foreground }]}>Reminder removed</Text>
-          <TouchableOpacity onPress={handleUndo} style={styles.undoBtn} activeOpacity={0.8}>
+          <FocusablePressable onPress={handleUndo} style={styles.undoBtn}>
             <Text style={styles.undoBtnText}>UNDO</Text>
-          </TouchableOpacity>
+          </FocusablePressable>
         </View>
       )}
 

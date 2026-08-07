@@ -1,3 +1,4 @@
+import { FocusablePressable } from '@/components/FocusablePressable';
 import React, {
   useCallback,
   useEffect,
@@ -87,14 +88,13 @@ const CategoryRow = React.memo(function CategoryRow({
   onLongPress?: () => void;
 }) {
   return (
-    <Pressable
-      focusable
-      style={({ focused }) => [
+    <FocusablePressable
+      focusedStyle={styles.tvFocused}
+      style={[
         styles.catRow,
         isSelected
           ? { backgroundColor: '#3B82F6' }
           : { borderBottomColor: colors.border },
-        focused && styles.tvFocused,
       ]}
       onPress={onPress}
       onLongPress={onLongPress}
@@ -117,7 +117,7 @@ const CategoryRow = React.memo(function CategoryRow({
           {channelCount}
         </Text>
       )}
-    </Pressable>
+    </FocusablePressable>
   );
 });
 
@@ -145,13 +145,13 @@ const ChannelRow = React.memo(function ChannelRow({
   hideHeart?: boolean;
 }) {
   return (
-    <Pressable
+    <FocusablePressable
       focusable={!hideHeart}
-      style={({ focused }) => [
+      focusedStyle={!hideHeart ? styles.tvFocused : {}}
+      style={[
         styles.chRow,
         isSelected && !hideHeart && { backgroundColor: 'rgba(59,130,246,0.15)' },
         { borderBottomColor: colors.border },
-        focused && !hideHeart && styles.tvFocused,
       ]}
       onPress={hideHeart ? undefined : onPress}
       onLongPress={hideHeart ? undefined : onLongPress}
@@ -189,18 +189,19 @@ const ChannelRow = React.memo(function ChannelRow({
         ) : null}
       </View>
       {!hideHeart && (
-        <Pressable
+        <FocusablePressable
           focusable
           onPress={onHeartPress}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          style={({ focused }) => [styles.heartBtn, focused && styles.tvFocusedRound]}
+          focusedStyle={styles.tvFocusedRound}
+          style={styles.heartBtn}
         >
           <Text style={[styles.heartIcon, { color: isFav ? '#EF4444' : colors.mutedForeground }]}>
             {isFav ? '♥' : '♡'}
           </Text>
-        </Pressable>
+        </FocusablePressable>
       )}
-    </Pressable>
+    </FocusablePressable>
   );
 });
 

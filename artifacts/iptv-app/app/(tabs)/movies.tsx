@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as WebBrowser from 'expo-web-browser';
+import { FocusablePressable } from '@/components/FocusablePressable';
 import {
   Alert,
   FlatList,
@@ -7,7 +8,6 @@ import {
   StyleSheet,
   Text,
   TextInput,
-  TouchableOpacity,
   View,
 } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -312,13 +312,12 @@ export default function MoviesScreen() {
           renderItem={({ item }) => {
             const active = selectedCat === item.id;
             return (
-              <TouchableOpacity
+              <FocusablePressable
                 style={[
                   styles.catItem,
                   active && { backgroundColor: 'rgba(59,130,246,0.15)' },
                 ]}
                 onPress={() => setSelectedCat(item.id)}
-                activeOpacity={0.7}
               >
                 {active && <View style={styles.catPip} />}
                 <Text
@@ -330,7 +329,7 @@ export default function MoviesScreen() {
                 >
                   {item.name}
                 </Text>
-              </TouchableOpacity>
+              </FocusablePressable>
             );
           }}
         />
@@ -362,34 +361,31 @@ export default function MoviesScreen() {
             </Text>
           )}
           {!isFavsSelected && !isRecentSelected && (
-            <TouchableOpacity
+            <FocusablePressable
               style={[styles.refreshBtn, { backgroundColor: colors.secondary, borderColor: colors.border }]}
               onPress={cycleSortOrder}
-              activeOpacity={0.7}
             >
               <Text style={[styles.refreshIcon, { color: colors.primary, fontSize: 11 }]}>
                 {sortOrder === 'newest' ? 'NEW' : sortOrder === 'name' ? 'A-Z' : '★'}
               </Text>
-            </TouchableOpacity>
+            </FocusablePressable>
           )}
           {isRecentSelected && (
-            <TouchableOpacity
+            <FocusablePressable
               style={[styles.refreshBtn, { backgroundColor: colors.secondary, borderColor: colors.border }]}
               onPress={() => {
                 StorageService.clearHistory().then(() => queryClient.invalidateQueries({ queryKey: ['watch-history'] }));
               }}
-              activeOpacity={0.7}
             >
               <Text style={[styles.refreshIcon, { color: '#EF4444', fontSize: 10 }]}>🗑</Text>
-            </TouchableOpacity>
+            </FocusablePressable>
           )}
-          <TouchableOpacity
+          <FocusablePressable
             style={[styles.refreshBtn, { backgroundColor: colors.secondary, borderColor: colors.border }]}
             onPress={handleRefresh}
-            activeOpacity={0.7}
           >
             <Text style={[styles.refreshIcon, { color: isRefetching ? colors.primary : colors.mutedForeground }]}>↻</Text>
-          </TouchableOpacity>
+          </FocusablePressable>
         </View>
 
         {isLoading && !isFavsSelected ? (
@@ -526,13 +522,12 @@ export default function MoviesScreen() {
       </View>
     </View>
     {showScrollTop && (
-      <TouchableOpacity
+      <FocusablePressable
         style={[styles.scrollTopFab, { backgroundColor: colors.primary }]}
         onPress={() => gridRef.current?.scrollToOffset({ offset: 0, animated: true })}
-        activeOpacity={0.8}
       >
         <Text style={styles.scrollTopIcon}>↑</Text>
-      </TouchableOpacity>
+      </FocusablePressable>
     )}
     </>
   );

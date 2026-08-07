@@ -1,8 +1,8 @@
 import React, { memo, useEffect, useState } from 'react';
+import { FocusablePressable } from '@/components/FocusablePressable';
 import {
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
   type StyleProp,
   type ViewStyle,
@@ -85,7 +85,7 @@ function SeriesCardComponent({ name, cover, rating, genre, year, query = '', isF
   const posterUri = cover || tmdbPoster;
 
   return (
-    <TouchableOpacity style={[styles.card, compact && styles.cardCompact, cardStyle]} onPress={onPress} onLongPress={onLongPress} delayLongPress={500} activeOpacity={0.75} accessibilityLabel={name} accessibilityRole="button">
+    <FocusablePressable style={[styles.card, compact && styles.cardCompact, cardStyle]} onPress={onPress} onLongPress={onLongPress} delayLongPress={500} accessibilityLabel={name} accessibilityRole="button">
       <View style={[styles.poster, { backgroundColor: colors.secondary }]}>
         {posterUri ? (
           <Image source={{ uri: posterUri }} style={StyleSheet.absoluteFill} contentFit="cover" cachePolicy="memory-disk" recyclingKey={`${posterUri}-${fgEpoch}`} />
@@ -108,16 +108,15 @@ function SeriesCardComponent({ name, cover, rating, genre, year, query = '', isF
 
         {/* Heart favourite button */}
         {onFavPress && (
-          <TouchableOpacity
+          <FocusablePressable
             style={styles.heartBtn}
-            onPress={(e) => { e.stopPropagation(); onFavPress(); }}
+            onPress={(e) => { (e as any).stopPropagation?.(); onFavPress(); }}
             hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-            activeOpacity={0.7}
           >
             <Text style={[styles.heartIcon, { color: isFav ? '#EF4444' : 'rgba(255,255,255,0.7)' }]}>
               {isFav ? '♥' : '♡'}
             </Text>
-          </TouchableOpacity>
+          </FocusablePressable>
         )}
 
         {/* Resume progress bar */}
@@ -141,7 +140,7 @@ function SeriesCardComponent({ name, cover, rating, genre, year, query = '', isF
           </Text>
         ) : null}
       </View>
-    </TouchableOpacity>
+    </FocusablePressable>
   );
 }
 

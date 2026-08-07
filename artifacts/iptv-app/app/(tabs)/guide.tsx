@@ -1,3 +1,4 @@
+import { FocusablePressable } from '@/components/FocusablePressable';
 import React, {
   useCallback,
   useEffect,
@@ -136,15 +137,14 @@ function ChannelCell({
   onPress?: () => void;
 }) {
   return (
-    <Pressable
+    <FocusablePressable
       onPress={onPress}
       onLongPress={onFavPress}
       delayLongPress={400}
-      focusable
-      style={({ focused }: any) => [
+      focusedStyle={styles.tvFocused}
+      style={[
         styles.channelCell,
         { borderBottomColor: colors.border, backgroundColor: colors.card },
-        focused && styles.tvFocused,
       ]}
     >
       <View style={[styles.chLogo, { backgroundColor: colors.secondary }]}>
@@ -168,7 +168,7 @@ function ChannelCell({
         ) : null}
       </View>
       {isFav && <Text style={{ position: 'absolute', right: 4, top: 4, fontSize: 10, color: '#EF4444' }}>♥</Text>}
-    </Pressable>
+    </FocusablePressable>
   );
 }
 
@@ -187,7 +187,7 @@ const ProgramCell = React.memo(function ProgramCell({
     : 0;
 
   return (
-    <TouchableOpacity
+    <FocusablePressable
       style={[styles.programCell, {
         left, width: width - 2,
         backgroundColor: isNow ? '#1A2A4A' : colors.secondary,
@@ -196,7 +196,6 @@ const ProgramCell = React.memo(function ProgramCell({
       onPress={onPress}
       onLongPress={onLongPress}
       delayLongPress={500}
-      activeOpacity={0.7}
     >
       {isNow && <View style={[styles.progressBar, { width: `${progress * 100}%` as any }]} />}
       {hasReminder && width > 20 && (
@@ -214,7 +213,7 @@ const ProgramCell = React.memo(function ProgramCell({
           {fmtTime(program.start)} – {fmtTime(program.end)}
         </Text>
       )}
-    </TouchableOpacity>
+    </FocusablePressable>
   );
 });
 

@@ -1,11 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { FocusablePressable } from '@/components/FocusablePressable';
 import { useFocusEffect } from 'expo-router';
 import {
   ActivityIndicator,
   DeviceEventEmitter,
   FlatList,
   Image,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -48,9 +48,9 @@ const MovieBanner = React.memo(function MovieBanner({
   onPress: () => void;
 }) {
   return (
-    <Pressable
-      focusable
-      style={({ focused }) => [styles.banner, focused && styles.bannerFocused]}
+    <FocusablePressable
+      style={styles.banner}
+      focusedStyle={styles.bannerFocused}
       onPress={onPress}
     >
       {movie.cover ? (
@@ -75,7 +75,7 @@ const MovieBanner = React.memo(function MovieBanner({
           <Text style={styles.bannerMeta} numberOfLines={1}>{movie.genre}</Text>
         ) : null}
       </View>
-    </Pressable>
+    </FocusablePressable>
   );
 });
 
@@ -91,9 +91,9 @@ const SeriesBanner = React.memo(function SeriesBanner({
   onPress: () => void;
 }) {
   return (
-    <Pressable
-      focusable
-      style={({ focused }) => [styles.banner, focused && styles.bannerFocused]}
+    <FocusablePressable
+      style={styles.banner}
+      focusedStyle={styles.bannerFocused}
       onPress={onPress}
     >
       {series.cover ? (
@@ -118,7 +118,7 @@ const SeriesBanner = React.memo(function SeriesBanner({
           <Text style={styles.bannerMeta} numberOfLines={1}>{series.genre}</Text>
         ) : null}
       </View>
-    </Pressable>
+    </FocusablePressable>
   );
 });
 
@@ -333,9 +333,9 @@ export default function HomeScreen() {
       : movieProgressMap.get(item.id);
     const pct = progress != null ? Math.max(2, Math.min(100, progress * 100)) : 0;
     return (
-      <Pressable
-        focusable
-        style={({ focused }) => [styles.banner, focused && styles.bannerFocused]}
+      <FocusablePressable
+        style={styles.banner}
+        focusedStyle={styles.bannerFocused}
         onPress={() => handleHistoryItemPress(item)}
       >
         {item.cover ? (
@@ -357,7 +357,7 @@ export default function HomeScreen() {
             <View style={[styles.progressFill, { width: `${pct}%` as any }]} />
           </View>
         )}
-      </Pressable>
+      </FocusablePressable>
     );
   }, [colors, handleHistoryItemPress, movieProgressMap, seriesProgressMap]);
 
@@ -398,9 +398,9 @@ export default function HomeScreen() {
     >
       {/* ── Hero banner ── */}
       {hero && (
-        <Pressable
-          focusable
-          style={({ focused }) => [styles.hero, { marginTop: insets.top }, focused && styles.heroFocused]}
+        <FocusablePressable
+          style={[styles.hero, { marginTop: insets.top }]}
+          focusedStyle={styles.heroFocused}
           onPress={() => handleMoviePress(hero)}
         >
           {hero.cover && (
@@ -434,7 +434,7 @@ export default function HomeScreen() {
               <Text style={styles.heroBtnText}>▶  Watch Now</Text>
             </View>
           </View>
-        </Pressable>
+        </FocusablePressable>
       )}
 
       {/* ── Recently Watched Channels ── */}

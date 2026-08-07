@@ -1,4 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
+import { FocusablePressable } from '@/components/FocusablePressable';
 import {
   ActivityIndicator,
   FlatList,
@@ -6,7 +7,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
@@ -64,13 +64,12 @@ const CategoryRow = React.memo(function CategoryRow({
   onPress: () => void;
 }) {
   return (
-    <TouchableOpacity
+    <FocusablePressable
       style={[
         styles.catRow,
         isSelected ? { backgroundColor: '#3B82F6' } : { borderBottomColor: colors.border },
       ]}
       onPress={onPress}
-      activeOpacity={0.7}
     >
       <Text
         style={[styles.catRowText, { color: isSelected ? '#fff' : colors.foreground }]}
@@ -78,7 +77,7 @@ const CategoryRow = React.memo(function CategoryRow({
       >
         {cat.name}
       </Text>
-    </TouchableOpacity>
+    </FocusablePressable>
   );
 });
 
@@ -93,14 +92,13 @@ const ChannelRow = React.memo(function ChannelRow({
   onPress: () => void;
 }) {
   return (
-    <TouchableOpacity
+    <FocusablePressable
       style={[
         styles.chRow,
         { borderBottomColor: colors.border },
         isSelected && { backgroundColor: '#2563EB' },
       ]}
       onPress={onPress}
-      activeOpacity={0.7}
     >
       <View style={[styles.chLogo, { backgroundColor: colors.muted }]}>
         {ch.logo ? (
@@ -122,7 +120,7 @@ const ChannelRow = React.memo(function ChannelRow({
           </Text>
         )}
       </View>
-    </TouchableOpacity>
+    </FocusablePressable>
   );
 });
 
@@ -354,7 +352,7 @@ export default function CatchupScreen() {
                 const first = byDay.get(k)![0];
                 const active = k === activeDay;
                 return (
-                  <TouchableOpacity
+                  <FocusablePressable
                     key={k}
                     style={[
                       styles.dayTab,
@@ -366,7 +364,7 @@ export default function CatchupScreen() {
                     <Text style={[styles.dayTabText, { color: active ? '#fff' : colors.mutedForeground }]}>
                       {dayLabel(first.start)}
                     </Text>
-                  </TouchableOpacity>
+                  </FocusablePressable>
                 );
               })}
             </ScrollView>
@@ -378,11 +376,10 @@ export default function CatchupScreen() {
               contentContainerStyle={{ paddingBottom: insets.bottom + 8 }}
             >
               {dayPrograms.map((prog) => (
-                <TouchableOpacity
+                <FocusablePressable
                   key={prog.id}
                   style={[styles.progRow, { borderBottomColor: colors.border }]}
                   onPress={() => handlePlay(prog)}
-                  activeOpacity={0.7}
                 >
                   <View style={styles.progTimeCol}>
                     <Text style={[styles.progTime, { color: colors.mutedForeground }]}>
@@ -403,7 +400,7 @@ export default function CatchupScreen() {
                     ) : null}
                   </View>
                   <Text style={{ color: '#3B82F6', fontSize: 16, marginLeft: 8 }}>▶</Text>
-                </TouchableOpacity>
+                </FocusablePressable>
               ))}
             </ScrollView>
           </>

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { FocusablePressable } from '@/components/FocusablePressable';
 import {
   Alert,
   DeviceEventEmitter,
@@ -334,17 +335,16 @@ export default function SettingsScreen() {
     title: string; sub?: string; icon: string; onPress: () => void; destructive?: boolean;
   }) {
     return (
-      <TouchableOpacity
+      <FocusablePressable
         style={[styles.actionRow, { borderBottomColor: colors.border }]}
         onPress={onPress}
-        activeOpacity={0.7}
       >
         <View style={{ flex: 1 }}>
           <Text style={[styles.actionTitle, { color: destructive ? colors.destructive : colors.foreground }]}>{title}</Text>
           {sub ? <Text style={[styles.actionSub, { color: colors.mutedForeground }]}>{sub}</Text> : null}
         </View>
         <Text style={{ color: destructive ? colors.destructive : colors.mutedForeground, fontSize: 18 }}>{icon}</Text>
-      </TouchableOpacity>
+      </FocusablePressable>
     );
   }
 
