@@ -80,10 +80,11 @@ export function makeStorageMock(
     moveSeriesToTop:           jest.fn().mockResolvedValue(null),
 
     // ── Watch history ─────────────────────────────────────────────────────────
-    getWatchHistory:           jest.fn().mockResolvedValue([]),
-    addToHistory:              jest.fn().mockResolvedValue(undefined),
-    removeFromHistory:         jest.fn().mockResolvedValue(undefined),
-    clearHistory:              jest.fn().mockResolvedValue(undefined),
+    getWatchHistory:              jest.fn().mockResolvedValue([]),
+    addToHistory:                 jest.fn().mockResolvedValue(undefined),
+    removeFromHistory:            jest.fn().mockResolvedValue(undefined),
+    removeSeriesFromHistory:      jest.fn().mockResolvedValue(undefined),
+    clearHistory:                 jest.fn().mockResolvedValue(undefined),
 
     // ── Recent channels ───────────────────────────────────────────────────────
     getRecentChannels:         jest.fn().mockResolvedValue([]),
