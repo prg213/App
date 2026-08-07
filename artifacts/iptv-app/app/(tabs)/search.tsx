@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -27,7 +27,7 @@ import {
   getXtreamSeries,
 } from '@/services/xtreamApi';
 import { fetchAndParseM3U } from '@/services/m3uParser';
-import type { Channel, Movie, Series } from '@/types';
+import type { Channel, Movie, Series, WatchHistoryEntry } from '@/types';
 import { normaliseStr } from '@/utils/normalise';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -125,6 +125,7 @@ const MediaResultRow = React.memo(function MediaResultRow({
   colors,
   onPress,
   onTrailer,
+  progress,
 }: {
   cover?: string;
   title: string;
@@ -135,6 +136,8 @@ const MediaResultRow = React.memo(function MediaResultRow({
   onPress: () => void;
   // #106/#123: optional trailer shortcut shown on movie and series rows
   onTrailer?: () => void;
+  /** 0–1 resume progress shown as a bar at the bottom of the cover thumbnail */
+  progress?: number;
 }) {
   const isOnline = useIsOnline(); // #129
   return (
@@ -148,6 +151,12 @@ const MediaResultRow = React.memo(function MediaResultRow({
           <Image source={{ uri: cover }} style={StyleSheet.absoluteFill} resizeMode="cover" />
         ) : (
           <Text style={{ fontSize: 20 }}>{kind === 'movie' ? '🎬' : '📺'}</Text>
+        )}
+        {/* #214: resume progress bar */}
+        {progress != null && progress > 0 && (
+          <View style={styles.coverProgressRail}>
+            <View style={[styles.coverProgressFill, { width: `${Math.max(2, Math.min(100, progress * 100))}%` as any }]} />
+          </View>
         )}
       </View>
       <View style={{ flex: 1, gap: 2 }}>
@@ -220,6 +229,7 @@ export default function SearchScreen() {
   const [searchType, setSearchType] = useState<SearchType>('all');
   const [trailerLoading, setTrailerLoading] = useState(false);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
+  const [watchHistory, setWatchHistory] = useState<WatchHistoryEntry[]>([]);
   const inputRef = useRef<TextInput>(null);
   const listRef = useRef<FlatList<ListItem>>(null);
 
@@ -228,6 +238,8 @@ export default function SearchScreen() {
     StorageService.getPrefSearchType().then((saved) => setSearchType(saved));
     StorageService.getPrefSearchQuery().then((saved) => { if (saved) setQuery(saved); });
     StorageService.getRecentSearches().then(setRecentSearches);
+    // #214: load watch history so we can show progress bars on search results
+    StorageService.getWatchHistory().then(setWatchHistory);
   }, []);
 
   // Refresh recent searches instantly when the user clears them from Settings
@@ -335,6 +347,21 @@ export default function SearchScreen() {
   });
 
   const isLoading = (showLive && chLoading) || (showMovies && movLoading) || (showSeries && serLoading);
+
+  // #214: Build a map of id → progress (0–1) from watch history for both movies and series.
+  // Series episodes are stored with the episode stream ID in `e.id` and the parent series ID
+  // in `e.parentId`, so we index by `e.parentId ?? e.id` to match series cards by series ID.
+  // History is ordered newest-first, so we only write each key once to keep the freshest value.
+  const progressMap = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const e of watchHistory) {
+      const key = e.parentId ?? e.id;
+      if (!map.has(key) && e.position && e.duration && e.duration > 0) {
+        map.set(key, e.position / e.duration);
+      }
+    }
+    return map;
+  }, [watchHistory]);
 
   // ── Filtered results ──────────────────────────────────────────────────────
 
@@ -489,6 +516,7 @@ export default function SearchScreen() {
             query={query}
             colors={colors}
             onPress={() => handleMoviePress(item.item)}
+            progress={progressMap.get(item.item.id)}
             onTrailer={async () => {
               setTrailerLoading(true);
               try {
@@ -515,6 +543,7 @@ export default function SearchScreen() {
             query={query}
             colors={colors}
             onPress={() => handleSeriesPress(item.item)}
+            progress={progressMap.get(item.item.id)}
             onTrailer={async () => {
               setTrailerLoading(true);
               try {
@@ -864,6 +893,21 @@ const styles = StyleSheet.create({
   },
   trailerPillTextOffline: {
     color: '#6B7280',
+  },
+
+  // ── Cover progress bar (#214) ──
+  coverProgressRail: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 3,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+  },
+  coverProgressFill: {
+    height: '100%' as any,
+    backgroundColor: '#3B82F6',
+    borderRadius: 1.5,
   },
 
   // ── Recent searches ──
