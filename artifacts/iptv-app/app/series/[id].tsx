@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import * as WebBrowser from 'expo-web-browser';
 import {
   ActivityIndicator,
   Alert,
   Image,
-  Linking,
   Modal,
   Platform,
   Pressable,
@@ -426,7 +426,7 @@ export default function SeriesDetailScreen() {
                   : null;
                 const resolved = ytId ?? (await getTmdbTrailerCandidates(params.title, 'tv'))[0] ?? null;
                 if (resolved) {
-                  Linking.openURL(`https://www.youtube.com/watch?v=${resolved}`);
+                  WebBrowser.openBrowserAsync(`https://www.youtube.com/watch?v=${resolved}`);
                 } else {
                   Alert.alert('No Trailer', 'No trailer found for this series.');
                 }

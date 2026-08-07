@@ -13,7 +13,8 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { useFocusEffect, useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import { Alert, DeviceEventEmitter, Linking } from 'react-native';
+import * as WebBrowser from 'expo-web-browser';
+import { Alert, DeviceEventEmitter } from 'react-native';
 import { getTmdbTrailerCandidates } from '@/services/tmdb';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
@@ -533,7 +534,7 @@ export default function SearchScreen() {
                     : (raw.length === 11 ? raw : null)
                   : null;
                 const resolved = ytId ?? (await getTmdbTrailerCandidates(item.item.name, 'movie'))[0] ?? null;
-                if (resolved) { Linking.openURL(`https://www.youtube.com/watch?v=${resolved}`); }
+                if (resolved) { WebBrowser.openBrowserAsync(`https://www.youtube.com/watch?v=${resolved}`); }
               } finally { setTrailerLoading(false); }
             }}
           />
@@ -560,7 +561,7 @@ export default function SearchScreen() {
                     : (raw.length === 11 ? raw : null)
                   : null;
                 const resolved = ytId ?? (await getTmdbTrailerCandidates(item.item.name, 'tv'))[0] ?? null;
-                if (resolved) { Linking.openURL(`https://www.youtube.com/watch?v=${resolved}`); }
+                if (resolved) { WebBrowser.openBrowserAsync(`https://www.youtube.com/watch?v=${resolved}`); }
               } finally { setTrailerLoading(false); }
             }}
           />

@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import * as WebBrowser from 'expo-web-browser';
 import {
   Alert,
   FlatList,
-  Linking,
   RefreshControl,
   StyleSheet,
   Text,
@@ -482,7 +482,7 @@ export default function SeriesScreen() {
                       : null;
                     const resolved = ytId ?? (await getTmdbTrailerCandidates(item.name, 'tv'))[0] ?? null;
                     if (resolved) {
-                      Linking.openURL(`https://www.youtube.com/watch?v=${resolved}`);
+                      WebBrowser.openBrowserAsync(`https://www.youtube.com/watch?v=${resolved}`);
                     } else {
                       Alert.alert('No Trailer', 'No trailer found for this title.');
                     }
