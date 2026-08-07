@@ -85,6 +85,19 @@ export default function SeriesScreen() {
   const isAllSelected = selectedCat === ALL_CAT_ID;
   const isRecentSelected = selectedCat === RECENT_CAT_ID;
 
+  // Map series id → watch progress (0–1), using the most-recent history entry
+  // (history is stored newest-first so the first match wins).
+  const seriesProgressMap = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const e of watchHistory) {
+      const key = e.parentId ?? e.id;
+      if (!map.has(key) && e.position != null && e.duration) {
+        map.set(key, e.position / e.duration);
+      }
+    }
+    return map;
+  }, [watchHistory]);
+
   const { data: rawCategories = [] } = useQuery<Category[]>({
     queryKey: ['series-categories', credentials],
     queryFn: () => getXtreamSeriesCategories(buildCreds(credentials)),
@@ -445,6 +458,7 @@ export default function SeriesScreen() {
                 query={search}
                 isFav={favSet.has(item.id)}
                 compact={isFavsSelected}
+                progress={isRecentSelected ? seriesProgressMap.get(item.id) : undefined}
                 onFavPress={() => handleToggleFav(item)}
                 onLongPress={() => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);

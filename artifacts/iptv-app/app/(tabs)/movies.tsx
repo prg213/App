@@ -85,6 +85,18 @@ export default function MoviesScreen() {
   const isAllSelected = selectedCat === ALL_CAT_ID;
   const isRecentSelected = selectedCat === RECENT_CAT_ID;
 
+  // Map movie id → watch progress (0–1), using the most-recent history entry
+  // (history is stored newest-first so the first match wins).
+  const movieProgressMap = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const e of watchHistory) {
+      if (!map.has(e.id) && e.position != null && e.duration) {
+        map.set(e.id, e.position / e.duration);
+      }
+    }
+    return map;
+  }, [watchHistory]);
+
   const { data: rawCategories = [] } = useQuery<Category[]>({
     queryKey: ['vod-categories', credentials],
     queryFn: () => getXtreamVodCategories(buildCreds(credentials)),
@@ -450,6 +462,7 @@ export default function MoviesScreen() {
                 query={search}
                 isFav={favSet.has(item.id)}
                 compact={isFavsSelected}
+                progress={isRecentSelected ? movieProgressMap.get(item.id) : undefined}
                 onFavPress={() => handleToggleFav(item)}
                 onLongPress={() => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
