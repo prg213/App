@@ -20,7 +20,6 @@ import { useAppContext } from '@/context/AppContext';
 import { useParentalContext, isContentBlocked } from '@/context/ParentalContext';
 import { SeriesCard } from '@/components/SeriesCard';
 import { MovieCardSkeleton } from '@/components/SkeletonCard';
-import { ContinueWatchingRail } from '@/components/ContinueWatchingRail';
 import { Toast } from '@/components/Toast';
 import { getXtreamSeriesCategories, getXtreamSeries } from '@/services/xtreamApi';
 import { StorageService } from '@/services/storage';
@@ -31,7 +30,6 @@ import { normaliseStr } from '@/utils/normalise';
 const ALL_CAT_ID = '__all';
 const FAVS_CAT_ID = '__favs';
 const RECENT_CAT_ID = '__recent';
-const CONTINUE_CAT_ID = '__continue';
 
 function buildCreds(c: ReturnType<typeof useAppContext>['credentials']) {
   return { host: c!.host!, username: c!.username!, password: c!.password! };
@@ -86,7 +84,6 @@ export default function SeriesScreen() {
   const isFavsSelected = selectedCat === FAVS_CAT_ID;
   const isAllSelected = selectedCat === ALL_CAT_ID;
   const isRecentSelected = selectedCat === RECENT_CAT_ID;
-  const isContinueSelected = selectedCat === CONTINUE_CAT_ID;
 
   const { data: rawCategories = [] } = useQuery<Category[]>({
     queryKey: ['series-categories', credentials],
@@ -100,19 +97,18 @@ export default function SeriesScreen() {
       { id: ALL_CAT_ID, name: '◈ All' },
       { id: FAVS_CAT_ID, name: '♥ Favourites' },
       { id: RECENT_CAT_ID, name: '🕒 Recently Watched' },
-      { id: CONTINUE_CAT_ID, name: '▶ Continue Watching' },
       ...rawCategories,
     ],
     [rawCategories],
   );
 
   // Pass undefined when All is selected so the API returns everything
-  const queryCategory = isAllSelected || isFavsSelected || isRecentSelected || isContinueSelected ? undefined : selectedCat;
+  const queryCategory = isAllSelected || isFavsSelected || isRecentSelected ? undefined : selectedCat;
 
   const { data: fetchedSeries = [], isLoading, refetch, isRefetching, isError } = useQuery<Series[]>({
     queryKey: ['series-list', queryCategory, credentials],
     queryFn: () => getXtreamSeries(buildCreds(credentials), queryCategory),
-    enabled: !!credentials && isXtream && !isFavsSelected && !isRecentSelected && !isContinueSelected,
+    enabled: !!credentials && isXtream && !isFavsSelected && !isRecentSelected,
     staleTime: 5 * 60_000,
   });
 
@@ -126,10 +122,10 @@ export default function SeriesScreen() {
   useFocusEffect(
     useCallback(() => {
       refreshWatchHistory();
-      if (credentials && isXtream && !isFavsSelected && !isRecentSelected && !isContinueSelected) {
+      if (credentials && isXtream && !isFavsSelected && !isRecentSelected) {
         refetch();
       }
-    }, [credentials, isXtream, isFavsSelected, isRecentSelected, isContinueSelected, refetch, refreshWatchHistory]),
+    }, [credentials, isXtream, isFavsSelected, isRecentSelected, refetch, refreshWatchHistory]),
   );
 
   // Persist sort order across sessions
@@ -305,23 +301,20 @@ export default function SeriesScreen() {
           showsVerticalScrollIndicator={false}
           renderItem={({ item }) => {
             const active = selectedCat === item.id;
-            const isSub = item.id === CONTINUE_CAT_ID;
             return (
               <TouchableOpacity
                 style={[
                   styles.catItem,
-                  isSub && styles.catSubItem,
                   active && { backgroundColor: 'rgba(59,130,246,0.15)' },
                 ]}
                 onPress={() => setSelectedCat(item.id)}
                 activeOpacity={0.7}
               >
-                {active && <View style={[styles.catPip, isSub && { left: 0 }]} />}
+                {active && <View style={styles.catPip} />}
                 <Text
                   style={[
                     styles.catLabel,
-                    isSub && styles.catSubLabel,
-                    { color: active ? '#F2F2F2' : isSub ? 'rgba(255,255,255,0.38)' : colors.mutedForeground },
+                    { color: active ? '#F2F2F2' : colors.mutedForeground },
                   ]}
                   numberOfLines={1}
                 >
@@ -388,10 +381,7 @@ export default function SeriesScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Continue Watching — full page when sub-category is selected */}
-        {isContinueSelected ? (
-          <ContinueWatchingRail type="series" fullPage />
-        ) : isLoading && !isFavsSelected ? (
+        {isLoading && !isFavsSelected ? (
           <FlatList
             data={Array.from({ length: 16 })}
             numColumns={4}
