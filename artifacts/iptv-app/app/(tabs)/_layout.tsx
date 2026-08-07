@@ -111,6 +111,61 @@ function useServerStatus(): ServerStatus {
   return status;
 }
 
+// Separate component so each nav item owns its own focus state via onFocus/onBlur.
+// This is more reliable than the Pressable style-callback `focused` prop on
+// Android TV / Fire OS where PressableStateCallbackType may not include `focused`.
+function NavItem({
+  item,
+  active,
+  isFirst,
+  firstRef,
+  onPress,
+  badgeCount,
+}: {
+  item: (typeof NAV)[number];
+  active: boolean;
+  isFirst: boolean;
+  firstRef: React.RefObject<RNView | null>;
+  onPress: () => void;
+  badgeCount: number;
+}) {
+  const [focused, setFocused] = useState(false);
+  return (
+    <Pressable
+      ref={isFirst ? firstRef : undefined}
+      focusable
+      accessible
+      accessibilityRole="button"
+      accessibilityLabel={item.label}
+      accessibilityState={{ selected: active }}
+      hasTVPreferredFocus={isFirst}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
+      style={[
+        styles.navItem,
+        active && styles.navItemActive,
+        focused && styles.navItemFocused,
+      ]}
+      onPress={onPress}
+    >
+      <View style={styles.navIconWrapper}>
+        <Text style={styles.navIcon}>{item.icon}</Text>
+        {badgeCount > 0 && (
+          <View style={styles.badge}>
+            <Text style={styles.badgeText}>
+              {badgeCount > 99 ? '99+' : String(badgeCount)}
+            </Text>
+          </View>
+        )}
+      </View>
+      <Text style={[styles.navLabel, active && styles.navLabelActive]}>
+        {item.label}
+      </Text>
+      {active && <View style={styles.activePip} />}
+    </Pressable>
+  );
+}
+
 function Sidebar({ state, descriptors, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const serverStatus = useServerStatus();
@@ -160,44 +215,20 @@ function Sidebar({ state, descriptors, navigation }: BottomTabBarProps) {
           const active = state.index === i;
           const item = NAV.find((n) => n.name === route.name);
           if (!item) return null;
-
           const badgeCount = item.name === 'reminders' ? upcomingReminderCount : 0;
-
           return (
-            <Pressable
+            <NavItem
               key={route.key}
-              ref={i === 0 ? firstNavRef : undefined}
-              focusable
-              accessible
-              accessibilityRole="button"
-              accessibilityLabel={item.label}
-              accessibilityState={{ selected: active }}
-              hasTVPreferredFocus={i === 0}
-              style={({ focused }) => [
-                styles.navItem,
-                active && styles.navItemActive,
-                focused && styles.navItemFocused,
-              ]}
+              item={item}
+              active={active}
+              isFirst={i === 0}
+              firstRef={firstNavRef}
+              badgeCount={badgeCount}
               onPress={() => {
                 const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
                 if (!event.defaultPrevented) navigation.navigate(route.name);
               }}
-            >
-              <View style={styles.navIconWrapper}>
-                <Text style={styles.navIcon}>{item.icon}</Text>
-                {badgeCount > 0 && (
-                  <View style={styles.badge}>
-                    <Text style={styles.badgeText}>
-                      {badgeCount > 99 ? '99+' : String(badgeCount)}
-                    </Text>
-                  </View>
-                )}
-              </View>
-              <Text style={[styles.navLabel, active && styles.navLabelActive]}>
-                {item.label}
-              </Text>
-              {active && <View style={styles.activePip} />}
-            </Pressable>
+            />
           );
         })}
       </ScrollView>
