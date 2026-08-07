@@ -24,8 +24,10 @@ import {
 } from '@/services/xtreamApi';
 import { StorageService } from '@/services/storage';
 import { CommunityModal } from '@/components/CommunityModal';
+import { UpdateModal } from '@/components/UpdateModal';
 import { rescheduleRemindersForLeadTime } from '@/services/reminderReschedule';
 import { clearReminderRefreshCache } from '@/services/reminderUrlCache';
+import { checkForUpdate, CURRENT_BUILD, type UpdateInfo } from '@/services/updateService';
 import type { MaxRating } from '@/types';
 
 const LEAD_TIME_OPTIONS: { value: 5 | 10 | 15; label: string }[] = [
@@ -69,6 +71,32 @@ export default function SettingsScreen() {
   const [showAudioLangSheet, setShowAudioLangSheet] = useState(false);
   const [prefSubtitleLang, setPrefSubtitleLang] = useState<string>('');
   const [showSubtitleLangSheet, setShowSubtitleLangSheet] = useState(false);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [pendingUpdate, setPendingUpdate] = useState<UpdateInfo | null>(null);
+
+  const handleCheckUpdate = async () => {
+    if (checkingUpdate) return;
+    Haptics.selectionAsync();
+    setCheckingUpdate(true);
+    try {
+      const info = await checkForUpdate();
+      if (info) {
+        setPendingUpdate(info);
+      } else {
+        Alert.alert(
+          'Up to date',
+          CURRENT_BUILD === 0
+            ? 'Update checks are not available in dev builds.'
+            : `You're on the latest version (build ${CURRENT_BUILD}).`,
+          [{ text: 'OK' }],
+        );
+      }
+    } catch {
+      Alert.alert('Check failed', 'Could not reach the update server. Check your connection and try again.', [{ text: 'OK' }]);
+    } finally {
+      setCheckingUpdate(false);
+    }
+  };
 
   const LANG_OPTIONS = [
     { value: '', label: 'Auto (stream default)' },
@@ -631,10 +659,23 @@ export default function SettingsScreen() {
             <Text style={[styles.infoLabel, { color: colors.mutedForeground }]}>App</Text>
             <Text style={[styles.infoValue, { color: colors.foreground }]}>StreamVault IPTV</Text>
           </View>
-          <View style={styles.infoRow}>
-            <Text style={[styles.infoLabel, { color: colors.mutedForeground }]}>Version</Text>
-            <Text style={[styles.infoValue, { color: colors.foreground }]}>1.0.0</Text>
+          <View style={[styles.infoRow, { borderBottomColor: colors.border }]}>
+            <Text style={[styles.infoLabel, { color: colors.mutedForeground }]}>Build</Text>
+            <Text style={[styles.infoValue, { color: colors.foreground }]}>
+              {CURRENT_BUILD > 0 ? `#${CURRENT_BUILD}` : 'Dev'}
+            </Text>
           </View>
+          <TouchableOpacity
+            style={[styles.actionRow, { borderBottomWidth: 0 }]}
+            onPress={handleCheckUpdate}
+            activeOpacity={0.7}
+            disabled={checkingUpdate}
+          >
+            <Text style={[styles.actionTitle, { color: colors.foreground }]}>
+              {checkingUpdate ? 'Checking…' : 'Check for Update'}
+            </Text>
+            <Text style={{ color: colors.mutedForeground, fontSize: 18 }}>🔄</Text>
+          </TouchableOpacity>
         </View>
 
         <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>ACCOUNT</Text>
@@ -644,6 +685,11 @@ export default function SettingsScreen() {
           </TouchableOpacity>
         </View>
       </ScrollView>
+
+      {/* ── Update modal ── */}
+      {pendingUpdate && (
+        <UpdateModal update={pendingUpdate} onDismiss={() => setPendingUpdate(null)} />
+      )}
 
       {/* ── Preferred Audio Language picker sheet ── */}
       <Modal
