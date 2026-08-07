@@ -23,6 +23,7 @@ import { MovieCardSkeleton } from '@/components/SkeletonCard';
 import { Toast } from '@/components/Toast';
 import { getXtreamSeriesCategories, getXtreamSeries } from '@/services/xtreamApi';
 import { StorageService } from '@/services/storage';
+import { SwipeToDeleteCard } from '@/components/SwipeToDeleteCard';
 import { fetchRemoteFavourites, pushRemoteSeries, mergeFavourites } from '@/services/favoritesSync';
 import type { Series, Category, FavoriteSeries, WatchHistoryEntry } from '@/types';
 import { normaliseStr } from '@/utils/normalise';
@@ -447,7 +448,8 @@ export default function SeriesScreen() {
             columnWrapperStyle={{ justifyContent: 'flex-start' }}
             onScroll={(e) => setShowScrollTop(e.nativeEvent.contentOffset.y > 300)}
             scrollEventThrottle={200}
-            renderItem={({ item }) => (
+            renderItem={({ item }) => {
+              const card = (
               <SeriesCard
                 id={item.id}
                 name={item.name}
@@ -467,7 +469,7 @@ export default function SeriesScreen() {
                     { text: isFav ? '♥ Remove Favourite' : '♡ Add to Favourites', onPress: () => handleToggleFav(item) },
                     ...(isFav ? [{ text: '⬆ Move to Top', onPress: async () => { const updated = await StorageService.moveSeriesToTop(item.id); if (updated) setFavSeries(updated); } }] : []),
                     { text: '📺 Open Details', onPress: () => router.push({ pathname: '/series/[id]', params: { id: item.id, title: item.name, cover: item.cover ?? '', rating: item.rating ?? '', genre: item.genre ?? '', plot: item.plot ?? '', cast: item.cast ?? '', director: item.director ?? '' } }) },
-                    ...(isRecentSelected ? [{ text: '🗑 Remove from History', style: 'destructive' as const, onPress: () => { StorageService.removeFromHistory(item.id).then(refreshWatchHistory); } }] : []),
+                    ...(isRecentSelected ? [{ text: '🗑 Remove from History', style: 'destructive' as const, onPress: () => { StorageService.removeSeriesFromHistory(item.id).then(refreshWatchHistory); } }] : []),
                     { text: 'Cancel', style: 'cancel' },
                   ]);
                 }}
@@ -496,7 +498,19 @@ export default function SeriesScreen() {
                   }
                 }}
               />
-            )}
+              );
+              if (isRecentSelected) {
+                return (
+                  <SwipeToDeleteCard
+                    key={item.id}
+                    onDelete={() => StorageService.removeSeriesFromHistory(item.id).then(refreshWatchHistory)}
+                  >
+                    {card}
+                  </SwipeToDeleteCard>
+                );
+              }
+              return card;
+            }}
             contentContainerStyle={[styles.grid, { paddingBottom: insets.bottom + 8 }]}
             refreshControl={!isFavsSelected ? (
               <RefreshControl

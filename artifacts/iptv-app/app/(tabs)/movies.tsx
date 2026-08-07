@@ -23,6 +23,7 @@ import { MovieCardSkeleton } from '@/components/SkeletonCard';
 import { Toast } from '@/components/Toast';
 import { getXtreamVodCategories, getXtreamVodStreams } from '@/services/xtreamApi';
 import { StorageService } from '@/services/storage';
+import { SwipeToDeleteCard } from '@/components/SwipeToDeleteCard';
 import { fetchRemoteFavourites, pushRemoteMovies, mergeFavourites } from '@/services/favoritesSync';
 import type { Movie, Category, FavoriteMovie, WatchHistoryEntry } from '@/types';
 import { normaliseStr } from '@/utils/normalise';
@@ -451,7 +452,8 @@ export default function MoviesScreen() {
             columnWrapperStyle={{ justifyContent: 'flex-start' }}
             onScroll={(e) => setShowScrollTop(e.nativeEvent.contentOffset.y > 300)}
             scrollEventThrottle={200}
-            renderItem={({ item }) => (
+            renderItem={({ item }) => {
+              const card = (
               <MovieCard
                 id={item.id}
                 name={item.name}
@@ -500,7 +502,19 @@ export default function MoviesScreen() {
                   }
                 }}
               />
-            )}
+              );
+              if (isRecentSelected) {
+                return (
+                  <SwipeToDeleteCard
+                    key={item.id}
+                    onDelete={() => StorageService.removeFromHistory(item.id).then(refreshWatchHistory)}
+                  >
+                    {card}
+                  </SwipeToDeleteCard>
+                );
+              }
+              return card;
+            }}
             contentContainerStyle={[styles.grid, { paddingBottom: insets.bottom + 8 }]}
             refreshControl={!isFavsSelected ? (
               <RefreshControl

@@ -233,6 +233,20 @@ export const StorageService = {
     await AsyncStorage.setItem(KEYS.HISTORY, JSON.stringify(updated));
   },
 
+  /**
+   * Removes all history entries that belong to a given series (matched by
+   * parentId OR id).  Use this instead of removeFromHistory when removing a
+   * series from the Recently Watched grid, because individual episode entries
+   * are stored with their own id and a separate parentId pointing to the series.
+   */
+  async removeSeriesFromHistory(seriesId: string): Promise<void> {
+    const history = await StorageService.getWatchHistory();
+    const updated = history.filter(
+      (h) => h.parentId !== seriesId && h.id !== seriesId,
+    );
+    await AsyncStorage.setItem(KEYS.HISTORY, JSON.stringify(updated));
+  },
+
   async clearHistory(): Promise<void> {
     await AsyncStorage.setItem(KEYS.HISTORY, JSON.stringify([]));
   },
