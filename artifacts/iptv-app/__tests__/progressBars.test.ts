@@ -1,5 +1,6 @@
 /**
- * Tests for the Recently Watched progress bar logic in the Movies and Series screens.
+ * Tests for the Recently Watched progress bar logic in the Movies, Series, and
+ * Home screens.
  *
  * The progress bars depend on:
  *   1. StorageService.getWatchHistory() returning the persisted entries.
@@ -22,6 +23,8 @@
  *   - getWatchHistory:     AsyncStorage round-trip returns stored data
  *   - Focus re-fetch:      second call to getWatchHistory reflects new entries
  *                          and the progressMap built from fresh data is correct
+ *   - Home screen focus:   watchHistory re-fetched on focus; edge cases confirmed
+ *                          (no duration / ÷0 guard, position=0, position≥duration)
  */
 
 // ── AsyncStorage mock ──────────────────────────────────────────────────────────
@@ -368,5 +371,200 @@ describe('StorageService.getWatchHistory and focus re-fetch', () => {
     const result = await StorageService.getWatchHistory();
     expect(result).toHaveLength(100);
     expect(result[0].id).toBe('m100'); // newest first
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Home screen (index / home tab) — watchHistory re-fetch on focus
+//
+// The Home screen renders a recently-watched rail whose progress bars are
+// derived from getWatchHistory().  Because the tab component stays mounted,
+// the data must be re-fetched inside a useFocusEffect so that progress bars
+// reflect any watching that happened while the screen was in the background.
+//
+// These tests exercise that storage layer contract, mirroring the approach
+// used for Movies and Series above.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('Home screen — watchHistory re-fetch on focus', () => {
+  it('returns empty array on first focus when nothing has been watched yet', async () => {
+    const history = await StorageService.getWatchHistory();
+    expect(history).toEqual([]);
+  });
+
+  it('re-fetch on focus reflects an entry written while the screen was backgrounded', async () => {
+    // Screen mounts — initial fetch returns nothing
+    const firstFetch = await StorageService.getWatchHistory();
+    expect(firstFetch).toHaveLength(0);
+
+    // User watches a movie in the player while the Home tab is inactive
+    await StorageService.addToHistory({
+      id: 'home-movie-1',
+      title: 'Arrival',
+      type: 'movie',
+      position: 40,
+      duration: 116,
+      timestamp: 3000,
+    });
+
+    // Home tab comes back into focus → useFocusEffect fires → second getWatchHistory call
+    const secondFetch = await StorageService.getWatchHistory();
+    expect(secondFetch).toHaveLength(1);
+    expect(secondFetch[0].id).toBe('home-movie-1');
+
+    // Progress map built from the fresh data is correct
+    const map = buildMovieProgressMap(secondFetch.filter((e) => e.type === 'movie'));
+    expect(map.has('home-movie-1')).toBe(true);
+    expect(map.get('home-movie-1')).toBeCloseTo(40 / 116);
+  });
+
+  it('background→foreground cycle: progress bar reflects resumed position, not the stale one', async () => {
+    // User watched 20% before backgrounding
+    await StorageService.addToHistory({
+      id: 'home-movie-2',
+      title: 'Blade Runner 2049',
+      type: 'movie',
+      position: 32,
+      duration: 163,
+      timestamp: 1000,
+    });
+
+    const fetchA = await StorageService.getWatchHistory();
+    const mapA = buildMovieProgressMap(fetchA.filter((e) => e.type === 'movie'));
+    expect(mapA.get('home-movie-2')).toBeCloseTo(32 / 163);
+
+    // User resumes in background — addToHistory deduplicates and places the
+    // updated entry at the front so it wins when the map is rebuilt.
+    await StorageService.addToHistory({
+      id: 'home-movie-2',
+      title: 'Blade Runner 2049',
+      type: 'movie',
+      position: 120,
+      duration: 163,
+      timestamp: 2000,
+    });
+
+    // useFocusEffect fires on foreground return
+    const fetchB = await StorageService.getWatchHistory();
+    const mapB = buildMovieProgressMap(fetchB.filter((e) => e.type === 'movie'));
+
+    // Bar must show the resumed position
+    expect(mapB.get('home-movie-2')).toBeCloseTo(120 / 163);
+    // Deduplication — only one entry for this film
+    expect(fetchB.filter((e) => e.id === 'home-movie-2')).toHaveLength(1);
+  });
+
+  // ── Edge cases ──────────────────────────────────────────────────────────────
+
+  it('edge case: duration=0 — entry is skipped (division-by-zero guard)', async () => {
+    await StorageService.addToHistory({
+      id: 'home-zero-dur',
+      title: 'No Duration Film',
+      type: 'movie',
+      position: 10,
+      duration: 0,    // zero duration must not cause NaN or Infinity in the bar width
+      timestamp: 1,
+    });
+
+    const history = await StorageService.getWatchHistory();
+    const map = buildMovieProgressMap(history.filter((e) => e.type === 'movie'));
+
+    // Entry is skipped — the bar is absent rather than rendered with a bogus value
+    expect(map.has('home-zero-dur')).toBe(false);
+  });
+
+  it('edge case: duration=undefined — entry is skipped (same falsy guard)', async () => {
+    await StorageService.addToHistory({
+      id: 'home-undef-dur',
+      title: 'Missing Duration',
+      type: 'movie',
+      position: 5,
+      duration: undefined,
+      timestamp: 1,
+    });
+
+    const history = await StorageService.getWatchHistory();
+    const map = buildMovieProgressMap(history.filter((e) => e.type === 'movie'));
+
+    expect(map.has('home-undef-dur')).toBe(false);
+  });
+
+  it('edge case: position=0 — bar is present at zero width, not absent', async () => {
+    // A film the user opened but immediately returned from still shows in the
+    // rail.  The bar renders at 0 width (empty) rather than being hidden.
+    await StorageService.addToHistory({
+      id: 'home-zero-pos',
+      title: 'Just Opened',
+      type: 'movie',
+      position: 0,
+      duration: 90,
+      timestamp: 1,
+    });
+
+    const history = await StorageService.getWatchHistory();
+    const map = buildMovieProgressMap(history.filter((e) => e.type === 'movie'));
+
+    expect(map.has('home-zero-pos')).toBe(true);
+    expect(map.get('home-zero-pos')).toBe(0);
+  });
+
+  it('edge case: position >= duration — progress ≥ 1 (UI clamps to 1; algorithm does not crash)', async () => {
+    // Happens when the stored position slightly overshoots the reported duration
+    // (common with HLS streams that report slightly different durations between
+    // sessions).  The UI is expected to clamp: Math.min(progress, 1).
+    await StorageService.addToHistory({
+      id: 'home-overshot',
+      title: 'Overshoot Film',
+      type: 'movie',
+      position: 105,
+      duration: 100,
+      timestamp: 1,
+    });
+
+    const history = await StorageService.getWatchHistory();
+    const map = buildMovieProgressMap(history.filter((e) => e.type === 'movie'));
+
+    expect(map.has('home-overshot')).toBe(true);
+    expect(map.get('home-overshot')!).toBeGreaterThanOrEqual(1);
+    // Must be a finite number — no NaN, no Infinity
+    expect(Number.isFinite(map.get('home-overshot')!)).toBe(true);
+  });
+
+  it('edge case: position exactly equals duration — bar is full (progress = 1)', async () => {
+    await StorageService.addToHistory({
+      id: 'home-complete',
+      title: 'Fully Watched',
+      type: 'movie',
+      position: 120,
+      duration: 120,
+      timestamp: 1,
+    });
+
+    const history = await StorageService.getWatchHistory();
+    const map = buildMovieProgressMap(history.filter((e) => e.type === 'movie'));
+
+    expect(map.get('home-complete')).toBe(1);
+  });
+
+  it('series entry on the Home rail is keyed by parentId so the poster shows the right bar', async () => {
+    // The Home recently-watched rail surfaces series episodes; the progress bar
+    // must appear on the series poster (keyed by parentId), not the episode card.
+    await StorageService.addToHistory({
+      id: 'home-ep-1',
+      parentId: 'home-series-A',
+      title: 'Episode 1',
+      type: 'series',
+      position: 18,
+      duration: 45,
+      timestamp: 1,
+    });
+
+    const history = await StorageService.getWatchHistory();
+    const map = buildSeriesProgressMap(history.filter((e) => e.type === 'series'));
+
+    // Progress is keyed by the series id, not the episode id
+    expect(map.has('home-series-A')).toBe(true);
+    expect(map.has('home-ep-1')).toBe(false);
+    expect(map.get('home-series-A')).toBeCloseTo(18 / 45);
   });
 });
