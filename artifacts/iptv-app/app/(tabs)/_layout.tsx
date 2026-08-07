@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   AppState,
   type AppStateStatus,
@@ -8,6 +8,7 @@ import {
   StyleSheet,
   Text,
   View,
+  type View as RNView,
 } from 'react-native';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { Tabs } from 'expo-router';
@@ -114,6 +115,17 @@ function Sidebar({ state, descriptors, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const serverStatus = useServerStatus();
   const upcomingReminderCount = useUpcomingReminderCount();
+  const firstNavRef = useRef<RNView>(null);
+
+  // On Android TV / Fire OS hasTVPreferredFocus can silently do nothing when the
+  // sidebar mounts after the scene content.  Explicitly calling .focus() after a
+  // short delay is the most reliable way to land D-pad focus on the first nav item.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      (firstNavRef.current as any)?.focus?.();
+    }, 300);
+    return () => clearTimeout(t);
+  }, []);
 
   const dotColor = serverStatus === 'ok' ? '#22C55E'
     : serverStatus === 'error' ? '#EF4444'
@@ -142,6 +154,7 @@ function Sidebar({ state, descriptors, navigation }: BottomTabBarProps) {
         contentContainerStyle={styles.navContent}
         showsVerticalScrollIndicator={false}
         bounces={false}
+        scrollEnabled={false}
       >
         {state.routes.map((route, i) => {
           const active = state.index === i;
@@ -153,7 +166,12 @@ function Sidebar({ state, descriptors, navigation }: BottomTabBarProps) {
           return (
             <Pressable
               key={route.key}
+              ref={i === 0 ? firstNavRef : undefined}
               focusable
+              accessible
+              accessibilityRole="button"
+              accessibilityLabel={item.label}
+              accessibilityState={{ selected: active }}
               hasTVPreferredFocus={i === 0}
               style={({ focused }) => [
                 styles.navItem,
