@@ -4,6 +4,8 @@ import {
   Text,
   TouchableOpacity,
   View,
+  type StyleProp,
+  type ViewStyle,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { useColors } from '@/hooks/useColors';
@@ -45,6 +47,13 @@ interface MovieCardProps {
   compact?: boolean;
   /** 0–1 resume progress bar shown at the bottom of the poster */
   progress?: number;
+  /**
+   * Optional style override for the outer TouchableOpacity wrapper.
+   * Use when the card is nested inside a layout container that already
+   * controls width (e.g. SwipeToDeleteCard) so the card's own maxWidth
+   * doesn't double-constrain it.
+   */
+  cardStyle?: StyleProp<ViewStyle>;
   onPress: () => void;
   onFavPress?: () => void;
   onLongPress?: () => void;
@@ -52,7 +61,7 @@ interface MovieCardProps {
   onTrailerPress?: () => void;
 }
 
-function MovieCardComponent({ name, cover, rating, genre, year, query = '', isFav, compact, progress, onPress, onFavPress, onLongPress }: MovieCardProps) {
+function MovieCardComponent({ name, cover, rating, genre, year, query = '', isFav, compact, progress, cardStyle, onPress, onFavPress, onLongPress }: MovieCardProps) {
   const colors = useColors();
   const isOnline = useIsOnline();
   // #172: increment whenever the app returns to the foreground so images that
@@ -76,7 +85,7 @@ function MovieCardComponent({ name, cover, rating, genre, year, query = '', isFa
   const posterUri = cover || tmdbPoster;
 
   return (
-    <TouchableOpacity style={[styles.card, compact && styles.cardCompact]} onPress={onPress} onLongPress={onLongPress} delayLongPress={500} activeOpacity={0.75} accessibilityLabel={name} accessibilityRole="button">
+    <TouchableOpacity style={[styles.card, compact && styles.cardCompact, cardStyle]} onPress={onPress} onLongPress={onLongPress} delayLongPress={500} activeOpacity={0.75} accessibilityLabel={name} accessibilityRole="button">
       {/* Poster */}
       <View style={[styles.poster, { backgroundColor: colors.secondary }]}>
         {posterUri ? (

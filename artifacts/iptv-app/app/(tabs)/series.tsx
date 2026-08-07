@@ -453,6 +453,7 @@ export default function SeriesScreen() {
                 isFav={favSet.has(item.id)}
                 compact={isFavsSelected}
                 progress={isRecentSelected ? seriesProgressMap.get(item.id) : undefined}
+                cardStyle={isRecentSelected ? { flex: 1, maxWidth: '100%' } : undefined}
                 onFavPress={() => handleToggleFav(item)}
                 onLongPress={() => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -495,6 +496,7 @@ export default function SeriesScreen() {
                 return (
                   <SwipeToDeleteCard
                     key={item.id}
+                    containerStyle={{ flex: 1, maxWidth: '25%' }}
                     onDelete={() => StorageService.removeSeriesFromHistory(item.id).then(refreshWatchHistory)}
                   >
                     {card}

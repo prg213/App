@@ -458,6 +458,7 @@ export default function MoviesScreen() {
                 isFav={favSet.has(item.id)}
                 compact={isFavsSelected}
                 progress={isRecentSelected ? movieProgressMap.get(item.id) : undefined}
+                cardStyle={isRecentSelected ? { flex: 1, maxWidth: '100%' } : undefined}
                 onFavPress={() => handleToggleFav(item)}
                 onLongPress={() => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -500,6 +501,7 @@ export default function MoviesScreen() {
                 return (
                   <SwipeToDeleteCard
                     key={item.id}
+                    containerStyle={{ flex: 1, maxWidth: '25%' }}
                     onDelete={() => StorageService.removeFromHistory(item.id).then(refreshWatchHistory)}
                   >
                     {card}
