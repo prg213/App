@@ -337,7 +337,7 @@ export const StorageService = {
       if (removed.length > 0) {
         await AsyncStorage.setItem(KEYS.REMINDERS, JSON.stringify(kept));
       }
-      return removed.map((r) => r.title ?? r.channelName ?? 'Unknown');
+      return removed.map((r) => r.programTitle ?? r.channelName ?? 'Unknown');
     } catch {
       return [];
     }
