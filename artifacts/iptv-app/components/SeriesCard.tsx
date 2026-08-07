@@ -8,6 +8,7 @@ import {
 import { Image } from 'expo-image';
 import { useColors } from '@/hooks/useColors';
 import { useIsOnline } from '@/hooks/useIsOnline';
+import { useForegroundEpoch } from '@/hooks/useForegroundEpoch';
 import { getTmdbPosterUrl } from '@/services/tmdb';
 
 function HighlightedText({ text, query, style, compact }: { text: string; query: string; style: any; compact?: boolean }) {
@@ -54,6 +55,11 @@ interface SeriesCardProps {
 function SeriesCardComponent({ name, cover, rating, genre, year, query = '', isFav, compact, progress, onPress, onFavPress, onLongPress }: SeriesCardProps) {
   const colors = useColors();
   const isOnline = useIsOnline();
+  // #172: increment whenever the app returns to the foreground so images that
+  // were evicted from memory (or served broken from a stale cache entry) are
+  // remounted cleanly.  Combined with the poster URI it also catches the #165
+  // case where the provider serves a fresh cover after a background refetch.
+  const fgEpoch = useForegroundEpoch();
 
   const [tmdbPoster, setTmdbPoster] = useState<string | null>(null);
 
@@ -73,7 +79,7 @@ function SeriesCardComponent({ name, cover, rating, genre, year, query = '', isF
     <TouchableOpacity style={[styles.card, compact && styles.cardCompact]} onPress={onPress} onLongPress={onLongPress} delayLongPress={500} activeOpacity={0.75} accessibilityLabel={name} accessibilityRole="button">
       <View style={[styles.poster, { backgroundColor: colors.secondary }]}>
         {posterUri ? (
-          <Image source={{ uri: posterUri }} style={StyleSheet.absoluteFill} contentFit="cover" cachePolicy="memory-disk" />
+          <Image source={{ uri: posterUri }} style={StyleSheet.absoluteFill} contentFit="cover" cachePolicy="memory-disk" recyclingKey={`${posterUri}-${fgEpoch}`} />
         ) : (
           <View style={[StyleSheet.absoluteFill, styles.noImage]}>
             <Text style={[styles.noImageIcon, { color: colors.mutedForeground }]}>◼</Text>

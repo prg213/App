@@ -1,7 +1,8 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import {
   ActivityIndicator,
+  DeviceEventEmitter,
   FlatList,
   Image,
   Pressable,
@@ -17,13 +18,15 @@ import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { useAppContext } from '@/context/AppContext';
+import { useParentalContext } from '@/context/ParentalContext';
 import {
   getXtreamVodStreams,
   getXtreamSeries,
 } from '@/services/xtreamApi';
 import { StorageService } from '@/services/storage';
 import { buildMovieProgressMap, buildSeriesProgressMap } from '@/utils/progressMap';
-import type { Movie, Series, WatchHistoryEntry } from '@/types';
+import { RecentChannelsRail } from '@/components/RecentChannelsRail';
+import type { Channel, Movie, Series, WatchHistoryEntry } from '@/types';
 
 function buildCreds(c: ReturnType<typeof useAppContext>['credentials']) {
   return { host: c!.host!, username: c!.username!, password: c!.password! };
@@ -163,10 +166,23 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { credentials } = useAppContext();
+  const { blockedChannels } = useParentalContext();
   const isXtream = credentials?.type === 'xtream';
+
+  // #229: blocked-channel set for the RecentChannelsRail
+  const blockedIdSet = useMemo(() => new Set(blockedChannels), [blockedChannels]);
 
   // ── Watch history (for Continue Watching rail) ─────────────────────────────
   const [watchHistory, setWatchHistory] = useState<WatchHistoryEntry[]>([]);
+
+  // #228: when the user clears history from Settings while Home is mounted,
+  // clear the Continue Watching rail immediately without waiting for next focus.
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener('history:cleared', () => {
+      setWatchHistory([]);
+    });
+    return () => sub.remove();
+  }, []);
 
   // ── Latest movies ─────────────────────────────────────────────────────────
   const { data: allMovies = [], isLoading: moviesLoading, refetch: refetchMovies } = useQuery<Movie[]>({
@@ -282,6 +298,19 @@ export default function HomeScreen() {
     });
   }, [router]);
 
+  // #229: navigate straight to the player when tapping a recent live channel
+  const handleRecentChannelWatch = useCallback((ch: Channel, _cardRef: React.RefObject<View | null>) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    router.push({
+      pathname: '/player',
+      params: { url: ch.streamUrl, title: ch.name, type: 'live' },
+    });
+  }, [router]);
+
+  // Stable empty map — Home doesn't load EPG data; the rail still shows channel
+  // names and logos without programme titles.
+  const emptyNowPlayingMap = useMemo(() => new Map<string, string>(), []);
+
   // Navigate to the correct detail page from a history entry
   const handleHistoryItemPress = useCallback((entry: WatchHistoryEntry) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -343,6 +372,13 @@ export default function HomeScreen() {
   if (!isXtream) {
     return (
       <View style={[styles.root, { backgroundColor: colors.background }]}>
+        {/* #229: show recently-watched live channels even for M3U/non-Xtream users */}
+        <RecentChannelsRail
+          blockedIds={blockedIdSet}
+          nowPlayingMap={emptyNowPlayingMap}
+          onWatchFullscreen={handleRecentChannelWatch}
+          topInset={insets.top}
+        />
         <View style={styles.empty}>
           <Text style={{ fontSize: 40, marginBottom: 12 }}>🏠</Text>
           <Text style={[styles.emptyTitle, { color: colors.foreground }]}>Home</Text>
@@ -400,6 +436,14 @@ export default function HomeScreen() {
           </View>
         </Pressable>
       )}
+
+      {/* ── Recently Watched Channels ── */}
+      {/* #229: live-channel jump-back rail; hides itself when list is empty */}
+      <RecentChannelsRail
+        blockedIds={blockedIdSet}
+        nowPlayingMap={emptyNowPlayingMap}
+        onWatchFullscreen={handleRecentChannelWatch}
+      />
 
       {/* ── Continue Watching ── */}
       {continueWatchingItems.length > 0 && (

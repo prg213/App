@@ -473,7 +473,9 @@ export default function RemindersScreen() {
       // Pass gateExpired as forceNetwork so an expired gate (or manual force) always
       // bypasses the React Query cache and hits the provider directly.
       const result = await fetchChannelUrlMap(gateExpired);
-      if (!result) return loaded;
+      // #152: null means the network fetch failed — throw so the caller's .catch()
+      // records the failure timestamp and enforces the 5-minute backoff.
+      if (!result) throw new Error('channel-url-fetch-failed');
       const { map: urlMap } = result;
 
       let anyUpdated = false;
