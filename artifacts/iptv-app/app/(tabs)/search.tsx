@@ -11,7 +11,7 @@ import {
   View,
 } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { Alert, DeviceEventEmitter, Linking } from 'react-native';
 import { getTmdbTrailerCandidates } from '@/services/tmdb';
@@ -238,9 +238,15 @@ export default function SearchScreen() {
     StorageService.getPrefSearchType().then((saved) => setSearchType(saved));
     StorageService.getPrefSearchQuery().then((saved) => { if (saved) setQuery(saved); });
     StorageService.getRecentSearches().then(setRecentSearches);
-    // #214: load watch history so we can show progress bars on search results
-    StorageService.getWatchHistory().then(setWatchHistory);
   }, []);
+
+  // #218: Refresh watch history every time the Search tab comes into focus so
+  // progress bars reflect the latest watch position after returning from the player.
+  useFocusEffect(
+    useCallback(() => {
+      StorageService.getWatchHistory().then(setWatchHistory);
+    }, [])
+  );
 
   // Refresh recent searches instantly when the user clears them from Settings
   useEffect(() => {
