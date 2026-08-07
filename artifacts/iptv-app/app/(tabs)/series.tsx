@@ -441,6 +441,7 @@ export default function SeriesScreen() {
             data={filtered}
             numColumns={4}
             keyExtractor={(item) => item.id}
+            columnWrapperStyle={{ justifyContent: 'flex-start' }}
             onScroll={(e) => setShowScrollTop(e.nativeEvent.contentOffset.y > 300)}
             scrollEventThrottle={200}
             renderItem={({ item }) => (

@@ -162,6 +162,7 @@ export function ContinueWatchingRail({ type, fullPage }: Props) {
           data={history}
           numColumns={4}
           keyExtractor={(item) => item.id}
+          columnWrapperStyle={{ justifyContent: 'flex-start' }}
           contentContainerStyle={styles.grid}
           renderItem={renderGridItem}
         />

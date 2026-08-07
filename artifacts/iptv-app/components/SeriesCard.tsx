@@ -136,6 +136,7 @@ export const SeriesCard = memo(SeriesCardComponent);
 const styles = StyleSheet.create({
   card: {
     flex: 1,
+    maxWidth: '25%',
     padding: 5,
   },
   cardCompact: {

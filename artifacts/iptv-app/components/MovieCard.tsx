@@ -129,6 +129,7 @@ export const MovieCard = memo(MovieCardComponent);
 const styles = StyleSheet.create({
   card: {
     flex: 1,
+    maxWidth: '25%',
     padding: 5,
   },
   cardCompact: {
