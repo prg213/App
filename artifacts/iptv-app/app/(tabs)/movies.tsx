@@ -27,6 +27,7 @@ import { SwipeToDeleteCard } from '@/components/SwipeToDeleteCard';
 import { fetchRemoteFavourites, pushRemoteMovies, mergeFavourites } from '@/services/favoritesSync';
 import type { Movie, Category, FavoriteMovie, WatchHistoryEntry } from '@/types';
 import { normaliseStr } from '@/utils/normalise';
+import { buildMovieProgressMap } from '@/utils/progressMap';
 
 const ALL_CAT_ID = '__all';
 const FAVS_CAT_ID = '__favs';
@@ -88,15 +89,7 @@ export default function MoviesScreen() {
 
   // Map movie id → watch progress (0–1), using the most-recent history entry
   // (history is stored newest-first so the first match wins).
-  const movieProgressMap = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const e of watchHistory) {
-      if (!map.has(e.id) && e.position != null && e.duration) {
-        map.set(e.id, e.position / e.duration);
-      }
-    }
-    return map;
-  }, [watchHistory]);
+  const movieProgressMap = useMemo(() => buildMovieProgressMap(watchHistory), [watchHistory]);
 
   const { data: rawCategories = [] } = useQuery<Category[]>({
     queryKey: ['vod-categories', credentials],
