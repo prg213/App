@@ -2,6 +2,7 @@ import React, { useCallback, useMemo, useState } from 'react';
 import { FocusablePressable } from '@/components/FocusablePressable';
 import {
   ActivityIndicator,
+  BackHandler,
   FlatList,
   Image,
   ScrollView,
@@ -9,6 +10,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import { useFocusEffect } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
@@ -138,6 +140,17 @@ export default function CatchupScreen() {
   const [selectedCatId, setSelectedCatId] = useState<string>(ALL_CAT_ID);
   const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
+
+  // D-pad / remote back: close programme list → reset category → hand off to
+  // the global handler which focuses the sidebar.
+  useFocusEffect(useCallback(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (selectedChannel) { setSelectedChannel(null); return true; }
+      if (selectedCatId !== ALL_CAT_ID) { setSelectedCatId(ALL_CAT_ID); return true; }
+      return false;
+    });
+    return () => sub.remove();
+  }, [selectedChannel, selectedCatId]));
 
   // ── Categories ──
   const { data: rawCategories = [], isLoading: catLoading } = useQuery<Category[]>({

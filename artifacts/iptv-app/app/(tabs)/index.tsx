@@ -596,18 +596,24 @@ export default function LiveTVScreen() {
   // Clear channel filter whenever the user switches category
   useEffect(() => { setChannelFilter(''); }, [selectedCatId]);
 
-  // Android back button: clear the channel filter before navigating away
+  // Android back button: pop through active states one level at a time
   useEffect(() => {
     const handler = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (channelFilter.trim()) {
-        setChannelFilter('');
-        Keyboard.dismiss();
-        return true; // consumed — don't navigate back
-      }
+      // Exit reorder mode first
+      if (isReordering) { setIsReordering(false); return true; }
+      // Dismiss catch-up sheet
+      if (showCatchup) { setShowCatchup(false); return true; }
+      // Clear channel-list text filter
+      if (channelFilter.trim()) { setChannelFilter(''); Keyboard.dismiss(); return true; }
+      // Clear category search
+      if (catSearch.trim()) { setCatSearch(''); return true; }
+      // Stop/deselect the playing channel
+      if (selectedChannel) { setPlayingChannel(null); setSelectedChannel(null); return true; }
+      // Nothing left to pop — let global handler focus the sidebar
       return false;
     });
     return () => handler.remove();
-  }, [channelFilter]);
+  }, [isReordering, showCatchup, channelFilter, catSearch, selectedChannel]);
 
   const channelListRef = useRef<FlatList<Channel>>(null);
   // filteredChannels and its useEffect are declared AFTER channels (below) to

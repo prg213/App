@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   AppState,
   type AppStateStatus,
+  BackHandler,
   DeviceEventEmitter,
   Pressable,
   ScrollView,
@@ -10,6 +11,7 @@ import {
   View,
   type View as RNView,
 } from 'react-native';
+import { sidebarNav } from '@/lib/sidebarNav';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { Tabs } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -176,9 +178,11 @@ function Sidebar({ state, descriptors, navigation }: BottomTabBarProps) {
   // sidebar mounts after the scene content.  Explicitly calling .focus() after a
   // short delay is the most reliable way to land D-pad focus on the first nav item.
   useEffect(() => {
-    const t = setTimeout(() => {
-      (firstNavRef.current as any)?.focus?.();
-    }, 300);
+    // Register focus fn so screen BackHandlers can return to the sidebar
+    sidebarNav.focus = () => { (firstNavRef.current as any)?.focus?.(); };
+    // Fire OS ignores hasTVPreferredFocus when sidebar mounts after scene content;
+    // explicit .focus() after a short delay is the most reliable workaround.
+    const t = setTimeout(sidebarNav.focus, 300);
     return () => clearTimeout(t);
   }, []);
 
@@ -243,6 +247,17 @@ function Sidebar({ state, descriptors, navigation }: BottomTabBarProps) {
 }
 
 export default function TabLayout() {
+  // Global catch-all: if no screen BackHandler consumed the press, move focus
+  // to the sidebar instead of letting Android exit the app.
+  // Fires LAST (LIFO) so per-screen handlers always get first pick.
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      sidebarNav.focus();
+      return true; // always consume — never exit via Back from tab navigation
+    });
+    return () => sub.remove();
+  }, []);
+
   return (
     <Tabs
       initialRouteName="home"

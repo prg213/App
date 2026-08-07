@@ -14,7 +14,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useFocusEffect, useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import * as WebBrowser from 'expo-web-browser';
-import { Alert, DeviceEventEmitter } from 'react-native';
+import { Alert, BackHandler, DeviceEventEmitter } from 'react-native';
 import { getTmdbTrailerCandidates } from '@/services/tmdb';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
@@ -228,6 +228,16 @@ export default function SearchScreen() {
 
   const [query, setQuery] = useState('');
   const [searchType, setSearchType] = useState<SearchType>('all');
+
+  // D-pad / remote back: clear the search query before handing off to the
+  // global handler which focuses the sidebar.
+  useFocusEffect(useCallback(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (query) { setQuery(''); return true; }
+      return false;
+    });
+    return () => sub.remove();
+  }, [query]));
   const [trailerLoading, setTrailerLoading] = useState(false);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const [watchHistory, setWatchHistory] = useState<WatchHistoryEntry[]>([]);

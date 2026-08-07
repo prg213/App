@@ -3,6 +3,7 @@ import * as WebBrowser from 'expo-web-browser';
 import { FocusablePressable } from '@/components/FocusablePressable';
 import {
   Alert,
+  BackHandler,
   FlatList,
   RefreshControl,
   StyleSheet,
@@ -187,6 +188,17 @@ export default function MoviesScreen() {
   const [sortOrder, setSortOrder] = useState<'newest' | 'name' | 'rating'>('newest');
   const [sortToast, setSortToast] = useState<string | null>(null);
   const [showScrollTop, setShowScrollTop] = useState(false);
+
+  // D-pad / remote back: pop through filter state before the global handler
+  // focuses the sidebar.
+  useFocusEffect(useCallback(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (search) { setSearch(''); return true; }
+      if (selectedCat !== ALL_CAT_ID) { setSelectedCat(ALL_CAT_ID); return true; }
+      return false; // nothing to pop — global handler will focus the sidebar
+    });
+    return () => sub.remove();
+  }, [search, selectedCat]));
   const gridRef = useRef<FlatList<Movie>>(null);
 
   // Scroll back to top and clear search whenever the category changes
