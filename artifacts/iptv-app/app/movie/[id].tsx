@@ -12,6 +12,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import { FocusablePressable } from '@/components/FocusablePressable';
 import { ThumbnailWithFallback } from '@/components/ThumbnailWithFallback';
 import { getTmdbTrailerCandidates, getTmdbPosterUrl } from '@/services/tmdb';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
@@ -223,23 +224,23 @@ export default function MovieDetailScreen() {
 
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 10, borderBottomColor: 'rgba(255,255,255,0.07)' }]}>
-        <Pressable
+        <FocusablePressable
           focusable
-          style={({ focused }) => [styles.headerBtn, focused && styles.focusRing]}
+          style={(focused) => [styles.headerBtn, focused && styles.focusRing]}
           onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.back(); }}
         >
           <Text style={styles.headerBtnIcon}>←</Text>
-        </Pressable>
+        </FocusablePressable>
         <Text style={styles.headerTitle} numberOfLines={1}>{params.title}</Text>
-        <Pressable
+        <FocusablePressable
           focusable
-          style={({ focused }) => [styles.headerBtn, focused && styles.focusRing]}
+          style={(focused) => [styles.headerBtn, focused && styles.focusRing]}
           onPress={handleToggleFav}
         >
           <Text style={[styles.headerBtnIcon, { color: isFav ? '#EF4444' : '#fff', fontSize: 20 }]}>
             {isFav ? '♥' : '♡'}
           </Text>
-        </Pressable>
+        </FocusablePressable>
       </View>
 
       <ScrollView
@@ -282,33 +283,33 @@ export default function MovieDetailScreen() {
         <View style={styles.actionRow}>
           {savedPosition ? (
             <>
-              <Pressable
+              <FocusablePressable
                 focusable
-                style={({ focused }) => [styles.playBtn, { flex: 1 }, focused && styles.focusRing]}
+                style={(focused) => [styles.playBtn, { flex: 1 }, focused && styles.focusRing]}
                 onPress={() => handlePlay(savedPosition)}
               >
                 <Text style={styles.playBtnText}>▶  Resume · {fmtSecs(savedPosition)}</Text>
-              </Pressable>
-              <Pressable
+              </FocusablePressable>
+              <FocusablePressable
                 focusable
-                style={({ focused }) => [styles.outlineBtn, { borderColor: focused ? '#00E5FF' : 'rgba(255,255,255,0.2)' }]}
+                style={(focused) => [styles.outlineBtn, { borderColor: focused ? '#00E5FF' : 'rgba(255,255,255,0.2)' }]}
                 onPress={() => handlePlay()}
               >
                 <Text style={styles.outlineBtnText}>From Start</Text>
-              </Pressable>
+              </FocusablePressable>
             </>
           ) : (
-            <Pressable
+            <FocusablePressable
               focusable
-              style={({ focused }) => [styles.playBtn, focused && styles.focusRing]}
+              style={(focused) => [styles.playBtn, focused && styles.focusRing]}
               onPress={() => handlePlay()}
             >
               <Text style={styles.playBtnText}>▶  Play</Text>
-            </Pressable>
+            </FocusablePressable>
           )}
-          <Pressable
+          <FocusablePressable
             focusable
-            style={({ focused }) => [styles.outlineBtn, { borderColor: 'rgba(255,255,255,0.15)' }, (!isOnline || trailerLoading) && styles.offlineBtn, focused && styles.focusRing]}
+            style={(focused) => [styles.outlineBtn, { borderColor: 'rgba(255,255,255,0.15)' }, (!isOnline || trailerLoading) && styles.offlineBtn, focused && styles.focusRing]}
             onPress={async () => {
               if (!isOnline) {
                 Alert.alert('No Internet', 'No internet connection — trailer unavailable.', [{ text: 'OK' }]);
@@ -336,7 +337,7 @@ export default function MovieDetailScreen() {
             <Text style={[styles.outlineBtnText, (!isOnline || trailerLoading) && { opacity: 0.45 }]}>
               {trailerLoading ? 'Loading…' : isOnline ? '▶  Watch Trailer' : '✕  No Connection'}
             </Text>
-          </Pressable>
+          </FocusablePressable>
         </View>
       </ScrollView>
 

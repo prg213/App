@@ -13,6 +13,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import { FocusablePressable } from '@/components/FocusablePressable';
 import { getTmdbTrailerCandidates, getTmdbPosterUrl } from '@/services/tmdb';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
@@ -303,23 +304,23 @@ export default function SeriesDetailScreen() {
 
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 10, borderBottomColor: 'rgba(255,255,255,0.07)' }]}>
-        <Pressable
+        <FocusablePressable
           focusable
-          style={({ focused }) => [styles.headerBtn, focused && styles.focusRing]}
+          style={(focused) => [styles.headerBtn, focused && styles.focusRing]}
           onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.back(); }}
         >
           <Text style={styles.headerBtnIcon}>←</Text>
-        </Pressable>
+        </FocusablePressable>
         <Text style={styles.headerTitle} numberOfLines={1}>{params.title}</Text>
-        <Pressable
+        <FocusablePressable
           focusable
-          style={({ focused }) => [styles.headerBtn, focused && styles.focusRing]}
+          style={(focused) => [styles.headerBtn, focused && styles.focusRing]}
           onPress={handleToggleFav}
         >
           <Text style={[styles.headerBtnIcon, { color: isFav ? '#EF4444' : '#fff', fontSize: 20 }]}>
             {isFav ? '♥' : '♡'}
           </Text>
-        </Pressable>
+        </FocusablePressable>
       </View>
 
       <ScrollView
@@ -385,32 +386,32 @@ export default function SeriesDetailScreen() {
 
         {/* ── Action buttons ── */}
         <View style={styles.actionRow}>
-          <Pressable
+          <FocusablePressable
             focusable
-            style={({ focused }) => [styles.playBtn, { opacity: !activeSeason ? 0.4 : 1 }, focused && styles.focusRing]}
+            style={(focused) => [styles.playBtn, { opacity: !activeSeason ? 0.4 : 1 }, focused && styles.focusRing]}
             onPress={handlePlayFirst}
             disabled={!activeSeason}
           >
             <Text style={styles.playBtnText}>
               ▶  Play · S{activeSeason?.seasonNumber ?? 1}:E1
             </Text>
-          </Pressable>
+          </FocusablePressable>
 
           {seasons.length > 1 && (
-            <Pressable
+            <FocusablePressable
               focusable
-              style={({ focused }) => [styles.outlineBtn, { borderColor: focused ? '#00E5FF' : 'rgba(255,255,255,0.2)' }]}
+              style={(focused) => [styles.outlineBtn, { borderColor: focused ? '#00E5FF' : 'rgba(255,255,255,0.2)' }]}
               onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowSeasonPicker(true); }}
             >
               <Text style={styles.outlineBtnText}>
                 Season {activeSeason?.seasonNumber ?? 1}  ▾
               </Text>
-            </Pressable>
+            </FocusablePressable>
           )}
 
-          <Pressable
+          <FocusablePressable
             focusable
-            style={({ focused }) => [styles.outlineBtn, { borderColor: focused ? '#00E5FF' : 'rgba(255,255,255,0.15)' }, (!isOnline || trailerLoading) && styles.offlineBtn, focused && styles.focusRing]}
+            style={(focused) => [styles.outlineBtn, { borderColor: focused ? '#00E5FF' : 'rgba(255,255,255,0.15)' }, (!isOnline || trailerLoading) && styles.offlineBtn, focused && styles.focusRing]}
             onPress={async () => {
               if (!isOnline) {
                 Alert.alert('No Internet', 'No internet connection — trailer unavailable.', [{ text: 'OK' }]);
@@ -438,7 +439,7 @@ export default function SeriesDetailScreen() {
             <Text style={[styles.outlineBtnText, (!isOnline || trailerLoading) && { opacity: 0.45 }]}>
               {trailerLoading ? 'Loading…' : isOnline ? '▶  Watch Trailer' : '✕  No Connection'}
             </Text>
-          </Pressable>
+          </FocusablePressable>
         </View>
 
         {/* ── Tabs ── */}
@@ -483,10 +484,10 @@ export default function SeriesDetailScreen() {
                 const histProgress = hist?.position && hist?.duration ? hist.position / hist.duration : 0;
                 const epRating = ep.info?.rating ? parseFloat(ep.info.rating) : 0;
                 return (
-                  <Pressable
+                  <FocusablePressable
                     key={ep.id}
                     focusable
-                    style={({ focused }) => [styles.epRow, { borderColor: focused ? '#00E5FF' : 'rgba(255,255,255,0.1)' }]}
+                    style={(focused) => [styles.epRow, { borderColor: focused ? '#00E5FF' : 'rgba(255,255,255,0.1)' }]}
                     onPress={() => handlePlayEpisode(ep)}
                   >
                     {/* Thumbnail — key includes thumbResetKey so a data refetch
@@ -532,15 +533,15 @@ export default function SeriesDetailScreen() {
 
                     {/* Resume */}
                     {hist?.position && hist.position > 5 ? (
-                      <Pressable
+                      <FocusablePressable
                         focusable
-                        style={({ focused }) => [styles.resumeBtn, { borderColor: focused ? '#00E5FF' : colors.primary }]}
+                        style={(focused) => [styles.resumeBtn, { borderColor: focused ? '#00E5FF' : colors.primary }]}
                         onPress={() => handlePlayEpisode(ep, hist.position)}
                       >
                         <Text style={[styles.resumeLabel, { color: colors.primary }]}>Resume</Text>
-                      </Pressable>
+                      </FocusablePressable>
                     ) : null}
-                  </Pressable>
+                  </FocusablePressable>
                 );
               })
             )}
