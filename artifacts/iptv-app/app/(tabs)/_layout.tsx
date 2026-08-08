@@ -212,7 +212,6 @@ function Sidebar({ state, descriptors, navigation }: BottomTabBarProps) {
         contentContainerStyle={styles.navContent}
         showsVerticalScrollIndicator={false}
         bounces={false}
-        scrollEnabled={false}
       >
         {state.routes.map((route, i) => {
           const active = state.index === i;
