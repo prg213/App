@@ -17,6 +17,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import { FocusablePressable } from '@/components/FocusablePressable';
 import * as Network from 'expo-network';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useVideoPlayer, VideoView } from 'expo-video';
@@ -1217,7 +1218,7 @@ export default function PlayerScreen() {
             </Text>
           )}
           <Text style={styles.msgSub}>Unable to load stream. Check your connection or try another channel.</Text>
-          <TouchableOpacity
+          <FocusablePressable
             style={styles.actionBtn}
             onPress={() => {
               setHasError(false);
@@ -1228,7 +1229,7 @@ export default function PlayerScreen() {
             }}
           >
             <Text style={styles.actionBtnText}>Retry</Text>
-          </TouchableOpacity>
+          </FocusablePressable>
         </View>
       ) : videoMounted ? (
         <VideoView
@@ -1305,9 +1306,9 @@ export default function PlayerScreen() {
           </View>
           {/* Back button + casting pill — absolute top-left */}
           <View style={{ position: 'absolute', top: insets.top + 8, left: 16, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <TouchableOpacity style={styles.backBtn} onPress={handleBack} activeOpacity={0.8}>
+            <FocusablePressable style={styles.backBtn} onPress={handleBack}>
               <Text style={styles.backIcon}>←</Text>
-            </TouchableOpacity>
+            </FocusablePressable>
             {isCasting && (
               <View style={styles.castingPill}>
                 <Text style={styles.castingText}>
@@ -1321,19 +1322,17 @@ export default function PlayerScreen() {
           <View style={{ position: 'absolute', top: insets.top + 8, right: 16, flexDirection: 'row', gap: 8, alignItems: 'center' }}>
             <CastButton />
             {/* Audio track button — always visible */}
-            <Pressable
-              focusable
-              style={({ focused }) => [styles.trackPill, audioTracks.length === 0 && { opacity: 0.35 }, focused && styles.focusRing]}
+            <FocusablePressable
+              style={[styles.trackPill, audioTracks.length === 0 && { opacity: 0.35 }]}
               onPress={() => setShowAudioPicker(true)}
             >
               <Text style={styles.trackPillText}>
                 🎵 {activeAudioTrack?.label || activeAudioTrack?.language || 'Audio'}
               </Text>
-            </Pressable>
+            </FocusablePressable>
             {/* CC / Subtitle button — tap cycles off→first→next→off; long-press opens picker */}
-            <Pressable
-              focusable
-              style={({ focused }) => [styles.trackPill, subtitleTracks.length === 0 && { opacity: 0.35 }, activeSubtitleTrack !== null && styles.trackPillActive, focused && styles.focusRing]}
+            <FocusablePressable
+              style={[styles.trackPill, subtitleTracks.length === 0 && { opacity: 0.35 }, activeSubtitleTrack !== null && styles.trackPillActive]}
               onPress={handleCcPress}
               onLongPress={() => setShowSubPicker(true)}
               delayLongPress={400}
@@ -1341,46 +1340,42 @@ export default function PlayerScreen() {
               <Text style={[styles.trackPillText, activeSubtitleTrack !== null && styles.trackPillTextActive]}>
                 CC {activeSubtitleTrack ? `· ${(activeSubtitleTrack.language || '').toUpperCase()}` : ''}
               </Text>
-            </Pressable>
-            <Pressable
-              focusable
-              style={({ focused }) => [styles.backBtn, focused && styles.focusRing]}
+            </FocusablePressable>
+            <FocusablePressable
+              style={styles.backBtn}
               onPress={() => { setShowSettings(true); }}
             >
               <Text style={{ fontSize: 18, color: '#fff' }}>⚙</Text>
-            </Pressable>
+            </FocusablePressable>
           </View>
 
           {/* Seek + play/pause buttons — absolute centre */}
           <View style={styles.centerAbs} pointerEvents="box-none">
-            <Pressable
-              focusable
-              style={({ focused }) => [styles.seekBtn, focused && styles.focusRing]}
+            <FocusablePressable
+              style={styles.seekBtn}
               onPress={() => seek(-30)}
             >
               <Text style={styles.seekIcon}>⏮</Text>
               <Text style={styles.seekLabel}>-30s</Text>
-            </Pressable>
+            </FocusablePressable>
             <View style={{ alignItems: 'center' }}>
-              <Pressable
-                focusable
-                style={({ focused }) => [styles.playBtn, focused && styles.focusRing]}
+              <FocusablePressable
+                style={styles.playBtn}
                 onPress={togglePlay}
               >
                 <Text style={styles.playIcon}>{isPlaying ? '⏸' : '▶'}</Text>
-              </Pressable>
+              </FocusablePressable>
               {!isPlaying && !isLive && (
                 <Text style={styles.pausedLabel}>PAUSED</Text>
               )}
             </View>
-            <Pressable
-              focusable
-              style={({ focused }) => [styles.seekBtn, focused && styles.focusRing]}
+            <FocusablePressable
+              style={styles.seekBtn}
               onPress={() => seek(+30)}
             >
               <Text style={styles.seekIcon}>⏭</Text>
               <Text style={styles.seekLabel}>+30s</Text>
-            </Pressable>
+            </FocusablePressable>
           </View>
 
           {/* Scrubber + times — absolute bottom */}
@@ -1425,33 +1420,31 @@ export default function PlayerScreen() {
           style={{ opacity: controlsOpacity, position: 'absolute', top: insets.top + 8, left: 0, right: 0, flexDirection: 'row', gap: 8, alignItems: 'center', paddingHorizontal: 16 }}
           pointerEvents="box-none"
         >
-          <TouchableOpacity style={styles.backBtn} onPress={handleBackLive} activeOpacity={0.8}>
+          <FocusablePressable style={styles.backBtn} onPress={handleBackLive}>
             <Text style={styles.backIcon}>←</Text>
-          </TouchableOpacity>
+          </FocusablePressable>
           <CastButton />
           <View style={{ flex: 1 }} />
           {/* Audio track button */}
-          <TouchableOpacity
+          <FocusablePressable
             style={[styles.trackPill, audioTracks.length === 0 && { opacity: 0.35 }]}
             onPress={() => setShowAudioPicker(true)}
-            activeOpacity={0.8}
           >
             <Text style={styles.trackPillText}>
               🎵 {activeAudioTrack?.label || activeAudioTrack?.language || 'Audio'}
             </Text>
-          </TouchableOpacity>
+          </FocusablePressable>
           {/* CC / Subtitle button — tap cycles off→first→next→off; long-press opens picker */}
-          <TouchableOpacity
+          <FocusablePressable
             style={[styles.trackPill, activeSubtitleTrack !== null && styles.trackPillActive]}
             onPress={handleCcPress}
             onLongPress={() => setShowSubPicker(true)}
             delayLongPress={400}
-            activeOpacity={0.8}
           >
             <Text style={[styles.trackPillText, activeSubtitleTrack !== null && styles.trackPillTextActive]}>
               CC {activeSubtitleTrack ? `· ${(activeSubtitleTrack.language || '').toUpperCase()}` : ''}
             </Text>
-          </TouchableOpacity>
+          </FocusablePressable>
         </Animated.View>
       )}
 
@@ -1498,9 +1491,9 @@ export default function PlayerScreen() {
                 </Text>
               </>
             )}
-            <TouchableOpacity onPress={handleBackLive} style={styles.backBtnSmall} activeOpacity={0.8}>
+            <FocusablePressable onPress={handleBackLive} style={styles.backBtnSmall}>
               <Text style={styles.backIcon}>←</Text>
-            </TouchableOpacity>
+            </FocusablePressable>
           </View>
 
           {/* NEXT row — dimmed, compact */}
@@ -1520,19 +1513,19 @@ export default function PlayerScreen() {
           {(prevChannel || nextChannel) && (
             <View style={styles.chNavRow}>
               {prevChannel ? (
-                <TouchableOpacity style={styles.chNavBtn} onPress={handlePrevChannel} activeOpacity={0.8}>
+                <FocusablePressable style={styles.chNavBtn} onPress={handlePrevChannel}>
                   <Text style={styles.chNavArrow}>‹</Text>
                   <Text style={styles.chNavLabel} numberOfLines={1}>{prevChannel.title}</Text>
-                </TouchableOpacity>
+                </FocusablePressable>
               ) : (
                 <View style={styles.chNavPlaceholder} />
               )}
 
               {nextChannel ? (
-                <TouchableOpacity style={[styles.chNavBtn, styles.chNavBtnRight]} onPress={handleNextChannel} activeOpacity={0.8}>
+                <FocusablePressable style={[styles.chNavBtn, styles.chNavBtnRight]} onPress={handleNextChannel}>
                   <Text style={styles.chNavLabel} numberOfLines={1}>{nextChannel.title}</Text>
                   <Text style={styles.chNavArrow}>›</Text>
-                </TouchableOpacity>
+                </FocusablePressable>
               ) : (
                 <View style={styles.chNavPlaceholder} />
               )}
@@ -1655,10 +1648,10 @@ export default function PlayerScreen() {
                     ? track.id === activeAudioTrack.id
                     : track.language === activeAudioTrack.language && track.label === activeAudioTrack.label);
                 return (
-                  <Pressable
+                  <FocusablePressable
                     key={track.id ?? `audio-${idx}`}
-                    focusable
-                    style={({ focused }) => [styles.chip, isActive && styles.chipActive, focused && styles.chipFocus]}
+                    focusedStyle={styles.chipFocus}
+                    style={[styles.chip, isActive && styles.chipActive]}
                     onPress={() => {
                       try {
                         player.audioTrack = track;
@@ -1672,7 +1665,7 @@ export default function PlayerScreen() {
                     }}
                   >
                     <Text style={[styles.chipText, isActive && styles.chipTextActive]}>{label}</Text>
-                  </Pressable>
+                  </FocusablePressable>
                 );
               })}
             </ScrollView>
@@ -1697,9 +1690,9 @@ export default function PlayerScreen() {
             </Text>
           ) : (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-              <Pressable
-                focusable
-                style={({ focused }) => [styles.chip, activeSubtitleTrack === null && styles.chipActive, focused && styles.chipFocus]}
+              <FocusablePressable
+                focusedStyle={styles.chipFocus}
+                style={[styles.chip, activeSubtitleTrack === null && styles.chipActive]}
                 onPress={() => {
                   try {
                     player.subtitleTrack = null;
@@ -1710,7 +1703,7 @@ export default function PlayerScreen() {
                 }}
               >
                 <Text style={[styles.chipText, activeSubtitleTrack === null && styles.chipTextActive]}>Off</Text>
-              </Pressable>
+              </FocusablePressable>
               {subtitleTracks.map((track, idx) => {
                 const label = track.label || track.name || track.language || `Track ${idx + 1}`;
                 const isActive =
@@ -1719,10 +1712,10 @@ export default function PlayerScreen() {
                     ? track.id === activeSubtitleTrack.id
                     : track.language === activeSubtitleTrack.language && track.label === activeSubtitleTrack.label);
                 return (
-                  <Pressable
+                  <FocusablePressable
                     key={track.id ?? `sub-${idx}`}
-                    focusable
-                    style={({ focused }) => [styles.chip, isActive && styles.chipActive, focused && styles.chipFocus]}
+                    focusedStyle={styles.chipFocus}
+                    style={[styles.chip, isActive && styles.chipActive]}
                     onPress={() => {
                       try {
                         player.subtitleTrack = track;
@@ -1733,7 +1726,7 @@ export default function PlayerScreen() {
                     }}
                   >
                     <Text style={[styles.chipText, isActive && styles.chipTextActive]}>{label}</Text>
-                  </Pressable>
+                  </FocusablePressable>
                 );
               })}
             </ScrollView>
@@ -1765,10 +1758,10 @@ export default function PlayerScreen() {
           <Text style={styles.settingsTitle}>Playback Speed</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
             {SPEEDS.map((s) => (
-              <Pressable
+              <FocusablePressable
                 key={s}
-                focusable
-                style={({ focused }) => [styles.chip, speed === s && styles.chipActive, focused && styles.chipFocus]}
+                focusedStyle={styles.chipFocus}
+                style={[styles.chip, speed === s && styles.chipActive]}
                 onPress={() => {
                   setSpeed(s);
                   player.playbackRate = s;
@@ -1780,23 +1773,23 @@ export default function PlayerScreen() {
                 <Text style={[styles.chipText, speed === s && styles.chipTextActive]}>
                   {s === 1 ? '1× Normal' : `${s}×`}
                 </Text>
-              </Pressable>
+              </FocusablePressable>
             ))}
           </ScrollView>
 
           <Text style={[styles.settingsTitle, { marginTop: 8 }]}>Aspect Ratio</Text>
           <View style={styles.chipRow}>
             {FITS.map((f) => (
-              <Pressable
+              <FocusablePressable
                 key={f.value}
-                focusable
-                style={({ focused }) => [styles.chip, contentFit === f.value && styles.chipActive, focused && styles.chipFocus]}
+                focusedStyle={styles.chipFocus}
+                style={[styles.chip, contentFit === f.value && styles.chipActive]}
                 onPress={() => setContentFit(f.value)}
               >
                 <Text style={[styles.chipText, contentFit === f.value && styles.chipTextActive]}>
                   {f.label}
                 </Text>
-              </Pressable>
+              </FocusablePressable>
             ))}
           </View>
 

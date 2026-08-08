@@ -519,10 +519,9 @@ export default function SettingsScreen() {
         {/* ── Playback ── */}
         <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>PLAYBACK</Text>
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <TouchableOpacity
+          <FocusablePressable
             style={[styles.actionRow, { borderBottomColor: colors.border }]}
             onPress={() => setShowAudioLangSheet(true)}
-            activeOpacity={0.7}
           >
             <View style={{ flex: 1 }}>
               <Text style={[styles.actionTitle, { color: colors.foreground }]}>Preferred Audio Language</Text>
@@ -531,11 +530,10 @@ export default function SettingsScreen() {
               </Text>
             </View>
             <Text style={{ color: colors.mutedForeground, fontSize: 18 }}>🔊</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
+          </FocusablePressable>
+          <FocusablePressable
             style={[styles.actionRow, { borderBottomWidth: 0 }]}
             onPress={() => setShowSubtitleLangSheet(true)}
-            activeOpacity={0.7}
           >
             <View style={{ flex: 1 }}>
               <Text style={[styles.actionTitle, { color: colors.foreground }]}>Preferred Subtitle Language</Text>
@@ -544,16 +542,15 @@ export default function SettingsScreen() {
               </Text>
             </View>
             <Text style={{ color: colors.mutedForeground, fontSize: 18 }}>CC</Text>
-          </TouchableOpacity>
+          </FocusablePressable>
         </View>
 
         {/* ── Notifications ── */}
         <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>NOTIFICATIONS</Text>
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <TouchableOpacity
+          <FocusablePressable
             style={[styles.actionRow, { borderBottomWidth: 0 }]}
             onPress={() => setShowLeadTimeSheet(true)}
-            activeOpacity={0.7}
           >
             <View style={{ flex: 1 }}>
               <Text style={[styles.actionTitle, { color: colors.foreground }]}>Reminder Lead Time</Text>
@@ -562,24 +559,23 @@ export default function SettingsScreen() {
               </Text>
             </View>
             <Text style={{ color: colors.mutedForeground, fontSize: 18 }}>⏰</Text>
-          </TouchableOpacity>
+          </FocusablePressable>
         </View>
 
         {/* ── Parental Controls ── */}
         <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>PARENTAL CONTROLS</Text>
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
           {/* Content Rating picker */}
-          <TouchableOpacity
+          <FocusablePressable
             style={[styles.actionRow, { borderBottomColor: colors.border }]}
             onPress={() => setShowRatingSheet(true)}
-            activeOpacity={0.7}
           >
             <View style={{ flex: 1 }}>
               <Text style={[styles.actionTitle, { color: colors.foreground }]}>Content Rating</Text>
               <Text style={[styles.actionSub, { color: colors.mutedForeground }]}>{ratingLabel}</Text>
             </View>
             <Text style={{ color: colors.mutedForeground, fontSize: 18 }}>›</Text>
-          </TouchableOpacity>
+          </FocusablePressable>
 
           {/* App Lock toggle */}
           <View style={[styles.actionRow, { borderBottomColor: colors.border }]}>
@@ -598,10 +594,9 @@ export default function SettingsScreen() {
           </View>
 
           {/* Set / Change PIN */}
-          <TouchableOpacity
+          <FocusablePressable
             style={[styles.actionRow, { borderBottomColor: colors.border }]}
             onPress={handleSetPinPress}
-            activeOpacity={0.7}
           >
             <View style={{ flex: 1 }}>
               <Text style={[styles.actionTitle, { color: colors.foreground }]}>
@@ -612,13 +607,12 @@ export default function SettingsScreen() {
               </Text>
             </View>
             <Text style={{ color: colors.mutedForeground, fontSize: 18 }}>🔒</Text>
-          </TouchableOpacity>
+          </FocusablePressable>
 
           {/* Blocked Channels */}
-          <TouchableOpacity
+          <FocusablePressable
             style={[styles.actionRow, { borderBottomColor: colors.border }]}
             onPress={handleBlockedChannelsPress}
-            activeOpacity={0.7}
           >
             <View style={{ flex: 1 }}>
               <Text style={[styles.actionTitle, { color: colors.foreground }]}>Blocked Channels</Text>
@@ -629,17 +623,17 @@ export default function SettingsScreen() {
               </Text>
             </View>
             <Text style={{ color: colors.mutedForeground, fontSize: 18 }}>🚫</Text>
-          </TouchableOpacity>
+          </FocusablePressable>
 
           {/* Remove PIN */}
           {isPinSet && (
-            <TouchableOpacity style={styles.actionRow} onPress={handleDisablePinPress} activeOpacity={0.7}>
+            <FocusablePressable style={styles.actionRow} onPress={handleDisablePinPress}>
               <View style={{ flex: 1 }}>
                 <Text style={[styles.actionTitle, { color: colors.destructive }]}>Remove PIN</Text>
                 <Text style={[styles.actionSub, { color: colors.mutedForeground }]}>Disable all PIN protection</Text>
               </View>
               <Text style={{ color: colors.destructive, fontSize: 18 }}>✕</Text>
-            </TouchableOpacity>
+            </FocusablePressable>
           )}
         </View>
 
@@ -665,24 +659,23 @@ export default function SettingsScreen() {
               {CURRENT_BUILD > 0 ? `#${CURRENT_BUILD}` : 'Dev'}
             </Text>
           </View>
-          <TouchableOpacity
+          <FocusablePressable
             style={[styles.actionRow, { borderBottomWidth: 0 }]}
             onPress={handleCheckUpdate}
-            activeOpacity={0.7}
             disabled={checkingUpdate}
           >
             <Text style={[styles.actionTitle, { color: colors.foreground }]}>
               {checkingUpdate ? 'Checking…' : 'Check for Update'}
             </Text>
             <Text style={{ color: colors.mutedForeground, fontSize: 18 }}>🔄</Text>
-          </TouchableOpacity>
+          </FocusablePressable>
         </View>
 
         <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>ACCOUNT</Text>
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <TouchableOpacity style={styles.logoutRow} onPress={handleLogout} activeOpacity={0.7} disabled={loggingOut}>
+          <FocusablePressable style={styles.logoutRow} onPress={handleLogout} disabled={loggingOut}>
             <Text style={[styles.logoutText, { color: colors.destructive }]}>Logout / Unlink Device</Text>
-          </TouchableOpacity>
+          </FocusablePressable>
         </View>
       </ScrollView>
 
@@ -707,7 +700,7 @@ export default function SettingsScreen() {
           <View style={styles.sheetHandle} />
           <Text style={[styles.sheetTitle, { color: colors.mutedForeground }]}>PREFERRED AUDIO LANGUAGE</Text>
           {AUDIO_LANG_OPTIONS.map((opt) => (
-            <TouchableOpacity
+            <FocusablePressable
               key={opt.value}
               style={[styles.sheetRow, { borderBottomColor: colors.border }]}
               onPress={async () => {
@@ -716,11 +709,10 @@ export default function SettingsScreen() {
                 setPrefAudioLang(opt.value);
                 setShowAudioLangSheet(false);
               }}
-              activeOpacity={0.7}
             >
               <Text style={[styles.sheetRowText, { color: colors.foreground }]}>{opt.label}</Text>
               {prefAudioLang === opt.value && <Text style={{ color: '#3B82F6', fontSize: 18 }}>✓</Text>}
-            </TouchableOpacity>
+            </FocusablePressable>
           ))}
         </View>
       </Modal>
@@ -741,7 +733,7 @@ export default function SettingsScreen() {
           <View style={styles.sheetHandle} />
           <Text style={[styles.sheetTitle, { color: colors.mutedForeground }]}>PREFERRED SUBTITLE LANGUAGE</Text>
           {LANG_OPTIONS.map((opt) => (
-            <TouchableOpacity
+            <FocusablePressable
               key={opt.value}
               style={[styles.sheetRow, { borderBottomColor: colors.border }]}
               onPress={async () => {
@@ -750,11 +742,10 @@ export default function SettingsScreen() {
                 setPrefSubtitleLang(opt.value);
                 setShowSubtitleLangSheet(false);
               }}
-              activeOpacity={0.7}
             >
               <Text style={[styles.sheetRowText, { color: colors.foreground }]}>{opt.label}</Text>
               {prefSubtitleLang === opt.value && <Text style={{ color: '#3B82F6', fontSize: 18 }}>✓</Text>}
-            </TouchableOpacity>
+            </FocusablePressable>
           ))}
         </View>
       </Modal>
@@ -775,15 +766,14 @@ export default function SettingsScreen() {
           <View style={styles.sheetHandle} />
           <Text style={[styles.sheetTitle, { color: colors.mutedForeground }]}>REMINDER LEAD TIME</Text>
           {LEAD_TIME_OPTIONS.map((opt) => (
-            <TouchableOpacity
+            <FocusablePressable
               key={opt.value}
               style={[styles.sheetRow, { borderBottomColor: colors.border }]}
               onPress={() => handleLeadTimeSelect(opt.value)}
-              activeOpacity={0.7}
             >
               <Text style={[styles.sheetRowText, { color: colors.foreground }]}>{opt.label}</Text>
               {reminderLeadMins === opt.value && <Text style={{ color: '#3B82F6', fontSize: 18 }}>✓</Text>}
-            </TouchableOpacity>
+            </FocusablePressable>
           ))}
         </View>
       </Modal>
@@ -804,15 +794,14 @@ export default function SettingsScreen() {
           <View style={styles.sheetHandle} />
           <Text style={[styles.sheetTitle, { color: colors.mutedForeground }]}>CONTENT RATING CEILING</Text>
           {RATING_OPTIONS.map((opt) => (
-            <TouchableOpacity
+            <FocusablePressable
               key={opt.value}
               style={[styles.sheetRow, { borderBottomColor: colors.border }]}
               onPress={() => handleRatingPress(opt.value)}
-              activeOpacity={0.7}
             >
               <Text style={[styles.sheetRowText, { color: colors.foreground }]}>{opt.label}</Text>
               {maxRating === opt.value && <Text style={{ color: '#3B82F6', fontSize: 18 }}>✓</Text>}
-            </TouchableOpacity>
+            </FocusablePressable>
           ))}
         </View>
       </Modal>

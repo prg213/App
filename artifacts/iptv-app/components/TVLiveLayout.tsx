@@ -1,16 +1,16 @@
 /**
  * TVLiveLayout — 3-panel Fire TV / Android TV remote-navigable layout.
  *
- * Panel 1 (left)   — Categories    (D-pad ↑↓ to move, → to enter channels)
- * Panel 2 (centre) — Channels      (D-pad ↑↓ to move, → preview, ← back)
+ * Panel 1 (left)   — Categories    (D-pad ↑↓ to move, OK to select category)
+ * Panel 2 (centre) — Channels      (D-pad ↑↓ to move, OK to play, ← to go back)
  * Panel 3 (right)  — Preview area  (video on top, catchup below, mini-guide at bottom)
  *
- * Navigation is driven by Android TV's native focus engine — no JS key-event
- * handlers needed.  Every interactive element has `focusable={true}`; the OS
- * handles D-pad traversal automatically across the three columns.
+ * IMPORTANT: D-pad focus on a channel does NOT automatically change the playing
+ * channel. Only OK (onPress) selects/plays. This prevents rapid scrolling from
+ * spamming the video player with stream replacements.
  *
- * Channel loading is debounced (400 ms) so scrolling rapidly through a list
- * does not spam the video player with rapid stream-URL replacements.
+ * All interactive elements use FocusablePressable — the Pressable style-callback
+ * `focused` prop silently does nothing on Fire OS / Android TV.
  */
 
 import React, {
@@ -24,13 +24,13 @@ import {
   ActivityIndicator,
   FlatList,
   Image,
-  Pressable,
   StyleSheet,
   Text,
   View,
   type ListRenderItem,
 } from 'react-native';
 import { VideoView, type VideoPlayer } from 'expo-video';
+import { FocusablePressable } from '@/components/FocusablePressable';
 import type { Category, Channel, EpgProgram } from '@/types';
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -48,7 +48,7 @@ export interface TVLiveLayoutProps {
   epgMap: Map<string, EpgProgram[]> | undefined;
   nowTs: number;
   selectedChannel: Channel | null;
-  /** Called (debounced) when the user navigates to a channel — triggers stream load */
+  /** Called when the user presses OK on a channel — triggers stream load */
   onChannelSelect: (ch: Channel) => void;
   /** Called when the user presses OK on the video preview — goes full-screen */
   onWatchFullscreen: () => void;
@@ -92,17 +92,22 @@ export function TVLiveLayout({
   hasError,
 }: TVLiveLayoutProps) {
 
-  const catListRef  = useRef<FlatList<Category>>(null);
-  const chListRef   = useRef<FlatList<Channel>>(null);
-  const loadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const catListRef = useRef<FlatList<Category>>(null);
+  const chListRef  = useRef<FlatList<Channel>>(null);
 
-  // Track which channel is "highlighted" in panel 2 for immediate visual
-  // feedback without waiting for the debounce.
+  // Track which channel row is visually highlighted.
+  // Updated on D-pad focus AND on successful OK press — never triggers stream load.
   const [highlightedChId, setHighlightedChId] = useState<string | null>(
     selectedChannel?.id ?? null,
   );
 
-  // EPG programmes for the currently selected channel
+  // Keep highlight in sync when the playing channel changes from outside
+  // (e.g. prev/next channel navigation in the fullscreen player).
+  useEffect(() => {
+    if (selectedChannel) setHighlightedChId(selectedChannel.id);
+  }, [selectedChannel?.id]);
+
+  // EPG for the currently playing channel (panel 3 mini-guide)
   const channelEpg = useMemo(() => {
     if (!selectedChannel || !epgMap) return [];
     const key = selectedChannel.epgId ?? selectedChannel.id;
@@ -118,67 +123,61 @@ export function TVLiveLayout({
 
   const hasCatchup = selectedChannel?.tvArchive === 1;
 
-  // Cleanup debounce timer on unmount
-  useEffect(() => () => { if (loadTimerRef.current) clearTimeout(loadTimerRef.current); }, []);
-
   // ── Category row ──────────────────────────────────────────────────────────
+  // onFocus: scroll only — category changes on OK press.
 
-  const handleCatFocus = useCallback((cat: Category, index: number) => {
-    // Switch category immediately
-    onCatSelect(cat.id);
-    catListRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.3 });
-  }, [onCatSelect]);
+  const handleCatFocus = useCallback((index: number) => {
+    try {
+      catListRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.3 });
+    } catch (_) {}
+  }, []);
 
   const renderCat: ListRenderItem<Category> = useCallback(({ item, index }) => (
-    <Pressable
-      focusable
-      hasTVPreferredFocus={index === 0}
+    <FocusablePressable
       accessible
       accessibilityRole="button"
       accessibilityLabel={item.name}
-      style={({ focused }: any) => [
+      focusedStyle={styles.focusedItem}
+      style={[
         styles.catItem,
         { borderBottomColor: colors.border },
         item.id === selectedCatId && { borderLeftColor: colors.primary, borderLeftWidth: 3 },
-        focused && [styles.focusedItem, { borderColor: FOCUS_BORDER }],
       ]}
-      onFocus={() => handleCatFocus(item, index)}
-      onPress={() => handleCatFocus(item, index)}
+      onFocus={() => handleCatFocus(index)}
+      onPress={() => {
+        onCatSelect(item.id);
+        handleCatFocus(index);
+      }}
     >
       <Text style={[styles.catName, { color: colors.foreground }]} numberOfLines={1}>
         {item.name}
       </Text>
-    </Pressable>
-  ), [selectedCatId, colors, handleCatFocus]);
+    </FocusablePressable>
+  ), [selectedCatId, colors, handleCatFocus, onCatSelect]);
 
   // ── Channel row ───────────────────────────────────────────────────────────
+  // onFocus: highlight + scroll — stream loads on OK press only.
 
   const handleChFocus = useCallback((ch: Channel, index: number) => {
-    // Immediate visual highlight
     setHighlightedChId(ch.id);
-    chListRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.3 });
-
-    // Debounce stream load so rapid D-pad scrolling doesn't spam replaceAsync
-    if (loadTimerRef.current) clearTimeout(loadTimerRef.current);
-    loadTimerRef.current = setTimeout(() => {
-      onChannelSelect(ch);
-    }, 400);
-  }, [onChannelSelect]);
+    try {
+      chListRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.3 });
+    } catch (_) {}
+  }, []);
 
   const renderChannel: ListRenderItem<Channel> = useCallback(({ item, index }) => {
     const nowProg = nowPlayingMap.get(item.epgId ?? item.id) ?? nowPlayingMap.get(item.id);
     const isHighlighted = highlightedChId === item.id;
     return (
-      <Pressable
-        focusable
+      <FocusablePressable
         accessible
         accessibilityRole="button"
         accessibilityLabel={item.name}
-        style={({ focused }: any) => [
+        focusedStyle={styles.focusedItem}
+        style={[
           styles.chItem,
           { borderBottomColor: colors.border },
           isHighlighted && { borderLeftColor: FOCUS_BORDER, borderLeftWidth: 3 },
-          focused && [styles.focusedItem, { borderColor: FOCUS_BORDER }],
         ]}
         onFocus={() => handleChFocus(item, index)}
         onPress={() => {
@@ -203,7 +202,7 @@ export function TVLiveLayout({
             </Text>
           ) : null}
         </View>
-      </Pressable>
+      </FocusablePressable>
     );
   }, [highlightedChId, nowPlayingMap, colors, handleChFocus, onChannelSelect]);
 
@@ -275,15 +274,12 @@ export function TVLiveLayout({
         ) : (
           <>
             {/* 3a — Video preview (OK = full screen) */}
-            <Pressable
-              focusable
+            <FocusablePressable
               accessible
               accessibilityRole="button"
               accessibilityLabel="Watch fullscreen — press OK"
-              style={({ focused }: any) => [
-                styles.videoWrap,
-                focused && styles.videoFocused,
-              ]}
+              focusedStyle={styles.videoFocused}
+              style={styles.videoWrap}
               onPress={onWatchFullscreen}
             >
               <VideoView
@@ -294,7 +290,6 @@ export function TVLiveLayout({
                 nativeControls={false}
               />
 
-              {/* Loading overlay */}
               {isBuffering && (
                 <View style={styles.videoOverlay}>
                   <ActivityIndicator color="#fff" size="large" />
@@ -302,7 +297,6 @@ export function TVLiveLayout({
                 </View>
               )}
 
-              {/* Error overlay */}
               {hasError && !isBuffering && (
                 <View style={styles.videoOverlay}>
                   <Text style={{ fontSize: 28 }}>⚠️</Text>
@@ -310,11 +304,10 @@ export function TVLiveLayout({
                 </View>
               )}
 
-              {/* Hint bar at bottom of video */}
               <View style={styles.videoHintBar}>
                 <Text style={styles.videoHintText}>▶  OK to go full screen</Text>
               </View>
-            </Pressable>
+            </FocusablePressable>
 
             {/* Channel name + current programme info bar */}
             <View style={[styles.infoBar, { backgroundColor: colors.card, borderTopColor: colors.border }]}>
@@ -328,18 +321,14 @@ export function TVLiveLayout({
               ) : null}
             </View>
 
-            {/* 3b — Catchup (only if channel supports it) */}
+            {/* 3b — Catchup */}
             {hasCatchup ? (
-              <Pressable
-                focusable
+              <FocusablePressable
                 accessible
                 accessibilityRole="button"
                 accessibilityLabel="Open catch-up TV"
-                style={({ focused }: any) => [
-                  styles.catchupRow,
-                  { backgroundColor: colors.card, borderColor: focused ? FOCUS_BORDER : colors.border },
-                  focused && styles.focusedItem,
-                ]}
+                focusedStyle={styles.focusedItem}
+                style={[styles.catchupRow, { backgroundColor: colors.card, borderColor: colors.border }]}
                 onPress={onOpenCatchup}
               >
                 <Text style={styles.catchupIcon}>📼</Text>
@@ -350,10 +339,10 @@ export function TVLiveLayout({
                   </Text>
                 </View>
                 <Text style={[styles.catchupArrow, { color: colors.mutedForeground }]}>›</Text>
-              </Pressable>
+              </FocusablePressable>
             ) : null}
 
-            {/* 3c — Mini TV guide */}
+            {/* 3c — Mini TV guide (info only, not interactive) */}
             {channelEpg.length > 0 ? (
               <View style={[styles.guideWrap, { backgroundColor: colors.card, borderColor: colors.border }]}>
                 <Text style={[styles.guideHeader, { color: colors.mutedForeground, borderBottomColor: colors.border }]}>
@@ -362,16 +351,12 @@ export function TVLiveLayout({
                 {channelEpg.map((prog, i) => {
                   const isNow = prog.start.getTime() <= nowTs && nowTs < prog.end.getTime();
                   return (
-                    <Pressable
+                    <View
                       key={i}
-                      focusable
-                      accessible
-                      accessibilityLabel={`${fmtTime(prog.start)} ${prog.title}`}
-                      style={({ focused }: any) => [
+                      style={[
                         styles.guideItem,
                         { borderBottomColor: colors.border },
                         isNow && { backgroundColor: colors.secondary },
-                        focused && [styles.focusedItem, { borderColor: FOCUS_BORDER }],
                       ]}
                     >
                       <Text
@@ -388,7 +373,7 @@ export function TVLiveLayout({
                       >
                         {prog.title}
                       </Text>
-                    </Pressable>
+                    </View>
                   );
                 })}
               </View>
@@ -647,8 +632,6 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     gap: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderWidth: 1.5,
-    borderColor: 'transparent',
   },
 
   guideTime: {
@@ -665,7 +648,7 @@ const styles = StyleSheet.create({
 
   // ── Focus ring (shared) ──
   focusedItem: {
-    borderWidth: 1.5,
+    borderWidth: 2,
     borderColor: FOCUS_BORDER,
   },
 });

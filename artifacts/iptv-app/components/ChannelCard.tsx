@@ -2,10 +2,10 @@ import React, { memo } from 'react';
 import {
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
   Image,
 } from 'react-native';
+import { FocusablePressable } from '@/components/FocusablePressable';
 import { useColors } from '@/hooks/useColors';
 import type { Channel } from '@/types';
 
@@ -33,11 +33,10 @@ function ChannelCardComponent({ channel, isFavorite, onPress, onLongPress }: Cha
   const colors = useColors();
 
   return (
-    <TouchableOpacity
+    <FocusablePressable
       style={[styles.row, { borderBottomColor: colors.border }]}
       onPress={onPress}
       onLongPress={onLongPress}
-      activeOpacity={0.6}
     >
       {/* Logo */}
       <View style={styles.logoWrap}>
@@ -73,7 +72,7 @@ function ChannelCardComponent({ channel, isFavorite, onPress, onLongPress }: Cha
           <Text style={{ color: colors.primary, fontSize: 12, marginTop: 2 }}>★</Text>
         )}
       </View>
-    </TouchableOpacity>
+    </FocusablePressable>
   );
 }
 

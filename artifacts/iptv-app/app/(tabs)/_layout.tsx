@@ -140,7 +140,6 @@ function NavItem({
       accessibilityRole="button"
       accessibilityLabel={item.label}
       accessibilityState={{ selected: active }}
-      hasTVPreferredFocus={isFirst}
       onFocus={() => setFocused(true)}
       onBlur={() => setFocused(false)}
       style={[

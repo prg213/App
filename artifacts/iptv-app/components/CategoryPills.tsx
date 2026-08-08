@@ -3,10 +3,10 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
   Platform,
 } from 'react-native';
+import { FocusablePressable } from '@/components/FocusablePressable';
 import { useColors } from '@/hooks/useColors';
 
 interface Category {
@@ -38,7 +38,7 @@ export function CategoryPills({
         contentContainerStyle={styles.container}
         style={Platform.OS === 'web' ? { marginTop: 0 } : undefined}
       >
-        <TouchableOpacity
+        <FocusablePressable
           style={[
             styles.pill,
             {
@@ -47,7 +47,6 @@ export function CategoryPills({
             },
           ]}
           onPress={() => onSelect(null)}
-          activeOpacity={0.7}
         >
           <Text
             style={[
@@ -57,12 +56,12 @@ export function CategoryPills({
           >
             {allLabel}
           </Text>
-        </TouchableOpacity>
+        </FocusablePressable>
 
         {categories.map((cat) => {
           const isActive = selected === cat.id;
           return (
-            <TouchableOpacity
+            <FocusablePressable
               key={cat.id}
               style={[
                 styles.pill,
@@ -72,7 +71,6 @@ export function CategoryPills({
                 },
               ]}
               onPress={() => onSelect(cat.id)}
-              activeOpacity={0.7}
             >
               <Text
                 style={[
@@ -83,7 +81,7 @@ export function CategoryPills({
               >
                 {cat.name}
               </Text>
-            </TouchableOpacity>
+            </FocusablePressable>
           );
         })}
       </ScrollView>

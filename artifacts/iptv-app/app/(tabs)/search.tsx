@@ -3,13 +3,12 @@ import {
   ActivityIndicator,
   FlatList,
   Image,
-  Pressable,
   StyleSheet,
   Text,
   TextInput,
-  TouchableOpacity,
   View,
 } from 'react-native';
+import { FocusablePressable } from '@/components/FocusablePressable';
 import { useQuery } from '@tanstack/react-query';
 import { useFocusEffect, useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
@@ -83,10 +82,9 @@ const ChannelResultRow = React.memo(function ChannelResultRow({
   onPress: () => void;
 }) {
   return (
-    <TouchableOpacity
+    <FocusablePressable
       style={[styles.row, { borderBottomColor: colors.border }]}
       onPress={onPress}
-      activeOpacity={0.7}
     >
       <View style={[styles.logo, { backgroundColor: colors.secondary }]}>
         {channel.logo ? (
@@ -113,7 +111,7 @@ const ChannelResultRow = React.memo(function ChannelResultRow({
       <View style={styles.typePill}>
         <Text style={styles.typePillText}>LIVE</Text>
       </View>
-    </TouchableOpacity>
+    </FocusablePressable>
   );
 });
 
@@ -142,10 +140,9 @@ const MediaResultRow = React.memo(function MediaResultRow({
 }) {
   const isOnline = useIsOnline(); // #129
   return (
-    <TouchableOpacity
+    <FocusablePressable
       style={[styles.row, { borderBottomColor: colors.border }]}
       onPress={onPress}
-      activeOpacity={0.7}
     >
       <View style={[styles.cover, { backgroundColor: colors.secondary }]}>
         {cover ? (
@@ -175,23 +172,22 @@ const MediaResultRow = React.memo(function MediaResultRow({
       </View>
       {/* #106/#123/#129: trailer shortcut — greyed out when offline */}
       {onTrailer && (
-        <TouchableOpacity
+        <FocusablePressable
           style={[styles.trailerPill, !isOnline && styles.trailerPillOffline]}
           onPress={(e) => { (e as any).stopPropagation?.(); onTrailer(); }}
-          activeOpacity={0.7}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
           <Text style={[styles.trailerPillText, !isOnline && styles.trailerPillTextOffline]}>
             {isOnline ? '▶ Trailer' : '✕ Offline'}
           </Text>
-        </TouchableOpacity>
+        </FocusablePressable>
       )}
       <View style={[styles.typePill, kind === 'series' && styles.typePillSeries]}>
         <Text style={[styles.typePillText, kind === 'series' && { color: '#8B5CF6' }]}>
           {kind === 'movie' ? 'MOVIE' : 'SERIES'}
         </Text>
       </View>
-    </TouchableOpacity>
+    </FocusablePressable>
   );
 });
 
@@ -597,12 +593,12 @@ export default function SearchScreen() {
               <View style={styles.recentSection}>
                 <View style={styles.recentHeader}>
                   <Text style={[styles.recentHeading, { color: colors.mutedForeground }]}>RECENT SEARCHES</Text>
-                  <TouchableOpacity onPress={handleClearAllRecentSearches} hitSlop={8}>
+                  <FocusablePressable onPress={handleClearAllRecentSearches} hitSlop={8}>
                     <Text style={[styles.recentClearAll, { color: colors.mutedForeground }]}>Clear all</Text>
-                  </TouchableOpacity>
+                  </FocusablePressable>
                 </View>
                 {recentSearches.map((s) => (
-                  <TouchableOpacity
+                  <FocusablePressable
                     key={s}
                     style={[styles.recentRow, { borderBottomColor: colors.border }]}
                     onPress={() => {
@@ -612,14 +608,13 @@ export default function SearchScreen() {
                         StorageService.getRecentSearches().then(setRecentSearches)
                       );
                     }}
-                    activeOpacity={0.7}
                   >
                     <Text style={[styles.recentIcon, { color: colors.mutedForeground }]}>🕐</Text>
                     <Text style={[styles.recentText, { color: colors.foreground }]} numberOfLines={1}>{s}</Text>
-                    <TouchableOpacity onPress={() => handleRemoveRecentSearch(s)} hitSlop={8}>
+                    <FocusablePressable onPress={() => handleRemoveRecentSearch(s)} hitSlop={8}>
                       <Text style={[styles.recentRemove, { color: colors.mutedForeground }]}>✕</Text>
-                    </TouchableOpacity>
-                  </TouchableOpacity>
+                    </FocusablePressable>
+                  </FocusablePressable>
                 ))}
               </View>
             )}
@@ -705,9 +700,9 @@ export default function SearchScreen() {
             onSubmitEditing={handleSubmitSearch}
           />
           {query.length > 0 && (
-            <TouchableOpacity onPress={() => setQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <FocusablePressable onPress={() => setQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
               <Text style={[styles.clearBtn, { color: colors.mutedForeground }]}>✕</Text>
-            </TouchableOpacity>
+            </FocusablePressable>
           )}
         </View>
         {/* Type filter pills */}
@@ -715,7 +710,7 @@ export default function SearchScreen() {
           {SEARCH_TYPES.map((t) => {
             const active = searchType === t.id;
             return (
-              <TouchableOpacity
+              <FocusablePressable
                 key={t.id}
                 style={[
                   styles.pill,
@@ -723,13 +718,12 @@ export default function SearchScreen() {
                     backgroundColor: active ? 'rgba(59,130,246,0.15)' : colors.secondary },
                 ]}
                 onPress={() => handleSearchTypeChange(t.id)}
-                activeOpacity={0.7}
               >
                 <Text style={styles.pillIcon}>{t.icon}</Text>
                 <Text style={[styles.pillLabel, { color: active ? colors.primary : colors.mutedForeground }]}>
                   {t.label}
                 </Text>
-              </TouchableOpacity>
+              </FocusablePressable>
             );
           })}
         </View>

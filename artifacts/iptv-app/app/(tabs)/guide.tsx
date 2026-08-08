@@ -17,7 +17,6 @@ import {
   NativeScrollEvent,
   NativeSyntheticEvent,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -329,13 +328,9 @@ const TVEpgRow = React.memo(function TVEpgRow({
   return (
     <View style={[styles.tvRow, { borderBottomColor: colors.border }]}>
       {/* Channel info cell — OK/Select watches channel */}
-      <Pressable
-        focusable
-        style={({ focused }: any) => [
-          styles.tvChCell,
-          { backgroundColor: colors.card, borderRightColor: colors.border },
-          focused && styles.tvFocused,
-        ]}
+      <FocusablePressable
+        focusedStyle={styles.tvFocused}
+        style={[styles.tvChCell, { backgroundColor: colors.card, borderRightColor: colors.border }]}
         onPress={() => onWatchChannel(channel)}
       >
         {channel.logo ? (
@@ -348,7 +343,7 @@ const TVEpgRow = React.memo(function TVEpgRow({
         <Text style={[styles.tvChName, { color: colors.foreground }]} numberOfLines={2}>
           {channel.name}
         </Text>
-      </Pressable>
+      </FocusablePressable>
 
       {/* Programme cells */}
       {items.length === 0 ? (
@@ -371,16 +366,15 @@ const TVEpgRow = React.memo(function TVEpgRow({
               : 0;
             const hasReminder = reminderIds?.has(`${channel.id}_${it.prog.start.toISOString()}`);
             return (
-              <Pressable
-                focusable
-                style={({ focused }: any) => [
+              <FocusablePressable
+                focusedStyle={styles.tvFocused}
+                style={[
                   styles.tvProgCell,
                   {
                     width: it.width,
                     backgroundColor: isNow ? '#1A2A4A' : colors.secondary,
                     borderColor: isNow ? '#3B82F6' : colors.border,
                   },
-                  focused && styles.tvFocused,
                 ]}
                 onPress={() => onProgramPress(it.prog, channel)}
               >
@@ -399,7 +393,7 @@ const TVEpgRow = React.memo(function TVEpgRow({
                     {fmtTime(it.prog.start)} – {fmtTime(it.prog.end)}
                   </Text>
                 )}
-              </Pressable>
+              </FocusablePressable>
             );
           }}
         />
@@ -535,30 +529,27 @@ function ProgramModal({ program, channel, onClose, onWatch, colors }: {
           ) : null}
 
           <View style={styles.modalActions}>
-            <TouchableOpacity
+            <FocusablePressable
               style={[styles.closeBtn, { backgroundColor: colors.secondary, borderColor: colors.border }]}
-              onPress={onClose} activeOpacity={0.7}
-              focusable
+              onPress={onClose}
               hasTVPreferredFocus
             >
               <Text style={[styles.closeBtnText, { color: colors.foreground }]}>Close</Text>
-            </TouchableOpacity>
+            </FocusablePressable>
             {isFuture && (
-              <TouchableOpacity
+              <FocusablePressable
                 style={[styles.watchBtn, hasReminder && { backgroundColor: '#6B7280' }]}
                 onPress={handleToggleReminder}
-                activeOpacity={0.8}
-                focusable
               >
                 <Text style={styles.watchBtnText}>
                   {hasReminder ? '🔔 Remove Reminder' : `🔔 Set Reminder · ${leadMins} min before`}
                 </Text>
-              </TouchableOpacity>
+              </FocusablePressable>
             )}
             {isNow && (
-              <TouchableOpacity style={styles.watchBtn} onPress={onWatch} activeOpacity={0.8} focusable hasTVPreferredFocus>
+              <FocusablePressable style={styles.watchBtn} onPress={onWatch} hasTVPreferredFocus>
                 <Text style={styles.watchBtnText}>▶  Watch Live</Text>
-              </TouchableOpacity>
+              </FocusablePressable>
             )}
           </View>
         </TouchableOpacity>
@@ -590,14 +581,10 @@ function CategoryGrid({
     const icon = getCatIcon(name);
     const count = channelCountByCategory[catId] ?? 0;
     return (
-      <Pressable
-        style={({ focused }: any) => [
-          styles.catCard,
-          { backgroundColor: colors.card, borderColor: colors.border, width: colW },
-          focused && styles.tvFocused,
-        ]}
+      <FocusablePressable
+        focusedStyle={styles.tvFocused}
+        style={[styles.catCard, { backgroundColor: colors.card, borderColor: colors.border, width: colW }]}
         onPress={() => onSelect(catId)}
-        focusable
       >
         {/* Icon bubble */}
         <View style={[styles.catIconBubble, { backgroundColor: colors.secondary }]}>
@@ -609,7 +596,7 @@ function CategoryGrid({
         <View style={[styles.catCountBadge, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
           <Text style={[styles.catCount, { color: colors.mutedForeground }]}>{count} channels</Text>
         </View>
-      </Pressable>
+      </FocusablePressable>
     );
   }, [colors, colW, categoryNameMap, channelCountByCategory, onSelect]);
 
@@ -823,26 +810,22 @@ function FullGuide({
           const hasNext = catIndex >= 0 && catIndex < categoryIds.length - 1;
           return (
             <>
-              <TouchableOpacity
+              <FocusablePressable
                 style={[styles.catNavBtn, { opacity: hasPrev ? 1 : 0.25 }]}
                 onPress={() => hasPrev ? onChangeCat(categoryIds[catIndex - 1]) : onBack()}
-                activeOpacity={0.7}
-                focusable
               >
                 <Text style={[styles.catNavArrow, { color: colors.foreground }]}>‹</Text>
-              </TouchableOpacity>
+              </FocusablePressable>
               <Text style={[styles.screenTitle, { color: colors.foreground, flex: 1, textAlign: 'center' }]} numberOfLines={1}>
                 {categoryName}
               </Text>
-              <TouchableOpacity
+              <FocusablePressable
                 style={[styles.catNavBtn, { opacity: hasNext ? 1 : 0.25 }]}
                 onPress={() => { if (hasNext) onChangeCat(categoryIds[catIndex + 1]); }}
                 disabled={!hasNext}
-                activeOpacity={0.7}
-                focusable
               >
                 <Text style={[styles.catNavArrow, { color: colors.foreground }]}>›</Text>
-              </TouchableOpacity>
+              </FocusablePressable>
             </>
           );
         })()}
@@ -857,25 +840,22 @@ function FullGuide({
           </View>
         )}
         {epgError && !epgLoading && (
-          <TouchableOpacity style={[styles.errBadge, { borderColor: '#EF4444' }]} onPress={() => refetchEpg()}>
+          <FocusablePressable style={[styles.errBadge, { borderColor: '#EF4444' }]} onPress={() => refetchEpg()}>
             <Text style={styles.errText}>EPG failed — tap to retry</Text>
-          </TouchableOpacity>
+          </FocusablePressable>
         )}
 
         {/* Refresh EPG button */}
-        <TouchableOpacity
+        <FocusablePressable
           style={[styles.todayBtn, { backgroundColor: colors.secondary, borderColor: colors.border }]}
           onPress={() => refetchEpg()}
-          activeOpacity={0.7}
-          focusable
         >
           <Text style={[styles.todayBtnText, { color: colors.mutedForeground }]}>↺</Text>
-        </TouchableOpacity>
+        </FocusablePressable>
 
         {/* Jump-to-now button — always visible so the user can navigate back to Today */}
-        <TouchableOpacity
+        <FocusablePressable
           style={[styles.todayBtn, { backgroundColor: colors.secondary, borderColor: colors.border }]}
-          focusable
           onPress={() => {
             // If on a future day, snap back to Today first
             setSelectedDay(0);
@@ -886,13 +866,12 @@ function FullGuide({
               timeHeaderRef.current?.scrollTo({ x: scrollX, animated: true });
             }, 50);
           }}
-          activeOpacity={0.7}
         >
           <View style={styles.nowDot} />
           <Text style={[styles.todayBtnText, { color: '#EF4444' }]}>
             {selectedDay === 0 ? 'Now' : 'Today'}
           </Text>
-        </TouchableOpacity>
+        </FocusablePressable>
 
         <TextInput
           value={chFilter}
@@ -911,15 +890,13 @@ function FullGuide({
 
       {/* Day navigation: prev/next arrows + tab strip */}
       <View style={[styles.dayBar, { borderBottomColor: colors.border, backgroundColor: colors.card, flexDirection: 'row', alignItems: 'center' }]}>
-        <TouchableOpacity
+        <FocusablePressable
           style={[styles.dayNavArrow, { opacity: selectedDay === 0 ? 0.25 : 1 }]}
           onPress={() => setSelectedDay((d) => Math.max(0, d - 1))}
           disabled={selectedDay === 0}
-          activeOpacity={0.7}
-          focusable
         >
           <Text style={[styles.dayNavArrowText, { color: colors.foreground }]}>‹</Text>
-        </TouchableOpacity>
+        </FocusablePressable>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -931,7 +908,7 @@ function FullGuide({
             const noData = latestEpgMs > 0 && dayMs >= latestEpgMs;
             const isSelected = i === selectedDay;
             return (
-              <TouchableOpacity
+              <FocusablePressable
                 key={i}
                 style={[
                   styles.dayTab,
@@ -942,8 +919,6 @@ function FullGuide({
                     : { backgroundColor: 'transparent', borderColor: colors.border },
                 ]}
                 onPress={() => setSelectedDay(i)}
-                activeOpacity={0.7}
-                focusable
               >
                 <Text style={[styles.dayTabText, { color: isSelected ? '#fff' : colors.mutedForeground }]}>
                   {d.short}
@@ -951,19 +926,17 @@ function FullGuide({
                 {noData && !isSelected && (
                   <View style={styles.noDataDot} />
                 )}
-              </TouchableOpacity>
+              </FocusablePressable>
             );
           })}
         </ScrollView>
-        <TouchableOpacity
+        <FocusablePressable
           style={[styles.dayNavArrow, { opacity: selectedDay === days.length - 1 ? 0.25 : 1 }]}
           onPress={() => setSelectedDay((d) => Math.min(days.length - 1, d + 1))}
           disabled={selectedDay === days.length - 1}
-          activeOpacity={0.7}
-          focusable
         >
           <Text style={[styles.dayNavArrowText, { color: colors.foreground }]}>›</Text>
-        </TouchableOpacity>
+        </FocusablePressable>
       </View>
 
       {/* ── Full-screen empty state when provider has no EPG for this day ── */}
@@ -990,7 +963,7 @@ function FullGuide({
           <Text style={[styles.emptySub, { color: colors.mutedForeground }]}>
             Try a different channel name.
           </Text>
-          <TouchableOpacity
+          <FocusablePressable
             style={[styles.clearFilterBtn, { backgroundColor: colors.secondary, borderColor: colors.border }]}
             onPress={() => {
               setChFilter('');
@@ -999,10 +972,9 @@ function FullGuide({
               gridHorizRef.current?.scrollTo({ x: scrollX, animated: true });
               timeHeaderRef.current?.scrollTo({ x: scrollX, animated: true });
             }}
-            activeOpacity={0.7}
           >
             <Text style={[styles.clearFilterBtnText, { color: colors.primary }]}>✕ Clear filter</Text>
-          </TouchableOpacity>
+          </FocusablePressable>
         </View>
       ) : null}
       {/* EPG loading overlay — semi-transparent spinner over the grid */}

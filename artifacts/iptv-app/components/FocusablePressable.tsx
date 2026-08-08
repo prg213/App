@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { forwardRef, useState } from 'react';
 import {
   Pressable,
   StyleSheet,
+  View,
   type PressableProps,
   type StyleProp,
   type ViewStyle,
@@ -24,31 +25,30 @@ export interface FocusablePressableProps extends Omit<PressableProps, 'style'> {
  * The Pressable style-callback `focused` prop does not fire on Fire OS; this
  * component uses onFocus/onBlur state which works on every platform.
  */
-export function FocusablePressable({
-  style,
-  focusedStyle,
-  onFocus,
-  onBlur,
-  children,
-  ...props
-}: FocusablePressableProps) {
-  const [focused, setFocused] = useState(false);
-  return (
-    <Pressable
-      focusable
-      accessible
-      {...props}
-      style={[
-        style,
-        focused && (focusedStyle !== undefined ? focusedStyle : styles.defaultFocused),
-      ] as StyleProp<ViewStyle>}
-      onFocus={(e) => { setFocused(true); onFocus?.(e); }}
-      onBlur={(e) => { setFocused(false); onBlur?.(e); }}
-    >
-      {children}
-    </Pressable>
-  );
-}
+export const FocusablePressable = forwardRef<View, FocusablePressableProps>(
+  function FocusablePressable(
+    { style, focusedStyle, onFocus, onBlur, children, ...props },
+    ref,
+  ) {
+    const [focused, setFocused] = useState(false);
+    return (
+      <Pressable
+        ref={ref}
+        focusable
+        accessible
+        {...props}
+        style={[
+          style,
+          focused && (focusedStyle !== undefined ? focusedStyle : styles.defaultFocused),
+        ] as StyleProp<ViewStyle>}
+        onFocus={(e) => { setFocused(true); onFocus?.(e); }}
+        onBlur={(e) => { setFocused(false); onBlur?.(e); }}
+      >
+        {children}
+      </Pressable>
+    );
+  },
+);
 
 const styles = StyleSheet.create({
   defaultFocused: {

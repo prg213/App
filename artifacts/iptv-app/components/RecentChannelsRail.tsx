@@ -4,10 +4,10 @@ import {
   Image,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
+import { FocusablePressable } from '@/components/FocusablePressable';
 import { useColors } from '@/hooks/useColors';
 import { StorageService } from '@/services/storage';
 import { Toast } from '@/components/Toast';
@@ -51,13 +51,12 @@ function RecentCard({ item, nowTitle, colors, onWatchFullscreen, onRemove }: Car
   const ch = toChannel(item);
 
   return (
-    <TouchableOpacity
+    <FocusablePressable
       ref={cardRef as any}
       style={styles.card}
       onPress={() => onWatchFullscreen(ch, cardRef)}
       onLongPress={() => onRemove(item.id)}
       delayLongPress={500}
-      activeOpacity={0.75}
     >
       {/* Logo area — 16:9 crop */}
       <View style={[styles.logoWrap, { backgroundColor: colors.secondary }]}>
@@ -86,7 +85,7 @@ function RecentCard({ item, nowTitle, colors, onWatchFullscreen, onRemove }: Car
           {nowTitle}
         </Text>
       ) : null}
-    </TouchableOpacity>
+    </FocusablePressable>
   );
 }
 
@@ -131,9 +130,9 @@ export function RecentChannelsRail({
         <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>
           RECENTLY WATCHED
         </Text>
-        <TouchableOpacity onPress={handleClearAll} hitSlop={8} activeOpacity={0.6}>
+        <FocusablePressable onPress={handleClearAll} hitSlop={8}>
           <Text style={[styles.clearAll, { color: colors.mutedForeground }]}>Clear all</Text>
-        </TouchableOpacity>
+        </FocusablePressable>
       </View>
       <FlatList
         data={recent}
