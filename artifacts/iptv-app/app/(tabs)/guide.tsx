@@ -293,6 +293,8 @@ const TVEpgRow = React.memo(function TVEpgRow({
   const flatRef = useRef<FlatList>(null);
   // Ref to the first programme cell — used by the channel-press auto-advance
   const progFirstRef = useRef<View>(null);
+  // Ref to the cell at initialIdx — used to restore focus after the initial scroll
+  const initialProgRef = useRef<View>(null);
   const dayEndMs = dayStartMs + DAY_MINS * 60_000;
 
   // Pre-compute widths + cumulative offsets so getItemLayout is O(1)
@@ -319,13 +321,24 @@ const TVEpgRow = React.memo(function TVEpgRow({
 
   useEffect(() => {
     if (initialIdx == null || !flatRef.current) return;
-    const timer = setTimeout(() => {
+    let focusTimer: ReturnType<typeof setTimeout> | null = null;
+    const scrollTimer = setTimeout(() => {
       try {
         flatRef.current?.scrollToIndex({ index: initialIdx, animated: false, viewPosition: 0 });
       } catch (_) {}
+      // Only restore D-pad focus on the first row (hasTVPreferredFocus owner).
+      // Every other row would compete and steal focus from the intended cell.
+      if (Platform.isTV && isFirst) {
+        focusTimer = setTimeout(() => {
+          initialProgRef.current?.focus();
+        }, 80);
+      }
     }, 150);
-    return () => clearTimeout(timer);
-  }, [initialIdx]);
+    return () => {
+      clearTimeout(scrollTimer);
+      if (focusTimer !== null) clearTimeout(focusTimer);
+    };
+  }, [initialIdx, isFirst]);
 
   const getItemLayout = useCallback((_: any, index: number) => {
     const it = items[index];
@@ -380,9 +393,18 @@ const TVEpgRow = React.memo(function TVEpgRow({
               ? (now - it.prog.start.getTime()) / (it.prog.end.getTime() - it.prog.start.getTime())
               : 0;
             const hasReminder = reminderIds?.has(`${channel.id}_${it.prog.start.toISOString()}`);
+            // Callback ref: assigns progFirstRef (index 0, used by channel-cell press
+            // auto-advance) and initialProgRef (initialIdx, used for post-scroll focus
+            // restoration) independently — both assigned when initialIdx === 0.
+            const cellRef = (index === 0 || index === initialIdx)
+              ? (el: View | null) => {
+                  if (index === 0) (progFirstRef as React.MutableRefObject<View | null>).current = el;
+                  if (index === initialIdx) (initialProgRef as React.MutableRefObject<View | null>).current = el;
+                }
+              : undefined;
             return (
               <FocusablePressable
-                ref={index === 0 ? progFirstRef : undefined}
+                ref={cellRef}
                 focusedStyle={styles.tvFocused}
                 style={[
                   styles.tvProgCell,
