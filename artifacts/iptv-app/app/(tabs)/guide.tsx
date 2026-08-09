@@ -11,6 +11,7 @@ import {
   Alert,
   Animated,
   DeviceEventEmitter,
+  findNodeHandle,
   FlatList,
   Image,
   Modal,
@@ -598,12 +599,65 @@ function CategoryGrid({
   const numCols = Math.max(2, Math.floor(availW / 180));
   const colW = Math.floor((availW - (numCols + 1) * 12) / numCols);
 
+  // ── TV / Fire TV: D-pad cross-row wrapping ───────────────────────────────
+  // On Fire TV a multi-column FlatList does not automatically carry D-pad
+  // focus across row boundaries. We wire nextFocusRight / nextFocusLeft per
+  // card *at mount time* so that cells virtualised into view while scrolling
+  // are wired as they appear — not just during a one-off post-render sweep.
+  const cardRefs = useRef<(View | null)[]>([]);
+
+  // Called from the ref callback each time a card mounts.
+  // It pairs the newly-mounted card with its already-mounted row neighbours
+  // (and reciprocally updates those neighbours to point back at this card).
+  const wireCard = useCallback((index: number) => {
+    if (!Platform.isTV) return;
+    const total = categoryIds.length;
+    const col   = index % numCols;
+    const isFirstInRow = col === 0;
+    const isLastInRow  = col === numCols - 1 || index === total - 1;
+    const self = cardRefs.current[index];
+    if (!self) return;
+
+    // ── Pair with the last card of the previous row ──────────────────────
+    if (isFirstInRow && index > 0) {
+      const prev = cardRefs.current[index - 1];
+      if (prev) {
+        const selfHandle = findNodeHandle(self);
+        const prevHandle = findNodeHandle(prev);
+        // last card of prev row → right → this card
+        if (selfHandle != null) prev.setNativeProps({ nextFocusRight: selfHandle });
+        // this card → left → last card of prev row
+        if (prevHandle != null) self.setNativeProps({ nextFocusLeft: prevHandle });
+      }
+    }
+
+    // ── Pair with the first card of the next row ─────────────────────────
+    if (isLastInRow && index + 1 < total) {
+      const next = cardRefs.current[index + 1];
+      if (next) {
+        const selfHandle = findNodeHandle(self);
+        const nextHandle = findNodeHandle(next);
+        // this card → right → first card of next row
+        if (nextHandle != null) self.setNativeProps({ nextFocusRight: nextHandle });
+        // first card of next row → left → this card
+        if (selfHandle != null) next.setNativeProps({ nextFocusLeft: selfHandle });
+      }
+    }
+  }, [categoryIds.length, numCols]);
+
   const renderItem = useCallback(({ item: catId, index }: { item: string; index: number }) => {
     const name = categoryNameMap[catId] ?? catId;
     const icon = getCatIcon(name);
     const count = channelCountByCategory[catId] ?? 0;
     return (
       <FocusablePressable
+        ref={(r) => {
+          cardRefs.current[index] = r as View | null;
+          // Wire cross-row D-pad focus as soon as this cell's native node is
+          // ready. The tiny timeout lets the Pressable finish measuring before
+          // findNodeHandle is called — required on all RN TV targets.
+          if (r) setTimeout(() => wireCard(index), 50);
+        }}
         focusedStyle={styles.tvFocused}
         hasTVPreferredFocus={index === 0}
         style={[styles.catCard, { backgroundColor: colors.card, borderColor: colors.border, width: colW }]}
@@ -621,7 +675,7 @@ function CategoryGrid({
         </View>
       </FocusablePressable>
     );
-  }, [colors, colW, categoryNameMap, channelCountByCategory, onSelect]);
+  }, [colors, colW, categoryNameMap, channelCountByCategory, onSelect, wireCard]);
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
