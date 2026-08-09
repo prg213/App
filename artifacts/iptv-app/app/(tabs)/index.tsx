@@ -1386,12 +1386,13 @@ export default function LiveTVScreen() {
             <View style={styles.epgHeaderRow}>
               <Text style={[styles.epgHeader, { color: colors.mutedForeground }]}>TV GUIDE</Text>
               {selectedChannel.tvArchive === 1 && (
-                <Pressable
+                <FocusablePressable
                   onPress={() => setShowCatchup(true)}
-                  style={({ pressed }) => [styles.catchupBtn, pressed && { opacity: 0.7 }]}
+                  style={styles.catchupBtn}
+                  focusedStyle={styles.tvFocused}
                 >
                   <Text style={styles.catchupBtnText}>📅 Catch-up</Text>
-                </Pressable>
+                </FocusablePressable>
               )}
             </View>
             {channelEpg.length > 0 ? (
@@ -1417,15 +1418,16 @@ export default function LiveTVScreen() {
                   const reminderId = `${selectedChannel!.id}_${prog.start.toISOString()}`;
                   const hasReminder = miniReminderIds.has(reminderId);
                   return (
-                    <Pressable
+                    <FocusablePressable
                       key={i}
                       onPress={isFuture ? () => handleToggleMiniReminder(prog) : undefined}
-                      style={({ pressed }) => [
+                      focusable={isFuture}
+                      style={[
                         styles.epgRow,
                         { borderBottomColor: colors.border },
                         isCurrent && { backgroundColor: 'rgba(59,130,246,0.08)' },
-                        isFuture && pressed && { backgroundColor: 'rgba(255,255,255,0.04)' },
                       ]}
+                      focusedStyle={isFuture ? styles.tvFocused : {}}
                     >
                       <View style={styles.epgTimeCol}>
                         <Text style={[styles.epgTime, { color: isCurrent ? '#3B82F6' : colors.mutedForeground }]}>
@@ -1472,7 +1474,7 @@ export default function LiveTVScreen() {
                           {hasReminder ? '🔔' : '🔕'}
                         </Text>
                       )}
-                    </Pressable>
+                    </FocusablePressable>
                   );
                 })}
               </ScrollView>
