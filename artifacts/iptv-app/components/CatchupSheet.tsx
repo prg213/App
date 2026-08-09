@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import {
   ActivityIndicator,
   Modal,
@@ -8,6 +8,7 @@ import {
   View,
 } from 'react-native';
 import { FocusablePressable } from '@/components/FocusablePressable';
+import { Toast } from '@/components/Toast';
 import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -102,6 +103,9 @@ export function CatchupSheet({
   }, [todayMidnight, archiveDays]);
 
   const [selectedDay, setSelectedDay] = useState<Date>(() => days[0]);
+  const [futureToast, setFutureToast] = useState(false);
+
+  const handleFutureTap = useCallback(() => setFutureToast(true), []);
 
   // Fetch all catchup programmes from the Xtream API (includes past days).
   const { data: catchupPrograms, isLoading } = useQuery<CatchupProgram[]>({
@@ -275,7 +279,7 @@ export function CatchupSheet({
               return (
                 <FocusablePressable
                   key={prog.id ?? i}
-                  onPress={() => (canPlay ? handlePlayCatchup(prog) : undefined)}
+                  onPress={() => (canPlay ? handlePlayCatchup(prog) : handleFutureTap())}
                   focusable={canPlay}
                   style={[
                     sheet.progRow,
@@ -336,6 +340,12 @@ export function CatchupSheet({
             })}
           </ScrollView>
         )}
+        <Toast
+          message="Not yet available"
+          visible={futureToast}
+          duration={2500}
+          onHide={() => setFutureToast(false)}
+        />
       </View>
     </Modal>
   );
