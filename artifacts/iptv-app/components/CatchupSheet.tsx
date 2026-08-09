@@ -2,6 +2,7 @@ import React, { useMemo, useState, useCallback } from 'react';
 import {
   ActivityIndicator,
   Modal,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -105,7 +106,10 @@ export function CatchupSheet({
   const [selectedDay, setSelectedDay] = useState<Date>(() => days[0]);
   const [futureToast, setFutureToast] = useState(false);
 
-  const handleFutureTap = useCallback(() => setFutureToast(true), []);
+  const handleFutureTap = useCallback(() => {
+    // On TV the "Future" chip is already visible feedback; suppress the toast.
+    if (!Platform.isTV) setFutureToast(true);
+  }, []);
 
   // Fetch all catchup programmes from the Xtream API (includes past days).
   const { data: catchupPrograms, isLoading } = useQuery<CatchupProgram[]>({
