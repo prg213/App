@@ -1185,15 +1185,16 @@ export default function LiveTVScreen() {
             </Text>
           )}
           {isFavsSelected && favorites.length > 1 && (
-            <Pressable
+            <FocusablePressable
               onPress={isReordering ? handleDone : handleEditStart}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              style={({ pressed }) => [styles.editBtn, pressed && { opacity: 0.6 }]}
+              style={styles.editBtn}
+              focusedStyle={styles.editBtnFocused}
             >
               <Text style={styles.editBtnText}>
                 {isReordering ? 'Done' : 'Edit'}
               </Text>
-            </Pressable>
+            </FocusablePressable>
           )}
         </View>
 
@@ -1553,6 +1554,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#3B82F6',
     borderRadius: 6,
     marginLeft: 'auto',
+  },
+  editBtnFocused: {
+    borderWidth: 2,
+    borderColor: '#00E5FF',
   },
   editBtnText: {
     color: '#fff',
