@@ -273,7 +273,7 @@ interface TVProgItem {
 
 const TVEpgRow = React.memo(function TVEpgRow({
   channel, programs, dayStartMs, now, isToday, isFirst, colors, reminderIds,
-  onProgramPress, onWatchChannel,
+  onProgramPress, onWatchChannel, firstChannelRef,
 }: {
   channel: Channel;
   programs: EpgProgram[];
@@ -286,8 +286,12 @@ const TVEpgRow = React.memo(function TVEpgRow({
   reminderIds?: Set<string>;
   onProgramPress: (p: EpgProgram, ch: Channel) => void;
   onWatchChannel: (ch: Channel) => void;
+  /** Ref forwarded from FullGuide so it can focus the first channel cell after a category change */
+  firstChannelRef?: React.Ref<View>;
 }) {
   const flatRef = useRef<FlatList>(null);
+  // Ref to the first programme cell — used by the channel-press auto-advance
+  const progFirstRef = useRef<View>(null);
   const dayEndMs = dayStartMs + DAY_MINS * 60_000;
 
   // Pre-compute widths + cumulative offsets so getItemLayout is O(1)
@@ -329,12 +333,19 @@ const TVEpgRow = React.memo(function TVEpgRow({
 
   return (
     <View style={[styles.tvRow, { borderBottomColor: colors.border }]}>
-      {/* Channel info cell — OK/Select watches channel */}
+      {/* Channel info cell — OK/Select advances focus to first programme;
+          long-press watches the channel live (matches catchup auto-advance pattern) */}
       <FocusablePressable
+        ref={firstChannelRef}
         focusedStyle={styles.tvFocused}
         hasTVPreferredFocus={isFirst}
         style={[styles.tvChCell, { backgroundColor: colors.card, borderRightColor: colors.border }]}
-        onPress={() => onWatchChannel(channel)}
+        onPress={() => {
+          // Auto-advance D-pad focus to the first programme cell in this row
+          setTimeout(() => { progFirstRef.current?.focus(); }, 80);
+        }}
+        onLongPress={() => onWatchChannel(channel)}
+        delayLongPress={400}
       >
         {channel.logo ? (
           <Image source={{ uri: channel.logo }} style={styles.tvChLogo} resizeMode="contain" />
@@ -362,7 +373,7 @@ const TVEpgRow = React.memo(function TVEpgRow({
           getItemLayout={getItemLayout}
           showsHorizontalScrollIndicator={false}
           style={{ flex: 1 }}
-          renderItem={({ item: it }) => {
+          renderItem={({ item: it, index }) => {
             const isNow = it.prog.start.getTime() <= now && now < it.prog.end.getTime();
             const progress = isNow
               ? (now - it.prog.start.getTime()) / (it.prog.end.getTime() - it.prog.start.getTime())
@@ -370,6 +381,7 @@ const TVEpgRow = React.memo(function TVEpgRow({
             const hasReminder = reminderIds?.has(`${channel.id}_${it.prog.start.toISOString()}`);
             return (
               <FocusablePressable
+                ref={index === 0 ? progFirstRef : undefined}
                 focusedStyle={styles.tvFocused}
                 style={[
                   styles.tvProgCell,
@@ -671,6 +683,18 @@ function FullGuide({
   const [guideReminderIds, setGuideReminderIds] = useState<Set<string>>(new Set());
   const [chFilter, setChFilter] = useState('');
   const [debouncedChFilter, setDebouncedChFilter] = useState('');
+
+  // ── Auto-advance D-pad focus between columns (TV / Fire TV only) ───────────
+  // Ref attached to the first channel cell so we can programmatically focus it.
+  const firstChannelRef = useRef<View>(null);
+
+  // Focus the first channel cell whenever the selected category changes (covers
+  // both the initial mount from CategoryGrid and ‹ › prev/next navigation).
+  useEffect(() => {
+    if (!Platform.isTV) return;
+    const timer = setTimeout(() => { firstChannelRef.current?.focus(); }, 100);
+    return () => clearTimeout(timer);
+  }, [selectedCat]);
 
   // Debounce chFilter so rapid keystrokes don't thrash visibleChannels useMemo
   useEffect(() => {
@@ -1018,6 +1042,7 @@ function FullGuide({
                 colors={colors}
                 reminderIds={guideReminderIds}
                 onProgramPress={(p, c) => setSelected({ program: p, channel: c })}
+                firstChannelRef={index === 0 ? firstChannelRef : undefined}
                 onWatchChannel={(c) => {
                   const chList = channels.map((x) => ({
                     url: x.streamUrl, title: x.name,
