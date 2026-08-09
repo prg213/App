@@ -151,6 +151,16 @@ export function CatchupSheet({
     return catchupPrograms.filter((p) => isSameDay(p.start, selectedDay));
   }, [catchupPrograms, selectedDay, isToday, epgMap, channel, todayMidnight]);
 
+  // Index of the first programme row the user can actually play.
+  // Used to route initial D-pad focus away from the close button on TV.
+  const firstPlayableIndex = useMemo<number>(() => {
+    return programmes.findIndex((p) => {
+      const isPast = p.end.getTime() < nowTs;
+      const isCurrent = p.start.getTime() <= nowTs && nowTs < p.end.getTime();
+      return isPast || isCurrent;
+    });
+  }, [programmes, nowTs]);
+
   const handlePlayCatchup = (prog: CatchupProgram) => {
     const durationMinutes = Math.max(
       1,
@@ -210,7 +220,7 @@ export function CatchupSheet({
             hitSlop={{ top: 12, bottom: 12, left: 16, right: 4 }}
             style={sheet.closeTouchable}
             focusedStyle={sheet.closeFocused}
-            hasTVPreferredFocus
+            hasTVPreferredFocus={Platform.isTV ? firstPlayableIndex === -1 : undefined}
           >
             <Text style={[sheet.closeIcon, { color: colors.mutedForeground }]}>✕</Text>
           </FocusablePressable>
@@ -285,6 +295,7 @@ export function CatchupSheet({
                   key={prog.id ?? i}
                   onPress={() => (canPlay ? handlePlayCatchup(prog) : handleFutureTap())}
                   focusable={canPlay}
+                  hasTVPreferredFocus={Platform.isTV && i === firstPlayableIndex ? true : undefined}
                   style={[
                     sheet.progRow,
                     { borderBottomColor: colors.border },
