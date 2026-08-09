@@ -833,3 +833,147 @@ describe('AppContextProvider — interval pauses on background and resumes on ac
     expect((global.fetch as jest.Mock).mock.calls.length).toBeGreaterThan(fetchesBeforeResume + 1);
   });
 });
+
+// ── Interval grace window after a foreground check (#189) ─────────────────────
+//
+// startMacInterval skips a tick when a foreground check ran within the last
+// 2 minutes (SKIP_AFTER_FOREGROUND_MS).  These tests confirm the guard works
+// correctly in both directions: tick IS skipped within the window, and IS
+// processed once the window has elapsed.
+
+describe('AppContextProvider — interval grace window after foreground check (#189)', () => {
+  const FAKE_CREDS = JSON.stringify({
+    url:      'http://example.com',
+    username: 'user',
+    password: 'pass',
+  });
+
+  // Must match startMacInterval's INTERVAL_MS and SKIP_AFTER_FOREGROUND_MS.
+  const INTERVAL_MS            = 5 * 60_000; // 5 minutes
+  const SKIP_AFTER_FOREGROUND_MS = 2 * 60_000; // 2-minute grace window
+
+  let currentRenderer: ReturnType<typeof import('react-test-renderer').create> | null = null;
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+  });
+
+  afterEach(async () => {
+    if (currentRenderer) {
+      await act(async () => { currentRenderer!.unmount(); });
+      currentRenderer = null;
+    }
+    jest.useRealTimers();
+  });
+
+  /**
+   * Renders the provider with stored credentials so the startup MAC check
+   * succeeds, isActivated is true, lastForegroundCheckRef is stamped at T=0,
+   * and startMacInterval is called.
+   *
+   * Returns the total number of fetch calls made during startup so tests can
+   * count incremental calls without being coupled to the exact startup count.
+   */
+  async function renderActivatedProvider() {
+    (SecureStore.getItemAsync as jest.Mock).mockResolvedValueOnce(FAKE_CREDS);
+
+    // Startup fetch → MAC still active.
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok:   true,
+      json: jest.fn().mockResolvedValue({ status: 'active' }),
+    });
+
+    const { renderer } = await renderProvider();
+    currentRenderer = renderer;
+
+    const fetchCountAfterStartup = (global.fetch as jest.Mock).mock.calls.length;
+    return { fetchCountAfterStartup };
+  }
+
+  /**
+   * Test K — interval tick within the 2-minute grace window is skipped.
+   *
+   * Timeline (fake clock):
+   *   T = 0        : startup — lastForegroundCheckRef = 0, interval starts.
+   *   T = 4 min    : AppState 'active' (foreground) — lastForegroundCheckRef = 4 min.
+   *   T = 5 min    : first interval tick fires.
+   *                  Date.now() − lastForegroundCheckRef = 1 min < 2 min → SKIP.
+   *
+   * fetch must NOT be called by the interval tick; total fetch count must
+   * equal startup (1) + foreground check (1) = 2.
+   */
+  test('interval tick within the 2-minute grace window does not call fetch', async () => {
+    const { fetchCountAfterStartup } = await renderActivatedProvider();
+
+    // Advance clock to T=4 min and fire a foreground check.
+    // This stamps lastForegroundCheckRef at fake-now = 4 min.
+    await jest.advanceTimersByTimeAsync(4 * 60_000);
+    await act(async () => {});
+
+    // Provide the mock response consumed by the foreground MAC check.
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok:   true,
+      json: jest.fn().mockResolvedValue({ status: 'active' }),
+    });
+    await act(async () => { await capturedAppStateListener!('active'); });
+    await act(async () => {});
+
+    const fetchCountAfterForeground = (global.fetch as jest.Mock).mock.calls.length;
+    // Sanity: the foreground check did consume exactly one more fetch call.
+    expect(fetchCountAfterForeground).toBe(fetchCountAfterStartup + 1);
+
+    // Advance the remaining 1 minute so the interval tick fires at T=5 min.
+    // Date.now() − lastForegroundCheckRef = 1 min < SKIP_AFTER_FOREGROUND_MS → SKIP.
+    // Do NOT register a mock fetch response — the tick must not reach isMacStillRegistered.
+    await jest.advanceTimersByTimeAsync(INTERVAL_MS - 4 * 60_000);
+    await act(async () => {});
+
+    // fetch call count must be unchanged — the interval tick was suppressed.
+    expect((global.fetch as jest.Mock).mock.calls.length).toBe(fetchCountAfterForeground);
+  });
+
+  /**
+   * Test L — interval tick after the grace window has elapsed does call fetch.
+   *
+   * Timeline (fake clock):
+   *   T = 0        : startup — lastForegroundCheckRef = 0, interval starts.
+   *   T = 1 min    : AppState 'active' (foreground) — lastForegroundCheckRef = 1 min.
+   *   T = 5 min    : first interval tick fires.
+   *                  Date.now() − lastForegroundCheckRef = 4 min > 2 min → NOT skipped.
+   *
+   * fetch MUST be called by the interval tick; total fetch count must equal
+   * startup (1) + foreground check (1) + interval tick (1) = 3.
+   */
+  test('interval tick after the grace window has elapsed does call fetch', async () => {
+    const { fetchCountAfterStartup } = await renderActivatedProvider();
+
+    // Advance clock to T=1 min and fire a foreground check.
+    // lastForegroundCheckRef = 1 min; the upcoming interval tick at T=5 min is 4 min later.
+    await jest.advanceTimersByTimeAsync(1 * 60_000);
+    await act(async () => {});
+
+    // Mock response for the foreground MAC check.
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok:   true,
+      json: jest.fn().mockResolvedValue({ status: 'active' }),
+    });
+    await act(async () => { await capturedAppStateListener!('active'); });
+    await act(async () => {});
+
+    const fetchCountAfterForeground = (global.fetch as jest.Mock).mock.calls.length;
+    expect(fetchCountAfterForeground).toBe(fetchCountAfterStartup + 1);
+
+    // Advance the remaining 4 minutes so the interval tick fires at T=5 min.
+    // Date.now() − lastForegroundCheckRef = 4 min > SKIP_AFTER_FOREGROUND_MS → NOT skipped.
+    // Provide the mock response that the interval tick will consume.
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok:   true,
+      json: jest.fn().mockResolvedValue({ status: 'active' }),
+    });
+    await jest.advanceTimersByTimeAsync(INTERVAL_MS - 1 * 60_000);
+    await act(async () => {});
+
+    // fetch call count must have increased by exactly one (the interval tick).
+    expect((global.fetch as jest.Mock).mock.calls.length).toBe(fetchCountAfterForeground + 1);
+  });
+});
