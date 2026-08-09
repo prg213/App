@@ -456,3 +456,149 @@ describe('AppContextProvider — consecutive MAC failure counter', () => {
     expect(getIsActivated()).toBe(true);
   });
 });
+
+// ── Consecutive MAC failure counter — background polling path (#256) ──────────
+//
+// These tests exercise the setInterval branch inside startMacInterval, which
+// runs every 5 minutes in the background.  The same consecutiveMacFailRef
+// counter is shared with the foreground-listener path; these tests confirm that
+// a refactor cannot silently break or disconnect the interval branch.
+
+describe('AppContextProvider — consecutive MAC failure counter (interval path)', () => {
+  const FAKE_CREDS = JSON.stringify({
+    url:      'http://example.com',
+    username: 'user',
+    password: 'pass',
+  });
+
+  // 5-minute polling interval (must match startMacInterval's INTERVAL_MS).
+  const INTERVAL_MS = 5 * 60_000;
+
+  let currentRenderer: ReturnType<typeof import('react-test-renderer').create> | null = null;
+
+  beforeEach(() => {
+    // Fake timers let us advance the clock past the 5-minute interval without
+    // waiting real wall-clock time.
+    jest.useFakeTimers();
+  });
+
+  afterEach(async () => {
+    if (currentRenderer) {
+      await act(async () => { currentRenderer!.unmount(); });
+      currentRenderer = null;
+    }
+    // Restore real timers so subsequent describes are unaffected.
+    jest.useRealTimers();
+  });
+
+  /**
+   * Renders the provider with credentials pre-loaded so the startup MAC check
+   * succeeds, isActivated becomes true, and startMacInterval is called.
+   */
+  async function renderActivatedProvider() {
+    (SecureStore.getItemAsync as jest.Mock).mockResolvedValueOnce(FAKE_CREDS);
+
+    // Startup fetch → MAC still active.
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok:   true,
+      json: jest.fn().mockResolvedValue({ status: 'active' }),
+    });
+
+    const { renderer, getIsActivated } = await renderProvider();
+    currentRenderer = renderer;
+    return { getIsActivated };
+  }
+
+  type TickResult = 'active' | 'inactive' | 'network-error' | 'server-error';
+
+  /**
+   * Advances the fake clock by one 5-minute interval tick and awaits the
+   * async interval callback (including its fetch call and any state updates).
+   *
+   * jest.advanceTimersByTimeAsync (Jest 29) fires the setInterval callback and
+   * awaits any promises it schedules before resolving, so the counter and state
+   * are fully settled when this helper returns.
+   */
+  async function fireTick(result: TickResult) {
+    switch (result) {
+      case 'network-error':
+        (global.fetch as jest.Mock).mockRejectedValueOnce(new Error('Network request failed'));
+        break;
+      case 'server-error':
+        (global.fetch as jest.Mock).mockResolvedValueOnce({ ok: false });
+        break;
+      default:
+        (global.fetch as jest.Mock).mockResolvedValueOnce({
+          ok:   true,
+          json: jest.fn().mockResolvedValue({ status: result }),
+        });
+    }
+    // Advance the fake clock, awaiting all async timer callbacks (Jest 29 API).
+    await jest.advanceTimersByTimeAsync(INTERVAL_MS);
+    // Flush any React state updates triggered by doLogout (setIsActivated etc.).
+    await act(async () => {});
+  }
+
+  /**
+   * Test F — 4 interval ticks reporting inactive do NOT log the user out.
+   *
+   * The threshold is 5; four consecutive inactive responses from the periodic
+   * poll must leave the user logged in.
+   */
+  test('4 interval ticks reporting inactive do NOT log the user out', async () => {
+    const { getIsActivated } = await renderActivatedProvider();
+    expect(getIsActivated()).toBe(true);
+
+    for (let i = 0; i < 4; i++) {
+      await fireTick('inactive');
+    }
+
+    expect(getIsActivated()).toBe(true);
+  });
+
+  /**
+   * Test G — A success tick resets the counter so a new streak of 4 still
+   * keeps the user logged in.
+   *
+   * 4 failures → 1 success → 4 more failures must not trigger logout because
+   * the success zeroed the shared consecutiveMacFailRef counter.
+   */
+  test('a success tick resets the failure counter so 4 more inactive ticks keep the user in', async () => {
+    const { getIsActivated } = await renderActivatedProvider();
+    expect(getIsActivated()).toBe(true);
+
+    // 4 consecutive failures — counter reaches 4, still under the threshold.
+    for (let i = 0; i < 4; i++) {
+      await fireTick('inactive');
+    }
+    expect(getIsActivated()).toBe(true);
+
+    // One success — counter must be reset to 0.
+    await fireTick('active');
+    expect(getIsActivated()).toBe(true);
+
+    // 4 more failures after the reset — counter is back to 4, under threshold.
+    for (let i = 0; i < 4; i++) {
+      await fireTick('inactive');
+    }
+
+    expect(getIsActivated()).toBe(true);
+  });
+
+  /**
+   * Test H — 5 consecutive interval ticks reporting inactive DO trigger logout.
+   *
+   * After 5 back-to-back inactive responses from the periodic poll, doLogout
+   * must be called and isActivated must flip to false.
+   */
+  test('5 consecutive interval ticks reporting inactive trigger logout', async () => {
+    const { getIsActivated } = await renderActivatedProvider();
+    expect(getIsActivated()).toBe(true);
+
+    for (let i = 0; i < 5; i++) {
+      await fireTick('inactive');
+    }
+
+    expect(getIsActivated()).toBe(false);
+  });
+});
