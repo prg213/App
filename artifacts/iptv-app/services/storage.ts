@@ -34,6 +34,9 @@ export const KEYS = {
   // a one-time explanation banner. Intentionally NOT cleared in clearCredentials
   // so it survives the logout and is readable on first render of activation.
   LOGOUT_REASON: 'sv_logout_reason',
+  // #267: persisted consecutive MAC-check failure count so force-quitting and
+  // relaunching cannot indefinitely reset the deactivation streak to 0.
+  STARTUP_FAIL_COUNT: 'sv_startup_fail_count',
 };
 
 export const StorageService = {
@@ -75,6 +78,7 @@ export const StorageService = {
       KEYS.PREF_SEARCH_QUERY, // #122: clear saved search query on logout
       KEYS.BACKFILL_TS,
       KEYS.RECENT_SEARCHES,  // #122: also clear recent search history on logout
+      KEYS.STARTUP_FAIL_COUNT, // #267: reset persisted failure streak on logout
       // NOTE: LOGOUT_REASON is intentionally excluded — it must survive logout
       // so the activation screen can display a one-time explanation banner.
     ]);
@@ -456,6 +460,31 @@ export const StorageService = {
 
   /** Persists the reason for a forced logout so the activation screen can show
    *  a one-time explanation. Call before clearing credentials. */
+  // ── Persisted MAC failure count (#267) ────────────────────────────────────
+  // Survives force-quits so repeated cold-starts cannot reset the deactivation
+  // streak.  All three helpers are fire-and-forget safe (callers may void them).
+
+  async getStartupFailCount(): Promise<number> {
+    try {
+      const raw = await AsyncStorage.getItem(KEYS.STARTUP_FAIL_COUNT);
+      if (!raw) return 0;
+      const n = parseInt(raw, 10);
+      return Number.isFinite(n) && n > 0 ? n : 0;
+    } catch { return 0; }
+  },
+
+  async saveStartupFailCount(count: number): Promise<void> {
+    try {
+      await AsyncStorage.setItem(KEYS.STARTUP_FAIL_COUNT, String(count));
+    } catch { /* ignore — in-memory counter still works */ }
+  },
+
+  async clearStartupFailCount(): Promise<void> {
+    try {
+      await AsyncStorage.removeItem(KEYS.STARTUP_FAIL_COUNT);
+    } catch { /* ignore */ }
+  },
+
   async saveLogoutReason(reason: string): Promise<void> {
     try {
       await AsyncStorage.setItem(KEYS.LOGOUT_REASON, reason);

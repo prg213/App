@@ -16,8 +16,9 @@
  */
 
 import React, { useCallback, useRef } from 'react';
-import { StyleSheet, Text, View, ScrollView } from 'react-native';
+import { Platform, StyleSheet, Text, View, ScrollView } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { FocusablePressable } from '@/components/FocusablePressable';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -44,6 +45,9 @@ type RowProps = {
   children: React.ReactNode;
   colors: ReturnType<typeof useColors>;
   onDragEnd: (fromIdx: number, toIdx: number) => void;
+  /** #253: D-pad callbacks used on TV instead of the drag gesture. */
+  onMoveUp: () => void;
+  onMoveDown: () => void;
 };
 
 const DraggableRow = React.memo(function DraggableRow({
@@ -55,6 +59,8 @@ const DraggableRow = React.memo(function DraggableRow({
   children,
   colors,
   onDragEnd,
+  onMoveUp,
+  onMoveDown,
 }: RowProps) {
   const pan = Gesture.Pan()
     .minDistance(4)
@@ -129,14 +135,38 @@ const DraggableRow = React.memo(function DraggableRow({
     };
   });
 
+  const canMoveUp   = index > 0;
+  const canMoveDown = index < itemCount - 1;
+
   return (
     <Animated.View style={[styles.rowWrap, { height: rowHeight }, animStyle]}>
       <View style={styles.rowContent}>{children}</View>
-      <GestureDetector gesture={pan}>
-        <View style={[styles.handle, { borderLeftColor: colors.border }]}>
-          <Text style={[styles.handleIcon, { color: colors.mutedForeground }]}>☰</Text>
+
+      {Platform.isTV ? (
+        // #253: Firestick/Android TV users can't drag — offer focusable ▲ ▼ buttons.
+        <View style={[styles.tvHandle, { borderLeftColor: colors.border }]}>
+          <FocusablePressable
+            onPress={canMoveUp ? onMoveUp : undefined}
+            style={[styles.tvMoveBtn, !canMoveUp && styles.tvMoveBtnDisabled]}
+            focusedStyle={styles.tvMoveBtnFocused}
+          >
+            <Text style={[styles.tvMoveBtnIcon, { color: canMoveUp ? colors.foreground : colors.border }]}>▲</Text>
+          </FocusablePressable>
+          <FocusablePressable
+            onPress={canMoveDown ? onMoveDown : undefined}
+            style={[styles.tvMoveBtn, !canMoveDown && styles.tvMoveBtnDisabled]}
+            focusedStyle={styles.tvMoveBtnFocused}
+          >
+            <Text style={[styles.tvMoveBtnIcon, { color: canMoveDown ? colors.foreground : colors.border }]}>▼</Text>
+          </FocusablePressable>
         </View>
-      </GestureDetector>
+      ) : (
+        <GestureDetector gesture={pan}>
+          <View style={[styles.handle, { borderLeftColor: colors.border }]}>
+            <Text style={[styles.handleIcon, { color: colors.mutedForeground }]}>☰</Text>
+          </View>
+        </GestureDetector>
+      )}
     </Animated.View>
   );
 });
@@ -193,6 +223,8 @@ export function DraggableFavList<T>({
           dragOffset={dragOffset}
           colors={colors}
           onDragEnd={handleDragEnd}
+          onMoveUp={() => handleDragEnd(index, index - 1)}
+          onMoveDown={() => handleDragEnd(index, index + 1)}
         >
           {renderItem(item, index)}
         </DraggableRow>
@@ -221,4 +253,26 @@ const styles = StyleSheet.create({
   handleIcon: {
     fontSize: 18,
   },
+
+  // #253: TV remote up/down move buttons (replaces drag handle on isTV)
+  tvHandle: {
+    width: 48,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 2,
+    borderLeftWidth: StyleSheet.hairlineWidth,
+  },
+  tvMoveBtn: {
+    width: 36,
+    height: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 4,
+  },
+  tvMoveBtnFocused: {
+    borderWidth: 2,
+    borderColor: '#00E5FF',
+  },
+  tvMoveBtnDisabled: { opacity: 0.25 },
+  tvMoveBtnIcon: { fontSize: 11 },
 });

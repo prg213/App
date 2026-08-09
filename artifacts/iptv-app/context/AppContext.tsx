@@ -93,6 +93,7 @@ export function AppContextProvider({ children }: { children: React.ReactNode }) 
     if (reason) {
       await StorageService.saveLogoutReason(reason);
     }
+    void StorageService.clearStartupFailCount(); // #267: reset persisted streak on logout
     await StorageService.clearCredentials();
     clearTmdbTrailerCache();
     clearReminderRefreshCache(); // #126: reset backfill gate so fresh credentials always get a new URL check
@@ -114,8 +115,10 @@ export function AppContextProvider({ children }: { children: React.ReactNode }) 
       const stillActive = await isMacStillRegistered(deviceMacRef.current);
       if (stillActive) {
         consecutiveMacFailRef.current = 0; // #190: reset on success
+        void StorageService.clearStartupFailCount(); // #267
       } else {
         consecutiveMacFailRef.current += 1; // #190: count consecutive failures
+        void StorageService.saveStartupFailCount(consecutiveMacFailRef.current); // #267
         if (consecutiveMacFailRef.current >= MAX_CONSECUTIVE_MAC_FAILURES) {
           await doLogout('deactivated');
         }
@@ -126,18 +129,24 @@ export function AppContextProvider({ children }: { children: React.ReactNode }) 
   // ── Startup: load stored credentials ──────────────────────────────────────
   useEffect(() => {
     (async () => {
-      const [mac, creds] = await Promise.all([
+      const [mac, creds, persistedFailCount] = await Promise.all([
         getDeviceMac(),
         StorageService.getCredentials(),
+        StorageService.getStartupFailCount(), // #267: restore streak across force-quits
       ]);
       setDeviceMac(mac);
       deviceMacRef.current = mac;
+
+      // #267: seed the in-memory counter from storage so force-quitting and
+      // relaunching cannot indefinitely reset the deactivation streak to zero.
+      consecutiveMacFailRef.current = persistedFailCount;
 
       if (creds) {
         // Verify the MAC is still registered before trusting stored credentials
         const stillActive = await isMacStillRegistered(mac);
         if (stillActive) {
           consecutiveMacFailRef.current = 0; // #257: reset streak on a clean startup
+          void StorageService.clearStartupFailCount(); // #267
           setCredentials(creds);
           setIsActivated(true);
           isActivatedRef.current = true;
@@ -153,12 +162,14 @@ export function AppContextProvider({ children }: { children: React.ReactNode }) 
           // (startup + foreground/interval) actually deactivate the session.
           consecutiveMacFailRef.current += 1;
           if (consecutiveMacFailRef.current >= MAX_CONSECUTIVE_MAC_FAILURES) {
+            void StorageService.clearStartupFailCount(); // #267: clean up before logout
             await doLogout('deactivated');
           } else {
             // Below the threshold — trust stored credentials and let the
             // foreground/interval checks confirm deactivation.  Do NOT update
             // lastForegroundCheckRef so the next AppState 'active' event will
             // run a fresh check immediately without being skipped.
+            void StorageService.saveStartupFailCount(consecutiveMacFailRef.current); // #267
             setCredentials(creds);
             setIsActivated(true);
             isActivatedRef.current = true;
@@ -184,12 +195,14 @@ export function AppContextProvider({ children }: { children: React.ReactNode }) 
         if (!stillActive) {
           // #190: tolerate transient network errors; only logout after N failures
           consecutiveMacFailRef.current += 1;
+          void StorageService.saveStartupFailCount(consecutiveMacFailRef.current); // #267
           if (consecutiveMacFailRef.current >= MAX_CONSECUTIVE_MAC_FAILURES) {
             await doLogout('deactivated');
           }
           return;
         }
         consecutiveMacFailRef.current = 0; // #190: reset streak on success
+        void StorageService.clearStartupFailCount(); // #267
         startMacInterval();
       } else {
         // Background or inactive — pause the interval to avoid wasted requests

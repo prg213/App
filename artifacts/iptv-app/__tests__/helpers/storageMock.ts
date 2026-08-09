@@ -120,6 +120,11 @@ export function makeStorageMock(
     getPrefSearchQuery:        jest.fn().mockResolvedValue(''),
     setPrefSearchQuery:        jest.fn().mockResolvedValue(undefined),
 
+    // ── Persisted MAC failure count (#267) ───────────────────────────────────
+    getStartupFailCount:       jest.fn().mockResolvedValue(0),
+    saveStartupFailCount:      jest.fn().mockResolvedValue(undefined),
+    clearStartupFailCount:     jest.fn().mockResolvedValue(undefined),
+
     // ── Logout reason ─────────────────────────────────────────────────────────
     saveLogoutReason:          jest.fn().mockResolvedValue(undefined),
     consumeLogoutReason:       jest.fn().mockResolvedValue(null),

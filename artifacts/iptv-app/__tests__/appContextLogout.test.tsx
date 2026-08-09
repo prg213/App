@@ -509,6 +509,78 @@ describe('AppContextProvider — consecutive MAC failure counter', () => {
   });
 });
 
+// ── Startup failure + success resets counter (#266) ───────────────────────────
+//
+// A MAC check failure at cold-start increments the shared consecutiveMacFailRef
+// counter (streak = 1).  A subsequent foreground success must reset it to 0 so
+// the user needs a full fresh streak of 5 failures to be logged out — not 4.
+
+describe('AppContextProvider — startup failure + foreground success resets counter (#266)', () => {
+  const FAKE_CREDS = JSON.stringify({
+    url:      'http://example.com',
+    username: 'user',
+    password: 'pass',
+  });
+
+  let currentRenderer: ReturnType<typeof import('react-test-renderer').create> | null = null;
+
+  afterEach(async () => {
+    if (currentRenderer) {
+      await act(async () => { currentRenderer!.unmount(); });
+      currentRenderer = null;
+    }
+  });
+
+  /** Provider whose startup MAC check returns 'inactive' (counter → 1, user stays in per #257). */
+  async function renderStartupFailedProvider() {
+    (SecureStore.getItemAsync as jest.Mock).mockResolvedValueOnce(FAKE_CREDS);
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok:   true,
+      json: jest.fn().mockResolvedValue({ status: 'inactive' }),
+    });
+    const { renderer, getIsActivated } = await renderProvider();
+    currentRenderer = renderer;
+    return { getIsActivated };
+  }
+
+  async function fireForegrounded(result: 'active' | 'inactive') {
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok:   true,
+      json: jest.fn().mockResolvedValue({ status: result }),
+    });
+    await act(async () => { await capturedAppStateListener!('active'); });
+    await act(async () => {});
+  }
+
+  /**
+   * Test I — startup failure then foreground success resets the counter.
+   *
+   * counter after startup 'inactive':   1  (stays logged in — below threshold of 5)
+   * counter after foreground 'active':  0  (success resets the streak)
+   * counter after 4 foreground 'inactive': 4  (still under threshold)
+   * counter after 5th foreground 'inactive': 5 → logout
+   */
+  test('startup failure followed by a foreground success resets the counter, requiring 5 fresh failures to log out', async () => {
+    const { getIsActivated } = await renderStartupFailedProvider();
+    // Startup 'inactive' → counter=1, user still activated (below threshold of 5)
+    expect(getIsActivated()).toBe(true);
+
+    // One foreground success → counter must reset to 0
+    await fireForegrounded('active');
+    expect(getIsActivated()).toBe(true);
+
+    // 4 foreground failures → counter=4, still under threshold
+    for (let i = 0; i < 4; i++) {
+      await fireForegrounded('inactive');
+    }
+    expect(getIsActivated()).toBe(true);
+
+    // 5th foreground failure → counter=5, logout triggered
+    await fireForegrounded('inactive');
+    expect(getIsActivated()).toBe(false);
+  });
+});
+
 // ── Consecutive MAC failure counter — background polling path (#256) ──────────
 //
 // These tests exercise the setInterval branch inside startMacInterval, which
@@ -652,5 +724,112 @@ describe('AppContextProvider — consecutive MAC failure counter (interval path)
     }
 
     expect(getIsActivated()).toBe(false);
+  });
+});
+
+// ── Interval pauses on background and resumes on foreground (#278) ─────────────
+//
+// Confirms that stopMacInterval is called when the app goes to the background
+// so the 5-minute timer does not keep firing while the app is invisible, and
+// that startMacInterval restarts correctly on the next 'active' event.
+
+describe('AppContextProvider — interval pauses on background and resumes on active (#278)', () => {
+  const FAKE_CREDS = JSON.stringify({
+    url:      'http://example.com',
+    username: 'user',
+    password: 'pass',
+  });
+  const INTERVAL_MS = 5 * 60_000;
+
+  let currentRenderer: ReturnType<typeof import('react-test-renderer').create> | null = null;
+
+  beforeEach(() => { jest.useFakeTimers(); });
+
+  afterEach(async () => {
+    if (currentRenderer) {
+      await act(async () => { currentRenderer!.unmount(); });
+      currentRenderer = null;
+    }
+    jest.useRealTimers();
+  });
+
+  /** Provider whose startup MAC check succeeds; interval starts immediately. */
+  async function renderActivatedProvider() {
+    (SecureStore.getItemAsync as jest.Mock).mockResolvedValueOnce(FAKE_CREDS);
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok:   true,
+      json: jest.fn().mockResolvedValue({ status: 'active' }),
+    });
+    const { renderer, getIsActivated } = await renderProvider();
+    currentRenderer = renderer;
+    return { getIsActivated };
+  }
+
+  async function fireBackground() {
+    await act(async () => { await capturedAppStateListener!('background'); });
+    await act(async () => {});
+  }
+
+  async function fireActive(fetchResult: 'active' | 'inactive' = 'active') {
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok:   true,
+      json: jest.fn().mockResolvedValue({ status: fetchResult }),
+    });
+    await act(async () => { await capturedAppStateListener!('active'); });
+    await act(async () => {});
+  }
+
+  /**
+   * Test I — backgrounding stops the interval so no MAC fetch fires.
+   *
+   * After the startup succeeds the interval is running.  Going to the
+   * background must clear it, so advancing the clock by 5 minutes does not
+   * produce any additional fetch calls.
+   */
+  test('going to background stops the interval — no fetch fires after the clock advances', async () => {
+    await renderActivatedProvider();
+
+    // Startup fetch already happened (count = 1).  Interval is now running.
+    const fetchesAfterStartup = (global.fetch as jest.Mock).mock.calls.length;
+
+    // App goes to background — stopMacInterval must be called.
+    await fireBackground();
+
+    // Advance the clock past the 5-minute mark — interval must NOT fire.
+    await jest.advanceTimersByTimeAsync(INTERVAL_MS);
+    await act(async () => {});
+
+    expect((global.fetch as jest.Mock).mock.calls.length).toBe(fetchesAfterStartup);
+  });
+
+  /**
+   * Test J — re-foregrounding after a background pause restarts the interval.
+   *
+   * background → advance clock (no fetch) → active → advance clock again →
+   * the interval fires and produces at least one additional fetch call.
+   */
+  test('re-foregrounding after background restarts the interval so the next tick fetches', async () => {
+    await renderActivatedProvider();
+
+    // Go dark — interval stops.
+    await fireBackground();
+    await jest.advanceTimersByTimeAsync(INTERVAL_MS);
+    await act(async () => {});
+
+    const fetchesBeforeResume = (global.fetch as jest.Mock).mock.calls.length;
+
+    // App returns to foreground — foreground check fires + startMacInterval.
+    await fireActive('active');
+
+    // Advance clock by one full interval (> 2-min grace window) so the tick fires.
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok:   true,
+      json: jest.fn().mockResolvedValue({ status: 'active' }),
+    });
+    await jest.advanceTimersByTimeAsync(INTERVAL_MS);
+    await act(async () => {});
+
+    // At least one extra fetch beyond the foreground check proves the interval is running.
+    expect((global.fetch as jest.Mock).mock.calls.length).toBeGreaterThan(fetchesBeforeResume + 1);
   });
 });
