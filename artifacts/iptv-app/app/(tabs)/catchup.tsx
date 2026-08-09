@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FocusablePressable } from '@/components/FocusablePressable';
 import {
   ActivityIndicator,
@@ -87,16 +87,15 @@ const CategoryRow = React.memo(function CategoryRow({
 
 // ─── Channel Row ──────────────────────────────────────────────────────────────
 
-const ChannelRow = React.memo(function ChannelRow({
-  ch, isSelected, colors, onPress,
-}: {
+const ChannelRow = React.memo(React.forwardRef<View, {
   ch: Channel;
   isSelected: boolean;
   colors: ReturnType<typeof useColors>;
   onPress: () => void;
-}) {
+}>(function ChannelRow({ ch, isSelected, colors, onPress }, ref) {
   return (
     <FocusablePressable
+      ref={ref}
       style={[
         styles.chRow,
         { borderBottomColor: colors.border },
@@ -126,7 +125,7 @@ const ChannelRow = React.memo(function ChannelRow({
       </View>
     </FocusablePressable>
   );
-});
+}));
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
@@ -142,6 +141,13 @@ export default function CatchupScreen() {
   const [selectedCatId, setSelectedCatId] = useState<string>(ALL_CAT_ID);
   const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
+
+  // Refs for auto-advancing D-pad focus between columns
+  const firstChannelRef = useRef<View>(null);
+  const firstProgRef = useRef<View>(null);
+  // Set to true when a channel is selected so the useEffect below fires focus
+  // once the programme list data arrives (EPG is fetched asynchronously).
+  const pendingProgFocusRef = useRef(false);
 
   // D-pad / remote back: close programme list → reset category → hand off to
   // the global handler which focuses the sidebar.
@@ -225,13 +231,25 @@ export default function CatchupScreen() {
     setSelectedCatId(id);
     setSelectedChannel(null);
     setSelectedDay(null);
+    // Auto-advance D-pad focus to the first channel in col 2
+    setTimeout(() => { firstChannelRef.current?.focus(); }, 80);
   }, []);
 
   const handleSelectChannel = useCallback((ch: Channel) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setSelectedChannel(ch);
     setSelectedDay(null);
+    // Mark that we want to focus the first programme once EPG data arrives
+    pendingProgFocusRef.current = true;
   }, []);
+
+  // Auto-advance D-pad focus to the first programme row once EPG data loads
+  useEffect(() => {
+    if (pendingProgFocusRef.current && dayPrograms.length > 0) {
+      pendingProgFocusRef.current = false;
+      setTimeout(() => { firstProgRef.current?.focus(); }, 80);
+    }
+  }, [dayPrograms]);
 
   const handlePlay = useCallback((prog: CatchupProgram) => {
     if (!creds || !selectedChannel) return;
@@ -267,8 +285,9 @@ export default function CatchupScreen() {
     />
   ), [selectedCatId, colors, handleSelectCat]);
 
-  const renderChannel = useCallback(({ item }: { item: Channel }) => (
+  const renderChannel = useCallback(({ item, index }: { item: Channel; index: number }) => (
     <ChannelRow
+      ref={index === 0 ? firstChannelRef : undefined}
       ch={item}
       isSelected={item.id === selectedChannel?.id}
       colors={colors}
@@ -391,9 +410,10 @@ export default function CatchupScreen() {
               style={{ flex: 1 }}
               contentContainerStyle={{ paddingBottom: insets.bottom + 8 }}
             >
-              {dayPrograms.map((prog) => (
+              {dayPrograms.map((prog, progIdx) => (
                 <FocusablePressable
                   key={prog.id}
+                  ref={progIdx === 0 ? firstProgRef : undefined}
                   style={[styles.progRow, { borderBottomColor: colors.border }]}
                   onPress={() => handlePlay(prog)}
                 >
