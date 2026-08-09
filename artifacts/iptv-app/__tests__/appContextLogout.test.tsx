@@ -725,6 +725,59 @@ describe('AppContextProvider — consecutive MAC failure counter (interval path)
 
     expect(getIsActivated()).toBe(false);
   });
+
+  /**
+   * Test I (interval) — fetch rejections (network drops) in interval ticks do
+   * NOT increment the deactivation counter and do NOT log the user out.
+   *
+   * isMacStillRegistered catches all thrown exceptions and returns true, so
+   * each network-error tick is treated as a success (counter stays at 0).
+   * This test confirms that even many back-to-back network errors cannot push
+   * the shared consecutiveMacFailRef counter toward the logout threshold.
+   *
+   * After the network errors, four server-confirmed 'inactive' ticks are fired.
+   * If network errors were incorrectly counted (e.g. 10 errors + 4 inactives ≥ 5)
+   * this assertion would expose the regression.
+   */
+  test('fetch rejections (network drops) in interval ticks do not count toward deactivation and keep the user logged in', async () => {
+    const { getIsActivated } = await renderActivatedProvider();
+    expect(getIsActivated()).toBe(true);
+
+    // 10 network-error ticks — each resolves to stillActive=true inside
+    // isMacStillRegistered, so the counter is reset to 0 each time.
+    for (let i = 0; i < 10; i++) {
+      await fireTick('network-error');
+    }
+    expect(getIsActivated()).toBe(true);
+
+    // 4 server-confirmed inactive ticks — counter climbs from 0 to 4, still
+    // below the threshold of 5, so the user must remain logged in.
+    for (let i = 0; i < 4; i++) {
+      await fireTick('inactive');
+    }
+
+    expect(getIsActivated()).toBe(true);
+  });
+
+  /**
+   * Test J (interval) — non-OK HTTP responses in interval ticks do NOT count
+   * toward the deactivation counter and do NOT log the user out.
+   *
+   * isMacStillRegistered returns true when res.ok is false so that server
+   * errors and maintenance windows never log the user out, regardless of how
+   * many back-to-back ticks return a non-OK status.
+   */
+  test('non-OK server responses in interval ticks do not count toward deactivation and keep the user logged in', async () => {
+    const { getIsActivated } = await renderActivatedProvider();
+    expect(getIsActivated()).toBe(true);
+
+    // 10 server-error ticks — none should increment the failure counter.
+    for (let i = 0; i < 10; i++) {
+      await fireTick('server-error');
+    }
+
+    expect(getIsActivated()).toBe(true);
+  });
 });
 
 // ── Interval pauses on background and resumes on foreground (#278) ─────────────
