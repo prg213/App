@@ -2,13 +2,12 @@ import React, { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Modal,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from 'react-native';
+import { FocusablePressable } from '@/components/FocusablePressable';
 import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -198,13 +197,15 @@ export function CatchupSheet({
           >
             📅 {channel.name}
           </Text>
-          <TouchableOpacity
+          <FocusablePressable
             onPress={onClose}
             hitSlop={{ top: 12, bottom: 12, left: 16, right: 4 }}
             style={sheet.closeTouchable}
+            focusedStyle={sheet.closeFocused}
+            hasTVPreferredFocus
           >
             <Text style={[sheet.closeIcon, { color: colors.mutedForeground }]}>✕</Text>
-          </TouchableOpacity>
+          </FocusablePressable>
         </View>
 
         {/* ── Day strip ── */}
@@ -217,15 +218,15 @@ export function CatchupSheet({
           {days.map((d, i) => {
             const sel = isSameDay(d, selectedDay);
             return (
-              <Pressable
+              <FocusablePressable
                 key={i}
                 onPress={() => setSelectedDay(d)}
-                style={({ pressed }) => [
+                style={[
                   sheet.dayPill,
                   { backgroundColor: colors.secondary },
                   sel && sheet.dayPillSelected,
-                  pressed && { opacity: 0.75 },
                 ]}
+                focusedStyle={sheet.dayPillFocused}
               >
                 <Text
                   style={[
@@ -236,7 +237,7 @@ export function CatchupSheet({
                 >
                   {dayLabel(d, todayMidnight)}
                 </Text>
-              </Pressable>
+              </FocusablePressable>
             );
           })}
         </ScrollView>
@@ -272,15 +273,15 @@ export function CatchupSheet({
               const canPlay = isPast || isCurrent;
 
               return (
-                <Pressable
+                <FocusablePressable
                   key={prog.id ?? i}
                   onPress={() => (canPlay ? handlePlayCatchup(prog) : undefined)}
-                  style={({ pressed }) => [
+                  style={[
                     sheet.progRow,
                     { borderBottomColor: colors.border },
                     isCurrent && { backgroundColor: 'rgba(59,130,246,0.08)' },
-                    pressed && canPlay && { opacity: 0.7 },
                   ]}
+                  focusedStyle={sheet.progRowFocused}
                 >
                   {/* Time + NOW badge */}
                   <View style={sheet.progTimeCol}>
@@ -329,7 +330,7 @@ export function CatchupSheet({
                       </Text>
                     </View>
                   )}
-                </Pressable>
+                </FocusablePressable>
               );
             })}
           </ScrollView>
@@ -445,4 +446,21 @@ const sheet = StyleSheet.create({
     flexShrink: 0,
   },
   futureChipText: { fontSize: 10, fontFamily: 'Inter_500Medium' },
+
+  // ── TV / Fire TV remote focus styles (#248) ──
+  closeFocused: {
+    borderWidth: 2,
+    borderColor: '#00E5FF',
+    borderRadius: 6,
+  },
+  dayPillFocused: {
+    borderWidth: 2,
+    borderColor: '#00E5FF',
+  },
+  /** Highlight the focused programme row with a left accent bar + tint */
+  progRowFocused: {
+    backgroundColor: 'rgba(0,229,255,0.10)',
+    borderLeftWidth: 3,
+    borderLeftColor: '#00E5FF',
+  },
 });

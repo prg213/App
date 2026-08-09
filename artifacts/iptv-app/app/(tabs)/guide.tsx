@@ -381,7 +381,14 @@ const TVEpgRow = React.memo(function TVEpgRow({
                 {isNow && (
                   <View style={[styles.progressBar, { width: `${progress * 100}%` as any }]} />
                 )}
-                {hasReminder && <Text style={styles.tvReminderDot}>🔔</Text>}
+                {/* #249: wrap the bell in a dark pill so it stays readable even
+                    when the cell gets the focus ring (borderWidth shrinks inner
+                    space and the emoji needs contrast against any background). */}
+                {hasReminder && (
+                  <View style={styles.tvReminderBadge} pointerEvents="none">
+                    <Text style={styles.tvReminderDot}>🔔</Text>
+                  </View>
+                )}
                 <Text
                   style={[styles.tvProgTitle, { color: isNow ? '#F2F2F2' : colors.foreground }]}
                   numberOfLines={1}
@@ -1675,7 +1682,15 @@ const styles = StyleSheet.create({
   },
   tvProgTitle: { fontSize: 11, fontFamily: 'Inter_600SemiBold' },
   tvProgTime: { fontSize: 9, fontFamily: 'Inter_400Regular' },
-  tvReminderDot: {
-    position: 'absolute', top: 2, right: 3, fontSize: 8,
+  /** Dark pill that wraps the 🔔 so it's readable regardless of cell background or focus border. */
+  tvReminderBadge: {
+    position: 'absolute',
+    top: 2,
+    right: 3,
+    backgroundColor: 'rgba(0,0,0,0.50)',
+    borderRadius: 3,
+    paddingHorizontal: 2,
+    paddingVertical: 1,
   },
+  tvReminderDot: { fontSize: 8 },
 });
