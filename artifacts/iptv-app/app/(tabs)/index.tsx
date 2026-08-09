@@ -246,6 +246,8 @@ export default function LiveTVScreen() {
 
   // ── Favourites sync state (#22) ──────────────────────────────────────────
   const [favSyncState, setFavSyncState] = useState<'idle' | 'syncing' | 'synced'>('idle');
+  // Tracks D-pad focus on the mini-player so the expand hint can brighten
+  const [miniPlayerFocused, setMiniPlayerFocused] = useState(false);
 
   useEffect(() => {
     // Load local favourites immediately for instant UI, then merge with server.
@@ -1290,66 +1292,64 @@ export default function LiveTVScreen() {
              so measureInWindow() works correctly for the expand animation.
              focusable lets D-pad / remote users highlight the box and press
              Select to open fullscreen — no separate button needed. */
-          <Pressable
+          <FocusablePressable
             ref={miniPlayerRef as any}
             collapsable={false}
-            focusable
             onPress={handleWatch}
-            style={({ focused }) => [
+            onFocus={() => setMiniPlayerFocused(true)}
+            onBlur={() => setMiniPlayerFocused(false)}
+            focusedStyle={{}}
+            style={(focused) => [
               styles.videoWrap,
               !playingChannel && { display: 'none' },
               focused && styles.videoWrapFocused,
             ]}
           >
-            {({ focused }: { focused: boolean }) => (
-              <>
-                <VideoView
-                  key={videoKey}
-                  player={player}
-                  style={StyleSheet.absoluteFill}
-                  nativeControls={false}
-                  contentFit="contain"
-                />
-                {/* Flash-prevention overlay — always rendered so setValue(1) takes
-                    effect in the same native frame as player.replace(), before
-                    the VideoView surface can show a black frame. Fades out once
-                    the player signals readyToPlay. */}
-                <Animated.View
-                  style={[StyleSheet.absoluteFill, styles.flashOverlay, { opacity: flashOverlayOpacity }]}
-                  pointerEvents="none"
-                />
-                {(isBuffering && !hasError) && (
-                  <View style={styles.videoOverlay}>
-                    <ActivityIndicator color="#fff" size="large" />
-                  </View>
-                )}
-                {hasError && (
-                  <Pressable
-                    style={styles.videoOverlay}
-                    onPress={() => {
-                      if (!selectedChannel) return;
-                      setHasError(false);
-                      setIsBuffering(true);
-                      try { player.replace(selectedChannel.streamUrl); player.play(); } catch {}
-                    }}
-                  >
-                    <Text style={styles.errText}>Stream unavailable</Text>
-                    <Text style={[styles.errText, { fontSize: 11, marginTop: 4, opacity: 0.7 }]}>Tap to retry</Text>
-                  </Pressable>
-                )}
-                {/* Expand hint — bottom-right corner; brightens on D-pad focus */}
-                {!isBuffering && !hasError && (
-                  <View style={[styles.expandHint, focused && styles.expandHintFocused]}>
-                    <Text style={styles.expandHintIcon}>⛶</Text>
-                  </View>
-                )}
-                <View style={styles.livePill}>
-                  <View style={styles.liveDot} />
-                  <Text style={styles.liveText}>LIVE</Text>
-                </View>
-              </>
+            <VideoView
+              key={videoKey}
+              player={player}
+              style={StyleSheet.absoluteFill}
+              nativeControls={false}
+              contentFit="contain"
+            />
+            {/* Flash-prevention overlay — always rendered so setValue(1) takes
+                effect in the same native frame as player.replace(), before
+                the VideoView surface can show a black frame. Fades out once
+                the player signals readyToPlay. */}
+            <Animated.View
+              style={[StyleSheet.absoluteFill, styles.flashOverlay, { opacity: flashOverlayOpacity }]}
+              pointerEvents="none"
+            />
+            {(isBuffering && !hasError) && (
+              <View style={styles.videoOverlay}>
+                <ActivityIndicator color="#fff" size="large" />
+              </View>
             )}
-          </Pressable>
+            {hasError && (
+              <Pressable
+                style={styles.videoOverlay}
+                onPress={() => {
+                  if (!selectedChannel) return;
+                  setHasError(false);
+                  setIsBuffering(true);
+                  try { player.replace(selectedChannel.streamUrl); player.play(); } catch {}
+                }}
+              >
+                <Text style={styles.errText}>Stream unavailable</Text>
+                <Text style={[styles.errText, { fontSize: 11, marginTop: 4, opacity: 0.7 }]}>Tap to retry</Text>
+              </Pressable>
+            )}
+            {/* Expand hint — bottom-right corner; brightens on D-pad focus */}
+            {!isBuffering && !hasError && (
+              <View style={[styles.expandHint, miniPlayerFocused && styles.expandHintFocused]}>
+                <Text style={styles.expandHintIcon}>⛶</Text>
+              </View>
+            )}
+            <View style={styles.livePill}>
+              <View style={styles.liveDot} />
+              <Text style={styles.liveText}>LIVE</Text>
+            </View>
+          </FocusablePressable>
         )}
 
         {/* Channel info bar — logo + name + now-playing EPG title below the mini-player */}
