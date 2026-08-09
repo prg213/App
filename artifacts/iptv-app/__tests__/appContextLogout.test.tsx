@@ -271,3 +271,188 @@ describe('AppContextProvider — doLogout ordering', () => {
     expect(store['sv_logout_reason']).toBeUndefined();
   });
 });
+
+// ── Consecutive MAC failure counter (#190) ─────────────────────────────────────
+
+describe('AppContextProvider — consecutive MAC failure counter', () => {
+  const FAKE_CREDS = JSON.stringify({
+    url:      'http://example.com',
+    username: 'user',
+    password: 'pass',
+  });
+
+  // Track the most-recently rendered provider so afterEach can unmount it,
+  // which triggers the useEffect cleanup and clears the setInterval handle.
+  let currentRenderer: ReturnType<typeof import('react-test-renderer').create> | null = null;
+
+  afterEach(async () => {
+    if (currentRenderer) {
+      await act(async () => { currentRenderer!.unmount(); });
+      currentRenderer = null;
+    }
+  });
+
+  /**
+   * Renders the provider with credentials already stored so the startup MAC
+   * check succeeds and isActivated becomes true.
+   * The first fetch call (startup) returns 'active'; subsequent calls are
+   * controlled per-test via `fireForegrounded`.
+   */
+  async function renderActivatedProvider() {
+    (SecureStore.getItemAsync as jest.Mock).mockResolvedValueOnce(FAKE_CREDS);
+
+    // Startup fetch → MAC still active so the user is logged in.
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok:   true,
+      json: jest.fn().mockResolvedValue({ status: 'active' }),
+    });
+
+    const { renderer, getIsActivated } = await renderProvider();
+    currentRenderer = renderer;
+    return { renderer, getIsActivated };
+  }
+
+  type ForegroundResult = 'active' | 'inactive' | 'network-error' | 'server-error';
+
+  /**
+   * Simulates the app returning to the foreground.
+   *
+   * 'active' / 'inactive' — server responds OK with the given status.
+   * 'network-error'        — fetch rejects (connection refused, timeout, etc.).
+   * 'server-error'         — server responds with a non-OK HTTP status.
+   *
+   * isMacStillRegistered silently returns true for the latter two so they
+   * must never count against the deactivation counter.
+   */
+  async function fireForegrounded(result: ForegroundResult) {
+    switch (result) {
+      case 'network-error':
+        (global.fetch as jest.Mock).mockRejectedValueOnce(new Error('Network request failed'));
+        break;
+      case 'server-error':
+        (global.fetch as jest.Mock).mockResolvedValueOnce({ ok: false });
+        break;
+      default:
+        (global.fetch as jest.Mock).mockResolvedValueOnce({
+          ok:   true,
+          json: jest.fn().mockResolvedValue({ status: result }),
+        });
+    }
+    await act(async () => { await capturedAppStateListener!('active'); });
+    // Flush any remaining microtasks queued inside the listener.
+    await act(async () => {});
+  }
+
+  /**
+   * Test A — 4 consecutive server-confirmed deactivations do NOT log the user out.
+   *
+   * The threshold is 5; the user must remain activated after 4 back-to-back
+   * inactive responses.
+   */
+  test('4 consecutive MAC deactivation responses do NOT log the user out', async () => {
+    const { getIsActivated } = await renderActivatedProvider();
+    expect(getIsActivated()).toBe(true);
+
+    for (let i = 0; i < 4; i++) {
+      await fireForegrounded('inactive');
+    }
+
+    expect(getIsActivated()).toBe(true);
+  });
+
+  /**
+   * Test B — A single success between failures resets the counter.
+   *
+   * 4 failures → 1 success → 4 more failures must still keep the user logged
+   * in because the success zeroed the streak.
+   */
+  test('a success resets the failure counter so a new streak of 4 still keeps the user in', async () => {
+    const { getIsActivated } = await renderActivatedProvider();
+    expect(getIsActivated()).toBe(true);
+
+    // 4 consecutive failures — not yet at the threshold.
+    for (let i = 0; i < 4; i++) {
+      await fireForegrounded('inactive');
+    }
+    expect(getIsActivated()).toBe(true);
+
+    // One success — counter must be reset to 0.
+    await fireForegrounded('active');
+    expect(getIsActivated()).toBe(true);
+
+    // 4 more failures after the reset — counter is back to 4, still under 5.
+    for (let i = 0; i < 4; i++) {
+      await fireForegrounded('inactive');
+    }
+
+    expect(getIsActivated()).toBe(true);
+  });
+
+  /**
+   * Test C — 5 back-to-back server-confirmed deactivations DO trigger logout.
+   *
+   * After 5 consecutive inactive responses the provider must call doLogout
+   * and isActivated must flip to false.
+   */
+  test('5 consecutive MAC deactivation responses trigger logout', async () => {
+    const { getIsActivated } = await renderActivatedProvider();
+    expect(getIsActivated()).toBe(true);
+
+    for (let i = 0; i < 5; i++) {
+      await fireForegrounded('inactive');
+    }
+
+    expect(getIsActivated()).toBe(false);
+  });
+
+  /**
+   * Test D — A fetch rejection (brief network drop) does NOT count against
+   * the deactivation counter and does NOT log the user out.
+   *
+   * isMacStillRegistered catches all exceptions and returns true so that
+   * transient network errors are completely transparent to the logout logic.
+   * This test confirms that regression cannot happen silently: even many
+   * network errors in a row leave the user logged in, and when the server
+   * later confirms the MAC is gone the counter starts from 0.
+   */
+  test('fetch rejections (network drops) do not count toward deactivation and keep the user logged in', async () => {
+    const { getIsActivated } = await renderActivatedProvider();
+    expect(getIsActivated()).toBe(true);
+
+    // 4 network errors — each silently resolves to stillActive=true, so the
+    // counter is never incremented (it is reset to 0 on each success).
+    for (let i = 0; i < 4; i++) {
+      await fireForegrounded('network-error');
+    }
+    expect(getIsActivated()).toBe(true);
+
+    // 4 server-confirmed deactivations after the network errors.
+    // If network errors were incorrectly counted (4 + 4 = 8 ≥ 5) this would
+    // have triggered a logout, exposing the regression.
+    for (let i = 0; i < 4; i++) {
+      await fireForegrounded('inactive');
+    }
+
+    // Counter is at 4 (only the inactive responses count) — still under 5.
+    expect(getIsActivated()).toBe(true);
+  });
+
+  /**
+   * Test E — A non-OK HTTP response (server-side error) does NOT count against
+   * the deactivation counter.
+   *
+   * isMacStillRegistered returns true when res.ok is false so that server
+   * errors and maintenance windows never log the user out.
+   */
+  test('non-OK server responses do not count toward deactivation and keep the user logged in', async () => {
+    const { getIsActivated } = await renderActivatedProvider();
+    expect(getIsActivated()).toBe(true);
+
+    // Many server errors — none should increment the failure counter.
+    for (let i = 0; i < 10; i++) {
+      await fireForegrounded('server-error');
+    }
+
+    expect(getIsActivated()).toBe(true);
+  });
+});
