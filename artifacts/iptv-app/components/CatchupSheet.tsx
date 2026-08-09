@@ -276,6 +276,7 @@ export function CatchupSheet({
                 <FocusablePressable
                   key={prog.id ?? i}
                   onPress={() => (canPlay ? handlePlayCatchup(prog) : undefined)}
+                  focusable={canPlay}
                   style={[
                     sheet.progRow,
                     { borderBottomColor: colors.border },
