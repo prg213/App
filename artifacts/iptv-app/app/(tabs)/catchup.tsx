@@ -394,7 +394,10 @@ export default function CatchupScreen() {
                       { borderColor: colors.border },
                       active && { backgroundColor: '#2563EB', borderColor: '#2563EB' },
                     ]}
-                    onPress={() => setSelectedDay(k)}
+                    onPress={() => {
+                      setSelectedDay(k);
+                      setTimeout(() => { firstProgRef.current?.focus(); }, 80);
+                    }}
                   >
                     <Text style={[styles.dayTabText, { color: active ? '#fff' : colors.mutedForeground }]}>
                       {dayLabel(first.start)}
