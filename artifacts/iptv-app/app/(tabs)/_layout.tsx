@@ -4,6 +4,7 @@ import {
   type AppStateStatus,
   BackHandler,
   DeviceEventEmitter,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -181,6 +182,8 @@ function Sidebar({ state, descriptors, navigation }: BottomTabBarProps) {
     sidebarNav.focus = () => { (firstNavRef.current as any)?.focus?.(); };
     // Fire OS ignores hasTVPreferredFocus when sidebar mounts after scene content;
     // explicit .focus() after a short delay is the most reliable workaround.
+    // On phones this auto-focus is unnecessary and must never block scroll events.
+    if (!Platform.isTV) return;
     const t = setTimeout(sidebarNav.focus, 300);
     return () => clearTimeout(t);
   }, []);
@@ -212,6 +215,7 @@ function Sidebar({ state, descriptors, navigation }: BottomTabBarProps) {
         contentContainerStyle={styles.navContent}
         showsVerticalScrollIndicator={false}
         bounces={false}
+        scrollEnabled={!Platform.isTV}
       >
         {state.routes.map((route, i) => {
           const active = state.index === i;
