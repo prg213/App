@@ -114,7 +114,7 @@ export const StorageService = {
       // still gets a valid empty array rather than undefined.
       if (data) {
         const s = JSON.parse(data) as ParentalSettings;
-        return { blockedChannels: [], blockedCategories: [], ...s };
+        return { blockedCategories: [], ...s, blockedChannels: s.blockedChannels ?? [] };
       }
       return { maxRating: 'all', lockEnabled: false, blockedChannels: [], blockedCategories: [] };
     } catch {

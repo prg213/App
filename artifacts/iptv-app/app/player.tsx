@@ -249,7 +249,7 @@ export default function PlayerScreen() {
   const params = useLocalSearchParams<{
     url: string;
     title: string;
-    type: 'live' | 'vod' | 'series';
+    type: 'live' | 'vod' | 'series' | 'catchup';
     epgId?: string;
     /** Raw channel ID (may differ from epgId on some providers). Used for reminder matching. */
     channelId?: string;
@@ -1236,7 +1236,6 @@ export default function PlayerScreen() {
           player={player}
           style={StyleSheet.absoluteFill}
           contentFit={contentFit}
-          allowsFullscreen={false}
           allowsPictureInPicture
           nativeControls={false}
           // For live streams, signal the context overlay to fade out as soon as

@@ -1024,7 +1024,7 @@ export default function LiveTVScreen() {
             Alert.alert(
               ch.name,
               [
-                nowProg ? `▶ Now: ${nowProg.title}` : null,
+                nowProg ? `▶ Now: ${nowProg}` : null,
                 `Category: ${ch.groupTitle || '—'}`,
                 `Stream ID: ${ch.id}`,
                 ch.epgId ? `EPG ID: ${ch.epgId}` : null,

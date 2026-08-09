@@ -90,8 +90,8 @@ function useServerStatus(): ServerStatus {
     const check = async () => {
       try {
         if (credentials.type === 'xtream') {
-          const host = credentials.host.replace(/\/$/, '');
-          const url = `${host}/player_api.php?username=${encodeURIComponent(credentials.username)}&password=${encodeURIComponent(credentials.password)}&action=get_live_categories`;
+          const host = (credentials.host ?? '').replace(/\/$/, '');
+          const url = `${host}/player_api.php?username=${encodeURIComponent(credentials.username ?? '')}&password=${encodeURIComponent(credentials.password ?? '')}&action=get_live_categories`;
           const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
           if (!cancelled) setStatus(res.ok ? 'ok' : 'error');
         } else {

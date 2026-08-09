@@ -50,7 +50,7 @@ export function useCast(url: string, title: string, isLive: boolean): CastStatus
           mediaInfo: {
             contentUrl: url,
             contentType: 'application/x-mpegURL',
-            streamType: isLive ? 'live' : 'buffered',
+            streamType: (isLive ? 'live' : 'buffered') as any,
             metadata: { type: 'generic', title },
           },
           autoplay: true,

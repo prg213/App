@@ -333,6 +333,9 @@ export default function SeriesDetailScreen() {
             refreshing={isRefreshing}
             onRefresh={async () => {
               setIsRefreshing(true);
+              // #165: Reset poster error so a fresh provider cover (or TMDB
+              // fallback) can load after the provider data refreshes.
+              setCoverError(false);
               // Reset thumbnail error states so fresh thumbnails are fetched.
               setThumbResetKey((k) => k + 1);
               try {

@@ -75,6 +75,12 @@ export function AppContextProvider({ children }: { children: React.ReactNode }) 
   // skip a redundant call within a short grace window (#189).
   const lastForegroundCheckRef = useRef(0);
 
+  // #190: Counts consecutive MAC-check failures across both the periodic
+  // interval and foreground checks.  A single transient network error should
+  // not immediately log the user out; only N consecutive failures do.
+  const consecutiveMacFailRef = useRef(0);
+  const MAX_CONSECUTIVE_MAC_FAILURES = 5;
+
   const stopMacInterval = useCallback(() => {
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
@@ -106,8 +112,13 @@ export function AppContextProvider({ children }: { children: React.ReactNode }) 
       // Skip if a foreground check just ran to avoid back-to-back calls
       if (Date.now() - lastForegroundCheckRef.current < SKIP_AFTER_FOREGROUND_MS) return;
       const stillActive = await isMacStillRegistered(deviceMacRef.current);
-      if (!stillActive) {
-        await doLogout('deactivated');
+      if (stillActive) {
+        consecutiveMacFailRef.current = 0; // #190: reset on success
+      } else {
+        consecutiveMacFailRef.current += 1; // #190: count consecutive failures
+        if (consecutiveMacFailRef.current >= MAX_CONSECUTIVE_MAC_FAILURES) {
+          await doLogout('deactivated');
+        }
       }
     }, INTERVAL_MS);
   }, [doLogout]);
@@ -154,9 +165,14 @@ export function AppContextProvider({ children }: { children: React.ReactNode }) 
         lastForegroundCheckRef.current = Date.now();
         const stillActive = await isMacStillRegistered(deviceMacRef.current);
         if (!stillActive) {
-          await doLogout('deactivated');
+          // #190: tolerate transient network errors; only logout after N failures
+          consecutiveMacFailRef.current += 1;
+          if (consecutiveMacFailRef.current >= MAX_CONSECUTIVE_MAC_FAILURES) {
+            await doLogout('deactivated');
+          }
           return;
         }
+        consecutiveMacFailRef.current = 0; // #190: reset streak on success
         startMacInterval();
       } else {
         // Background or inactive — pause the interval to avoid wasted requests

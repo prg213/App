@@ -38,7 +38,7 @@ interface LivePlayerContextValue {
   /** Always points to the URL that is currently loaded in the shared player. */
   activeUrlRef: React.MutableRefObject<string>;
   /** Attach to the mini-player container View for position measurement. */
-  miniPlayerRef: React.RefObject<View>;
+  miniPlayerRef: React.RefObject<View | null>;
   /**
    * True while the collapse animation is running.
    */
@@ -618,7 +618,6 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
               style={StyleSheet.absoluteFill}
               contentFit="contain"
               nativeControls={false}
-              allowsFullscreen={false}
             />
           )}
         </Animated.View>

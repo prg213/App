@@ -40,7 +40,7 @@ import {
   cancelReminderNotification,
   scheduleReminderNotification,
 } from '@/services/notifications';
-import type { Channel, EpgProgram } from '@/types';
+import type { Channel, EpgProgram, Reminder } from '@/types';
 import { normaliseStr } from '@/utils/normalise';
 
 // ─── Guide constants ────────────────────────────────────────────────────────
@@ -705,22 +705,26 @@ function FullGuide({
       );
     } else {
       const leadMins = await StorageService.getReminderLeadMins();
-      const notifTime = new Date(prog.start.getTime() - leadMins * 60_000);
-      const notificationId = notifTime > new Date()
-        ? await scheduleReminderNotification({ title: ch.name, body: `Starting in ${leadMins} min: ${prog.title}`, date: notifTime })
-        : null;
-      await StorageService.addReminder({
+      // Build the reminder object first so scheduleReminderNotification gets a
+      // typed Reminder (its first argument) rather than a raw notification payload.
+      const newReminder: Reminder = {
         id: reminderId,
         channelId: ch.id,
         channelName: ch.name,
         channelLogo: ch.logo,
         programTitle: prog.title,
-        programDesc: prog.desc ?? '',
+        programDescription: prog.description,
         start: prog.start.toISOString(),
         end: prog.end.toISOString(),
         streamUrl: ch.streamUrl,
-        notificationId,
-      });
+        createdAt: new Date().toISOString(),
+        leadMins,
+      };
+      const notifTime = new Date(prog.start.getTime() - leadMins * 60_000);
+      const notificationId = notifTime > new Date()
+        ? (await scheduleReminderNotification(newReminder, leadMins)) ?? undefined
+        : undefined;
+      await StorageService.addReminder({ ...newReminder, notificationId });
       DeviceEventEmitter.emit('reminders:changed');
       setGuideToast(`🔔 Reminder set for "${prog.title}"`);
     }
@@ -1066,7 +1070,7 @@ function FullGuide({
                         isFav={guideFavIds.has(ch.id)}
                         onFavPress={async () => {
                           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                          const updated = await StorageService.toggleFavorite({ id: ch.id, name: ch.name, logo: ch.logo ?? '', streamUrl: ch.streamUrl, groupTitle: ch.groupTitle ?? '', epgId: ch.epgId ?? '', streamId: ch.streamId ?? 0 });
+                          const updated = await StorageService.toggleFavorite({ id: ch.id, name: ch.name, logo: ch.logo ?? '', streamUrl: ch.streamUrl, groupTitle: ch.groupTitle ?? '', epgId: ch.epgId ?? '' });
                           const isFaved = updated.some((f) => f.id === ch.id);
                           setGuideFavIds(new Set(updated.map((f) => f.id)));
                           setGuideToast(isFaved ? `♥ ${ch.name} added to Favourites` : `${ch.name} removed from Favourites`);

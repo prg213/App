@@ -25,10 +25,13 @@ jest.mock('../services/storage', () => ({
   } satisfies Partial<typeof import('../services/storage').StorageService>,
 }));
 
+// #199: satisfies ensures TypeScript validates that every mocked key actually
+// exists on the real module — if a function is renamed or removed, the compiler
+// will flag the stale mock key immediately.
 jest.mock('../services/notifications', () => ({
   scheduleReminderNotification: jest.fn(),
   cancelReminderNotification: jest.fn(),
-}));
+} satisfies Partial<typeof import('../services/notifications')>));
 
 // Suppress warnings from the notification service during tests
 jest.spyOn(console, 'warn').mockImplementation(() => {});
