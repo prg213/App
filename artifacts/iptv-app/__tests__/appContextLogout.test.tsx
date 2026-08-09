@@ -172,13 +172,15 @@ beforeEach(() => {
 describe('AppContextProvider — doLogout ordering', () => {
 
   /**
-   * Test 1 — Forced logout via startup MAC check:
+   * Test 1 — Forced logout via sustained MAC check failures:
    *
-   * AppContextProvider's startup useEffect finds stored credentials but the
-   * server reports the MAC is no longer active.  It calls doLogout('deactivated').
-   * saveLogoutReason must be awaited BEFORE clearCredentials.
+   * A single startup failure no longer immediately deactivates the session
+   * (#257 — cold-start hiccup protection).  Deactivation only happens after
+   * MAX_CONSECUTIVE_MAC_FAILURES (5) failures across the startup + foreground
+   * paths.  This test confirms that once the threshold IS reached,
+   * saveLogoutReason is still awaited BEFORE clearCredentials.
    */
-  test('saveLogoutReason is called before clearCredentials when the startup MAC check fails', async () => {
+  test('saveLogoutReason is called before clearCredentials when the failure threshold is reached', async () => {
     // Credentials present in SecureStore so the startup check runs.
     const fakeCreds = JSON.stringify({
       url:      'http://example.com',
@@ -187,7 +189,7 @@ describe('AppContextProvider — doLogout ordering', () => {
     });
     (SecureStore.getItemAsync as jest.Mock).mockResolvedValueOnce(fakeCreds);
 
-    // Server reports MAC is gone → doLogout('deactivated').
+    // All fetch calls (startup + 4 foreground) report MAC inactive.
     global.fetch = jest.fn().mockResolvedValue({
       ok:   true,
       json: jest.fn().mockResolvedValue({ status: 'inactive' }),
@@ -196,7 +198,14 @@ describe('AppContextProvider — doLogout ordering', () => {
     const callLog: CallLog = [];
     instrumentStorageOrder(callLog);
 
+    // Startup: counter → 1, user stays logged in (below threshold).
     await renderProvider();
+
+    // 4 more foreground 'active' events → counter reaches 5 → doLogout.
+    for (let i = 0; i < 4; i++) {
+      await act(async () => { await capturedAppStateListener!('active'); });
+      await act(async () => {});
+    }
 
     // Both calls must have happened and in the correct order.
     expect(callLog).toContain('saveLogoutReason');
@@ -235,6 +244,8 @@ describe('AppContextProvider — doLogout ordering', () => {
    * sv_logout_reason is intentionally absent from clearCredentials' multiRemove
    * list so the key written by saveLogoutReason persists past the credential
    * wipe and is readable by the activation screen.
+   *
+   * Requires 5 total failures to reach the threshold (#257).
    */
   test('banner key written before forced logout survives the credential wipe', async () => {
     const fakeCreds = JSON.stringify({
@@ -244,15 +255,56 @@ describe('AppContextProvider — doLogout ordering', () => {
     });
     (SecureStore.getItemAsync as jest.Mock).mockResolvedValueOnce(fakeCreds);
 
+    // All fetch calls (startup + 4 foreground) report MAC inactive.
     global.fetch = jest.fn().mockResolvedValue({
       ok:   true,
       json: jest.fn().mockResolvedValue({ status: 'inactive' }),
     }) as unknown as typeof fetch;
 
+    // Startup: counter → 1, user stays logged in (below threshold).
     await renderProvider();
+
+    // 4 more foreground events → counter reaches 5 → doLogout('deactivated').
+    for (let i = 0; i < 4; i++) {
+      await act(async () => { await capturedAppStateListener!('active'); });
+      await act(async () => {});
+    }
 
     // sv_logout_reason must still be present after credentials were cleared.
     expect(store['sv_logout_reason']).toBe('deactivated');
+  });
+
+  /**
+   * Test 3b — Single startup MAC failure does NOT log the user out (#257):
+   *
+   * A transient server blip at cold-start (one inactive response) must not
+   * force a logout.  The shared consecutiveMacFailRef counter is at 1, below
+   * the threshold of 5, so isActivated must remain true after startup.
+   */
+  test('a single inactive response at startup does NOT log the user out', async () => {
+    const fakeCreds = JSON.stringify({
+      url:      'http://example.com',
+      username: 'user',
+      password: 'pass',
+    });
+    (SecureStore.getItemAsync as jest.Mock).mockResolvedValueOnce(fakeCreds);
+
+    // Startup check returns inactive once — counter → 1, below threshold of 5.
+    global.fetch = jest.fn().mockResolvedValueOnce({
+      ok:   true,
+      json: jest.fn().mockResolvedValue({ status: 'inactive' }),
+    }) as unknown as typeof fetch;
+
+    // renderProvider handles act() wrapping and microtask flushing.
+    const { getIsActivated } = await renderProvider();
+    // One extra flush in case the new code path (setCredentials/setIsActivated
+    // inside the else branch) schedules updates in a subsequent microtask batch.
+    await act(async () => {});
+
+    // Counter is 1 (below threshold of 5) — user must still be activated.
+    expect(getIsActivated()).toBe(true);
+    // No logout reason written to storage.
+    expect(store['sv_logout_reason']).toBeUndefined();
   });
 
   /**

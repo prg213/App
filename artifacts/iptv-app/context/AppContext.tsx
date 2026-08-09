@@ -137,6 +137,7 @@ export function AppContextProvider({ children }: { children: React.ReactNode }) 
         // Verify the MAC is still registered before trusting stored credentials
         const stillActive = await isMacStillRegistered(mac);
         if (stillActive) {
+          consecutiveMacFailRef.current = 0; // #257: reset streak on a clean startup
           setCredentials(creds);
           setIsActivated(true);
           isActivatedRef.current = true;
@@ -147,8 +148,24 @@ export function AppContextProvider({ children }: { children: React.ReactNode }) 
             startMacInterval();
           }
         } else {
-          // MAC was deleted while the app was closed — clear and show activation screen
-          await doLogout('deactivated');
+          // #257: A single transient server blip at cold-start must not force a
+          // logout.  Reuse the shared counter so only N consecutive failures
+          // (startup + foreground/interval) actually deactivate the session.
+          consecutiveMacFailRef.current += 1;
+          if (consecutiveMacFailRef.current >= MAX_CONSECUTIVE_MAC_FAILURES) {
+            await doLogout('deactivated');
+          } else {
+            // Below the threshold — trust stored credentials and let the
+            // foreground/interval checks confirm deactivation.  Do NOT update
+            // lastForegroundCheckRef so the next AppState 'active' event will
+            // run a fresh check immediately without being skipped.
+            setCredentials(creds);
+            setIsActivated(true);
+            isActivatedRef.current = true;
+            if (AppState.currentState === 'active') {
+              startMacInterval();
+            }
+          }
         }
       }
       setIsLoading(false);
