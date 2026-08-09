@@ -272,7 +272,7 @@ interface TVProgItem {
 }
 
 const TVEpgRow = React.memo(function TVEpgRow({
-  channel, programs, dayStartMs, now, isToday, colors, reminderIds,
+  channel, programs, dayStartMs, now, isToday, isFirst, colors, reminderIds,
   onProgramPress, onWatchChannel,
 }: {
   channel: Channel;
@@ -280,6 +280,8 @@ const TVEpgRow = React.memo(function TVEpgRow({
   dayStartMs: number;
   now: number;
   isToday: boolean;
+  /** True for the first row — gives hasTVPreferredFocus so the remote lands on it immediately */
+  isFirst?: boolean;
   colors: any;
   reminderIds?: Set<string>;
   onProgramPress: (p: EpgProgram, ch: Channel) => void;
@@ -330,6 +332,7 @@ const TVEpgRow = React.memo(function TVEpgRow({
       {/* Channel info cell — OK/Select watches channel */}
       <FocusablePressable
         focusedStyle={styles.tvFocused}
+        hasTVPreferredFocus={isFirst}
         style={[styles.tvChCell, { backgroundColor: colors.card, borderRightColor: colors.border }]}
         onPress={() => onWatchChannel(channel)}
       >
@@ -583,13 +586,14 @@ function CategoryGrid({
   const numCols = Math.max(2, Math.floor(availW / 180));
   const colW = Math.floor((availW - (numCols + 1) * 12) / numCols);
 
-  const renderItem = useCallback(({ item: catId }: { item: string }) => {
+  const renderItem = useCallback(({ item: catId, index }: { item: string; index: number }) => {
     const name = categoryNameMap[catId] ?? catId;
     const icon = getCatIcon(name);
     const count = channelCountByCategory[catId] ?? 0;
     return (
       <FocusablePressable
         focusedStyle={styles.tvFocused}
+        hasTVPreferredFocus={index === 0}
         style={[styles.catCard, { backgroundColor: colors.card, borderColor: colors.border, width: colW }]}
         onPress={() => onSelect(catId)}
       >
@@ -1003,13 +1007,14 @@ function FullGuide({
             keyExtractor={(ch) => ch.id}
             style={{ flex: 1 }}
             showsVerticalScrollIndicator={false}
-            renderItem={({ item: ch }) => (
+            renderItem={({ item: ch, index }) => (
               <TVEpgRow
                 channel={ch}
                 programs={epgMap?.get(ch.epgId ?? ch.id) ?? []}
                 dayStartMs={dayStartMs}
                 now={now}
                 isToday={selectedDay === 0}
+                isFirst={index === 0}
                 colors={colors}
                 reminderIds={guideReminderIds}
                 onProgramPress={(p, c) => setSelected({ program: p, channel: c })}
