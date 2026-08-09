@@ -58,12 +58,13 @@ const ALL_CAT_ID = '__all__';
 // ─── Category Row ─────────────────────────────────────────────────────────────
 
 const CategoryRow = React.memo(function CategoryRow({
-  cat, isSelected, colors, onPress,
+  cat, isSelected, colors, onPress, hasTVPreferredFocus,
 }: {
   cat: Category;
   isSelected: boolean;
   colors: ReturnType<typeof useColors>;
   onPress: () => void;
+  hasTVPreferredFocus?: boolean;
 }) {
   return (
     <FocusablePressable
@@ -72,6 +73,7 @@ const CategoryRow = React.memo(function CategoryRow({
         isSelected ? { backgroundColor: '#3B82F6' } : { borderBottomColor: colors.border },
       ]}
       onPress={onPress}
+      hasTVPreferredFocus={hasTVPreferredFocus}
     >
       <Text
         style={[styles.catRowText, { color: isSelected ? '#fff' : colors.foreground }]}
@@ -255,12 +257,13 @@ export default function CatchupScreen() {
     });
   }, [creds, selectedChannel, router]);
 
-  const renderCategory = useCallback(({ item }: { item: Category }) => (
+  const renderCategory = useCallback(({ item, index }: { item: Category; index: number }) => (
     <CategoryRow
       cat={item}
       isSelected={item.id === selectedCatId}
       colors={colors}
       onPress={() => handleSelectCat(item.id)}
+      hasTVPreferredFocus={index === 0}
     />
   ), [selectedCatId, colors, handleSelectCat]);
 
