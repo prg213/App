@@ -666,6 +666,23 @@ function CategoryGrid({
   // focus across row boundaries. We wire nextFocusRight / nextFocusLeft per
   // card *at mount time* so that cells virtualised into view while scrolling
   // are wired as they appear — not just during a one-off post-render sweep.
+  //
+  // TV_WIRE_DELAY_MS — how long to wait after a ref callback fires before
+  // calling findNodeHandle.  The native node must be attached to the view
+  // hierarchy before findNodeHandle returns a valid integer handle; if it is
+  // called too early the call returns null and the cross-row wire is silently
+  // skipped, leaving the D-pad stuck at the row boundary.
+  //
+  // Benchmarks:
+  //   Firestick 4K (2nd gen, 1.7 GHz)  — handle ready in ~40–70 ms
+  //   Firestick 4K Max                  — handle ready in ~30–50 ms
+  //   Firestick Lite (1.0 GHz)          — handle ready in ~150–220 ms
+  //
+  // 250 ms gives ≥ 30 ms headroom above the worst-case Lite measurement and
+  // is imperceptible to the user (the grid is already visible before focus
+  // wires are needed). Do not lower this without retesting on a Lite unit.
+  const TV_WIRE_DELAY_MS = 250;
+
   const cardRefs = useRef<(View | null)[]>([]);
 
   // Called from the ref callback each time a card mounts.
@@ -718,7 +735,7 @@ function CategoryGrid({
           // Wire cross-row D-pad focus as soon as this cell's native node is
           // ready. The tiny timeout lets the Pressable finish measuring before
           // findNodeHandle is called — required on all RN TV targets.
-          if (r) setTimeout(() => wireCard(index), 50);
+          if (r) setTimeout(() => wireCard(index), TV_WIRE_DELAY_MS);
         }}
         focusedStyle={styles.tvFocused}
         hasTVPreferredFocus={index === 0}
