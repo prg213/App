@@ -374,6 +374,7 @@ export default function CatchupScreen() {
             keyExtractor={(c) => c.id}
             renderItem={renderCategory}
             showsVerticalScrollIndicator={false}
+            removeClippedSubviews={false}
             contentContainerStyle={{ paddingBottom: insets.bottom + 8 }}
           />
         )}
@@ -396,6 +397,7 @@ export default function CatchupScreen() {
             keyExtractor={(c) => c.id}
             renderItem={renderChannel}
             showsVerticalScrollIndicator={false}
+            removeClippedSubviews={false}
             contentContainerStyle={{ paddingBottom: insets.bottom + 8 }}
           />
         )}

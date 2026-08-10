@@ -772,6 +772,7 @@ export default function RemindersScreen() {
           data={flatItems}
           keyExtractor={(item) => item.kind === 'divider' ? `hdr-${item.label}` : item.item.id}
           extraData={nowTs}
+          removeClippedSubviews={false}
           contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 80, gap: 10 }}
           refreshControl={
             <RefreshControl

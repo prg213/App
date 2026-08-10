@@ -322,6 +322,7 @@ export default function MoviesScreen() {
           data={categories}
           keyExtractor={(item) => String(item.id)}
           showsVerticalScrollIndicator={false}
+          removeClippedSubviews={false}
           renderItem={({ item }) => {
             const active = selectedCat === item.id;
             return (
@@ -455,6 +456,7 @@ export default function MoviesScreen() {
             columnWrapperStyle={{ justifyContent: 'flex-start' }}
             onScroll={(e) => setShowScrollTop(e.nativeEvent.contentOffset.y > 300)}
             scrollEventThrottle={200}
+            removeClippedSubviews={false}
             renderItem={({ item }) => {
               const card = (
               <MovieCard

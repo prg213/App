@@ -329,6 +329,7 @@ export default function BlockedChannelsScreen() {
           getItemLayout={(_, i) => ({ length: 72, offset: 72 * i, index: i })}
           initialNumToRender={25}
           showsVerticalScrollIndicator={false}
+          removeClippedSubviews={false}
           contentContainerStyle={{ paddingBottom: insets.bottom + 16 }}
         />
       )}

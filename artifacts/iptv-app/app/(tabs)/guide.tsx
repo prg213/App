@@ -465,6 +465,7 @@ const TVEpgRow = React.memo(function TVEpgRow({
           showsHorizontalScrollIndicator={false}
           style={{ flex: 1 }}
           scrollEventThrottle={16}
+          removeClippedSubviews={false}
           onScroll={(e: NativeSyntheticEvent<NativeScrollEvent>) => {
             scrollOffsetRef.current = e.nativeEvent.contentOffset.x;
           }}
@@ -863,6 +864,7 @@ function CategoryGrid({
         contentContainerStyle={[styles.catGrid, { paddingBottom: insets.bottom + 24 }]}
         columnWrapperStyle={numCols > 1 ? styles.catRow : undefined}
         showsVerticalScrollIndicator={false}
+        removeClippedSubviews={false}
       />
     </View>
   );
@@ -1339,6 +1341,7 @@ function FullGuide({
             keyExtractor={(ch) => ch.id}
             style={{ flex: 1 }}
             showsVerticalScrollIndicator={false}
+            removeClippedSubviews={false}
             renderItem={({ item: ch, index }) => (
               <TVEpgRow
                 channel={ch}
