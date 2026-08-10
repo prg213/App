@@ -155,6 +155,38 @@ export default function CatchupScreen() {
   // the node may not be mounted yet when the tabs re-render after a day change).
   const [firstProgHandle, setFirstProgHandle] = useState<number | null>(null);
 
+  // Node handles for each day tab, keyed by day string.  Populated by the
+  // stable callback refs below once each tab mounts so adjacent tabs can wire
+  // nextFocusLeft / nextFocusRight without relying on render-time handles.
+  const [dayTabHandles, setDayTabHandles] = useState<Map<string, number>>(new Map());
+
+  // One stable callback-ref function per day key.  Re-created only when the
+  // days array reference changes (i.e. when selectedChannel changes), so React
+  // sees the same function between normal re-renders and never detaches /
+  // re-attaches — avoiding the state-update loop that an inline arrow would
+  // cause.  The setDayTabHandles guard (curr === handle) means state is only
+  // written when a handle actually changes.
+  const dayTabCallbackRefs = useMemo(
+    () =>
+      new Map(
+        days.map((k) => [
+          k,
+          (node: View | null) => {
+            const handle = node ? findNodeHandle(node) : null;
+            setDayTabHandles((prev) => {
+              const curr = prev.get(k) ?? null;
+              if (curr === handle) return prev;
+              const next = new Map(prev);
+              if (handle != null) next.set(k, handle);
+              else next.delete(k);
+              return next;
+            });
+          },
+        ]),
+      ),
+    [days],
+  );
+
   // Callback ref: assigned to the first programme row in the list.  It keeps
   // firstProgRef in sync for imperative .focus() calls AND updates the state
   // handle that powers nextFocusDown on the day tabs — both are updated after
@@ -398,12 +430,13 @@ export default function CatchupScreen() {
               style={{ flexGrow: 0 }}
               contentContainerStyle={styles.dayTabs}
             >
-              {days.map((k) => {
+              {days.map((k, idx) => {
                 const first = byDay.get(k)![0];
                 const active = k === activeDay;
                 return (
                   <FocusablePressable
                     key={k}
+                    ref={dayTabCallbackRefs.get(k)}
                     style={[
                       styles.dayTab,
                       { borderColor: colors.border },
@@ -423,6 +456,11 @@ export default function CatchupScreen() {
                     // firstProgHandle is set by the callback ref once the node is mounted,
                     // so this is always a valid post-mount handle (never a stale one).
                     nextFocusDown={firstProgHandle ?? undefined}
+                    // D-pad left/right explicitly routes between adjacent day tabs so the
+                    // remote navigates between them without requiring an OK press first.
+                    // Handles are populated by updateDayTabHandle once each tab mounts.
+                    nextFocusLeft={idx > 0 ? (dayTabHandles.get(days[idx - 1]) ?? undefined) : undefined}
+                    nextFocusRight={idx < days.length - 1 ? (dayTabHandles.get(days[idx + 1]) ?? undefined) : undefined}
                   >
                     <Text style={[styles.dayTabText, { color: active ? '#fff' : colors.mutedForeground }]}>
                       {dayLabel(first.start)}
