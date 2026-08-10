@@ -174,18 +174,15 @@ function Sidebar({ state, descriptors, navigation }: BottomTabBarProps) {
   const upcomingReminderCount = useUpcomingReminderCount();
   const firstNavRef = useRef<RNView>(null);
 
-  // On Android TV / Fire OS hasTVPreferredFocus can silently do nothing when the
-  // sidebar mounts after the scene content.  Explicitly calling .focus() after a
-  // short delay is the most reliable way to land D-pad focus on the first nav item.
+  // Register sidebarNav.focus so per-screen BackHandlers can return focus to
+  // the sidebar when the user presses BACK from inside a screen's content.
+  //
+  // We intentionally do NOT auto-focus the sidebar on startup.  The Home
+  // screen manages its own initial content focus via useFocusEffect, so the
+  // D-pad remote lands directly on the first Home item rather than on the
+  // sidebar nav item (which would require an extra RIGHT press to enter content).
   useEffect(() => {
-    // Register focus fn so screen BackHandlers can return to the sidebar
     sidebarNav.focus = () => { (firstNavRef.current as any)?.focus?.(); };
-    // Fire OS ignores hasTVPreferredFocus when sidebar mounts after scene content;
-    // explicit .focus() after a short delay is the most reliable workaround.
-    // On phones this auto-focus is unnecessary and must never block scroll events.
-    if (!Platform.isTV) return;
-    const t = setTimeout(sidebarNav.focus, 300);
-    return () => clearTimeout(t);
   }, []);
 
   const dotColor = serverStatus === 'ok' ? '#22C55E'

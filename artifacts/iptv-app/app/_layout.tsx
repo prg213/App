@@ -57,13 +57,30 @@ function RootLayoutNav() {
   const [expiredToast, setExpiredToast] = useState<string | null>(null);
   const [pendingUpdate, setPendingUpdate] = useState<UpdateInfo | null>(null);
 
+  // Tracks whether we have already performed the one-shot startup navigation to
+  // Home.  Without this guard, React Navigation's persisted tab state can reopen
+  // the app on whichever tab was last active (e.g. Live TV) instead of Home.
+  const hasNavigatedHomeRef = React.useRef(false);
+
   useEffect(() => {
     if (isLoading) return;
     const inActivation = segments[0] === 'activation';
     if (!isActivated && !inActivation) {
+      // Logged out or deactivated — send to activation.
       router.replace('/activation');
+      hasNavigatedHomeRef.current = false;
     } else if (isActivated && inActivation) {
+      // Just finished the activation flow — land on Home.
       router.replace('/(tabs)/home');
+      hasNavigatedHomeRef.current = true;
+    } else if (isActivated && !hasNavigatedHomeRef.current) {
+      // Cold-start with an existing session.  React Navigation may have persisted
+      // the last active tab (e.g. Live TV).  Always reset to Home so the app
+      // never opens on a content tab without the user choosing it.
+      hasNavigatedHomeRef.current = true;
+      if (segments[1] !== 'home') {
+        router.replace('/(tabs)/home');
+      }
     }
   }, [isLoading, isActivated, segments]);
 

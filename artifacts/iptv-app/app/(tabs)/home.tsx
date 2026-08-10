@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FocusablePressable } from '@/components/FocusablePressable';
 import { useFocusEffect } from 'expo-router';
 import {
@@ -6,6 +6,7 @@ import {
   DeviceEventEmitter,
   FlatList,
   Image,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -172,6 +173,13 @@ export default function HomeScreen() {
   // #229: blocked-channel set for the RecentChannelsRail
   const blockedIdSet = useMemo(() => new Set(blockedChannels), [blockedChannels]);
 
+  // ── TV: first-content ref ─────────────────────────────────────────────────
+  // On Fire TV / Android TV, the D-pad remote needs an explicit focus target
+  // when the Home tab loads.  This ref is attached to the hero banner (or the
+  // top-most visible card for M3U users).  useFocusEffect calls .focus() every
+  // time the Home tab becomes the active screen.
+  const firstItemRef = useRef<View>(null);
+
   // ── Watch history (for Continue Watching rail) ─────────────────────────────
   const [watchHistory, setWatchHistory] = useState<WatchHistoryEntry[]>([]);
 
@@ -210,6 +218,16 @@ export default function HomeScreen() {
     refetchMovies();
     refetchSeries();
   }, [credentials, isXtream, refetchMovies, refetchSeries]));
+
+  // ── TV: focus the first content item whenever Home becomes active ──────────
+  // 200 ms gives React Query time to serve cached data and render the hero
+  // before we call .focus().  If the ref is still null (e.g. no movies cached
+  // yet and no M3U channels) the optional-chain is a safe no-op.
+  useFocusEffect(useCallback(() => {
+    if (!Platform.isTV) return;
+    const t = setTimeout(() => (firstItemRef.current as any)?.focus?.(), 200);
+    return () => clearTimeout(t);
+  }, []));
 
   // ── Progress maps for Continue Watching rail ─────────────────────────────
   // Filter by type before building each map so a movie and a series that happen
@@ -399,6 +417,7 @@ export default function HomeScreen() {
       {/* ── Hero banner ── */}
       {hero && (
         <FocusablePressable
+          ref={firstItemRef}
           style={[styles.hero, { marginTop: insets.top }]}
           focusedStyle={styles.heroFocused}
           onPress={() => handleMoviePress(hero)}
