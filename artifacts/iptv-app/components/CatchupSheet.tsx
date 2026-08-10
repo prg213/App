@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useCallback, useRef } from 'react';
+import React, { useMemo, useState, useCallback, useRef, useEffect } from 'react';
 import {
   ActivityIndicator,
   findNodeHandle,
@@ -187,6 +187,38 @@ export function CatchupSheet({
   // last playable programme row so D-pad Down doesn't wrap to the header.
   const firstDayPillRef = useRef<View>(null);
 
+  // Ref to the first playable programme row — used to programmatically route
+  // D-pad focus after the user switches days in the day strip.
+  const firstPlayableRowRef = useRef<View>(null);
+
+  // Tracks whether the initial mount has passed so the day-change effect
+  // doesn't double-fire on first open (hasTVPreferredFocus covers that case).
+  const dayChangedRef = useRef(false);
+
+  // When the user selects a different day on TV, move focus to the first
+  // playable row for that day.  If there are no playable rows, fall back to
+  // the first day-strip pill so the user can immediately pick another day.
+  useEffect(() => {
+    if (!Platform.isTV) return;
+    if (!dayChangedRef.current) {
+      // Skip the initial mount — hasTVPreferredFocus handles initial focus.
+      dayChangedRef.current = true;
+      return;
+    }
+    // Allow the programme list to re-render before requesting focus.
+    const id = setTimeout(() => {
+      const target =
+        firstPlayableIndex !== -1
+          ? firstPlayableRowRef.current
+          : firstDayPillRef.current;
+      if (target) {
+        target.setNativeProps({ hasTVPreferredFocus: true });
+      }
+    }, 100);
+    return () => clearTimeout(id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDay]);
+
   const handlePlayCatchup = (prog: CatchupProgram) => {
     const durationMinutes = Math.max(
       1,
@@ -321,12 +353,17 @@ export function CatchupSheet({
                 <FocusablePressable
                   key={prog.id ?? i}
                   ref={
-                    Platform.isTV && i === lastPlayableIndex
-                      ? (r) => {
-                          if (r && firstDayPillRef.current) {
-                            // Wire D-pad Down on the last playable row to the
-                            // first day-strip pill so the focus engine never
-                            // wraps back to the close button.
+                    Platform.isTV && (i === firstPlayableIndex || i === lastPlayableIndex)
+                      ? (r: View | null) => {
+                          // Store the first playable row so the day-change
+                          // effect can programmatically move focus to it.
+                          if (i === firstPlayableIndex) {
+                            (firstPlayableRowRef as React.MutableRefObject<View | null>).current = r;
+                          }
+                          // Wire D-pad Down on the last playable row to the
+                          // first day-strip pill so the focus engine never
+                          // wraps back to the close button.
+                          if (i === lastPlayableIndex && r && firstDayPillRef.current) {
                             setTimeout(() => {
                               const handle = findNodeHandle(firstDayPillRef.current);
                               if (handle != null) {
