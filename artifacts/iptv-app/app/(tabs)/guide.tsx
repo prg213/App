@@ -274,7 +274,7 @@ interface TVProgItem {
 
 const TVEpgRow = React.memo(function TVEpgRow({
   channel, programs, dayStartMs, now, isToday, isFirst, colors, reminderIds,
-  onProgramPress, onWatchChannel, firstChannelRef,
+  onProgramPress, onWatchChannel, firstChannelRef, lastFocusedProgRef,
 }: {
   channel: Channel;
   programs: EpgProgram[];
@@ -289,12 +289,21 @@ const TVEpgRow = React.memo(function TVEpgRow({
   onWatchChannel: (ch: Channel) => void;
   /** Ref forwarded from FullGuide so it can focus the first channel cell after a category change */
   firstChannelRef?: React.Ref<View>;
+  /**
+   * Shared mutable ref owned by FullGuide. Set to the View of whichever
+   * programme cell was last pressed so focus can be restored when the
+   * ProgramModal closes.
+   */
+  lastFocusedProgRef?: React.MutableRefObject<View | null>;
 }) {
   const flatRef = useRef<FlatList>(null);
   // Ref to the first programme cell — used by the channel-press auto-advance
   const progFirstRef = useRef<View>(null);
   // Ref to the cell at initialIdx — used to restore focus after the initial scroll
   const initialProgRef = useRef<View>(null);
+  // Map of FlatList index → cell View node so we can hand the pressed node to
+  // lastFocusedProgRef for post-modal focus restoration.
+  const progRefs = useRef<Map<number, View | null>>(new Map());
   const dayEndMs = dayStartMs + DAY_MINS * 60_000;
 
   // Pre-compute widths + cumulative offsets so getItemLayout is O(1)
@@ -394,14 +403,13 @@ const TVEpgRow = React.memo(function TVEpgRow({
               : 0;
             const hasReminder = reminderIds?.has(`${channel.id}_${it.prog.start.toISOString()}`);
             // Callback ref: assigns progFirstRef (index 0, used by channel-cell press
-            // auto-advance) and initialProgRef (initialIdx, used for post-scroll focus
-            // restoration) independently — both assigned when initialIdx === 0.
-            const cellRef = (index === 0 || index === initialIdx)
-              ? (el: View | null) => {
-                  if (index === 0) (progFirstRef as React.MutableRefObject<View | null>).current = el;
-                  if (index === initialIdx) (initialProgRef as React.MutableRefObject<View | null>).current = el;
-                }
-              : undefined;
+            // auto-advance), initialProgRef (initialIdx, used for post-scroll focus
+            // restoration), and progRefs map (every index, used for post-modal restore).
+            const cellRef = (el: View | null) => {
+              progRefs.current.set(index, el);
+              if (index === 0) (progFirstRef as React.MutableRefObject<View | null>).current = el;
+              if (index === initialIdx) (initialProgRef as React.MutableRefObject<View | null>).current = el;
+            };
             return (
               <FocusablePressable
                 ref={cellRef}
@@ -414,7 +422,13 @@ const TVEpgRow = React.memo(function TVEpgRow({
                     borderColor: isNow ? '#3B82F6' : colors.border,
                   },
                 ]}
-                onPress={() => onProgramPress(it.prog, channel)}
+                onPress={() => {
+                  // Record the pressed cell so focus can be restored after the modal closes
+                  if (lastFocusedProgRef) {
+                    lastFocusedProgRef.current = progRefs.current.get(index) ?? null;
+                  }
+                  onProgramPress(it.prog, channel);
+                }}
               >
                 {isNow && (
                   <View style={[styles.progressBar, { width: `${progress * 100}%` as any }]} />
@@ -763,6 +777,9 @@ function FullGuide({
   // ── Auto-advance D-pad focus between columns (TV / Fire TV only) ───────────
   // Ref attached to the first channel cell so we can programmatically focus it.
   const firstChannelRef = useRef<View>(null);
+  // Ref to the programme cell that was last pressed — written by each TVEpgRow
+  // on programme-cell press, read on ProgramModal close to restore D-pad focus.
+  const lastFocusedProgViewRef = useRef<View | null>(null);
 
   // Focus the first channel cell whenever the selected category changes (covers
   // both the initial mount from CategoryGrid and ‹ › prev/next navigation).
@@ -1119,6 +1136,7 @@ function FullGuide({
                 reminderIds={guideReminderIds}
                 onProgramPress={(p, c) => setSelected({ program: p, channel: c })}
                 firstChannelRef={index === 0 ? firstChannelRef : undefined}
+                lastFocusedProgRef={lastFocusedProgViewRef}
                 onWatchChannel={(c) => {
                   const chList = channels.map((x) => ({
                     url: x.streamUrl, title: x.name,
@@ -1240,7 +1258,13 @@ function FullGuide({
           program={selected.program}
           channel={selected.channel}
           colors={colors}
-          onClose={() => setSelected(null)}
+          onClose={() => {
+            setSelected(null);
+            // Restore D-pad focus to the programme cell that opened the modal.
+            if (Platform.isTV) {
+              setTimeout(() => { lastFocusedProgViewRef.current?.focus(); }, 80);
+            }
+          }}
           onWatch={() => {
             const chList = channels.map((ch) => ({
               url: ch.streamUrl,
