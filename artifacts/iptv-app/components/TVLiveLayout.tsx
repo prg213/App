@@ -20,6 +20,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
+import { useFocusEffect } from 'expo-router';
 import {
   ActivityIndicator,
   FlatList,
@@ -103,14 +104,21 @@ export function TVLiveLayout({
   const firstCatRef = useRef<View>(null);
   const firstChRef  = useRef<View>(null);
 
-  // On mount, give the remote a landing zone: focus the first category item.
-  // 400 ms lets the FlatList render and measure its children before we call
-  // focus — necessary on older Firestick hardware.
-  useEffect(() => {
+  // Ref tracking for the last D-pad-focused channel row.
+  // On return from the fullscreen player this lets us restore focus to the
+  // channel the user was watching rather than forcing them back to the top.
+  const lastFocusedChRef = useRef<View>(null);
+  const chRefMap = useRef(new Map<string, View>());
+
+  // On tab focus: restore to last focused channel, or fall back to the first
+  // category.  useFocusEffect fires on every tab visit (initial mount AND
+  // return from the fullscreen player), replacing the old mount-only useEffect.
+  useFocusEffect(useCallback(() => {
     if (!Platform.isTV) return;
-    const t = setTimeout(() => (firstCatRef.current as any)?.focus?.(), 400);
+    const target = lastFocusedChRef.current ?? firstCatRef.current;
+    const t = setTimeout(() => (target as any)?.focus?.(), 400);
     return () => clearTimeout(t);
-  }, []);
+  }, []));
 
   // Track which channel row is visually highlighted.
   // Updated on D-pad focus AND on successful OK press — never triggers stream load.
@@ -193,7 +201,11 @@ export function TVLiveLayout({
     const isHighlighted = highlightedChId === item.id;
     return (
       <FocusablePressable
-        ref={index === 0 ? (firstChRef as any) : undefined}
+        ref={(node: View | null) => {
+          if (index === 0) (firstChRef as any).current = node;
+          if (node) chRefMap.current.set(item.id, node);
+          else chRefMap.current.delete(item.id);
+        }}
         accessible
         accessibilityRole="button"
         accessibilityLabel={item.name}
@@ -203,7 +215,11 @@ export function TVLiveLayout({
           { borderBottomColor: colors.border },
           isHighlighted && { borderLeftColor: FOCUS_BORDER, borderLeftWidth: 3 },
         ]}
-        onFocus={() => handleChFocus(item, index)}
+        onFocus={() => {
+          handleChFocus(item, index);
+          const node = chRefMap.current.get(item.id);
+          if (node) lastFocusedChRef.current = node;
+        }}
         onPress={() => {
           onChannelSelect(item);
           setHighlightedChId(item.id);

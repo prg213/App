@@ -1,4 +1,4 @@
-import React, { memo, useEffect, useState } from 'react';
+import React, { forwardRef, memo, useEffect, useState } from 'react';
 import { FocusablePressable } from '@/components/FocusablePressable';
 import {
   StyleSheet,
@@ -59,9 +59,14 @@ interface MovieCardProps {
   onLongPress?: () => void;
   /** kept for API compatibility — button no longer rendered on the poster */
   onTrailerPress?: () => void;
+  /** TV: called when this card's FocusablePressable receives D-pad focus */
+  onFocus?: () => void;
 }
 
-function MovieCardComponent({ name, cover, rating, genre, year, query = '', isFav, compact, progress, cardStyle, onPress, onFavPress, onLongPress }: MovieCardProps) {
+const MovieCardComponent = forwardRef<View, MovieCardProps>(function MovieCardInner(
+  { name, cover, rating, genre, year, query = '', isFav, compact, progress, cardStyle, onPress, onFavPress, onLongPress, onFocus },
+  ref
+) {
   const colors = useColors();
   const isOnline = useIsOnline();
   // #172: increment whenever the app returns to the foreground so images that
@@ -85,7 +90,7 @@ function MovieCardComponent({ name, cover, rating, genre, year, query = '', isFa
   const posterUri = cover || tmdbPoster;
 
   return (
-    <FocusablePressable style={[styles.card, compact && styles.cardCompact, cardStyle]} onPress={onPress} onLongPress={onLongPress} delayLongPress={500} accessibilityLabel={name} accessibilityRole="button">
+    <FocusablePressable ref={ref as any} onFocus={onFocus} style={[styles.card, compact && styles.cardCompact, cardStyle]} onPress={onPress} onLongPress={onLongPress} delayLongPress={500} accessibilityLabel={name} accessibilityRole="button">
       {/* Poster */}
       <View style={[styles.poster, { backgroundColor: colors.secondary }]}>
         {posterUri ? (
@@ -139,7 +144,7 @@ function MovieCardComponent({ name, cover, rating, genre, year, query = '', isFa
       </View>
     </FocusablePressable>
   );
-}
+});
 
 export const MovieCard = memo(MovieCardComponent);
 

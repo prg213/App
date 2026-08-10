@@ -134,6 +134,19 @@ export default function SeriesDetailScreen() {
     }, [params.id]),
   );
 
+  // TV: restore D-pad focus to the last focused episode on return from the
+  // player, or to the main Play button on first entry.
+  const lastFocusedEpRef = useRef<View>(null);
+  const epRefMap = useRef(new Map<string | number, View>());
+  const playBtnRef = useRef<View>(null);
+  useFocusEffect(useCallback(() => {
+    if (!Platform.isTV) return;
+    const target = lastFocusedEpRef.current ?? playBtnRef.current;
+    if (!target) return;
+    const t = setTimeout(() => (target as any)?.focus?.(), 200);
+    return () => clearTimeout(t);
+  }, []));
+
   const handleToggleFav = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     const updated = await StorageService.toggleSeriesFavorite({
@@ -307,7 +320,6 @@ export default function SeriesDetailScreen() {
       <View style={[styles.header, { paddingTop: insets.top + 10, borderBottomColor: 'rgba(255,255,255,0.07)' }]}>
         <FocusablePressable
           focusable
-          hasTVPreferredFocus={Platform.isTV}
           style={(focused) => [styles.headerBtn, focused && styles.focusRing]}
           onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.back(); }}
         >
@@ -400,6 +412,7 @@ export default function SeriesDetailScreen() {
         {/* ── Action buttons ── */}
         <View style={styles.actionRow}>
           <FocusablePressable
+            ref={playBtnRef}
             focusable
             style={(focused) => [styles.playBtn, { opacity: !activeSeason ? 0.4 : 1 }, focused && styles.focusRing]}
             onPress={handlePlayFirst}
@@ -500,6 +513,14 @@ export default function SeriesDetailScreen() {
                   <FocusablePressable
                     key={ep.id}
                     focusable
+                    ref={(node: View | null) => {
+                      if (node) epRefMap.current.set(ep.id, node);
+                      else epRefMap.current.delete(ep.id);
+                    }}
+                    onFocus={() => {
+                      const node = epRefMap.current.get(ep.id);
+                      if (node) lastFocusedEpRef.current = node;
+                    }}
                     style={(focused) => [styles.epRow, { borderColor: focused ? '#00E5FF' : 'rgba(255,255,255,0.1)' }]}
                     onPress={() => {
                       // On TV, pressing OK resumes from saved position when available

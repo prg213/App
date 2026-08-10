@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -133,6 +133,16 @@ export default function MovieDetailScreen() {
     }, [params.id]),
   );
 
+  // TV: focus the primary play button (Resume or Play) on every entry so
+  // D-pad focus lands on the most useful action instead of the Back button.
+  const playBtnRef = useRef<View>(null);
+  useFocusEffect(useCallback(() => {
+    if (!Platform.isTV || !playBtnRef.current) return;
+    const node = playBtnRef.current;
+    const t = setTimeout(() => (node as any)?.focus?.(), 150);
+    return () => clearTimeout(t);
+  }, []));
+
   // needsInfo: true when metadata (plot/cast) isn't already in route params
   const needsInfo = isXtream && (!params.plot || !params.cast);
   // Always fetch VOD info for Xtream content — even when metadata is pre-populated —
@@ -227,7 +237,6 @@ export default function MovieDetailScreen() {
       <View style={[styles.header, { paddingTop: insets.top + 10, borderBottomColor: 'rgba(255,255,255,0.07)' }]}>
         <FocusablePressable
           focusable
-          hasTVPreferredFocus={Platform.isTV}
           style={(focused) => [styles.headerBtn, focused && styles.focusRing]}
           onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.back(); }}
         >
@@ -286,6 +295,7 @@ export default function MovieDetailScreen() {
           {savedPosition ? (
             <>
               <FocusablePressable
+                ref={playBtnRef}
                 focusable
                 style={(focused) => [styles.playBtn, { flex: 1 }, focused && styles.focusRing]}
                 onPress={() => handlePlay(savedPosition)}
@@ -302,6 +312,7 @@ export default function MovieDetailScreen() {
             </>
           ) : (
             <FocusablePressable
+              ref={playBtnRef}
               focusable
               style={(focused) => [styles.playBtn, focused && styles.focusRing]}
               onPress={() => handlePlay()}

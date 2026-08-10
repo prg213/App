@@ -5,6 +5,7 @@ import {
   BackHandler,
   FlatList,
   Keyboard,
+  Platform,
   RefreshControl,
   StyleSheet,
   Text,
@@ -201,6 +202,18 @@ export default function SeriesScreen() {
   const [sortToast, setSortToast] = useState<string | null>(null);
   const [showScrollTop, setShowScrollTop] = useState(false);
   const gridRef = useRef<FlatList<Series>>(null);
+  /** TV: view node of the last D-pad-focused series card */
+  const lastFocusedCardRef = useRef<View>(null);
+  /** TV: stable map of item.id → card View node */
+  const cardRefMap = useRef(new Map<string, View>());
+
+  // TV: restore D-pad focus to the last focused card on return from detail.
+  useFocusEffect(useCallback(() => {
+    if (!Platform.isTV || !lastFocusedCardRef.current) return;
+    const node = lastFocusedCardRef.current;
+    const t = setTimeout(() => (node as any)?.focus?.(), 200);
+    return () => clearTimeout(t);
+  }, []));
 
   // Scroll back to top and clear search whenever the category changes
   useEffect(() => {
@@ -455,6 +468,14 @@ export default function SeriesScreen() {
             renderItem={({ item }) => {
               const card = (
               <SeriesCard
+                ref={(node: View | null) => {
+                  if (node) cardRefMap.current.set(item.id, node);
+                  else cardRefMap.current.delete(item.id);
+                }}
+                onFocus={() => {
+                  const node = cardRefMap.current.get(item.id);
+                  if (node) lastFocusedCardRef.current = node;
+                }}
                 id={item.id}
                 name={item.name}
                 cover={item.cover}

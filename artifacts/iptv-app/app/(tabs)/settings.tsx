@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { FocusablePressable } from '@/components/FocusablePressable';
 import {
   Alert,
@@ -156,6 +156,51 @@ export default function SettingsScreen() {
   const [pendingRating, setPendingRating] = useState<MaxRating | null>(null);
   const [pendingLock, setPendingLock] = useState<boolean | null>(null);
   const [showRatingSheet, setShowRatingSheet] = useState(false);
+
+  // ── TV: D-pad focus restoration after picker sheets / PIN modal close ──────
+  // Each opener FocusablePressable stores a ref; a useEffect per sheet watches
+  // the show-flag and, when the sheet closes (true → false), calls focus() on
+  // the opener row so the user doesn't have to re-navigate from the top.
+  const audioLangRowRef = useRef<View>(null);
+  const subtitleLangRowRef = useRef<View>(null);
+  const leadTimeRowRef = useRef<View>(null);
+  const ratingRowRef = useRef<View>(null);
+  const setPinRowRef = useRef<View>(null);
+
+  const audioLangWasOpen = useRef(false);
+  useEffect(() => {
+    if (!Platform.isTV) return;
+    if (showAudioLangSheet) { audioLangWasOpen.current = true; return; }
+    if (audioLangWasOpen.current) { audioLangWasOpen.current = false; setTimeout(() => (audioLangRowRef.current as any)?.focus?.(), 150); }
+  }, [showAudioLangSheet]);
+
+  const subtitleLangWasOpen = useRef(false);
+  useEffect(() => {
+    if (!Platform.isTV) return;
+    if (showSubtitleLangSheet) { subtitleLangWasOpen.current = true; return; }
+    if (subtitleLangWasOpen.current) { subtitleLangWasOpen.current = false; setTimeout(() => (subtitleLangRowRef.current as any)?.focus?.(), 150); }
+  }, [showSubtitleLangSheet]);
+
+  const leadTimeWasOpen = useRef(false);
+  useEffect(() => {
+    if (!Platform.isTV) return;
+    if (showLeadTimeSheet) { leadTimeWasOpen.current = true; return; }
+    if (leadTimeWasOpen.current) { leadTimeWasOpen.current = false; setTimeout(() => (leadTimeRowRef.current as any)?.focus?.(), 150); }
+  }, [showLeadTimeSheet]);
+
+  const ratingWasOpen = useRef(false);
+  useEffect(() => {
+    if (!Platform.isTV) return;
+    if (showRatingSheet) { ratingWasOpen.current = true; return; }
+    if (ratingWasOpen.current) { ratingWasOpen.current = false; setTimeout(() => (ratingRowRef.current as any)?.focus?.(), 150); }
+  }, [showRatingSheet]);
+
+  const pinWasOpen = useRef(false);
+  useEffect(() => {
+    if (!Platform.isTV) return;
+    if (pinFlow !== null) { pinWasOpen.current = true; return; }
+    if (pinWasOpen.current) { pinWasOpen.current = false; setTimeout(() => (setPinRowRef.current as any)?.focus?.(), 150); }
+  }, [pinFlow]);
 
   // Resolve Xtream credentials — either directly (xtream type) or parsed from M3U URL
   const xtreamCreds =
@@ -526,6 +571,7 @@ export default function SettingsScreen() {
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <FocusablePressable
             style={[styles.actionRow, { borderBottomColor: colors.border }]}
+            ref={audioLangRowRef}
             onPress={() => setShowAudioLangSheet(true)}
           >
             <View style={{ flex: 1 }}>
@@ -538,6 +584,7 @@ export default function SettingsScreen() {
           </FocusablePressable>
           <FocusablePressable
             style={[styles.actionRow, { borderBottomWidth: 0 }]}
+            ref={subtitleLangRowRef}
             onPress={() => setShowSubtitleLangSheet(true)}
           >
             <View style={{ flex: 1 }}>
@@ -555,6 +602,7 @@ export default function SettingsScreen() {
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <FocusablePressable
             style={[styles.actionRow, { borderBottomWidth: 0 }]}
+            ref={leadTimeRowRef}
             onPress={() => setShowLeadTimeSheet(true)}
           >
             <View style={{ flex: 1 }}>
@@ -573,6 +621,7 @@ export default function SettingsScreen() {
           {/* Content Rating picker */}
           <FocusablePressable
             style={[styles.actionRow, { borderBottomColor: colors.border }]}
+            ref={ratingRowRef}
             onPress={() => setShowRatingSheet(true)}
           >
             <View style={{ flex: 1 }}>
@@ -606,6 +655,7 @@ export default function SettingsScreen() {
 
           {/* Set / Change PIN */}
           <FocusablePressable
+            ref={setPinRowRef}
             style={[styles.actionRow, { borderBottomColor: colors.border }]}
             onPress={handleSetPinPress}
           >
