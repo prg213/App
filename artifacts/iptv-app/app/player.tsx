@@ -379,6 +379,11 @@ export default function PlayerScreen() {
   const [showSettings, setShowSettings] = useState(false);
   const [showAudioPicker, setShowAudioPicker] = useState(false);
   const [showSubPicker, setShowSubPicker] = useState(false);
+  // Refs to the chip buttons that open each picker — used to restore D-pad
+  // focus after the picker modal closes on Firestick/Android TV.
+  const audioChipRef = useRef<any>(null);
+  const ccChipRef    = useRef<any>(null);
+  const settingsChipRef = useRef<any>(null);
   const [speed, setSpeed] = useState(1);
   const [contentFit, setContentFit] = useState<'contain' | 'cover' | 'fill'>('contain');
 
@@ -1442,6 +1447,7 @@ export default function PlayerScreen() {
             <CastButton />
             {/* Audio track button — always visible */}
             <FocusablePressable
+              ref={audioChipRef}
               style={[styles.trackPill, audioTracks.length === 0 && { opacity: 0.35 }]}
               onPress={() => setShowAudioPicker(true)}
             >
@@ -1451,6 +1457,7 @@ export default function PlayerScreen() {
             </FocusablePressable>
             {/* CC / Subtitle button — tap cycles off→first→next→off; long-press opens picker */}
             <FocusablePressable
+              ref={ccChipRef}
               style={[styles.trackPill, subtitleTracks.length === 0 && { opacity: 0.35 }, activeSubtitleTrack !== null && styles.trackPillActive]}
               onPress={handleCcPress}
               onLongPress={() => setShowSubPicker(true)}
@@ -1461,6 +1468,7 @@ export default function PlayerScreen() {
               </Text>
             </FocusablePressable>
             <FocusablePressable
+              ref={settingsChipRef}
               style={styles.backBtn}
               onPress={() => { setShowSettings(true); }}
             >
@@ -1604,6 +1612,7 @@ export default function PlayerScreen() {
           <View style={{ flex: 1 }} />
           {/* Audio track button */}
           <FocusablePressable
+            ref={audioChipRef}
             style={[styles.trackPill, audioTracks.length === 0 && { opacity: 0.35 }]}
             onPress={() => setShowAudioPicker(true)}
           >
@@ -1613,6 +1622,7 @@ export default function PlayerScreen() {
           </FocusablePressable>
           {/* CC / Subtitle button — tap cycles off→first→next→off; long-press opens picker */}
           <FocusablePressable
+            ref={ccChipRef}
             style={[styles.trackPill, activeSubtitleTrack !== null && styles.trackPillActive]}
             onPress={handleCcPress}
             onLongPress={() => setShowSubPicker(true)}
@@ -1817,7 +1827,11 @@ export default function PlayerScreen() {
         visible={showAudioPicker}
         transparent
         animationType="slide"
-        onRequestClose={() => setShowAudioPicker(false)}
+        onRequestClose={() => {
+          setShowAudioPicker(false);
+          // Return D-pad focus to the chip that opened this picker
+          setTimeout(() => audioChipRef.current?.focus(), 150);
+        }}
       >
         <Pressable style={styles.settingsBackdrop} focusable={false} onPress={() => setShowAudioPicker(false)} />
         <View style={[styles.settingsSheet, { paddingBottom: insets.bottom + 16 }]}>
@@ -1852,6 +1866,7 @@ export default function PlayerScreen() {
                         }
                       } catch {}
                       setShowAudioPicker(false);
+                      setTimeout(() => audioChipRef.current?.focus(), 150);
                     }}
                   >
                     <Text style={[styles.chipText, isActive && styles.chipTextActive]}>{label}</Text>
@@ -1868,7 +1883,10 @@ export default function PlayerScreen() {
         visible={showSubPicker}
         transparent
         animationType="slide"
-        onRequestClose={() => setShowSubPicker(false)}
+        onRequestClose={() => {
+          setShowSubPicker(false);
+          setTimeout(() => ccChipRef.current?.focus(), 150);
+        }}
       >
         <Pressable style={styles.settingsBackdrop} focusable={false} onPress={() => setShowSubPicker(false)} />
         <View style={[styles.settingsSheet, { paddingBottom: insets.bottom + 16 }]}>
@@ -1891,6 +1909,7 @@ export default function PlayerScreen() {
                     StorageService.clearPrefSubtitleLang().catch(() => {});
                   } catch {}
                   setShowSubPicker(false);
+                  setTimeout(() => ccChipRef.current?.focus(), 150);
                 }}
               >
                 <Text style={[styles.chipText, activeSubtitleTrack === null && styles.chipTextActive]}>Off</Text>
@@ -1914,6 +1933,7 @@ export default function PlayerScreen() {
                         if (track.language) StorageService.setPrefSubtitleLang(track.language).catch(() => {});
                       } catch {}
                       setShowSubPicker(false);
+                      setTimeout(() => ccChipRef.current?.focus(), 150);
                     }}
                   >
                     <Text style={[styles.chipText, isActive && styles.chipTextActive]}>{label}</Text>
@@ -1930,7 +1950,10 @@ export default function PlayerScreen() {
         visible={showSettings}
         transparent
         animationType="slide"
-        onRequestClose={() => setShowSettings(false)}
+        onRequestClose={() => {
+          setShowSettings(false);
+          setTimeout(() => settingsChipRef.current?.focus(), 150);
+        }}
       >
         <Pressable
           style={styles.settingsBackdrop}

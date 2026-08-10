@@ -663,7 +663,7 @@ function ProgramModal({ program, channel, onClose, onWatch, colors }: {
             <FocusablePressable
               style={[styles.closeBtn, { backgroundColor: colors.secondary, borderColor: colors.border }]}
               onPress={onClose}
-              hasTVPreferredFocus
+              hasTVPreferredFocus={!isNow}
             >
               <Text style={[styles.closeBtnText, { color: colors.foreground }]}>Close</Text>
             </FocusablePressable>

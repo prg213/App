@@ -712,9 +712,10 @@ export default function SettingsScreen() {
         <View style={[styles.sheet, { backgroundColor: colors.card, paddingBottom: insets.bottom + 16 }]}>
           <View style={styles.sheetHandle} />
           <Text style={[styles.sheetTitle, { color: colors.mutedForeground }]}>PREFERRED AUDIO LANGUAGE</Text>
-          {AUDIO_LANG_OPTIONS.map((opt) => (
+          {AUDIO_LANG_OPTIONS.map((opt, index) => (
             <FocusablePressable
               key={opt.value}
+              hasTVPreferredFocus={Platform.isTV && (prefAudioLang ? opt.value === prefAudioLang : index === 0)}
               style={[styles.sheetRow, { borderBottomColor: colors.border }]}
               onPress={async () => {
                 Haptics.selectionAsync();
@@ -745,9 +746,10 @@ export default function SettingsScreen() {
         <View style={[styles.sheet, { backgroundColor: colors.card, paddingBottom: insets.bottom + 16 }]}>
           <View style={styles.sheetHandle} />
           <Text style={[styles.sheetTitle, { color: colors.mutedForeground }]}>PREFERRED SUBTITLE LANGUAGE</Text>
-          {LANG_OPTIONS.map((opt) => (
+          {LANG_OPTIONS.map((opt, index) => (
             <FocusablePressable
               key={opt.value}
+              hasTVPreferredFocus={Platform.isTV && (prefSubtitleLang ? opt.value === prefSubtitleLang : index === 0)}
               style={[styles.sheetRow, { borderBottomColor: colors.border }]}
               onPress={async () => {
                 Haptics.selectionAsync();
@@ -781,6 +783,7 @@ export default function SettingsScreen() {
           {LEAD_TIME_OPTIONS.map((opt) => (
             <FocusablePressable
               key={opt.value}
+              hasTVPreferredFocus={Platform.isTV && opt.value === reminderLeadMins}
               style={[styles.sheetRow, { borderBottomColor: colors.border }]}
               onPress={() => handleLeadTimeSelect(opt.value)}
             >
@@ -809,6 +812,7 @@ export default function SettingsScreen() {
           {RATING_OPTIONS.map((opt) => (
             <FocusablePressable
               key={opt.value}
+              hasTVPreferredFocus={Platform.isTV && opt.value === maxRating}
               style={[styles.sheetRow, { borderBottomColor: colors.border }]}
               onPress={() => handleRatingPress(opt.value)}
             >

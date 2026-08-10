@@ -601,7 +601,9 @@ export default function SeriesDetailScreen() {
       >
         {/* focusable={false}: BACK already closes via onRequestClose; this
             prevents the backdrop from stealing D-pad focus from the season rows */}
-        <View style={styles.pickerBackdrop} pointerEvents="box-none" />
+        {/* focusable={false}: prevents this backdrop from stealing D-pad
+            focus away from the season option rows inside the sheet */}
+        <View style={styles.pickerBackdrop} pointerEvents="box-none" focusable={false} />
         <View style={[styles.pickerSheet, { paddingBottom: insets.bottom + 16 }]}>
           <Text style={[styles.pickerTitle, { color: 'rgba(255,255,255,0.5)', borderBottomColor: 'rgba(255,255,255,0.08)' }]}>
             SELECT SEASON
