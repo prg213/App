@@ -311,6 +311,14 @@ const TVEpgRow = React.memo(function TVEpgRow({
   // Map of FlatList index → cell View node so we can hand the pressed node to
   // lastFocusedProgRef for post-modal focus restoration.
   const progRefs = useRef<Map<number, View | null>>(new Map());
+  // Tracks the last horizontal scroll offset so it can be restored after an
+  // orientation change or window resize causes the FlatList to remount.
+  // null = no user scroll recorded yet for this day (use initialIdx instead).
+  // A saved value of 0 is valid (user explicitly scrolled back to the left edge)
+  // and must be restored faithfully, so we need null as a distinct sentinel.
+  const scrollOffsetRef = useRef<number | null>(null);
+  // Detect window width changes (landscape ↔ portrait, split-screen resize).
+  const { width: windowWidth } = useWindowDimensions();
   const dayEndMs = dayStartMs + DAY_MINS * 60_000;
 
   // Pre-compute widths + cumulative offsets so getItemLayout is O(1)
@@ -335,10 +343,37 @@ const TVEpgRow = React.memo(function TVEpgRow({
     return idx > 0 ? idx - 1 : idx >= 0 ? idx : undefined;
   }, [items, now, isToday]);
 
+  // Reset the saved scroll offset whenever the selected day changes so that a
+  // stale offset from the previous day is never applied to a new day's content.
+  // Rows are keyed by channel id and retained across day switches, so we need
+  // this explicit reset rather than relying on component remount.
   useEffect(() => {
-    if (initialIdx == null || !flatRef.current) return;
+    scrollOffsetRef.current = null;
+  }, [dayStartMs]);
+
+  useEffect(() => {
+    if (!flatRef.current) return;
+    // Snapshot the saved offset SYNCHRONOUSLY before scheduling the timer.
+    // When a FlatList remounts after a resize it commonly emits an onScroll
+    // event with x=0 (the reset position) before the 150 ms timer fires.
+    // Reading scrollOffsetRef inside the timer would see that overwritten value
+    // rather than the user's real position.  Capturing it here, at effect-run
+    // time, avoids that race — matching the pattern used by the phone path.
+    const savedOffset = scrollOffsetRef.current;
     let focusTimer: ReturnType<typeof setTimeout> | null = null;
     const scrollTimer = setTimeout(() => {
+      // Restore the user's saved offset when one exists — including a real
+      // value of 0 (user explicitly scrolled back to the left edge).
+      // null means no scroll has been recorded yet for this day.
+      if (savedOffset !== null) {
+        try {
+          flatRef.current?.scrollToOffset({ offset: savedOffset, animated: false });
+        } catch (_) {}
+        return; // No focus change needed — D-pad focus is preserved by TV framework
+      }
+      // No saved offset (initial mount or just after a day change): scroll to the
+      // current/upcoming programme and optionally restore D-pad focus.
+      if (initialIdx == null) return;
       try {
         flatRef.current?.scrollToIndex({ index: initialIdx, animated: false, viewPosition: 0 });
       } catch (_) {}
@@ -354,7 +389,10 @@ const TVEpgRow = React.memo(function TVEpgRow({
       clearTimeout(scrollTimer);
       if (focusTimer !== null) clearTimeout(focusTimer);
     };
-  }, [initialIdx, isFirst]);
+    // windowWidth is intentionally included: an orientation change or split-screen
+    // resize triggers a FlatList remount that resets scroll to 0, so this effect
+    // must re-run to restore the saved offset.
+  }, [initialIdx, isFirst, windowWidth]);
 
   // Populate jumpToNowRef (first row only) with a fn FullGuide can call to
   // scroll the horizontal list to the current programme and focus it.
@@ -426,6 +464,10 @@ const TVEpgRow = React.memo(function TVEpgRow({
           getItemLayout={getItemLayout}
           showsHorizontalScrollIndicator={false}
           style={{ flex: 1 }}
+          scrollEventThrottle={16}
+          onScroll={(e: NativeSyntheticEvent<NativeScrollEvent>) => {
+            scrollOffsetRef.current = e.nativeEvent.contentOffset.x;
+          }}
           renderItem={({ item: it, index }) => {
             const isNow = it.prog.start.getTime() <= now && now < it.prog.end.getTime();
             const progress = isNow
@@ -1043,9 +1085,20 @@ function FullGuide({
   const timeHeaderRef = useRef<ScrollView>(null);
   const gridHorizRef  = useRef<ScrollView>(null);
 
+  // Tracks the latest horizontal scroll offset so it can be restored after an
+  // orientation change or split-screen resize resets the ScrollView position.
+  const gridScrollOffsetRef = useRef<number>(0);
+  // Tracks the previous window width so the orientation-change restore effect
+  // can tell the difference between a real resize and the initial mount.
+  const { width: windowWidth } = useWindowDimensions();
+  const prevWindowWidthRef = useRef<number | null>(null);
+
   // When day changes scroll horizontally to current time (today) or day start
   useEffect(() => {
     const scrollX = selectedDay === 0 ? Math.max(0, nowX - SLOT_W * 2) : 0;
+    // Keep the offset ref in sync with the programmatic scroll so that an
+    // orientation change immediately after a day change restores the right position.
+    gridScrollOffsetRef.current = scrollX;
     const timer = setTimeout(() => {
       gridHorizRef.current?.scrollTo({ x: scrollX, animated: false });
       timeHeaderRef.current?.scrollTo({ x: scrollX, animated: false });
@@ -1053,8 +1106,31 @@ function FullGuide({
     return () => clearTimeout(timer);
   }, [selectedDay, nowX]);
 
+  // After an orientation change or split-screen resize the horizontal ScrollViews
+  // remount and their content offset resets to 0.  This effect detects that by
+  // watching windowWidth and restores both views to the saved offset.
+  // The initial mount is intentionally skipped (prevWindowWidthRef is null) so
+  // this doesn't race with the day-change effect above.
+  useEffect(() => {
+    if (Platform.isTV) return; // TV rows handle their own restoration in TVEpgRow
+    if (prevWindowWidthRef.current === null) {
+      prevWindowWidthRef.current = windowWidth;
+      return;
+    }
+    if (prevWindowWidthRef.current === windowWidth) return;
+    prevWindowWidthRef.current = windowWidth;
+    const x = gridScrollOffsetRef.current;
+    const timer = setTimeout(() => {
+      gridHorizRef.current?.scrollTo({ x, animated: false });
+      timeHeaderRef.current?.scrollTo({ x, animated: false });
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [windowWidth]);
+
   const onGridHorizScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    timeHeaderRef.current?.scrollTo({ x: e.nativeEvent.contentOffset.x, animated: false });
+    const x = e.nativeEvent.contentOffset.x;
+    gridScrollOffsetRef.current = x;
+    timeHeaderRef.current?.scrollTo({ x, animated: false });
   }, []);
 
   return (
