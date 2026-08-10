@@ -1591,8 +1591,25 @@ export default function GuideScreen() {
       retry: 1,
     });
 
-  // Category IDs in server order (same as Live TV), filtered to only those with channels
+  // Category IDs in server order (same as Live TV), filtered to only those with channels.
+  //
+  // PERF: Do NOT wait for `channels` to be non-empty before showing categories.
+  // `liveCategories` is a lightweight list that loads in ~200 ms; `channels` is
+  // the full live-stream catalogue (potentially thousands of entries / several MB)
+  // and can take several seconds.  Blocking categoryIds on channels makes the
+  // CategoryGrid sit blank the entire time channels are loading.
+  //
+  // Instead: surface all categories as soon as liveCategories arrives.  Once
+  // channels loads, quietly filter out any that have no streams (rare in
+  // practice — providers almost never have orphaned category entries).
+  // The count badges naturally update from 0 → N when channels resolves.
   const categoryIds = useMemo(() => {
+    if (channels.length === 0) {
+      // Channels still loading — show every category so the grid is immediately
+      // usable. If the user selects one, filteredChannels will be empty and they
+      // will see the guide grid with no channels; that's an acceptable brief state.
+      return liveCategories.map((c) => c.id);
+    }
     const withChannels = new Set(channels.map((ch) => ch.groupTitle).filter(Boolean));
     return liveCategories.map((c) => c.id).filter((id) => withChannels.has(id));
   }, [liveCategories, channels]);
