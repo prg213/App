@@ -281,6 +281,7 @@ export default function BlockedChannelsScreen() {
       <View style={[styles.searchWrap, { borderBottomColor: colors.border }]}>
         <Text style={[styles.searchIcon, { color: colors.mutedForeground }]}>🔍</Text>
         <TextInput
+          focusable
           style={[styles.searchInput, { color: colors.foreground }]}
           value={search}
           onChangeText={setSearch}

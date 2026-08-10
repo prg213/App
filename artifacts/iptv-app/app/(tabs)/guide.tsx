@@ -1220,6 +1220,7 @@ function FullGuide({
         </FocusablePressable>
 
         <TextInput
+          focusable
           value={chFilter}
           onChangeText={setChFilter}
           placeholder={

@@ -1161,6 +1161,7 @@ export default function LiveTVScreen() {
         {/* Category search box */}
         <View style={[styles.catSearchWrap, { borderBottomColor: colors.border }]}>
           <TextInput
+            focusable
             style={[styles.catSearchInput, { color: colors.foreground, backgroundColor: colors.secondary }]}
             placeholder="Search…"
             placeholderTextColor={colors.mutedForeground}
@@ -1204,6 +1205,18 @@ export default function LiveTVScreen() {
               {favSyncState === 'syncing' ? '⟳' : '✓'}
             </Text>
           )}
+          {/* Refresh button — pull-to-refresh is gesture-only on TV so this
+              gives Firestick/Android TV users an explicit refresh action. */}
+          {!isReordering && (
+            <FocusablePressable
+              onPress={() => refetch()}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={styles.editBtn}
+              focusedStyle={styles.editBtnFocused}
+            >
+              <Text style={[styles.editBtnText, { color: isRefetching ? colors.primary : colors.mutedForeground }]}>↻</Text>
+            </FocusablePressable>
+          )}
           {isFavsSelected && favorites.length > 1 && (
             <FocusablePressable
               onPress={isReordering ? handleDone : handleEditStart}
@@ -1222,6 +1235,7 @@ export default function LiveTVScreen() {
         {!isReordering && (
           <View style={[styles.catSearchWrap, { borderBottomColor: colors.border }]}>
             <TextInput
+              focusable
               style={[styles.catSearchInput, { color: colors.foreground, backgroundColor: colors.secondary }]}
               placeholder="Filter channels…"
               placeholderTextColor={colors.mutedForeground}

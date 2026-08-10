@@ -361,6 +361,7 @@ export default function MoviesScreen() {
             )}
           </View>
           <TextInput
+            focusable
             style={[styles.searchInput, { backgroundColor: colors.secondary, color: colors.foreground, borderColor: colors.border }]}
             placeholder="Search movies..."
             placeholderTextColor={colors.mutedForeground}

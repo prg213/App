@@ -314,6 +314,14 @@ export default function SeriesDetailScreen() {
           <Text style={styles.headerBtnIcon}>←</Text>
         </FocusablePressable>
         <Text style={styles.headerTitle} numberOfLines={1}>{params.title}</Text>
+        {/* ↻ refresh — pull-to-refresh is gesture-only on TV */}
+        <FocusablePressable
+          focusable
+          style={(focused) => [styles.headerBtn, focused && styles.focusRing]}
+          onPress={() => refetch()}
+        >
+          <Text style={styles.headerBtnIcon}>↻</Text>
+        </FocusablePressable>
         <FocusablePressable
           focusable
           style={(focused) => [styles.headerBtn, focused && styles.focusRing]}

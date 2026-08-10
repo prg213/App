@@ -696,6 +696,7 @@ export default function SearchScreen() {
           <Text style={[styles.searchIcon, { color: colors.mutedForeground }]}>🔍</Text>
           <TextInput
             ref={inputRef}
+            focusable
             style={[styles.input, { color: colors.foreground }]}
             value={query}
             onChangeText={setQuery}

@@ -353,6 +353,7 @@ export default function SeriesScreen() {
             )}
           </View>
           <TextInput
+            focusable
             style={[styles.searchInput, { backgroundColor: colors.secondary, color: colors.foreground, borderColor: colors.border }]}
             placeholder="Search series..."
             placeholderTextColor={colors.mutedForeground}
