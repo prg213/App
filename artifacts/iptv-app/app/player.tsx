@@ -1128,6 +1128,24 @@ export default function PlayerScreen() {
     return () => clearTimeout(t);
   }, [isLive]);
 
+  // ── Restore TV focus to the center zone after every channel change ────────
+  // hasTVPreferredFocus alone is NOT reliable on Fire OS: it calls the native
+  // requestFocus() on EVERY React re-render, which races with ExoPlayer's audio-
+  // focus acquisition triggered by player.replace() inside switchChannel().
+  // That race can leave the TV remote with no stable UI focus target, causing OK,
+  // LEFT, and RIGHT to stop responding until the app is restarted.
+  //
+  // An explicit .focus() call 600 ms after channelIdx changes gives ExoPlayer
+  // enough time to finish its audio-focus handoff before we reclaim the remote
+  // for the UI layer.  Using a useEffect on channelIdx (instead of a setTimeout
+  // buried in the zone onFocus closures) also handles the initial-mount focus and
+  // is immune to stale-closure issues.
+  useEffect(() => {
+    if (!Platform.isTV || !isLive) return;
+    const t = setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 600);
+    return () => clearTimeout(t);
+  }, [channelIdx, isLive]);
+
   // Clean up the TV preview timer on unmount so it can't fire after the
   // component has been destroyed.
   useEffect(() => {
@@ -1706,6 +1724,9 @@ export default function PlayerScreen() {
           <Pressable
             focusable={!!prevChannel}
             style={styles.tvZoneLeft}
+            // Safety fallback: if focus ever gets stuck on this zone, OK still
+            // shows/hides the info bar instead of doing nothing.
+            onPress={showInfo ? dismissInfoBar : showInfoBar}
             onFocus={() => {
               if (!tvNavReadyRef.current || !prevChannel || navCooldownRef.current) return;
               // Claim the cooldown upfront so rapid D-pad presses during the preview are ignored
@@ -1715,16 +1736,22 @@ export default function PlayerScreen() {
               const targetIdx = channelIdx - 1;
               showTvChannelPreview(targetChannel, 'prev', () => {
                 switchChannel(targetChannel, targetIdx);
+                // Belt-and-suspenders: also request focus explicitly here in addition
+                // to the useEffect[channelIdx] handler, in case the effect fires before
+                // the native layer has settled after player.replace().
+                setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 700);
               });
-              // Return focus to center after preview + cooldown
-              setTimeout(() => { (tvCenterRef.current as any)?.focus?.(); }, 1400);
             }}
           />
-          {/* Centre — preferred focus; OK shows/hides the info bar */}
+          {/* Centre — explicit focus target; OK shows/hides the info bar.
+              hasTVPreferredFocus has been intentionally removed: on Fire OS it calls
+              the native requestFocus() on EVERY re-render, which races with ExoPlayer's
+              audio-focus acquisition during player.replace() and can leave the remote
+              with no stable UI focus target.  Initial focus and post-switch focus are
+              now handled by the useEffect[channelIdx] above. */}
           <Pressable
             ref={tvCenterRef as any}
             focusable
-            hasTVPreferredFocus
             style={styles.tvZoneCenter}
             onPress={showInfo ? dismissInfoBar : showInfoBar}
           />
@@ -1732,6 +1759,9 @@ export default function PlayerScreen() {
           <Pressable
             focusable={!!nextChannel}
             style={styles.tvZoneRight}
+            // Safety fallback: if focus ever gets stuck on this zone, OK still
+            // shows/hides the info bar instead of doing nothing.
+            onPress={showInfo ? dismissInfoBar : showInfoBar}
             onFocus={() => {
               if (!tvNavReadyRef.current || !nextChannel || navCooldownRef.current) return;
               navCooldownRef.current = true;
@@ -1740,8 +1770,8 @@ export default function PlayerScreen() {
               const targetIdx = channelIdx + 1;
               showTvChannelPreview(targetChannel, 'next', () => {
                 switchChannel(targetChannel, targetIdx);
+                setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 700);
               });
-              setTimeout(() => { (tvCenterRef.current as any)?.focus?.(); }, 1400);
             }}
           />
         </View>
