@@ -3,11 +3,12 @@ import {
   Alert,
   FlatList,
   Image,
+  Platform,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from 'react-native';
+import { FocusablePressable } from '@/components/FocusablePressable';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from 'expo-router';
 import * as Haptics from 'expo-haptics';
@@ -51,7 +52,7 @@ const HistoryRow = React.memo(function HistoryRow({ item, colors, onDelete, onPr
   const progress = item.position && item.duration ? item.position / Math.max(item.duration, 1) : 0;
 
   return (
-    <TouchableOpacity
+    <FocusablePressable
       style={[styles.row, { backgroundColor: colors.background, borderBottomColor: colors.border }]}
       onPress={() => onPress(item)}
       onLongPress={() => {
@@ -61,7 +62,6 @@ const HistoryRow = React.memo(function HistoryRow({ item, colors, onDelete, onPr
         ]);
       }}
       delayLongPress={500}
-      activeOpacity={0.75}
     >
         {/* Thumbnail */}
         <View style={[styles.thumb, { backgroundColor: colors.secondary }]}>
@@ -122,7 +122,7 @@ const HistoryRow = React.memo(function HistoryRow({ item, colors, onDelete, onPr
 
         {/* Long-press hint */}
         <Text style={[styles.swipeHint, { color: colors.mutedForeground }]}>⋯</Text>
-      </TouchableOpacity>
+      </FocusablePressable>
   );
 });
 
@@ -201,9 +201,9 @@ export default function WatchHistoryScreen() {
           { paddingTop: insets.top + 12, borderBottomColor: colors.border },
         ]}
       >
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()} activeOpacity={0.7}>
+        <FocusablePressable style={styles.backBtn} onPress={() => router.back()} hasTVPreferredFocus={Platform.isTV}>
           <Text style={[styles.backIcon, { color: colors.foreground }]}>←</Text>
-        </TouchableOpacity>
+        </FocusablePressable>
         <View style={{ flex: 1 }}>
           <Text style={[styles.headerTitle, { color: colors.foreground }]}>Watch History</Text>
           <Text style={[styles.headerSub, { color: colors.mutedForeground }]}>
@@ -213,9 +213,9 @@ export default function WatchHistoryScreen() {
           </Text>
         </View>
         {history.length > 0 && (
-          <TouchableOpacity onPress={handleClearAll} activeOpacity={0.7} style={styles.clearBtn}>
+          <FocusablePressable onPress={handleClearAll} style={styles.clearBtn}>
             <Text style={[styles.clearBtnText, { color: colors.destructive }]}>Clear All</Text>
-          </TouchableOpacity>
+          </FocusablePressable>
         )}
       </View>
 

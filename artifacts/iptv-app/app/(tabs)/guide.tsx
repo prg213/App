@@ -20,9 +20,9 @@ import {
   Platform,
   ScrollView,
   StyleSheet,
+  Pressable,
   Text,
   TextInput,
-  TouchableOpacity,
   View,
   useWindowDimensions,
 } from 'react-native';
@@ -606,10 +606,9 @@ function ProgramModal({ program, channel, onClose, onWatch, colors }: {
 
   return (
     <Modal transparent animationType="fade" onRequestClose={onClose}>
-      <TouchableOpacity style={styles.modalBg} activeOpacity={1} onPress={onClose}>
-        <TouchableOpacity
+      <Pressable style={styles.modalBg} focusable={false} onPress={onClose}>
+        <View
           style={[styles.modalCard, { backgroundColor: colors.card, borderColor: colors.border }]}
-          activeOpacity={1}
         >
           <View style={styles.modalHeader}>
             <View style={{ flex: 1, gap: 4 }}>
@@ -683,8 +682,8 @@ function ProgramModal({ program, channel, onClose, onWatch, colors }: {
               </FocusablePressable>
             )}
           </View>
-        </TouchableOpacity>
-      </TouchableOpacity>
+        </View>
+      </Pressable>
     </Modal>
   );
 }

@@ -106,10 +106,13 @@ function SeriesCardComponent({ name, cover, rating, genre, year, query = '', isF
           </View>
         )}
 
-        {/* Heart favourite button */}
+        {/* Heart favourite button — focusable={false} on TV prevents a nested-
+            focusable D-pad trap; long-press on the card opens the action menu
+            which includes "Toggle Favourite" as the TV-safe alternative. */}
         {onFavPress && (
           <FocusablePressable
             style={styles.heartBtn}
+            focusable={false}
             onPress={(e) => { (e as any).stopPropagation?.(); onFavPress(); }}
             hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
           >

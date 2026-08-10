@@ -109,8 +109,10 @@ function RescheduleModal({
       animationType="fade"
       onRequestClose={onClose}
     >
-      <Pressable style={styles.modalOverlay} onPress={onClose}>
-        <Pressable style={[styles.modalSheet, { backgroundColor: colors.card, borderColor: colors.border }]}>
+      {/* focusable={false} on both wrappers so D-pad goes straight to the
+          FocusablePressable options inside; BACK closes via onRequestClose. */}
+      <Pressable style={styles.modalOverlay} focusable={false} onPress={onClose}>
+        <Pressable style={[styles.modalSheet, { backgroundColor: colors.card, borderColor: colors.border }]} focusable={false}>
           <Text style={[styles.modalTitle, { color: colors.foreground }]}>
             ⏰  Reschedule Reminder
           </Text>
@@ -215,13 +217,17 @@ function ReminderCard({
     return () => clearTimeout(t);
   }, [isPast]);
 
-  const cardPress = isPast && !isOnAir ? () => {
-    Alert.alert(
-      reminder.programTitle,
-      [reminder.channelName, fmtDate(reminder.start), reminder.programDescription].filter(Boolean).join('\n'),
-      [{ text: 'OK' }],
-    );
-  } : undefined;
+  // On TV, pressing OK on the info zone also triggers Watch Live for on-air cards
+  // so the nested Watch Live button (focusable={false}) is never needed for D-pad.
+  const cardPress =
+    isOnAir && onWatchLive ? onWatchLive :
+    isPast && !isOnAir ? () => {
+      Alert.alert(
+        reminder.programTitle,
+        [reminder.channelName, fmtDate(reminder.start), reminder.programDescription].filter(Boolean).join('\n'),
+        [{ text: 'OK' }],
+      );
+    } : undefined;
 
   return (
     // Plain View — not a focus target itself.  Individual zones handle D-pad.
@@ -276,9 +282,12 @@ function ReminderCard({
             </Text>
           ) : null}
 
-          {/* Watch Live button — shown when programme is currently airing */}
+          {/* Watch Live button — shown when programme is currently airing.
+              On TV the outer infoRef handles Watch Live via cardPress, so
+              focusable={false} prevents a nested-focusable D-pad trap. */}
           {isOnAir && reminder.streamUrl && onWatchLive && (
             <FocusablePressable
+              focusable={false}
               style={styles.watchLiveBtn}
               onPress={onWatchLive}
             >

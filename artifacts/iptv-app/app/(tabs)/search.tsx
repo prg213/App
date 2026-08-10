@@ -170,10 +170,14 @@ const MediaResultRow = React.memo(function MediaResultRow({
           </Text>
         ) : null}
       </View>
-      {/* #106/#123/#129: trailer shortcut — greyed out when offline */}
+      {/* #106/#123/#129: trailer shortcut — greyed out when offline.
+          focusable={false} on TV: nested focusable inside the row causes a
+          D-pad trap; long-press on the row already exposes the Trailer option
+          via the Alert action menu as the TV-safe equivalent. */}
       {onTrailer && (
         <FocusablePressable
           style={[styles.trailerPill, !isOnline && styles.trailerPillOffline]}
+          focusable={false}
           onPress={(e) => { (e as any).stopPropagation?.(); onTrailer(); }}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >

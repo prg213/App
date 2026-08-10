@@ -5,7 +5,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
   ActivityIndicator,
 } from 'react-native';
@@ -16,6 +15,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useAppContext } from '@/context/AppContext';
 import { StorageService } from '@/services/storage';
 import type { Credentials } from '@/types';
+import { FocusablePressable } from '@/components/FocusablePressable';
 
 async function checkActivation(mac: string) {
   const base = process.env.EXPO_PUBLIC_DOMAIN
@@ -103,9 +103,9 @@ export default function ActivationScreen() {
           <Text style={styles.deactivatedBannerText}>
             ⚠️  Your access was removed by an administrator. Please contact support.
           </Text>
-          <TouchableOpacity onPress={() => setDeactivatedBanner(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <FocusablePressable onPress={() => setDeactivatedBanner(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
             <Text style={styles.deactivatedBannerDismiss}>✕</Text>
-          </TouchableOpacity>
+          </FocusablePressable>
         </View>
       )}
 
@@ -125,9 +125,9 @@ export default function ActivationScreen() {
           <Text style={styles.macAddress} selectable>
             {deviceMac || '——:——:——:——:——:——'}
           </Text>
-          <TouchableOpacity style={styles.copyBtn} onPress={copyMac} activeOpacity={0.7}>
+          <FocusablePressable style={styles.copyBtn} onPress={copyMac}>
             <Text style={styles.copyText}>{copied ? '✓ Copied!' : 'Copy'}</Text>
-          </TouchableOpacity>
+          </FocusablePressable>
         </Animated.View>
 
         {isPolling && (
@@ -162,17 +162,17 @@ export default function ActivationScreen() {
           </View>
         ))}
 
-        <TouchableOpacity
+        <FocusablePressable
           style={[styles.checkBtn, isFetching && styles.checkBtnDisabled]}
           onPress={handleCheck}
-          activeOpacity={0.8}
           disabled={isFetching}
+          hasTVPreferredFocus={Platform.isTV}
         >
           {isFetching
             ? <ActivityIndicator color="#fff" />
             : <Text style={styles.checkBtnText}>{isPolling ? '↻ Refresh' : 'Check Activation'}</Text>
           }
-        </TouchableOpacity>
+        </FocusablePressable>
 
         {isPolling && (
           <Text style={styles.autoHint}>Checking automatically every 8 seconds</Text>

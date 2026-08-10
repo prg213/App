@@ -1818,7 +1818,7 @@ export default function PlayerScreen() {
         animationType="slide"
         onRequestClose={() => setShowAudioPicker(false)}
       >
-        <TouchableOpacity style={styles.settingsBackdrop} activeOpacity={1} onPress={() => setShowAudioPicker(false)} />
+        <Pressable style={styles.settingsBackdrop} focusable={false} onPress={() => setShowAudioPicker(false)} />
         <View style={[styles.settingsSheet, { paddingBottom: insets.bottom + 16 }]}>
           <View style={styles.settingsHandle} />
           <Text style={styles.settingsTitle}>Audio Track</Text>
@@ -1868,7 +1868,7 @@ export default function PlayerScreen() {
         animationType="slide"
         onRequestClose={() => setShowSubPicker(false)}
       >
-        <TouchableOpacity style={styles.settingsBackdrop} activeOpacity={1} onPress={() => setShowSubPicker(false)} />
+        <Pressable style={styles.settingsBackdrop} focusable={false} onPress={() => setShowSubPicker(false)} />
         <View style={[styles.settingsSheet, { paddingBottom: insets.bottom + 16 }]}>
           <View style={styles.settingsHandle} />
           <Text style={styles.settingsTitle}>Subtitles / CC</Text>
@@ -1929,9 +1929,9 @@ export default function PlayerScreen() {
         animationType="slide"
         onRequestClose={() => setShowSettings(false)}
       >
-        <TouchableOpacity
+        <Pressable
           style={styles.settingsBackdrop}
-          activeOpacity={1}
+          focusable={false}
           onPress={() => setShowSettings(false)}
         />
         <View style={[styles.settingsSheet, { paddingBottom: insets.bottom + 16 }]}>

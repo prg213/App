@@ -492,7 +492,12 @@ export default function SeriesDetailScreen() {
                     key={ep.id}
                     focusable
                     style={(focused) => [styles.epRow, { borderColor: focused ? '#00E5FF' : 'rgba(255,255,255,0.1)' }]}
-                    onPress={() => handlePlayEpisode(ep)}
+                    onPress={() => {
+                      // On TV, pressing OK resumes from saved position when available
+                      // (same destination as the Resume pill, avoiding a nested-focusable trap).
+                      const savedPos = hist?.position && hist.position > 5 ? hist.position : undefined;
+                      handlePlayEpisode(ep, savedPos);
+                    }}
                   >
                     {/* Thumbnail — key includes thumbResetKey so a data refetch
                         causes a clean remount, letting previously-errored URLs retry. */}
@@ -535,10 +540,12 @@ export default function SeriesDetailScreen() {
                       )}
                     </View>
 
-                    {/* Resume */}
+                    {/* Resume — touch users tap this to resume; on TV the outer
+                        row's onPress already resumes, so focusable={false}
+                        prevents a nested-focusable D-pad trap. */}
                     {hist?.position && hist.position > 5 ? (
                       <FocusablePressable
-                        focusable
+                        focusable={false}
                         style={(focused) => [styles.resumeBtn, { borderColor: focused ? '#00E5FF' : colors.primary }]}
                         onPress={() => handlePlayEpisode(ep, hist.position)}
                       >

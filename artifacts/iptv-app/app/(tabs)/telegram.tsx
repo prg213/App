@@ -3,9 +3,9 @@ import {
   ActivityIndicator,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from 'react-native';
+import { FocusablePressable } from '@/components/FocusablePressable';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import WebView from 'react-native-webview';
 import { useAppContext } from '@/context/AppContext';
@@ -84,16 +84,15 @@ export default function TelegramScreen() {
         </Text>
 
         {url ? (
-          <TouchableOpacity
+          <FocusablePressable
             onPress={handleRefresh}
             hitSlop={10}
-            activeOpacity={0.6}
             style={styles.refreshBtn}
           >
             <Text style={[styles.refreshIcon, { color: colors.mutedForeground }]}>
               ↺
             </Text>
-          </TouchableOpacity>
+          </FocusablePressable>
         ) : null}
       </View>
 

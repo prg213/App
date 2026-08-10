@@ -5,11 +5,12 @@ import {
   ActivityIndicator,
   Linking,
   Modal,
-  Pressable,
+  Platform,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { FocusablePressable } from '@/components/FocusablePressable';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 
@@ -272,9 +273,9 @@ export function TrailerModal({ videoIds, onClose }: Props) {
         {/* ── Header ── */}
         <View style={styles.header}>
           <Text style={styles.title}>Trailer</Text>
-          <Pressable style={styles.closeBtn} onPress={onClose} hitSlop={12}>
+          <FocusablePressable style={styles.closeBtn} onPress={onClose} hitSlop={12} hasTVPreferredFocus={Platform.isTV}>
             <Text style={styles.closeTxt}>✕</Text>
-          </Pressable>
+          </FocusablePressable>
         </View>
 
         {/* ── Loading / error states ── */}
@@ -295,12 +296,12 @@ export function TrailerModal({ videoIds, onClose }: Props) {
               const firstYtId = (Array.isArray(videoIds) ? videoIds : []).find(isVideoId);
               if (!firstYtId) return null;
               return (
-                <Pressable
+                <FocusablePressable
                   style={styles.ytBtn}
                   onPress={() => Linking.openURL(`https://www.youtube.com/watch?v=${firstYtId}`)}
                 >
                   <Text style={styles.ytBtnText}>▶  Open in YouTube</Text>
-                </Pressable>
+                </FocusablePressable>
               );
             })()}
           </View>
@@ -328,9 +329,9 @@ export function TrailerModal({ videoIds, onClose }: Props) {
             />
             {showUnmute && isYt && (
               <Animated.View style={[styles.unmutePill, { opacity: unmuteFade }]} pointerEvents="box-none">
-                <Pressable onPress={handleUnmuteTap} style={styles.unmutePressable}>
+                <FocusablePressable onPress={handleUnmuteTap} style={styles.unmutePressable} focusable={false}>
                   <Text style={styles.unmuteTxt}>🔊  Tap to unmute</Text>
-                </Pressable>
+                </FocusablePressable>
               </Animated.View>
             )}
           </>
