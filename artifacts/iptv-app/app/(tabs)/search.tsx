@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   FlatList,
   Image,
+  Platform,
   StyleSheet,
   Text,
   TextInput,
@@ -719,11 +720,12 @@ export default function SearchScreen() {
         </View>
         {/* Type filter pills */}
         <View style={styles.pillRow}>
-          {SEARCH_TYPES.map((t) => {
+          {SEARCH_TYPES.map((t, index) => {
             const active = searchType === t.id;
             return (
               <FocusablePressable
                 key={t.id}
+                hasTVPreferredFocus={Platform.isTV && index === 0}
                 style={[
                   styles.pill,
                   { borderColor: active ? colors.primary : colors.border,

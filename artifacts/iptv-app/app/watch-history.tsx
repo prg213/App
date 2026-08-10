@@ -133,6 +133,9 @@ export default function WatchHistoryScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const [history, setHistory] = useState<WatchHistoryEntry[]>([]);
+  // TV focus restoration: when the last item is deleted the list empties and
+  // there are no more rows to receive focus — move focus to the Back button.
+  const backBtnRef = useRef<any>(null);
 
   const load = useCallback(async () => {
     const h = await StorageService.getWatchHistory();
@@ -144,7 +147,14 @@ export default function WatchHistoryScreen() {
   const handleDelete = useCallback(async (id: string) => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     await StorageService.removeFromHistory(id);
-    setHistory((prev) => prev.filter((e) => e.id !== id));
+    setHistory((prev) => {
+      const next = prev.filter((e) => e.id !== id);
+      // On TV, if all items are gone focus moves to a void — restore to Back button.
+      if (Platform.isTV && next.length === 0) {
+        setTimeout(() => backBtnRef.current?.focus(), 150);
+      }
+      return next;
+    });
   }, []);
 
   const handleClearAll = useCallback(() => {
@@ -201,7 +211,7 @@ export default function WatchHistoryScreen() {
           { paddingTop: insets.top + 12, borderBottomColor: colors.border },
         ]}
       >
-        <FocusablePressable style={styles.backBtn} onPress={() => router.back()} hasTVPreferredFocus={Platform.isTV}>
+        <FocusablePressable ref={backBtnRef} style={styles.backBtn} onPress={() => router.back()} hasTVPreferredFocus={Platform.isTV}>
           <Text style={[styles.backIcon, { color: colors.foreground }]}>←</Text>
         </FocusablePressable>
         <View style={{ flex: 1 }}>

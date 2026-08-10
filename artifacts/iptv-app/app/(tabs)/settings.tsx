@@ -4,6 +4,7 @@ import {
   Alert,
   DeviceEventEmitter,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -331,13 +332,16 @@ export default function SettingsScreen() {
     );
   }
 
-  function ActionRow({ title, sub, icon, onPress, destructive }: {
+  function ActionRow({ title, sub, icon, onPress, destructive, firstTV }: {
     title: string; sub?: string; icon: string; onPress: () => void; destructive?: boolean;
+    /** Set true on the first action row of the screen so TV focus lands here on entry. */
+    firstTV?: boolean;
   }) {
     return (
       <FocusablePressable
         style={[styles.actionRow, { borderBottomColor: colors.border }]}
         onPress={onPress}
+        hasTVPreferredFocus={firstTV && Platform.isTV}
       >
         <View style={{ flex: 1 }}>
           <Text style={[styles.actionTitle, { color: destructive ? colors.destructive : colors.foreground }]}>{title}</Text>
@@ -469,6 +473,7 @@ export default function SettingsScreen() {
             sub="Reload channels, movies & series"
             icon="↻"
             onPress={handleRefreshContent}
+            firstTV
           />
           <ActionRow
             title="Refresh TV Guide (EPG)"

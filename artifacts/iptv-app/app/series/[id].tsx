@@ -307,6 +307,7 @@ export default function SeriesDetailScreen() {
       <View style={[styles.header, { paddingTop: insets.top + 10, borderBottomColor: 'rgba(255,255,255,0.07)' }]}>
         <FocusablePressable
           focusable
+          hasTVPreferredFocus={Platform.isTV}
           style={(focused) => [styles.headerBtn, focused && styles.focusRing]}
           onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.back(); }}
         >

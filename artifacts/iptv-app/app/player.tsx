@@ -1320,6 +1320,7 @@ export default function PlayerScreen() {
           <Text style={styles.msgSub}>Unable to load stream. Check your connection or try another channel.</Text>
           <FocusablePressable
             style={styles.actionBtn}
+            hasTVPreferredFocus={Platform.isTV}
             onPress={() => {
               setHasError(false);
               setIsBuffering(true);
@@ -1838,6 +1839,7 @@ export default function PlayerScreen() {
                 return (
                   <FocusablePressable
                     key={track.id ?? `audio-${idx}`}
+                    hasTVPreferredFocus={Platform.isTV && idx === 0}
                     focusedStyle={styles.chipFocus}
                     style={[styles.chip, isActive && styles.chipActive]}
                     onPress={() => {
@@ -1879,6 +1881,7 @@ export default function PlayerScreen() {
           ) : (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
               <FocusablePressable
+                hasTVPreferredFocus={Platform.isTV}
                 focusedStyle={styles.chipFocus}
                 style={[styles.chip, activeSubtitleTrack === null && styles.chipActive]}
                 onPress={() => {
@@ -1945,9 +1948,10 @@ export default function PlayerScreen() {
           >
           <Text style={styles.settingsTitle}>Playback Speed</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-            {SPEEDS.map((s) => (
+            {SPEEDS.map((s, idx) => (
               <FocusablePressable
                 key={s}
+                hasTVPreferredFocus={Platform.isTV && idx === 0}
                 focusedStyle={styles.chipFocus}
                 style={[styles.chip, speed === s && styles.chipActive]}
                 onPress={() => {
