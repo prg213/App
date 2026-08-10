@@ -121,14 +121,13 @@ function RescheduleModal({
           {LEAD_OPTIONS.map((opt) => {
             const isCurrent = currentLeadMins === opt.value;
             return (
-              <TouchableOpacity
+              <FocusablePressable
                 key={opt.value}
                 style={[
                   styles.modalOption,
                   isCurrent && { backgroundColor: colors.secondary },
                 ]}
                 onPress={() => onSelect(opt.value)}
-                activeOpacity={0.7}
               >
                 <Text style={[styles.modalOptionText, { color: isCurrent ? colors.primary : colors.foreground }]}>
                   {opt.label}
@@ -136,12 +135,12 @@ function RescheduleModal({
                 {isCurrent && (
                   <Text style={[styles.modalOptionCheck, { color: colors.primary }]}>✓</Text>
                 )}
-              </TouchableOpacity>
+              </FocusablePressable>
             );
           })}
-          <TouchableOpacity style={styles.modalCancel} onPress={onClose} activeOpacity={0.7}>
+          <FocusablePressable style={styles.modalCancel} onPress={onClose}>
             <Text style={[styles.modalCancelText, { color: colors.mutedForeground }]}>Cancel</Text>
-          </TouchableOpacity>
+          </FocusablePressable>
         </Pressable>
       </Pressable>
     </Modal>
