@@ -49,32 +49,38 @@ const MovieBanner = React.memo(function MovieBanner({
   onPress: () => void;
 }) {
   return (
+    // bannerOuter: dimensions + borderRadius for the focus ring — NO overflow:hidden.
+    // bannerClip: absoluteFill inner view owns overflow:hidden + borderRadius so the
+    // image is clipped correctly.  Keeping both on the same element triggers a Fire OS
+    // bug where adding borderWidth on focus collapses the clip rect and hides the image.
     <FocusablePressable
-      style={styles.banner}
+      style={styles.bannerOuter}
       focusedStyle={styles.bannerFocused}
       onPress={onPress}
     >
-      {movie.cover ? (
-        <Image source={{ uri: movie.cover }} style={StyleSheet.absoluteFill} resizeMode="cover" />
-      ) : (
-        <View style={[StyleSheet.absoluteFill, styles.bannerPlaceholder, { backgroundColor: colors.secondary }]}>
-          <Text style={{ fontSize: 32 }}>🎬</Text>
-        </View>
-      )}
-      <LinearGradient
-        colors={['transparent', 'rgba(0,0,0,0.85)']}
-        style={styles.bannerGrad}
-      />
-      <View style={styles.bannerInfo}>
-        {movie.rating ? (
-          <View style={styles.ratingBadge}>
-            <Text style={styles.ratingText}>★ {parseFloat(movie.rating).toFixed(1)}</Text>
+      <View style={styles.bannerClip}>
+        {movie.cover ? (
+          <Image source={{ uri: movie.cover }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+        ) : (
+          <View style={[StyleSheet.absoluteFill, styles.bannerPlaceholder, { backgroundColor: colors.secondary }]}>
+            <Text style={{ fontSize: 32 }}>🎬</Text>
           </View>
-        ) : null}
-        <Text style={styles.bannerTitle} numberOfLines={2}>{movie.name}</Text>
-        {movie.genre ? (
-          <Text style={styles.bannerMeta} numberOfLines={1}>{movie.genre}</Text>
-        ) : null}
+        )}
+        <LinearGradient
+          colors={['transparent', 'rgba(0,0,0,0.85)']}
+          style={styles.bannerGrad}
+        />
+        <View style={styles.bannerInfo}>
+          {movie.rating ? (
+            <View style={styles.ratingBadge}>
+              <Text style={styles.ratingText}>★ {parseFloat(movie.rating).toFixed(1)}</Text>
+            </View>
+          ) : null}
+          <Text style={styles.bannerTitle} numberOfLines={2}>{movie.name}</Text>
+          {movie.genre ? (
+            <Text style={styles.bannerMeta} numberOfLines={1}>{movie.genre}</Text>
+          ) : null}
+        </View>
       </View>
     </FocusablePressable>
   );
@@ -93,31 +99,33 @@ const SeriesBanner = React.memo(function SeriesBanner({
 }) {
   return (
     <FocusablePressable
-      style={styles.banner}
+      style={styles.bannerOuter}
       focusedStyle={styles.bannerFocused}
       onPress={onPress}
     >
-      {series.cover ? (
-        <Image source={{ uri: series.cover }} style={StyleSheet.absoluteFill} resizeMode="cover" />
-      ) : (
-        <View style={[StyleSheet.absoluteFill, styles.bannerPlaceholder, { backgroundColor: colors.secondary }]}>
-          <Text style={{ fontSize: 32 }}>📺</Text>
-        </View>
-      )}
-      <LinearGradient
-        colors={['transparent', 'rgba(0,0,0,0.85)']}
-        style={styles.bannerGrad}
-      />
-      <View style={styles.bannerInfo}>
-        {series.rating ? (
-          <View style={styles.ratingBadge}>
-            <Text style={styles.ratingText}>★ {parseFloat(series.rating).toFixed(1)}</Text>
+      <View style={styles.bannerClip}>
+        {series.cover ? (
+          <Image source={{ uri: series.cover }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+        ) : (
+          <View style={[StyleSheet.absoluteFill, styles.bannerPlaceholder, { backgroundColor: colors.secondary }]}>
+            <Text style={{ fontSize: 32 }}>📺</Text>
           </View>
-        ) : null}
-        <Text style={styles.bannerTitle} numberOfLines={2}>{series.name}</Text>
-        {series.genre ? (
-          <Text style={styles.bannerMeta} numberOfLines={1}>{series.genre}</Text>
-        ) : null}
+        )}
+        <LinearGradient
+          colors={['transparent', 'rgba(0,0,0,0.85)']}
+          style={styles.bannerGrad}
+        />
+        <View style={styles.bannerInfo}>
+          {series.rating ? (
+            <View style={styles.ratingBadge}>
+              <Text style={styles.ratingText}>★ {parseFloat(series.rating).toFixed(1)}</Text>
+            </View>
+          ) : null}
+          <Text style={styles.bannerTitle} numberOfLines={2}>{series.name}</Text>
+          {series.genre ? (
+            <Text style={styles.bannerMeta} numberOfLines={1}>{series.genre}</Text>
+          ) : null}
+        </View>
       </View>
     </FocusablePressable>
   );
@@ -352,29 +360,34 @@ export default function HomeScreen() {
     const pct = progress != null ? Math.max(2, Math.min(100, progress * 100)) : 0;
     return (
       <FocusablePressable
-        style={styles.banner}
+        style={styles.bannerOuter}
         focusedStyle={styles.bannerFocused}
         onPress={() => handleHistoryItemPress(item)}
       >
-        {item.cover ? (
-          <Image source={{ uri: item.cover }} style={StyleSheet.absoluteFill} resizeMode="cover" />
-        ) : (
-          <View style={[StyleSheet.absoluteFill, styles.bannerPlaceholder, { backgroundColor: colors.secondary }]}>
-            <Text style={{ fontSize: 32 }}>{item.type === 'series' ? '📺' : '🎬'}</Text>
+        {/* Inner clip view separates overflow:hidden from the focus borderWidth
+            to avoid the Fire OS bug where combining them on one element makes
+            absolute-positioned image children vanish when focused. */}
+        <View style={styles.bannerClip}>
+          {item.cover ? (
+            <Image source={{ uri: item.cover }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+          ) : (
+            <View style={[StyleSheet.absoluteFill, styles.bannerPlaceholder, { backgroundColor: colors.secondary }]}>
+              <Text style={{ fontSize: 32 }}>{item.type === 'series' ? '📺' : '🎬'}</Text>
+            </View>
+          )}
+          <LinearGradient colors={['transparent', 'rgba(0,0,0,0.85)']} style={styles.bannerGrad} />
+          <View style={styles.bannerInfo}>
+            <Text style={styles.bannerTitle} numberOfLines={2}>
+              {item.type === 'series' ? (item.parentTitle ?? item.title) : item.title}
+            </Text>
           </View>
-        )}
-        <LinearGradient colors={['transparent', 'rgba(0,0,0,0.85)']} style={styles.bannerGrad} />
-        <View style={styles.bannerInfo}>
-          <Text style={styles.bannerTitle} numberOfLines={2}>
-            {item.type === 'series' ? (item.parentTitle ?? item.title) : item.title}
-          </Text>
+          {/* Progress bar */}
+          {pct > 0 && (
+            <View style={styles.progressRail}>
+              <View style={[styles.progressFill, { width: `${pct}%` as any }]} />
+            </View>
+          )}
         </View>
-        {/* Progress bar */}
-        {pct > 0 && (
-          <View style={styles.progressRail}>
-            <View style={[styles.progressFill, { width: `${pct}%` as any }]} />
-          </View>
-        )}
       </FocusablePressable>
     );
   }, [colors, handleHistoryItemPress, movieProgressMap, seriesProgressMap]);
@@ -587,12 +600,26 @@ const styles = StyleSheet.create({
 
   // ── TV focus ──
   heroFocused: { borderWidth: 3, borderColor: '#00E5FF' },
+  // bannerFocused goes on the OUTER Pressable (no overflow:hidden there).
+  // Fire OS bug: overflow:hidden + borderRadius + borderWidth on the same
+  // ReactViewGroup collapses the clip rect when borderWidth is added, making
+  // absolute-positioned image children invisible on focus.
   bannerFocused: { borderWidth: 3, borderColor: '#00E5FF' },
 
   // ── Banner card ──
-  banner: {
+  // Outer Pressable: owns the dimensions and borderRadius for the focus ring.
+  // Must NOT have overflow:hidden — adding borderWidth on focus would trigger
+  // the Fire OS clip-collapse bug described above.
+  bannerOuter: {
     width: BANNER_W,
     height: BANNER_H,
+    borderRadius: 10,
+  },
+  // Inner View: absoluteFill inside bannerOuter; owns overflow:hidden + borderRadius
+  // to clip the poster image to rounded corners without conflicting with the border.
+  bannerClip: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
     borderRadius: 10,
     overflow: 'hidden',
     backgroundColor: '#1A1A28',
