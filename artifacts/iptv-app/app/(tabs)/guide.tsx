@@ -684,6 +684,27 @@ function CategoryGrid({
   const TV_WIRE_DELAY_MS = 250;
 
   const cardRefs = useRef<(View | null)[]>([]);
+  // Tracks the pending setTimeout handle for each card index so we can cancel
+  // the timer when the same cell re-mounts (e.g. scroll virtualisation) before
+  // the previous timer fires.
+  const wireTimers = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
+
+  // ── Layout generation counter ────────────────────────────────────────────
+  // Incremented *synchronously during render* when numCols changes — before
+  // React runs any ref callbacks for the new layout.  Each 250 ms wire timer
+  // captures the generation at scheduling time and self-cancels if the counter
+  // has advanced, preventing stale handles from a prior column layout from
+  // being written to the new layout's nodes.
+  //
+  // Why not useEffect / useLayoutEffect?  Both run *after* ref callbacks, so
+  // any reset inside them would destroy the freshly-scheduled timers for the
+  // new layout rather than the old layout's stale ones.
+  const layoutGenRef = useRef(0);
+  const prevNumColsRef = useRef(numCols);
+  if (prevNumColsRef.current !== numCols) {
+    prevNumColsRef.current = numCols;
+    layoutGenRef.current += 1;
+  }
 
   // Called from the ref callback each time a card mounts.
   // It pairs the newly-mounted card with its already-mounted row neighbours
@@ -732,10 +753,28 @@ function CategoryGrid({
       <FocusablePressable
         ref={(r) => {
           cardRefs.current[index] = r as View | null;
-          // Wire cross-row D-pad focus as soon as this cell's native node is
-          // ready. The tiny timeout lets the Pressable finish measuring before
-          // findNodeHandle is called — required on all RN TV targets.
-          if (r) setTimeout(() => wireCard(index), TV_WIRE_DELAY_MS);
+          // Cancel any previously-scheduled wire for this index (can happen
+          // when a cell re-mounts during scroll virtualisation).
+          const prev = wireTimers.current.get(index);
+          if (prev != null) clearTimeout(prev);
+          if (r) {
+            // Capture the current layout generation so the timer can detect
+            // if numCols changed between scheduling and firing.  If it has,
+            // the new layout's own ref callbacks will schedule fresh timers
+            // with the updated generation — we just no-op.
+            const gen = layoutGenRef.current;
+            // Wire cross-row D-pad focus as soon as this cell's native node is
+            // ready. The tiny timeout lets the Pressable finish measuring before
+            // findNodeHandle is called — required on all RN TV targets.
+            const t = setTimeout(() => {
+              wireTimers.current.delete(index);
+              if (layoutGenRef.current !== gen) return;
+              wireCard(index);
+            }, TV_WIRE_DELAY_MS);
+            wireTimers.current.set(index, t);
+          } else {
+            wireTimers.current.delete(index);
+          }
         }}
         focusedStyle={styles.tvFocused}
         hasTVPreferredFocus={index === 0}
