@@ -7,17 +7,22 @@
  *   set      — enter a new PIN then confirm it (two-step)
  *
  * The caller is responsible for the verify function in unlock/verify modes.
+ *
+ * Fire TV / Android TV: all buttons replaced with FocusablePressable so they
+ * receive D-pad focus.  The '1' key gets hasTVPreferredFocus so the remote
+ * lands on the pad immediately when the screen opens.
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Animated,
+  Platform,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { FocusablePressable } from '@/components/FocusablePressable';
 
 export type PinPadMode = 'unlock' | 'verify' | 'set';
 
@@ -145,11 +150,12 @@ export function PinPad({ mode, title, subtitle, onSuccess, onCancel, onForgotPin
 
   return (
     <View style={[styles.root, { paddingTop: insets.top + 48, paddingBottom: insets.bottom + 24 }]}>
-      {/* Cancel / back (verify mode) */}
+      {/* Cancel / back (verify mode)
+          FocusablePressable so the remote can reach it on Fire TV */}
       {onCancel && (
-        <TouchableOpacity style={styles.cancelBtn} onPress={onCancel} activeOpacity={0.7}>
+        <FocusablePressable style={styles.cancelBtn} onPress={onCancel}>
           <Text style={styles.cancelText}>Cancel</Text>
-        </TouchableOpacity>
+        </FocusablePressable>
       )}
 
       {/* Heading */}
@@ -175,22 +181,27 @@ export function PinPad({ mode, title, subtitle, onSuccess, onCancel, onForgotPin
         ))}
       </Animated.View>
 
-      {/* Number pad */}
+      {/* Number pad
+          All buttons are FocusablePressable so Fire TV D-pad can reach them.
+          The '1' key (index 0) gets hasTVPreferredFocus so the remote
+          cursor lands on the pad as soon as the PIN screen opens. */}
       <View style={styles.pad}>
         {PAD_KEYS.map((key, idx) => {
           if (key === '') return <View key={idx} style={styles.padCell} />;
           return (
-            <TouchableOpacity
+            <FocusablePressable
               key={idx}
               style={styles.padCell}
               onPress={() => (key === '⌫' ? handleDelete() : handleDigit(key))}
-              activeOpacity={0.55}
               disabled={busy}
+              // Give the '1' key initial TV focus so the remote can immediately
+              // start entering digits without needing to navigate to the pad.
+              hasTVPreferredFocus={Platform.isTV && idx === 0}
             >
               <View style={[styles.padBtn, key === '⌫' && styles.padBtnDelete]}>
                 <Text style={[styles.padKey, key === '⌫' && styles.padKeyDelete]}>{key}</Text>
               </View>
-            </TouchableOpacity>
+            </FocusablePressable>
           );
         })}
       </View>
@@ -198,9 +209,9 @@ export function PinPad({ mode, title, subtitle, onSuccess, onCancel, onForgotPin
       {/* Footer links */}
       <View style={styles.footer}>
         {mode === 'unlock' && onForgotPin ? (
-          <TouchableOpacity onPress={onForgotPin} activeOpacity={0.7}>
+          <FocusablePressable onPress={onForgotPin}>
             <Text style={styles.forgotText}>Forgot PIN? Reset &amp; logout</Text>
-          </TouchableOpacity>
+          </FocusablePressable>
         ) : null}
       </View>
     </View>

@@ -14,6 +14,7 @@ import {
   AppStateStatus,
   BackHandler,
   DeviceEventEmitter,
+  findNodeHandle,
   FlatList,
   Image,
   Keyboard,
@@ -144,8 +145,26 @@ const ChannelRow = React.memo(function ChannelRow({
   onLongPress?: () => void;
   hideHeart?: boolean;
 }) {
+  // TV D-pad: wire channel row ↔ heart so D-pad RIGHT reaches the favourite
+  // button and D-pad LEFT brings focus back to the channel row.
+  const rowRef   = useRef<View>(null);
+  const heartRef = useRef<View>(null);
+
+  useEffect(() => {
+    if (!Platform.isTV || hideHeart) return;
+    const t = setTimeout(() => {
+      const rowH   = findNodeHandle(rowRef.current);
+      const heartH = findNodeHandle(heartRef.current);
+      if (!rowH || !heartH) return;
+      (rowRef.current as any)?.setNativeProps({ nextFocusRight: heartH });
+      (heartRef.current as any)?.setNativeProps({ nextFocusLeft: rowH });
+    }, 300);
+    return () => clearTimeout(t);
+  }, [hideHeart]);
+
   return (
     <FocusablePressable
+      ref={rowRef}
       focusable={!hideHeart}
       focusedStyle={!hideHeart ? styles.tvFocused : {}}
       style={[
@@ -190,6 +209,7 @@ const ChannelRow = React.memo(function ChannelRow({
       </View>
       {!hideHeart && (
         <FocusablePressable
+          ref={heartRef}
           focusable
           onPress={onHeartPress}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -1296,7 +1316,18 @@ export default function LiveTVScreen() {
           <FocusablePressable
             ref={miniPlayerRef as any}
             collapsable={false}
-            onPress={handleWatch}
+            onPress={() => {
+              // On TV the nested retry Pressable is unreachable (outer captures
+              // D-pad focus), so the outer onPress handles both cases:
+              // error → retry stream; no error → expand to fullscreen player.
+              if (hasError && selectedChannel) {
+                setHasError(false);
+                setIsBuffering(true);
+                try { player.replace(selectedChannel.streamUrl); player.play(); } catch {}
+              } else {
+                handleWatch();
+              }
+            }}
             onFocus={() => setMiniPlayerFocused(true)}
             onBlur={() => setMiniPlayerFocused(false)}
             focusedStyle={{}}
@@ -1327,18 +1358,12 @@ export default function LiveTVScreen() {
               </View>
             )}
             {hasError && (
-              <Pressable
-                style={styles.videoOverlay}
-                onPress={() => {
-                  if (!selectedChannel) return;
-                  setHasError(false);
-                  setIsBuffering(true);
-                  try { player.replace(selectedChannel.streamUrl); player.play(); } catch {}
-                }}
-              >
+              // Plain View — outer FocusablePressable handles retry on both TV
+              // (D-pad OK) and phone (tap propagates through to outer).
+              <View style={styles.videoOverlay} pointerEvents="box-none">
                 <Text style={styles.errText}>Stream unavailable</Text>
                 <Text style={[styles.errText, { fontSize: 11, marginTop: 4, opacity: 0.7 }]}>Tap to retry</Text>
-              </Pressable>
+              </View>
             )}
             {/* Expand hint — bottom-right corner; brightens on D-pad focus */}
             {!isBuffering && !hasError && (

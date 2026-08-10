@@ -61,9 +61,9 @@ function MetaRow({
           {value}
         </Text>
         {expandable && isLong && (
-          <Pressable onPress={() => setExpanded(!expanded)} hitSlop={{ top: 6, bottom: 6 }}>
+          <FocusablePressable onPress={() => setExpanded(!expanded)} hitSlop={{ top: 6, bottom: 6 }}>
             <Text style={mStyles.readMore}>{expanded ? 'Show less' : 'Read more'}</Text>
-          </Pressable>
+          </FocusablePressable>
         )}
       </View>
     </View>
@@ -454,7 +454,7 @@ export default function SeriesDetailScreen() {
               ? `Episodes${activeSeason ? ` (${activeSeason.episodes.length}/${totalEpisodes})` : ''}`
               : `Cast${castList.length > 0 ? ` (${castList.length})` : ''}`;
             return (
-              <Pressable
+              <FocusablePressable
                 key={tab}
                 style={[styles.tabItem, activeTab === tab && styles.tabItemActive]}
                 onPress={() => setActiveTab(tab)}
@@ -462,7 +462,7 @@ export default function SeriesDetailScreen() {
                 <Text style={[styles.tabText, { color: activeTab === tab ? colors.primary : 'rgba(255,255,255,0.45)' }]}>
                   {label}
                 </Text>
-              </Pressable>
+              </FocusablePressable>
             );
           })}
         </View>
@@ -583,15 +583,18 @@ export default function SeriesDetailScreen() {
         animationType="fade"
         onRequestClose={() => setShowSeasonPicker(false)}
       >
-        <Pressable style={styles.pickerBackdrop} onPress={() => setShowSeasonPicker(false)} />
+        {/* focusable={false}: BACK already closes via onRequestClose; this
+            prevents the backdrop from stealing D-pad focus from the season rows */}
+        <View style={styles.pickerBackdrop} pointerEvents="box-none" />
         <View style={[styles.pickerSheet, { paddingBottom: insets.bottom + 16 }]}>
           <Text style={[styles.pickerTitle, { color: 'rgba(255,255,255,0.5)', borderBottomColor: 'rgba(255,255,255,0.08)' }]}>
             SELECT SEASON
           </Text>
           {seasons.map((season, idx) => (
-            <Pressable
+            <FocusablePressable
               key={season.id}
               style={[styles.pickerRow, { borderBottomColor: 'rgba(255,255,255,0.06)' }]}
+              hasTVPreferredFocus={Platform.isTV && idx === selectedSeason}
               onPress={() => {
                 setSelectedSeason(idx);
                 setShowSeasonPicker(false);
@@ -604,7 +607,7 @@ export default function SeriesDetailScreen() {
                 Season {season.seasonNumber}
               </Text>
               {idx === selectedSeason && <Text style={{ color: '#3B82F6', fontSize: 16 }}>✓</Text>}
-            </Pressable>
+            </FocusablePressable>
           ))}
         </View>
       </Modal>

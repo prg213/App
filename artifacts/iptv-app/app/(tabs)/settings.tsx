@@ -4,11 +4,11 @@ import {
   Alert,
   DeviceEventEmitter,
   Modal,
+  Pressable,
   ScrollView,
   StyleSheet,
   Switch,
   Text,
-  TouchableOpacity,
   View,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
@@ -577,8 +577,13 @@ export default function SettingsScreen() {
             <Text style={{ color: colors.mutedForeground, fontSize: 18 }}>›</Text>
           </FocusablePressable>
 
-          {/* App Lock toggle */}
-          <View style={[styles.actionRow, { borderBottomColor: colors.border }]}>
+          {/* App Lock toggle — FocusablePressable makes the whole row a D-pad
+              target on Fire TV so pressing OK toggles the lock without needing
+              to focus the Switch widget directly. */}
+          <FocusablePressable
+            style={[styles.actionRow, { borderBottomColor: colors.border }]}
+            onPress={() => handleLockToggle(!lockEnabled)}
+          >
             <View style={{ flex: 1 }}>
               <Text style={[styles.actionTitle, { color: colors.foreground }]}>App Lock PIN</Text>
               <Text style={[styles.actionSub, { color: colors.mutedForeground }]}>
@@ -590,8 +595,9 @@ export default function SettingsScreen() {
               onValueChange={handleLockToggle}
               trackColor={{ true: '#3B82F6' }}
               thumbColor="#fff"
+              focusable={false}
             />
-          </View>
+          </FocusablePressable>
 
           {/* Set / Change PIN */}
           <FocusablePressable
@@ -691,10 +697,12 @@ export default function SettingsScreen() {
         animationType="slide"
         onRequestClose={() => setShowAudioLangSheet(false)}
       >
-        <TouchableOpacity
+        {/* focusable={false}: BACK closes via onRequestClose; this prevents the
+            backdrop from stealing D-pad focus away from the option rows */}
+        <Pressable
           style={styles.sheetBackdrop}
-          activeOpacity={1}
           onPress={() => setShowAudioLangSheet(false)}
+          focusable={false}
         />
         <View style={[styles.sheet, { backgroundColor: colors.card, paddingBottom: insets.bottom + 16 }]}>
           <View style={styles.sheetHandle} />
@@ -724,10 +732,10 @@ export default function SettingsScreen() {
         animationType="slide"
         onRequestClose={() => setShowSubtitleLangSheet(false)}
       >
-        <TouchableOpacity
+        <Pressable
           style={styles.sheetBackdrop}
-          activeOpacity={1}
           onPress={() => setShowSubtitleLangSheet(false)}
+          focusable={false}
         />
         <View style={[styles.sheet, { backgroundColor: colors.card, paddingBottom: insets.bottom + 16 }]}>
           <View style={styles.sheetHandle} />
@@ -757,10 +765,10 @@ export default function SettingsScreen() {
         animationType="slide"
         onRequestClose={() => setShowLeadTimeSheet(false)}
       >
-        <TouchableOpacity
+        <Pressable
           style={styles.sheetBackdrop}
-          activeOpacity={1}
           onPress={() => setShowLeadTimeSheet(false)}
+          focusable={false}
         />
         <View style={[styles.sheet, { backgroundColor: colors.card, paddingBottom: insets.bottom + 16 }]}>
           <View style={styles.sheetHandle} />
@@ -785,10 +793,10 @@ export default function SettingsScreen() {
         animationType="slide"
         onRequestClose={() => setShowRatingSheet(false)}
       >
-        <TouchableOpacity
+        <Pressable
           style={styles.sheetBackdrop}
-          activeOpacity={1}
           onPress={() => setShowRatingSheet(false)}
+          focusable={false}
         />
         <View style={[styles.sheet, { backgroundColor: colors.card, paddingBottom: insets.bottom + 16 }]}>
           <View style={styles.sheetHandle} />

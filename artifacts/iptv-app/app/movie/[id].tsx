@@ -71,9 +71,9 @@ function MetaRow({
               {value}
             </Text>
             {expandable && isLong && (
-              <Pressable onPress={() => setExpanded(!expanded)} hitSlop={{ top: 6, bottom: 6 }}>
+              <FocusablePressable onPress={() => setExpanded(!expanded)} hitSlop={{ top: 6, bottom: 6 }}>
                 <Text style={mStyles.readMore}>{expanded ? 'Show less' : 'Read more'}</Text>
-              </Pressable>
+              </FocusablePressable>
             )}
           </>
         )}

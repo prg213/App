@@ -3,14 +3,13 @@ import {
   ActivityIndicator,
   FlatList,
   Image,
-  Pressable,
   StyleSheet,
   Text,
   TextInput,
-  TouchableOpacity,
   View,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { FocusablePressable } from '@/components/FocusablePressable';
 import { useQuery } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -39,11 +38,10 @@ const ChannelBlockRow = React.memo(function ChannelBlockRow({
   onToggle: () => void;
 }) {
   return (
-    <Pressable
-      style={({ pressed }) => [
+    <FocusablePressable
+      style={[
         styles.row,
         { borderBottomColor: colors.border },
-        pressed && { opacity: 0.75 },
         isBlocked && { backgroundColor: 'rgba(239,68,68,0.06)' },
       ]}
       onPress={onToggle}
@@ -77,7 +75,7 @@ const ChannelBlockRow = React.memo(function ChannelBlockRow({
           {isBlocked ? 'Blocked' : 'Allow'}
         </Text>
       </View>
-    </Pressable>
+    </FocusablePressable>
   );
 });
 
@@ -101,11 +99,10 @@ const CategoryBlockRow = React.memo(function CategoryBlockRow({
   const someBlocked = blockedCount > 0 && !allBlocked;
 
   return (
-    <Pressable
-      style={({ pressed }) => [
+    <FocusablePressable
+      style={[
         styles.catRow,
         { borderBottomColor: colors.border },
-        pressed && { opacity: 0.75 },
         allBlocked && { backgroundColor: 'rgba(239,68,68,0.06)' },
       ]}
       onPress={() => onToggle(channels)}
@@ -135,7 +132,7 @@ const CategoryBlockRow = React.memo(function CategoryBlockRow({
           {allBlocked ? 'All blocked' : someBlocked ? 'Partial' : 'Allow all'}
         </Text>
       </View>
-    </Pressable>
+    </FocusablePressable>
   );
 });
 
@@ -252,9 +249,9 @@ export default function BlockedChannelsScreen() {
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 12, borderBottomColor: colors.border }]}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()} activeOpacity={0.7}>
+        <FocusablePressable style={styles.backBtn} onPress={() => router.back()}>
           <Text style={[styles.backIcon, { color: colors.foreground }]}>←</Text>
-        </TouchableOpacity>
+        </FocusablePressable>
         <View style={{ flex: 1 }}>
           <Text style={[styles.title, { color: colors.foreground }]}>Blocked Channels</Text>
           <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
@@ -268,16 +265,15 @@ export default function BlockedChannelsScreen() {
       {/* View mode toggle */}
       <View style={[styles.segRow, { borderBottomColor: colors.border }]}>
         {(['channels', 'categories'] as ViewMode[]).map((mode) => (
-          <TouchableOpacity
+          <FocusablePressable
             key={mode}
             style={[styles.seg, viewMode === mode && { borderBottomColor: colors.primary, borderBottomWidth: 2 }]}
             onPress={() => { setViewMode(mode); setSearch(''); }}
-            activeOpacity={0.7}
           >
             <Text style={[styles.segText, { color: viewMode === mode ? colors.primary : colors.mutedForeground }]}>
               {mode === 'channels' ? 'Channels' : 'Categories'}
             </Text>
-          </TouchableOpacity>
+          </FocusablePressable>
         ))}
       </View>
 

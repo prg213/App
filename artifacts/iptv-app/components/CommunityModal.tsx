@@ -2,13 +2,14 @@ import React, { useState } from 'react';
 import {
   ActivityIndicator,
   Modal,
-  Pressable,
+  Platform,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
+import { FocusablePressable } from '@/components/FocusablePressable';
 
 const TELEGRAM_URL = '';
 
@@ -38,9 +39,16 @@ export function CommunityModal({ visible, onClose }: Props) {
         {/* ── Header ── */}
         <View style={styles.header}>
           <Text style={styles.title}>💬 Community</Text>
-          <Pressable style={styles.closeBtn} onPress={onClose} hitSlop={12}>
+          {/* FocusablePressable + hasTVPreferredFocus so the Fire TV remote
+              lands on the close button immediately when the modal opens */}
+          <FocusablePressable
+            style={styles.closeBtn}
+            onPress={onClose}
+            hitSlop={12}
+            hasTVPreferredFocus={Platform.isTV}
+          >
             <Text style={styles.closeTxt}>✕</Text>
-          </Pressable>
+          </FocusablePressable>
         </View>
 
         {TELEGRAM_URL ? (

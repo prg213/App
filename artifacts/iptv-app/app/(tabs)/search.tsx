@@ -599,23 +599,30 @@ export default function SearchScreen() {
                   </FocusablePressable>
                 </View>
                 {recentSearches.map((s) => (
-                  <FocusablePressable
+                  // Outer View holds the row style; the search area and ✕ button
+                  // are separate sibling FocusablePressables so D-pad can reach
+                  // the ✕ independently without being blocked by the outer wrapper.
+                  <View
                     key={s}
                     style={[styles.recentRow, { borderBottomColor: colors.border }]}
-                    onPress={() => {
-                      setQuery(s);
-                      // Also save it (bumps to top) then let the results render
-                      StorageService.addRecentSearch(s).then(() =>
-                        StorageService.getRecentSearches().then(setRecentSearches)
-                      );
-                    }}
                   >
-                    <Text style={[styles.recentIcon, { color: colors.mutedForeground }]}>🕐</Text>
-                    <Text style={[styles.recentText, { color: colors.foreground }]} numberOfLines={1}>{s}</Text>
+                    <FocusablePressable
+                      style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 }}
+                      onPress={() => {
+                        setQuery(s);
+                        // Also save it (bumps to top) then let the results render
+                        StorageService.addRecentSearch(s).then(() =>
+                          StorageService.getRecentSearches().then(setRecentSearches)
+                        );
+                      }}
+                    >
+                      <Text style={[styles.recentIcon, { color: colors.mutedForeground }]}>🕐</Text>
+                      <Text style={[styles.recentText, { color: colors.foreground }]} numberOfLines={1}>{s}</Text>
+                    </FocusablePressable>
                     <FocusablePressable onPress={() => handleRemoveRecentSearch(s)} hitSlop={8}>
                       <Text style={[styles.recentRemove, { color: colors.mutedForeground }]}>✕</Text>
                     </FocusablePressable>
-                  </FocusablePressable>
+                  </View>
                 ))}
               </View>
             )}
