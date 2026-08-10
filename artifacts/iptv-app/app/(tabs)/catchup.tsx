@@ -160,42 +160,6 @@ export default function CatchupScreen() {
   // nextFocusLeft / nextFocusRight without relying on render-time handles.
   const [dayTabHandles, setDayTabHandles] = useState<Map<string, number>>(new Map());
 
-  // One stable callback-ref function per day key.  Re-created only when the
-  // days array reference changes (i.e. when selectedChannel changes), so React
-  // sees the same function between normal re-renders and never detaches /
-  // re-attaches — avoiding the state-update loop that an inline arrow would
-  // cause.  The setDayTabHandles guard (curr === handle) means state is only
-  // written when a handle actually changes.
-  const dayTabCallbackRefs = useMemo(
-    () =>
-      new Map(
-        days.map((k) => [
-          k,
-          (node: View | null) => {
-            const handle = node ? findNodeHandle(node) : null;
-            setDayTabHandles((prev) => {
-              const curr = prev.get(k) ?? null;
-              if (curr === handle) return prev;
-              const next = new Map(prev);
-              if (handle != null) next.set(k, handle);
-              else next.delete(k);
-              return next;
-            });
-          },
-        ]),
-      ),
-    [days],
-  );
-
-  // Callback ref: assigned to the first programme row in the list.  It keeps
-  // firstProgRef in sync for imperative .focus() calls AND updates the state
-  // handle that powers nextFocusDown on the day tabs — both are updated after
-  // the node actually mounts, avoiding the render-time race.
-  const firstProgCallbackRef = useCallback((node: View | null) => {
-    firstProgRef.current = node;
-    setFirstProgHandle(node ? findNodeHandle(node) : null);
-  }, []);
-
   // D-pad / remote back: close programme list → reset category → hand off to
   // the global handler which focuses the sidebar.
   useFocusEffect(useCallback(() => {
@@ -251,7 +215,9 @@ export default function CatchupScreen() {
     staleTime: 10 * 60_000,
   });
 
-  // Only ended programmes with archive, grouped by day (newest first)
+  // Only ended programmes with archive, grouped by day (newest first).
+  // Must be declared before dayTabCallbackRefs so the `[days]` dependency
+  // array reads a fully initialised binding (no temporal-dead-zone risk).
   const { days, byDay } = useMemo(() => {
     const now = Date.now();
     const playable = programs.filter((p) => p.hasArchive && p.end.getTime() <= now);
@@ -269,6 +235,43 @@ export default function CatchupScreen() {
     });
     return { days: sortedDays, byDay: map };
   }, [programs]);
+
+  // One stable callback-ref function per day key.  Re-created only when the
+  // days array reference changes (i.e. when selectedChannel changes), so React
+  // sees the same function between normal re-renders and never detaches /
+  // re-attaches — avoiding the state-update loop that an inline arrow would
+  // cause.  The setDayTabHandles guard (curr === handle) means state is only
+  // written when a handle actually changes.
+  // `days` is declared above so the [days] dep array is not in the TDZ.
+  const dayTabCallbackRefs = useMemo(
+    () =>
+      new Map(
+        days.map((k) => [
+          k,
+          (node: View | null) => {
+            const handle = node ? findNodeHandle(node) : null;
+            setDayTabHandles((prev) => {
+              const curr = prev.get(k) ?? null;
+              if (curr === handle) return prev;
+              const next = new Map(prev);
+              if (handle != null) next.set(k, handle);
+              else next.delete(k);
+              return next;
+            });
+          },
+        ]),
+      ),
+    [days],
+  );
+
+  // Callback ref: assigned to the first programme row in the list.  It keeps
+  // firstProgRef in sync for imperative .focus() calls AND updates the state
+  // handle that powers nextFocusDown on the day tabs — both are updated after
+  // the node actually mounts, avoiding the render-time race.
+  const firstProgCallbackRef = useCallback((node: View | null) => {
+    firstProgRef.current = node;
+    setFirstProgHandle(node ? findNodeHandle(node) : null);
+  }, []);
 
   const activeDay = selectedDay && byDay.has(selectedDay) ? selectedDay : days[0] ?? null;
   const dayPrograms = activeDay ? byDay.get(activeDay) ?? [] : [];
