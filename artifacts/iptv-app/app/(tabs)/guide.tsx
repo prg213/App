@@ -275,6 +275,7 @@ interface TVProgItem {
 const TVEpgRow = React.memo(function TVEpgRow({
   channel, programs, dayStartMs, now, isToday, isFirst, colors, reminderIds,
   onProgramPress, onWatchChannel, firstChannelRef, lastFocusedProgRef,
+  jumpToNowRef,
 }: {
   channel: Channel;
   programs: EpgProgram[];
@@ -295,6 +296,12 @@ const TVEpgRow = React.memo(function TVEpgRow({
    * ProgramModal closes.
    */
   lastFocusedProgRef?: React.MutableRefObject<View | null>;
+  /**
+   * Populated by this row (only when isFirst) with a fn that scrolls the
+   * horizontal list to the current programme and focuses it.
+   * FullGuide calls it via the global onHWKeyEvent Play/Pause listener.
+   */
+  jumpToNowRef?: React.MutableRefObject<(() => void) | null>;
 }) {
   const flatRef = useRef<FlatList>(null);
   // Ref to the first programme cell — used by the channel-press auto-advance
@@ -348,6 +355,25 @@ const TVEpgRow = React.memo(function TVEpgRow({
       if (focusTimer !== null) clearTimeout(focusTimer);
     };
   }, [initialIdx, isFirst]);
+
+  // Populate jumpToNowRef (first row only) with a fn FullGuide can call to
+  // scroll the horizontal list to the current programme and focus it.
+  useEffect(() => {
+    if (!jumpToNowRef) return;
+    jumpToNowRef.current = () => {
+      if (initialIdx == null || !flatRef.current) return;
+      try {
+        flatRef.current.scrollToIndex({ index: initialIdx, animated: true, viewPosition: 0 });
+      } catch (_) {}
+      setTimeout(() => {
+        initialProgRef.current?.focus();
+      }, 80);
+    };
+    return () => {
+      // Only clear if this row still owns the ref
+      if (jumpToNowRef) jumpToNowRef.current = null;
+    };
+  }, [jumpToNowRef, initialIdx]);
 
   const getItemLayout = useCallback((_: any, index: number) => {
     const it = items[index];
@@ -780,6 +806,46 @@ function FullGuide({
   // Ref to the programme cell that was last pressed — written by each TVEpgRow
   // on programme-cell press, read on ProgramModal close to restore D-pad focus.
   const lastFocusedProgViewRef = useRef<View | null>(null);
+  // ── Jump-to-now hardware shortcut (Play/Pause key on Fire TV) ────────────
+  // The first TVEpgRow populates this ref with a fn that scrolls its horizontal
+  // FlatList to the current programme and focuses that cell.  FullGuide calls
+  // it after switching back to today so the user lands on "now" instantly.
+  const jumpToNowCallbackRef = useRef<(() => void) | null>(null);
+
+  const jumpToNow = useCallback(() => {
+    if (!Platform.isTV) return;
+    if (selectedDay !== 0) {
+      // Switch to today first; TVEpgRow's initialIdx useEffect will scroll
+      // automatically, but we also call the explicit callback for focus.
+      setSelectedDay(0);
+      setTimeout(() => { jumpToNowCallbackRef.current?.(); }, 220);
+    } else {
+      // Already on today — directly scroll to now and focus the cell
+      jumpToNowCallbackRef.current?.();
+    }
+  }, [selectedDay]);
+
+  // Ref mirror of `selected` so the onHWKeyEvent handler can check whether a
+  // modal is open without capturing stale closure state.
+  const selectedRef = useRef(selected);
+  useEffect(() => { selectedRef.current = selected; }, [selected]);
+
+  // ── Play/Pause hardware shortcut — Fire TV / Android TV ──────────────────
+  // React Native emits onHWKeyEvent as a global DeviceEventEmitter event
+  // (not a View prop). We subscribe here so the shortcut works from any
+  // focused cell anywhere in the EPG grid. Key-action 0 = key-down only.
+  useEffect(() => {
+    if (!Platform.isTV) return;
+    const sub = DeviceEventEmitter.addListener(
+      'onHWKeyEvent',
+      (e: { eventType: string; eventKeyAction: number }) => {
+        if (e.eventType === 'playPause' && e.eventKeyAction === 0 && !selectedRef.current) {
+          jumpToNow();
+        }
+      },
+    );
+    return () => sub.remove();
+  }, [jumpToNow]);
 
   // Focus the first channel cell whenever the selected category changes (covers
   // both the initial mount from CategoryGrid and ‹ › prev/next navigation).
@@ -1137,6 +1203,7 @@ function FullGuide({
                 onProgramPress={(p, c) => setSelected({ program: p, channel: c })}
                 firstChannelRef={index === 0 ? firstChannelRef : undefined}
                 lastFocusedProgRef={lastFocusedProgViewRef}
+                jumpToNowRef={index === 0 ? jumpToNowCallbackRef : undefined}
                 onWatchChannel={(c) => {
                   const chList = channels.map((x) => ({
                     url: x.streamUrl, title: x.name,
