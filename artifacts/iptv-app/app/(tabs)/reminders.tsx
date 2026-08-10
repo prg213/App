@@ -8,12 +8,14 @@ import {
   Image,
   LayoutAnimation,
   Modal,
+  Platform,
   Pressable,
   RefreshControl,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
+  findNodeHandle,
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { useRouter } from 'expo-router';
@@ -171,80 +173,133 @@ function ReminderCard({
   // show even when we are still backfilling the stream URL for old reminders.
   const isOnAir = startMs <= nowTs && nowTs < endMs;
 
+  // ── TV / Fire TV D-pad wiring ─────────────────────────────────────────────
+  // Root cause of "can highlight but can't delete": the original card was one
+  // outer FocusablePressable wrapping the whole row.  On Fire TV, D-pad focus
+  // landed on that outer element and OK fired its onPress (undefined for upcoming
+  // reminders → silent no-op).  The inner edit/delete FocusablePressables could
+  // never be reached because the outer element held focus.
+  //
+  // Fix: the outer wrapper becomes a plain View.  The card is split into two
+  // independently-focusable zones:
+  //   • infoRef  — logo + content (LEFT zone); OK shows details for past reminders
+  //   • editRef  — reschedule button (only for upcoming)
+  //   • deleteRef — delete button (always present)
+  // D-pad RIGHT from infoRef → editRef (or deleteRef if no edit) → deleteRef.
+  // D-pad LEFT reverses the chain back to infoRef.
+  const infoRef   = useRef<View>(null);
+  const editRef   = useRef<View>(null);
+  const deleteRef = useRef<View>(null);
+
+  useEffect(() => {
+    if (!Platform.isTV) return;
+    const t = setTimeout(() => {
+      const infoH   = findNodeHandle(infoRef.current);
+      const editH   = !isPast ? findNodeHandle(editRef.current) : null;
+      const deleteH = findNodeHandle(deleteRef.current);
+      if (!infoH || !deleteH) return;
+
+      const firstRight = editH ?? deleteH;
+      // info → first action button on D-pad RIGHT
+      (infoRef.current as any)?.setNativeProps({ nextFocusRight: firstRight });
+
+      if (editH) {
+        // edit ← info  |  edit → delete
+        (editRef.current as any)?.setNativeProps({ nextFocusLeft: infoH, nextFocusRight: deleteH });
+        // delete ← edit
+        (deleteRef.current as any)?.setNativeProps({ nextFocusLeft: editH });
+      } else {
+        // delete ← info
+        (deleteRef.current as any)?.setNativeProps({ nextFocusLeft: infoH });
+      }
+    }, 250);
+    return () => clearTimeout(t);
+  }, [isPast]);
+
+  const cardPress = isPast && !isOnAir ? () => {
+    Alert.alert(
+      reminder.programTitle,
+      [reminder.channelName, fmtDate(reminder.start), reminder.programDescription].filter(Boolean).join('\n'),
+      [{ text: 'OK' }],
+    );
+  } : undefined;
+
   return (
-    <FocusablePressable
-      style={{ opacity: isPast && !isOnAir ? 0.65 : 1 }}
-      onPress={isPast && !isOnAir ? () => {
-        Alert.alert(
-          reminder.programTitle,
-          [reminder.channelName, fmtDate(reminder.start), reminder.programDescription].filter(Boolean).join('\n'),
-          [{ text: 'OK' }],
-        );
-      } : undefined}
-    >
+    // Plain View — not a focus target itself.  Individual zones handle D-pad.
+    <View style={{ opacity: isPast && !isOnAir ? 0.65 : 1 }}>
     <View style={[styles.card, { backgroundColor: colors.card, borderColor: isOnAir ? '#3B82F6' : colors.border, opacity: isPast && !isOnAir ? 0.5 : 1 }]}>
-      {/* Left: channel logo */}
-      <View style={[styles.logoWrap, { backgroundColor: colors.secondary }]}>
-        {reminder.channelLogo ? (
-          <Image source={{ uri: reminder.channelLogo }} style={StyleSheet.absoluteFill} resizeMode="contain" />
-        ) : (
-          <Text style={styles.logoFallback}>📺</Text>
-        )}
-      </View>
 
-      {/* Centre: info */}
-      <View style={styles.info}>
-        <Text style={[styles.progTitle, { color: colors.foreground }]} numberOfLines={1}>
-          {reminder.programTitle}
-        </Text>
-        <Text style={[styles.chName, { color: colors.primary }]} numberOfLines={1}>
-          {reminder.channelName}
-        </Text>
-        <Text style={[styles.time, { color: colors.mutedForeground }]}>
-          {fmtDate(reminder.start)}
-          {!isPast && (
-            <Text style={[styles.badge, { color: '#22C55E' }]}>  {timeUntil(reminder.start, nowTs)}</Text>
+      {/* Info zone (logo + content) — the primary D-pad focus target on TV.
+          On phone the entire zone is tappable (same behaviour as the old outer card). */}
+      <FocusablePressable
+        ref={infoRef}
+        style={styles.infoArea}
+        onPress={cardPress}
+      >
+        {/* Left: channel logo */}
+        <View style={[styles.logoWrap, { backgroundColor: colors.secondary }]}>
+          {reminder.channelLogo ? (
+            <Image source={{ uri: reminder.channelLogo }} style={StyleSheet.absoluteFill} resizeMode="contain" />
+          ) : (
+            <Text style={styles.logoFallback}>📺</Text>
           )}
-          {isPast && !isOnAir && <Text style={{ color: '#EF4444' }}>  Past</Text>}
-          {isOnAir && <Text style={{ color: '#3B82F6' }}>  On now</Text>}
-        </Text>
-        {/* #100: show when the notification will fire */}
-        {!isPast && !isOnAir && leadMins > 0 && (
-          <Text style={[styles.leadBadge, { color: colors.mutedForeground }]}>
-            ⏰ Notifies {reminder.leadMins ?? leadMins}min before
-          </Text>
-        )}
-        {/* #119: warn when channel couldn't be resolved after URL backfill */}
-        {!isOnAir && !reminder.streamUrl && (
-          <Text style={styles.channelWarning}>⚠️ Channel not in current list</Text>
-        )}
-        {reminder.programDescription ? (
-          <Text style={[styles.desc, { color: colors.mutedForeground }]} numberOfLines={2}>
-            {reminder.programDescription}
-          </Text>
-        ) : null}
+        </View>
 
-        {/* Watch Live button — shown when programme is currently airing */}
-        {isOnAir && reminder.streamUrl && onWatchLive && (
-          <FocusablePressable
-            style={styles.watchLiveBtn}
-            onPress={onWatchLive}
-          >
-            <Text style={styles.watchLiveBtnText}>▶  Watch Live</Text>
-          </FocusablePressable>
-        )}
-        {/* Graceful fallback when on-air but channel URL could not be resolved */}
-        {isOnAir && !reminder.streamUrl && (
-          <View style={[styles.watchLiveBtn, styles.watchLiveBtnDisabled]}>
-            <Text style={[styles.watchLiveBtnText, styles.watchLiveBtnTextDisabled]}>▶  Watch Live</Text>
-          </View>
-        )}
-      </View>
+        {/* Centre: info */}
+        <View style={styles.info}>
+          <Text style={[styles.progTitle, { color: colors.foreground }]} numberOfLines={1}>
+            {reminder.programTitle}
+          </Text>
+          <Text style={[styles.chName, { color: colors.primary }]} numberOfLines={1}>
+            {reminder.channelName}
+          </Text>
+          <Text style={[styles.time, { color: colors.mutedForeground }]}>
+            {fmtDate(reminder.start)}
+            {!isPast && (
+              <Text style={[styles.badge, { color: '#22C55E' }]}>  {timeUntil(reminder.start, nowTs)}</Text>
+            )}
+            {isPast && !isOnAir && <Text style={{ color: '#EF4444' }}>  Past</Text>}
+            {isOnAir && <Text style={{ color: '#3B82F6' }}>  On now</Text>}
+          </Text>
+          {/* #100: show when the notification will fire */}
+          {!isPast && !isOnAir && leadMins > 0 && (
+            <Text style={[styles.leadBadge, { color: colors.mutedForeground }]}>
+              ⏰ Notifies {reminder.leadMins ?? leadMins}min before
+            </Text>
+          )}
+          {/* #119: warn when channel couldn't be resolved after URL backfill */}
+          {!isOnAir && !reminder.streamUrl && (
+            <Text style={styles.channelWarning}>⚠️ Channel not in current list</Text>
+          )}
+          {reminder.programDescription ? (
+            <Text style={[styles.desc, { color: colors.mutedForeground }]} numberOfLines={2}>
+              {reminder.programDescription}
+            </Text>
+          ) : null}
 
-      {/* Right: edit + delete buttons */}
+          {/* Watch Live button — shown when programme is currently airing */}
+          {isOnAir && reminder.streamUrl && onWatchLive && (
+            <FocusablePressable
+              style={styles.watchLiveBtn}
+              onPress={onWatchLive}
+            >
+              <Text style={styles.watchLiveBtnText}>▶  Watch Live</Text>
+            </FocusablePressable>
+          )}
+          {/* Graceful fallback when on-air but channel URL could not be resolved */}
+          {isOnAir && !reminder.streamUrl && (
+            <View style={[styles.watchLiveBtn, styles.watchLiveBtnDisabled]}>
+              <Text style={[styles.watchLiveBtnText, styles.watchLiveBtnTextDisabled]}>▶  Watch Live</Text>
+            </View>
+          )}
+        </View>
+      </FocusablePressable>
+
+      {/* Right: action buttons — each independently focusable on TV */}
       <View style={styles.actions}>
         {!isPast && (
           <FocusablePressable
+            ref={editRef}
             style={[styles.actionBtn, { borderColor: colors.border }]}
             onPress={onReschedule}
           >
@@ -252,6 +307,7 @@ function ReminderCard({
           </FocusablePressable>
         )}
         <FocusablePressable
+          ref={deleteRef}
           style={[styles.actionBtn, { borderColor: colors.border }]}
           onPress={onDelete}
         >
@@ -259,7 +315,7 @@ function ReminderCard({
         </FocusablePressable>
       </View>
     </View>
-    </FocusablePressable>
+    </View>
   );
 }
 
@@ -833,6 +889,10 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   logoFallback: { fontSize: 22 },
+  // infoArea wraps logo + info together as one D-pad focusable zone on TV.
+  // flex:1 so it fills the card minus the actions column; flexDirection:row
+  // + gap:12 preserves the original logo | info side-by-side layout.
+  infoArea: { flex: 1, flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
   info: { flex: 1, gap: 2 },
   progTitle: { fontSize: 14, fontFamily: 'Inter_600SemiBold' },
   chName: { fontSize: 12, fontFamily: 'Inter_500Medium' },
