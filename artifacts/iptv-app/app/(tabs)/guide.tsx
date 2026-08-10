@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
+  BackHandler,
   DeviceEventEmitter,
   findNodeHandle,
   FlatList,
@@ -1251,6 +1252,7 @@ function FullGuide({
           showsHorizontalScrollIndicator={false}
           style={{ flex: 1 }}
           contentContainerStyle={styles.dayBarContent}
+          focusable={false}
         >
           {days.map((d, i) => {
             const dayMs = dayStart(i).getTime();
@@ -1556,6 +1558,22 @@ export default function GuideScreen() {
   const { channelId: notifChannelId } = useLocalSearchParams<{ channelId?: string }>();
 
   const [selectedCat, setSelectedCat] = useState<string | null>(null);
+
+  // ── Hardware BACK: return from FullGuide to CategoryGrid ─────────────────
+  // Without this, pressing BACK while viewing a category's programme grid
+  // would exit the tab entirely (or navigate back in the app stack) rather
+  // than returning the user to the category selection grid.
+  // The ProgramModal registers its own BackHandler listener that fires first
+  // (LIFO) when the modal is open, so we never intercept BACK mid-modal.
+  useEffect(() => {
+    if (!selectedCat) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      setSelectedCat(null);
+      return true; // consumed — do not propagate
+    });
+    return () => sub.remove();
+  }, [selectedCat]);
+
   // Channel to auto-highlight after notification tap
   const [pendingHighlightId, setPendingHighlightId] = useState<string | null>(notifChannelId ?? null);
   // Favourite channels — loaded once so the guide can show ♥ badge and toggle

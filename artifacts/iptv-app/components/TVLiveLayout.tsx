@@ -24,6 +24,7 @@ import {
   ActivityIndicator,
   FlatList,
   Image,
+  Platform,
   StyleSheet,
   Text,
   View,
@@ -95,6 +96,22 @@ export function TVLiveLayout({
   const catListRef = useRef<FlatList<Category>>(null);
   const chListRef  = useRef<FlatList<Channel>>(null);
 
+  // ── TV remote initial focus ───────────────────────────────────────────────
+  // Refs to the first items in each panel so we can programmatically focus
+  // them without relying on hasTVPreferredFocus (which fires on every re-render
+  // on Fire OS and would fight with the user's own D-pad navigation).
+  const firstCatRef = useRef<View>(null);
+  const firstChRef  = useRef<View>(null);
+
+  // On mount, give the remote a landing zone: focus the first category item.
+  // 400 ms lets the FlatList render and measure its children before we call
+  // focus — necessary on older Firestick hardware.
+  useEffect(() => {
+    if (!Platform.isTV) return;
+    const t = setTimeout(() => (firstCatRef.current as any)?.focus?.(), 400);
+    return () => clearTimeout(t);
+  }, []);
+
   // Track which channel row is visually highlighted.
   // Updated on D-pad focus AND on successful OK press — never triggers stream load.
   const [highlightedChId, setHighlightedChId] = useState<string | null>(
@@ -134,6 +151,7 @@ export function TVLiveLayout({
 
   const renderCat: ListRenderItem<Category> = useCallback(({ item, index }) => (
     <FocusablePressable
+      ref={index === 0 ? (firstCatRef as any) : undefined}
       accessible
       accessibilityRole="button"
       accessibilityLabel={item.name}
@@ -147,6 +165,11 @@ export function TVLiveLayout({
       onPress={() => {
         onCatSelect(item.id);
         handleCatFocus(index);
+        // Auto-advance D-pad focus to the first channel after category selection so
+        // the user doesn't have to manually press RIGHT to reach the channel list.
+        if (Platform.isTV) {
+          setTimeout(() => (firstChRef.current as any)?.focus?.(), 300);
+        }
       }}
     >
       <Text style={[styles.catName, { color: colors.foreground }]} numberOfLines={1}>
@@ -170,6 +193,7 @@ export function TVLiveLayout({
     const isHighlighted = highlightedChId === item.id;
     return (
       <FocusablePressable
+        ref={index === 0 ? (firstChRef as any) : undefined}
         accessible
         accessibilityRole="button"
         accessibilityLabel={item.name}
