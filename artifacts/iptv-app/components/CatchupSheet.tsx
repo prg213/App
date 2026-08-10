@@ -1,6 +1,7 @@
-import React, { useMemo, useState, useCallback } from 'react';
+import React, { useMemo, useState, useCallback, useRef } from 'react';
 import {
   ActivityIndicator,
+  findNodeHandle,
   Modal,
   Platform,
   ScrollView,
@@ -161,6 +162,23 @@ export function CatchupSheet({
     });
   }, [programmes, nowTs]);
 
+  // Index of the last programme row the user can play.
+  // Used to set nextFocusDown so D-pad doesn't wrap back to the header.
+  const lastPlayableIndex = useMemo<number>(() => {
+    let last = -1;
+    for (let i = 0; i < programmes.length; i++) {
+      const p = programmes[i];
+      const isPast = p.end.getTime() < nowTs;
+      const isCurrent = p.start.getTime() <= nowTs && nowTs < p.end.getTime();
+      if (isPast || isCurrent) last = i;
+    }
+    return last;
+  }, [programmes, nowTs]);
+
+  // Ref to the first day-strip pill — the desired focus target after the
+  // last playable programme row so D-pad Down doesn't wrap to the header.
+  const firstDayPillRef = useRef<View>(null);
+
   const handlePlayCatchup = (prog: CatchupProgram) => {
     const durationMinutes = Math.max(
       1,
@@ -238,6 +256,7 @@ export function CatchupSheet({
             return (
               <FocusablePressable
                 key={i}
+                ref={i === 0 ? firstDayPillRef : undefined}
                 onPress={() => setSelectedDay(d)}
                 style={[
                   sheet.dayPill,
@@ -293,6 +312,23 @@ export function CatchupSheet({
               return (
                 <FocusablePressable
                   key={prog.id ?? i}
+                  ref={
+                    Platform.isTV && i === lastPlayableIndex
+                      ? (r) => {
+                          if (r && firstDayPillRef.current) {
+                            // Wire D-pad Down on the last playable row to the
+                            // first day-strip pill so the focus engine never
+                            // wraps back to the close button.
+                            setTimeout(() => {
+                              const handle = findNodeHandle(firstDayPillRef.current);
+                              if (handle != null) {
+                                (r as View).setNativeProps({ nextFocusDown: handle });
+                              }
+                            }, 50);
+                          }
+                        }
+                      : undefined
+                  }
                   onPress={() => (canPlay ? handlePlayCatchup(prog) : handleFutureTap())}
                   focusable={canPlay}
                   hasTVPreferredFocus={Platform.isTV && i === firstPlayableIndex ? true : undefined}

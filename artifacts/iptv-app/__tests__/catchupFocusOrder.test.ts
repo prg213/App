@@ -123,3 +123,40 @@ describe('CatchupSheet — nowTs is a stable snapshot (#259)', () => {
     expect(src).toMatch(/const\s+nowTs\s*=\s*Date\.now\(\)/);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 5. nextFocusDown anti-wrap guard (#270)
+//    The last playable row must wire nextFocusDown to the first day-strip pill
+//    so D-pad Down never wraps back to the close button or first row.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('CatchupSheet — nextFocusDown anti-wrap guard (#270)', () => {
+  it('computes lastPlayableIndex to identify which programme row gets the nextFocusDown wire', () => {
+    // The variable must exist; it drives the ref callback on the last row.
+    expect(src).toMatch(/lastPlayableIndex/);
+  });
+
+  it('creates a firstDayPillRef to serve as the nextFocusDown target', () => {
+    // The ref must be created so the day-strip pill can receive focus after
+    // the last programme row on D-pad Down.
+    expect(src).toMatch(/firstDayPillRef/);
+  });
+
+  it('attaches firstDayPillRef to the first day-strip pill (i === 0)', () => {
+    // Matches: ref={i === 0 ? firstDayPillRef : undefined}
+    // or similar expressions assigning the ref only for index 0.
+    expect(src).toMatch(/i\s*===\s*0.*firstDayPillRef|firstDayPillRef.*i\s*===\s*0/);
+  });
+
+  it('uses setNativeProps with nextFocusDown on the last playable row to prevent wrap', () => {
+    // The setNativeProps call that sets nextFocusDown is the mechanism that
+    // stops D-pad Down from cycling back to the header.
+    expect(src).toMatch(/setNativeProps\(\s*\{\s*nextFocusDown/);
+  });
+
+  it('derives the nextFocusDown handle from findNodeHandle so Fire OS gets a valid node reference', () => {
+    // findNodeHandle converts the React ref to a native integer handle —
+    // required on Android TV / Fire OS where refs are not accepted directly.
+    expect(src).toMatch(/findNodeHandle\(firstDayPillRef/);
+  });
+});
