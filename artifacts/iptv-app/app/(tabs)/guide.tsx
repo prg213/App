@@ -21,12 +21,13 @@ import {
   Platform,
   ScrollView,
   StyleSheet,
+  Keyboard,
   Pressable,
   Text,
-  TextInput,
   View,
   useWindowDimensions,
 } from 'react-native';
+import { TVTextInput } from '@/components/TVTextInput';
 import * as Haptics from 'expo-haptics';
 import { Toast } from '@/components/Toast';
 import { useQuery } from '@tanstack/react-query';
@@ -1222,7 +1223,7 @@ function FullGuide({
           </Text>
         </FocusablePressable>
 
-        <TextInput
+        <TVTextInput
           focusable
           value={chFilter}
           onChangeText={setChFilter}
@@ -1235,6 +1236,7 @@ function FullGuide({
           style={[styles.guideChFilter, { backgroundColor: colors.secondary, color: colors.foreground, borderColor: colors.border }]}
           returnKeyType="search"
           clearButtonMode="while-editing"
+          onSubmitEditing={() => Keyboard.dismiss()}
         />
       </View>
 

@@ -3,11 +3,12 @@ import {
   ActivityIndicator,
   FlatList,
   Image,
+  Keyboard,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
+import { TVTextInput } from '@/components/TVTextInput';
 import { useRouter } from 'expo-router';
 import { FocusablePressable } from '@/components/FocusablePressable';
 import { useQuery } from '@tanstack/react-query';
@@ -280,7 +281,7 @@ export default function BlockedChannelsScreen() {
       {/* Search bar */}
       <View style={[styles.searchWrap, { borderBottomColor: colors.border }]}>
         <Text style={[styles.searchIcon, { color: colors.mutedForeground }]}>🔍</Text>
-        <TextInput
+        <TVTextInput
           focusable
           style={[styles.searchInput, { color: colors.foreground }]}
           value={search}
@@ -290,6 +291,8 @@ export default function BlockedChannelsScreen() {
           autoCorrect={false}
           autoCapitalize="none"
           clearButtonMode="while-editing"
+          returnKeyType="search"
+          onSubmitEditing={() => Keyboard.dismiss()}
         />
       </View>
 

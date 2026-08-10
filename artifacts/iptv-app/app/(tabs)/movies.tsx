@@ -5,12 +5,13 @@ import {
   Alert,
   BackHandler,
   FlatList,
+  Keyboard,
   RefreshControl,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
+import { TVTextInput } from '@/components/TVTextInput';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter, useFocusEffect } from 'expo-router';
 import * as Haptics from 'expo-haptics';
@@ -361,7 +362,7 @@ export default function MoviesScreen() {
               </Text>
             )}
           </View>
-          <TextInput
+          <TVTextInput
             focusable
             style={[styles.searchInput, { backgroundColor: colors.secondary, color: colors.foreground, borderColor: colors.border }]}
             placeholder="Search movies..."
@@ -369,6 +370,8 @@ export default function MoviesScreen() {
             value={search}
             onChangeText={(t) => { setSearch(t); gridRef.current?.scrollToOffset({ offset: 0, animated: false }); }}
             clearButtonMode="while-editing"
+            returnKeyType="search"
+            onSubmitEditing={() => Keyboard.dismiss()}
           />
           {search.trim() && !isFavsSelected && !isRecentSelected && (
             <Text style={[styles.resultCount, { color: colors.mutedForeground }]}>

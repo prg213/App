@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native';
 import { FocusablePressable } from '@/components/FocusablePressable';
+import { TVTextInput } from '@/components/TVTextInput';
 import { TrailerModal } from '@/components/TrailerModal';
 import { useQuery } from '@tanstack/react-query';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -694,7 +695,7 @@ export default function SearchScreen() {
         <Text style={[styles.screenTitle, { color: colors.foreground }]}>Search</Text>
         <View style={[styles.inputWrap, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
           <Text style={[styles.searchIcon, { color: colors.mutedForeground }]}>🔍</Text>
-          <TextInput
+          <TVTextInput
             ref={inputRef}
             focusable
             style={[styles.input, { color: colors.foreground }]}
