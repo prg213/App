@@ -481,7 +481,11 @@ const TVEpgRow = React.memo(function TVEpgRow({
             // auto-advance), initialProgRef (initialIdx, used for post-scroll focus
             // restoration), and progRefs map (every index, used for post-modal restore).
             const cellRef = (el: View | null) => {
-              progRefs.current.set(index, el);
+              if (el) {
+                progRefs.current.set(index, el);
+              } else {
+                progRefs.current.delete(index);
+              }
               if (index === 0) (progFirstRef as React.MutableRefObject<View | null>).current = el;
               if (index === initialIdx) (initialProgRef as React.MutableRefObject<View | null>).current = el;
             };
