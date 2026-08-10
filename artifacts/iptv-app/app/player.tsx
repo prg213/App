@@ -902,6 +902,10 @@ export default function PlayerScreen() {
     setIsBuffering(true);
     setHasError(false);
     setErrorMsg('');
+    // Dismiss the live controls bar on channel switch — the new stream starts
+    // clean and focus returns to the centre zone via the channelIdx useEffect.
+    setShowControls(false);
+    controlsOpacity.setValue(0);
     // Reset auto-reconnect counter on manual channel switch
     if (reconnectTimerRef.current) { clearTimeout(reconnectTimerRef.current); reconnectTimerRef.current = null; }
     setReconnectAttempt(0);
@@ -981,12 +985,42 @@ export default function PlayerScreen() {
     setTimeout(() => setShowInfo(false), 320);
   }, [infoOpacity]);
 
+  // ── Show / hide the live controls bar (Audio + CC chips) via D-pad ────────
+  // On Fire TV / Android TV the controls bar is the only way to reach the
+  // Audio and CC buttons during live playback.  These two helpers mirror the
+  // VOD showVodControls / fade-out pattern so the behaviour is consistent.
+  const showLiveControls = useCallback(() => {
+    setShowControls(true);
+    controlsOpacity.setValue(0);
+    Animated.timing(controlsOpacity, { toValue: 1, duration: 200, useNativeDriver: true }).start();
+    if (Platform.isTV) {
+      // Give the overlay one frame to mount before requesting focus.
+      setTimeout(() => (audioChipRef.current as any)?.focus?.(), 80);
+    }
+  }, [controlsOpacity]);
+
+  const hideLiveControls = useCallback(() => {
+    Animated.timing(controlsOpacity, { toValue: 0, duration: 300, useNativeDriver: true }).start();
+    setTimeout(() => {
+      setShowControls(false);
+      // Return D-pad focus to the centre zone so OK works again immediately.
+      if (Platform.isTV) {
+        setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 50);
+      }
+    }, 320);
+  }, [controlsOpacity]);
+
   // ── Android hardware back button (live TV only) ───────────────────────────
-  // First Back press: dismiss the info bar if it is visible.
-  // Second Back press (info bar already hidden): collapse back to mini-player.
+  // Press 1: dismiss the controls bar if visible (Fire TV).
+  // Press 2: dismiss the info bar if visible.
+  // Press 3: collapse back to mini-player.
   useEffect(() => {
     if (!isLive || isWeb || Platform.OS !== 'android') return;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (showControlsRef.current) {
+        hideLiveControls();
+        return true; // consumed — do not navigate back
+      }
       if (showInfoRef.current) {
         dismissInfoBar();
         return true; // consumed — do not navigate back
@@ -995,7 +1029,7 @@ export default function PlayerScreen() {
       return true;
     });
     return () => sub.remove();
-  }, [isLive, isWeb, handleBackLive, dismissInfoBar]);
+  }, [isLive, isWeb, handleBackLive, dismissInfoBar, hideLiveControls]);
 
   // ── Wire TV scrubber D-pad left/right via focus-bounce targets ───────────
   // The scrubber anchor uses nextFocusLeft / nextFocusRight (node handles)
@@ -1754,7 +1788,7 @@ export default function PlayerScreen() {
               });
             }}
           />
-          {/* Centre — explicit focus target; OK shows/hides the info bar.
+          {/* Centre — explicit focus target; OK shows/hides info bar + controls.
               hasTVPreferredFocus has been intentionally removed: on Fire OS it calls
               the native requestFocus() on EVERY re-render, which races with ExoPlayer's
               audio-focus acquisition during player.replace() and can leave the remote
@@ -1764,7 +1798,22 @@ export default function PlayerScreen() {
             ref={tvCenterRef as any}
             focusable
             style={styles.tvZoneCenter}
-            onPress={showInfo ? dismissInfoBar : showInfoBar}
+            onPress={() => {
+              if (Platform.isTV) {
+                // On Fire TV: OK toggles info bar + controls overlay together.
+                // If either is visible, dismiss both so the next OK starts clean.
+                if (showControlsRef.current || showInfoRef.current) {
+                  hideLiveControls();
+                  if (showInfoRef.current) dismissInfoBar();
+                } else {
+                  showInfoBar();
+                  showLiveControls();
+                }
+              } else {
+                // On phone/tablet: just toggle the info bar (touch path).
+                if (showInfo) { dismissInfoBar(); } else { showInfoBar(); }
+              }
+            }}
           />
           {/* Right third — D-pad right lands here → show next-channel preview, then switch */}
           <Pressable
