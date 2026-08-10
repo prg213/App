@@ -22,6 +22,18 @@ export interface FocusablePressableProps extends Omit<PressableProps, 'style'> {
    * focus-dependent styling.
    */
   focusedStyle?: StyleProp<ViewStyle>;
+  /**
+   * TV / Fire OS D-pad routing: node handle of the element that should receive
+   * focus when the user presses D-pad down from this element.
+   * Obtain the handle with `findNodeHandle(ref.current)`.
+   */
+  nextFocusDown?: number | null;
+  /** D-pad up routing — node handle, same convention as nextFocusDown. */
+  nextFocusUp?: number | null;
+  /** D-pad left routing — node handle, same convention as nextFocusDown. */
+  nextFocusLeft?: number | null;
+  /** D-pad right routing — node handle, same convention as nextFocusDown. */
+  nextFocusRight?: number | null;
 }
 
 /**

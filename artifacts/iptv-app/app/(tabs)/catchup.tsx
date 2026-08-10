@@ -3,6 +3,7 @@ import { FocusablePressable } from '@/components/FocusablePressable';
 import {
   ActivityIndicator,
   BackHandler,
+  findNodeHandle,
   FlatList,
   Image,
   ScrollView,
@@ -148,6 +149,20 @@ export default function CatchupScreen() {
   // Set to true when a channel is selected so the useEffect below fires focus
   // once the programme list data arrives (EPG is fetched asynchronously).
   const pendingProgFocusRef = useRef(false);
+
+  // Stores the native node handle of the first programme row so day tabs can
+  // wire nextFocusDown reliably (findNodeHandle at render-time is too early —
+  // the node may not be mounted yet when the tabs re-render after a day change).
+  const [firstProgHandle, setFirstProgHandle] = useState<number | null>(null);
+
+  // Callback ref: assigned to the first programme row in the list.  It keeps
+  // firstProgRef in sync for imperative .focus() calls AND updates the state
+  // handle that powers nextFocusDown on the day tabs — both are updated after
+  // the node actually mounts, avoiding the render-time race.
+  const firstProgCallbackRef = useCallback((node: View | null) => {
+    firstProgRef.current = node;
+    setFirstProgHandle(node ? findNodeHandle(node) : null);
+  }, []);
 
   // D-pad / remote back: close programme list → reset category → hand off to
   // the global handler which focuses the sidebar.
@@ -394,10 +409,20 @@ export default function CatchupScreen() {
                       { borderColor: colors.border },
                       active && { backgroundColor: '#2563EB', borderColor: '#2563EB' },
                     ]}
+                    // Commit the day selection as soon as the tab receives D-pad focus
+                    // so left/right navigation between tabs immediately updates the
+                    // programme list without requiring an OK press.
+                    onFocus={() => { setSelectedDay(k); }}
+                    // OK / select press: advance focus directly to the first programme row.
                     onPress={() => {
                       setSelectedDay(k);
                       setTimeout(() => { firstProgRef.current?.focus(); }, 80);
                     }}
+                    // D-pad down from the tab strip goes straight to the first programme
+                    // row, bypassing the need to press OK first.
+                    // firstProgHandle is set by the callback ref once the node is mounted,
+                    // so this is always a valid post-mount handle (never a stale one).
+                    nextFocusDown={firstProgHandle ?? undefined}
                   >
                     <Text style={[styles.dayTabText, { color: active ? '#fff' : colors.mutedForeground }]}>
                       {dayLabel(first.start)}
@@ -416,7 +441,7 @@ export default function CatchupScreen() {
               {dayPrograms.map((prog, progIdx) => (
                 <FocusablePressable
                   key={prog.id}
-                  ref={progIdx === 0 ? firstProgRef : undefined}
+                  ref={progIdx === 0 ? firstProgCallbackRef : undefined}
                   style={[styles.progRow, { borderBottomColor: colors.border }]}
                   onPress={() => handlePlay(prog)}
                 >
