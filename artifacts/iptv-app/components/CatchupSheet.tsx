@@ -106,10 +106,18 @@ export function CatchupSheet({
 
   const [selectedDay, setSelectedDay] = useState<Date>(() => days[0]);
   const [futureToast, setFutureToast] = useState(false);
+  // Ref-based guard: prevents rapid taps from resetting the toast's hide timer.
+  // A ref is used (rather than reading futureToast state) so the check is
+  // synchronously accurate without stale-closure issues.
+  const futureToastActiveRef = useRef(false);
 
   const handleFutureTap = useCallback(() => {
     // On TV the "Future" chip is already visible feedback; suppress the toast.
-    if (!Platform.isTV) setFutureToast(true);
+    if (Platform.isTV) return;
+    // If the toast is already showing, ignore the tap — don't reset the timer.
+    if (futureToastActiveRef.current) return;
+    futureToastActiveRef.current = true;
+    setFutureToast(true);
   }, []);
 
   // Fetch all catchup programmes from the Xtream API (includes past days).
@@ -395,7 +403,10 @@ export function CatchupSheet({
           message="Not yet available"
           visible={futureToast}
           duration={2500}
-          onHide={() => setFutureToast(false)}
+          onHide={() => {
+            futureToastActiveRef.current = false;
+            setFutureToast(false);
+          }}
         />
       </View>
     </Modal>
