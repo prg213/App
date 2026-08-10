@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import * as WebBrowser from 'expo-web-browser';
 import {
   ActivityIndicator,
   Alert,
@@ -14,6 +13,7 @@ import {
   View,
 } from 'react-native';
 import { FocusablePressable } from '@/components/FocusablePressable';
+import { TrailerModal } from '@/components/TrailerModal';
 import { getTmdbTrailerCandidates, getTmdbPosterUrl } from '@/services/tmdb';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
@@ -97,6 +97,7 @@ export default function SeriesDetailScreen() {
   const [episodeHistory, setEpisodeHistory] = useState<Record<string, WatchHistoryEntry>>({});
   const [activeTab, setActiveTab] = useState<ActiveTab>('episodes');
   const [trailerLoading, setTrailerLoading] = useState(false);
+  const [trailerVideoIds, setTrailerVideoIds] = useState<string[] | 'loading' | null>(null);
   const [coverError, setCoverError] = useState(false);
   // #165: Store the TMDB poster URL in a ref so it is set only once on first
   // successful fetch and never cleared when series data re-fetches in the background.
@@ -430,7 +431,7 @@ export default function SeriesDetailScreen() {
                   : null;
                 const resolved = ytId ?? (await getTmdbTrailerCandidates(params.title, 'tv'))[0] ?? null;
                 if (resolved) {
-                  WebBrowser.openBrowserAsync(`https://www.youtube.com/watch?v=${resolved}`);
+                  setTrailerVideoIds([resolved]);
                 } else {
                   Alert.alert('No Trailer', 'No trailer found for this series.');
                 }
@@ -628,6 +629,7 @@ export default function SeriesDetailScreen() {
           onCancel={() => { setShowEpPinGate(false); setPendingEpisode(null); }}
         />
       </Modal>
+      <TrailerModal videoIds={trailerVideoIds} onClose={() => setTrailerVideoIds(null)} />
     </View>
   );
 }

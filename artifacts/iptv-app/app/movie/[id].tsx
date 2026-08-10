@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import * as WebBrowser from 'expo-web-browser';
 import {
   ActivityIndicator,
   Alert,
@@ -13,6 +12,7 @@ import {
   View,
 } from 'react-native';
 import { FocusablePressable } from '@/components/FocusablePressable';
+import { TrailerModal } from '@/components/TrailerModal';
 import { ThumbnailWithFallback } from '@/components/ThumbnailWithFallback';
 import { getTmdbTrailerCandidates, getTmdbPosterUrl } from '@/services/tmdb';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
@@ -105,6 +105,7 @@ export default function MovieDetailScreen() {
   const [savedPosition, setSavedPosition] = useState<number | null>(null);
   const [showPinGate, setShowPinGate] = useState(false);
   const [trailerLoading, setTrailerLoading] = useState(false);
+  const [trailerVideoIds, setTrailerVideoIds] = useState<string[] | 'loading' | null>(null);
   const [pendingStartAt, setPendingStartAt] = useState<number | undefined>(undefined);
 
   const params = useLocalSearchParams<{
@@ -325,7 +326,7 @@ export default function MovieDetailScreen() {
                   : null;
                 const resolved = ytId ?? (await getTmdbTrailerCandidates(params.title, 'movie'))[0] ?? null;
                 if (resolved) {
-                  WebBrowser.openBrowserAsync(`https://www.youtube.com/watch?v=${resolved}`);
+                  setTrailerVideoIds([resolved]);
                 } else {
                   Alert.alert('No Trailer', 'No trailer found for this title.');
                 }
@@ -356,6 +357,7 @@ export default function MovieDetailScreen() {
           onCancel={() => setShowPinGate(false)}
         />
       </Modal>
+      <TrailerModal videoIds={trailerVideoIds} onClose={() => setTrailerVideoIds(null)} />
     </View>
   );
 }
