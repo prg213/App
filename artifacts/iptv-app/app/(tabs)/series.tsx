@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import * as WebBrowser from 'expo-web-browser';
 import { FocusablePressable } from '@/components/FocusablePressable';
+import { TrailerModal } from '@/components/TrailerModal';
 import {
   Alert,
   BackHandler,
@@ -55,6 +55,7 @@ export default function SeriesScreen() {
   const pendingFavPushRef = useRef<FavoriteSeries[] | null>(null);
   const isXtream = credentials?.type === 'xtream';
   const [trailerLoading, setTrailerLoading] = useState(false);
+  const [trailerVideoIds, setTrailerVideoIds] = useState<string[] | 'loading' | null>(null);
 
   useEffect(() => {
     StorageService.getSeriesFavorites().then(async (local) => {
@@ -490,7 +491,7 @@ export default function SeriesScreen() {
                       : null;
                     const resolved = ytId ?? (await getTmdbTrailerCandidates(item.name, 'tv'))[0] ?? null;
                     if (resolved) {
-                      WebBrowser.openBrowserAsync(`https://www.youtube.com/watch?v=${resolved}`);
+                      setTrailerVideoIds([resolved]);
                     } else {
                       Alert.alert('No Trailer', 'No trailer found for this title.');
                     }
@@ -536,6 +537,7 @@ export default function SeriesScreen() {
         <Text style={styles.scrollTopIcon}>↑</Text>
       </FocusablePressable>
     )}
+    <TrailerModal videoIds={trailerVideoIds} onClose={() => setTrailerVideoIds(null)} />
     </>
   );
 }
