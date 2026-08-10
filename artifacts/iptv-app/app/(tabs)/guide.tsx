@@ -390,8 +390,12 @@ const TVEpgRow = React.memo(function TVEpgRow({
         hasTVPreferredFocus={isFirst}
         style={[styles.tvChCell, { backgroundColor: colors.card, borderRightColor: colors.border }]}
         onPress={() => {
-          // Auto-advance D-pad focus to the first programme cell in this row
-          setTimeout(() => { progFirstRef.current?.focus(); }, 80);
+          // Auto-advance D-pad focus to the current/upcoming programme cell
+          // (initialProgRef), falling back to the first cell when there is no
+          // initialIdx (e.g. a future day where every programme is upcoming).
+          setTimeout(() => {
+            (initialProgRef.current ?? progFirstRef.current)?.focus();
+          }, 80);
         }}
         onLongPress={() => onWatchChannel(channel)}
         delayLongPress={400}
