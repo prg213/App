@@ -1084,10 +1084,15 @@ function FullGuide({
   // Only one horizontal scroll ref is needed — the time header shadows it
   const timeHeaderRef = useRef<ScrollView>(null);
   const gridHorizRef  = useRef<ScrollView>(null);
+  // Vertical ScrollView ref — needed to restore vertical position after
+  // an orientation change remounts the view and resets offset to 0.
+  const gridVertRef   = useRef<ScrollView>(null);
 
   // Tracks the latest horizontal scroll offset so it can be restored after an
   // orientation change or split-screen resize resets the ScrollView position.
   const gridScrollOffsetRef = useRef<number>(0);
+  // Tracks the latest vertical scroll offset for the same reason.
+  const gridVertOffsetRef = useRef<number>(0);
   // Tracks the previous window width so the orientation-change restore effect
   // can tell the difference between a real resize and the initial mount.
   const { width: windowWidth } = useWindowDimensions();
@@ -1109,6 +1114,8 @@ function FullGuide({
   // After an orientation change or split-screen resize the horizontal ScrollViews
   // remount and their content offset resets to 0.  This effect detects that by
   // watching windowWidth and restores both views to the saved offset.
+  // The vertical ScrollView is restored here too — its content height is fixed
+  // (channel count × ROW_H) and its position is equally invalidated on remount.
   // The initial mount is intentionally skipped (prevWindowWidthRef is null) so
   // this doesn't race with the day-change effect above.
   useEffect(() => {
@@ -1120,9 +1127,11 @@ function FullGuide({
     if (prevWindowWidthRef.current === windowWidth) return;
     prevWindowWidthRef.current = windowWidth;
     const x = gridScrollOffsetRef.current;
+    const y = gridVertOffsetRef.current;
     const timer = setTimeout(() => {
       gridHorizRef.current?.scrollTo({ x, animated: false });
       timeHeaderRef.current?.scrollTo({ x, animated: false });
+      gridVertRef.current?.scrollTo({ y, animated: false });
     }, 150);
     return () => clearTimeout(timer);
   }, [windowWidth]);
@@ -1131,6 +1140,10 @@ function FullGuide({
     const x = e.nativeEvent.contentOffset.x;
     gridScrollOffsetRef.current = x;
     timeHeaderRef.current?.scrollTo({ x, animated: false });
+  }, []);
+
+  const onGridVertScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    gridVertOffsetRef.current = e.nativeEvent.contentOffset.y;
   }, []);
 
   return (
@@ -1381,9 +1394,11 @@ function FullGuide({
 
             {/* Scrollable body — single ScrollView keeps columns in sync */}
             <ScrollView
+              ref={gridVertRef}
               style={{ flex: 1 }}
               showsVerticalScrollIndicator={false}
               scrollEventThrottle={16}
+              onScroll={onGridVertScroll}
             >
               <View style={{ flexDirection: 'row' }}>
 
