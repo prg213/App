@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FocusablePressable } from '@/components/FocusablePressable';
-import { TrailerModal } from '@/components/TrailerModal';
 import {
   Alert,
   BackHandler,
@@ -14,7 +13,7 @@ import {
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter, useFocusEffect } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import { getTmdbTrailerCandidates, getTmdbPosterUrl } from '@/services/tmdb';
+import { getTmdbPosterUrl } from '@/services/tmdb';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { useAppContext } from '@/context/AppContext';
@@ -54,8 +53,6 @@ export default function SeriesScreen() {
   // #23: queue a failed push so it retries next time this screen mounts
   const pendingFavPushRef = useRef<FavoriteSeries[] | null>(null);
   const isXtream = credentials?.type === 'xtream';
-  const [trailerLoading, setTrailerLoading] = useState(false);
-  const [trailerVideoIds, setTrailerVideoIds] = useState<string[] | 'loading' | null>(null);
 
   useEffect(() => {
     StorageService.getSeriesFavorites().then(async (local) => {
@@ -480,25 +477,6 @@ export default function SeriesScreen() {
                   const histEntry = isRecentSelected ? watchHistory.find((e) => e.parentId === item.id || e.id === item.id) : undefined;
                   router.push({ pathname: '/series/[id]', params: { id: item.id, title: item.name, cover: item.cover ?? '', rating: item.rating ?? '', genre: item.genre ?? '', plot: item.plot ?? '', cast: item.cast ?? '', director: item.director ?? '', ...(histEntry ? { resumeEpisodeId: histEntry.id, resumePosition: String(Math.floor(histEntry.position ?? 0)) } : {}) } });
                 }}
-                onTrailerPress={async () => {
-                  setTrailerLoading(true);
-                  try {
-                    const raw = item.trailerUrl;
-                    const ytId = raw
-                      ? raw.startsWith('http')
-                        ? (raw.match(/[?&]v=([A-Za-z0-9_-]{11})/)?.[1] ?? raw.match(/youtu\.be\/([A-Za-z0-9_-]{11})/)?.[1] ?? null)
-                        : (raw.length === 11 ? raw : null)
-                      : null;
-                    const resolved = ytId ?? (await getTmdbTrailerCandidates(item.name, 'tv'))[0] ?? null;
-                    if (resolved) {
-                      setTrailerVideoIds([resolved]);
-                    } else {
-                      Alert.alert('No Trailer', 'No trailer found for this title.');
-                    }
-                  } finally {
-                    setTrailerLoading(false);
-                  }
-                }}
               />
               );
               if (isRecentSelected) {
@@ -537,7 +515,6 @@ export default function SeriesScreen() {
         <Text style={styles.scrollTopIcon}>↑</Text>
       </FocusablePressable>
     )}
-    <TrailerModal videoIds={trailerVideoIds} onClose={() => setTrailerVideoIds(null)} />
     </>
   );
 }

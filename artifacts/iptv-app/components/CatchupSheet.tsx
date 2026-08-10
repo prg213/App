@@ -195,9 +195,23 @@ export function CatchupSheet({
   // doesn't double-fire on first open (hasTVPreferredFocus covers that case).
   const dayChangedRef = useRef(false);
 
+  // True when the last day-change placed focus on the day pill because
+  // programme data hadn't loaded yet.  The data-arrival effect watches this
+  // flag and re-routes focus to the first playable row once data populates.
+  const focusPlacedOnDayPillRef = useRef(false);
+
   // When the user selects a different day on TV, move focus to the first
-  // playable row for that day.  If there are no playable rows, fall back to
-  // the first day-strip pill so the user can immediately pick another day.
+  // playable row for that day.  If there are no playable rows yet (still
+  // loading), fall back to the first day-strip pill and record the fallback
+  // in focusPlacedOnDayPillRef so the data-arrival effect can re-route focus
+  // once the programme list populates.
+  //
+  // IMPORTANT: the sentinel must be set *synchronously* (before the timeout)
+  // so the data-arrival [firstPlayableIndex] effect can see it if data resolves
+  // during the 100 ms mount delay.  The timeout then reads the ref's live value
+  // (not the closure) to decide whether to focus the day pill — if data arrived
+  // in the meantime the data-arrival effect will have cleared the flag and we
+  // skip the day-pill focus to avoid overriding it.
   useEffect(() => {
     if (!Platform.isTV) return;
     if (!dayChangedRef.current) {
@@ -205,19 +219,45 @@ export function CatchupSheet({
       dayChangedRef.current = true;
       return;
     }
+
+    // Set the sentinel synchronously so the data-arrival effect sees it
+    // even if the query resolves before the 100 ms callback fires.
+    if (firstPlayableIndex !== -1) {
+      focusPlacedOnDayPillRef.current = false;
+    } else {
+      focusPlacedOnDayPillRef.current = true;
+    }
+
     // Allow the programme list to re-render before requesting focus.
     const id = setTimeout(() => {
-      const target =
-        firstPlayableIndex !== -1
-          ? firstPlayableRowRef.current
-          : firstDayPillRef.current;
-      if (target) {
-        target.setNativeProps({ hasTVPreferredFocus: true });
+      if (firstPlayableIndex !== -1) {
+        // Data was already available when the effect ran — focus the row.
+        firstPlayableRowRef.current?.setNativeProps({ hasTVPreferredFocus: true });
+      } else if (focusPlacedOnDayPillRef.current) {
+        // Data is still loading — focus the day pill so the user isn't stuck.
+        // If the data-arrival effect already cleared the flag (data resolved
+        // during the delay), we skip this to avoid overriding it.
+        firstDayPillRef.current?.setNativeProps({ hasTVPreferredFocus: true });
       }
+      // else: data arrived during the delay and the data-arrival effect has
+      //       already routed focus to the programme row; nothing to do here.
     }, 100);
     return () => clearTimeout(id);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDay]);
+
+  // Re-route TV focus to the first playable row when programme data arrives
+  // after a day switch that initially fell back to the day pill (loading state).
+  useEffect(() => {
+    if (!Platform.isTV) return;
+    if (!focusPlacedOnDayPillRef.current) return;
+    if (firstPlayableIndex === -1) return;
+    focusPlacedOnDayPillRef.current = false;
+    const id = setTimeout(() => {
+      firstPlayableRowRef.current?.setNativeProps({ hasTVPreferredFocus: true });
+    }, 100);
+    return () => clearTimeout(id);
+  }, [firstPlayableIndex]);
 
   const handlePlayCatchup = (prog: CatchupProgram) => {
     const durationMinutes = Math.max(

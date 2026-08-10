@@ -101,14 +101,23 @@ describe('CatchupSheet — close button TV focus (#259)', () => {
   });
 
   it('hasTVPreferredFocus is on the close button FocusablePressable, not a programme row', () => {
-    // Extract the block containing hasTVPreferredFocus and confirm it also
-    // contains the close icon (✕) — not a play chip or programme title.
-    const idx = src.indexOf('hasTVPreferredFocus');
-    expect(idx).toBeGreaterThan(-1);
-
-    // Scan a window of ±300 chars around hasTVPreferredFocus
-    const window = src.slice(Math.max(0, idx - 300), idx + 300);
-    expect(window).toMatch(/onClose|✕|closeIcon|closeTouchable/);
+    // There may be multiple hasTVPreferredFocus occurrences (e.g. the
+    // day-change effect also uses it via setNativeProps).  We need at least
+    // one occurrence whose ±300-char window overlaps the close button markup.
+    const closeButtonPattern = /onClose|✕|closeIcon|closeTouchable/;
+    let searchFrom = 0;
+    let foundCloseButton = false;
+    while (true) {
+      const idx = src.indexOf('hasTVPreferredFocus', searchFrom);
+      if (idx === -1) break;
+      const window = src.slice(Math.max(0, idx - 300), idx + 300);
+      if (closeButtonPattern.test(window)) {
+        foundCloseButton = true;
+        break;
+      }
+      searchFrom = idx + 1;
+    }
+    expect(foundCloseButton).toBe(true);
   });
 });
 
@@ -158,5 +167,90 @@ describe('CatchupSheet — nextFocusDown anti-wrap guard (#270)', () => {
     // findNodeHandle converts the React ref to a native integer handle —
     // required on Android TV / Fire OS where refs are not accepted directly.
     expect(src).toMatch(/findNodeHandle\(firstDayPillRef/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 6. Day-switch focus (#282)
+//    When the user picks a different day in the strip, focus must move to the
+//    first playable programme row for that day (or back to the day strip if
+//    there are no playable rows), rather than staying on the close button or
+//    being lost entirely.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('CatchupSheet — day-switch focus (#282)', () => {
+  it('creates a firstPlayableRowRef to hold the first playable programme row', () => {
+    // The ref is assigned inside the render loop and consumed by the
+    // day-change effect to programmatically route focus.
+    expect(src).toMatch(/firstPlayableRowRef/);
+  });
+
+  it('creates a dayChangedRef to skip the initial mount in the day-change effect', () => {
+    // On the first render hasTVPreferredFocus handles initial focus placement.
+    // dayChangedRef guards against the effect also firing at mount and
+    // double-moving focus away from the natural initial landing spot.
+    expect(src).toMatch(/dayChangedRef/);
+  });
+
+  it('sets hasTVPreferredFocus via setNativeProps in the day-change effect', () => {
+    // After selectedDay changes, the effect programmatically moves focus by
+    // calling setNativeProps({ hasTVPreferredFocus: true }) on the target.
+    // This is the only reliable way to imperatively transfer TV focus in RN.
+    expect(src).toMatch(/setNativeProps\(\s*\{\s*hasTVPreferredFocus\s*:\s*true/);
+  });
+
+  it('falls back to firstDayPillRef when there are no playable rows for the new day', () => {
+    // When data hasn't loaded yet, the timeout branch checks
+    // `focusPlacedOnDayPillRef.current` and, if true, routes focus to
+    // firstDayPillRef so the user can pick another day.
+    // The check and the target appear within the same else-if block
+    // (allow up to 300 chars to accommodate comments between them).
+    expect(src).toMatch(
+      /focusPlacedOnDayPillRef\.current\)\s*\{[\s\S]{0,300}firstDayPillRef/,
+    );
+  });
+
+  it('triggers the day-change effect when selectedDay changes', () => {
+    // The useEffect dependency array must include selectedDay so the effect
+    // re-runs every time the user picks a new day from the strip.
+    expect(src).toMatch(/\[\s*selectedDay\s*\]/);
+  });
+
+  it('assigns firstPlayableRowRef only to the row at firstPlayableIndex', () => {
+    // The ref callback in the render loop must check i === firstPlayableIndex
+    // before storing the ref so that later rows do not overwrite it.
+    expect(src).toMatch(/i\s*===\s*firstPlayableIndex[\s\S]{0,120}firstPlayableRowRef|firstPlayableRowRef[\s\S]{0,120}i\s*===\s*firstPlayableIndex/);
+  });
+
+  it('sets hasTVPreferredFocus on the first playable row via the prop on initial render', () => {
+    // On first open hasTVPreferredFocus={Platform.isTV && i === firstPlayableIndex}
+    // gives the TV focus engine a static hint so focus lands on the first
+    // playable row without any imperative call.
+    expect(src).toMatch(/hasTVPreferredFocus=\{Platform\.isTV\s*&&\s*i\s*===\s*firstPlayableIndex/);
+  });
+
+  it('uses a setTimeout delay in the day-change effect to let the list re-render before focusing', () => {
+    // Without a short delay the new programme rows may not yet be mounted,
+    // so setNativeProps would target a stale or unmounted node.
+    // The effect must schedule focus via setTimeout (any positive delay is fine).
+    expect(src).toMatch(/setTimeout[\s\S]{0,200}hasTVPreferredFocus/);
+  });
+
+  it('sets focusPlacedOnDayPillRef when falling back to the day pill due to loading', () => {
+    // The flag lets the data-arrival effect know it should re-route focus
+    // once the programme list populates.
+    expect(src).toMatch(/focusPlacedOnDayPillRef/);
+  });
+
+  it('has a [firstPlayableIndex] effect that re-routes focus when data arrives after loading', () => {
+    // The second effect triggers when firstPlayableIndex changes from -1 to a
+    // valid value, completing the two-step slow-load focus journey.
+    expect(src).toMatch(/\[\s*firstPlayableIndex\s*\]/);
+  });
+
+  it('the data-arrival effect guards on focusPlacedOnDayPillRef before moving focus', () => {
+    // Without the guard the effect would re-route focus on every re-render
+    // where firstPlayableIndex changes, even when the user hasn't switched days.
+    expect(src).toMatch(/focusPlacedOnDayPillRef\.current.*return|return.*focusPlacedOnDayPillRef\.current/);
   });
 });
