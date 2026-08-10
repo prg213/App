@@ -350,9 +350,18 @@ export default function PlayerScreen() {
   // Ref so BackHandler closure can read showInfo without going stale
   const showInfoRef = useRef(true);
   useEffect(() => { showInfoRef.current = showInfo; }, [showInfo]);
+  // Ref so BackHandler closure can read showControls without going stale
+  const showControlsRef = useRef(false);
+  useEffect(() => { showControlsRef.current = showControls; }, [showControls]);
   // Ref to block spurious onFocus channel-switch on initial TV mount
   const tvNavReadyRef = useRef(false);
   const tvCenterRef = useRef<View>(null);
+  // TV VOD focus management refs
+  const tvVodIdleRef   = useRef<View>(null); // catch-all when controls are hidden
+  const tvPlayBtnRef   = useRef<View>(null); // play/pause button (focused when controls appear)
+  const tvScrubAnchorRef = useRef<View>(null); // focusable scrubber progress bar
+  const tvSeekBackRef  = useRef<View>(null); // hidden D-pad-left bounce target → seek −10 s
+  const tvSeekFwdRef   = useRef<View>(null); // hidden D-pad-right bounce target → seek +10 s
 
   // ── TV channel-switch preview overlay ────────────────────────────────────
   // Shown for ~1 s when the user presses D-pad left/right so they can see
@@ -983,6 +992,33 @@ export default function PlayerScreen() {
     return () => sub.remove();
   }, [isLive, isWeb, handleBackLive, dismissInfoBar]);
 
+  // ── Wire TV scrubber D-pad left/right via focus-bounce targets ───────────
+  // The scrubber anchor uses nextFocusLeft / nextFocusRight (node handles)
+  // so D-pad left/right routes to invisible seek-back / seek-forward targets.
+  // Those targets seek ±10 s onFocus, then immediately return focus to the
+  // anchor — the same technique used for live-TV channel switching.
+  useEffect(() => {
+    if (!Platform.isTV || isLive || isWeb) return;
+    // Defer until after the controls overlay has mounted and laid out.
+    const t = setTimeout(() => {
+      const backH = (tvSeekBackRef.current as any)
+        ? require('react-native').findNodeHandle(tvSeekBackRef.current)
+        : null;
+      const fwdH = (tvSeekFwdRef.current as any)
+        ? require('react-native').findNodeHandle(tvSeekFwdRef.current)
+        : null;
+      if (tvScrubAnchorRef.current && backH != null && fwdH != null) {
+        (tvScrubAnchorRef.current as any).setNativeProps({
+          nextFocusLeft: backH,
+          nextFocusRight: fwdH,
+        });
+      }
+    }, 300);
+    return () => clearTimeout(t);
+  // Re-wire whenever controls become visible (overlay mounts its children).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLive, isWeb, showControls]);
+
   // ── Save history on exit and navigate back ────────────────────────────────
   const handleBack = useCallback(async () => {
     // Clear hide/info timers before navigating so they don't fire on an unmounted component
@@ -1013,6 +1049,37 @@ export default function PlayerScreen() {
     router.back();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLive, router]);
+
+  // ── Android hardware back button (VOD / series / catch-up) ───────────────
+  // Fire TV BACK key during VOD playback:
+  //   • Controls visible  → dismiss the overlay (first press).
+  //   • Controls hidden   → save position and navigate back (second press).
+  // Without this handler the Android default would pop the screen immediately
+  // regardless of overlay state, and on some TV navigation stacks could skip
+  // back to the launcher instead of the previous in-app screen.
+  useEffect(() => {
+    if (isLive || isWeb || Platform.OS !== 'android') return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (showControlsRef.current) {
+        // Dismiss controls: cancel the hide timer, fade out, then unmount.
+        if (hideTimer.current) { clearTimeout(hideTimer.current); hideTimer.current = null; }
+        Animated.timing(controlsOpacity, { toValue: 0, duration: 300, useNativeDriver: true }).start();
+        setTimeout(() => {
+          setShowControls(false);
+          // Return TV focus to the idle catch-all so the next OK press
+          // can show controls again.
+          if (Platform.isTV) {
+            setTimeout(() => (tvVodIdleRef.current as any)?.focus?.(), 50);
+          }
+        }, 320);
+        return true; // consumed — do not navigate back
+      }
+      // Controls already hidden — save progress and navigate back.
+      handleBack();
+      return true;
+    });
+    return () => sub.remove();
+  }, [isLive, isWeb, handleBack, controlsOpacity]);
 
   // ── Pause local playback while casting (device becomes the remote) ────────
   useEffect(() => {
@@ -1098,6 +1165,21 @@ export default function PlayerScreen() {
       });
     }, 1000);
   }, [tvPreviewOpacity]);
+
+  // ── Show VOD controls from TV remote (OK on idle catcher) ───────────────
+  // Mirrors handleTap but designed for the D-pad: no showInfoBar (live-only),
+  // and moves focus to the play button once the overlay is visible.
+  const showVodControls = useCallback(() => {
+    if (showControlsRef.current) return;
+    setShowControls(true);
+    controlsOpacity.setValue(0);
+    Animated.timing(controlsOpacity, { toValue: 1, duration: 200, useNativeDriver: true }).start();
+    scheduleHide();
+    if (Platform.isTV) {
+      // Give the overlay a frame to mount its children before requesting focus.
+      setTimeout(() => (tvPlayBtnRef.current as any)?.focus?.(), 80);
+    }
+  }, [controlsOpacity, scheduleHide]);
 
   const handleTap = useCallback(() => {
     showInfoBar();
@@ -1293,6 +1375,25 @@ export default function PlayerScreen() {
         </GestureDetector>
       )}
 
+      {/* ── Fire TV / Android TV: VOD idle focus catcher ─────────────────────
+          When the controls overlay is hidden there is nothing focusable on
+          screen for the D-pad remote.  This full-screen transparent Pressable
+          with hasTVPreferredFocus acts as the "resting" focus target.
+          • OK (select) → show the controls overlay and move focus to ▶/⏸.
+          • BACK is handled by the BackHandler registered above (dismisses
+            controls if visible, otherwise navigates back).
+          When controls are visible this element yields focus (focusable=false)
+          so the remote can reach the actual control buttons. */}
+      {Platform.isTV && !isLive && !isWeb && !hasError && (
+        <Pressable
+          ref={tvVodIdleRef as any}
+          focusable={!showControls}
+          hasTVPreferredFocus={!showControls}
+          style={StyleSheet.absoluteFill}
+          onPress={showVodControls}
+        />
+      )}
+
       {/* ── Controls overlay (VOD: play/seek/back) ── */}
       {showControls && !isWeb && !isLive && (
         <Animated.View style={[StyleSheet.absoluteFill, { opacity: controlsOpacity }]} pointerEvents="box-none">
@@ -1359,7 +1460,9 @@ export default function PlayerScreen() {
             </FocusablePressable>
             <View style={{ alignItems: 'center' }}>
               <FocusablePressable
+                ref={tvPlayBtnRef}
                 style={styles.playBtn}
+                focusedStyle={styles.focusRing}
                 onPress={togglePlay}
               >
                 <Text style={styles.playIcon}>{isPlaying ? '⏸' : '▶'}</Text>
@@ -1377,39 +1480,95 @@ export default function PlayerScreen() {
             </FocusablePressable>
           </View>
 
-          {/* Scrubber + times — absolute bottom */}
-          <VodScrubber
-            currentTime={currentTime}
-            duration={duration}
-            insetBottom={insets.bottom}
-            onSeek={(t) => {
-              // Optimistic update so the scrubber stays at the dragged position
-              setCurrentTime(t);
-              scheduleHide();
+          {/* Scrubber + times — touch scrubber (phones/tablets) */}
+          {!Platform.isTV && (
+            <VodScrubber
+              currentTime={currentTime}
+              duration={duration}
+              insetBottom={insets.bottom}
+              onSeek={(t) => {
+                // Optimistic update so the scrubber stays at the dragged position
+                setCurrentTime(t);
+                scheduleHide();
 
-              if (isCatchup && catchupStreamId && catchupServerStart && catchupStartTimestamp > 0 && credentials?.type === 'xtream') {
-                // Timeshift HLS can't be seeked via currentTime — regenerate the
-                // URL with a new start offset and reload the stream.
-                const seekSecs = Math.floor(t);
-                const remainingSecs = Math.max(60, knownDurationSecs - seekSecs);
-                const newDurationMins = Math.ceil(remainingSecs / 60);
-                const newStartTs = catchupStartTimestamp + seekSecs;
-                const newServerStart = addSecondsToServerTime(catchupServerStart, seekSecs);
-                const creds = { host: credentials.host!, username: credentials.username!, password: credentials.password! };
-                // Use whichever format index succeeded on first load (#69)
-                const newUrl = getXtreamCatchupUrls(creds, catchupStreamId, newServerStart, newDurationMins, newStartTs)[catchupFormatRef.current];
-                // Update the wall-clock timer offset so it resumes from seek position
-                catchupSeekOffsetRef.current = seekSecs;
-                catchupWallStartRef.current = Date.now() - seekSecs * 1000;
-                setIsBuffering(true);
-                try { player.replace(newUrl); player.play(); } catch {}
-              } else if (isCasting) {
-                seekRemote(t);
-              } else {
-                player.currentTime = t;
-              }
-            }}
-          />
+                if (isCatchup && catchupStreamId && catchupServerStart && catchupStartTimestamp > 0 && credentials?.type === 'xtream') {
+                  // Timeshift HLS can't be seeked via currentTime — regenerate the
+                  // URL with a new start offset and reload the stream.
+                  const seekSecs = Math.floor(t);
+                  const remainingSecs = Math.max(60, knownDurationSecs - seekSecs);
+                  const newDurationMins = Math.ceil(remainingSecs / 60);
+                  const newStartTs = catchupStartTimestamp + seekSecs;
+                  const newServerStart = addSecondsToServerTime(catchupServerStart, seekSecs);
+                  const creds = { host: credentials.host!, username: credentials.username!, password: credentials.password! };
+                  // Use whichever format index succeeded on first load (#69)
+                  const newUrl = getXtreamCatchupUrls(creds, catchupStreamId, newServerStart, newDurationMins, newStartTs)[catchupFormatRef.current];
+                  // Update the wall-clock timer offset so it resumes from seek position
+                  catchupSeekOffsetRef.current = seekSecs;
+                  catchupWallStartRef.current = Date.now() - seekSecs * 1000;
+                  setIsBuffering(true);
+                  try { player.replace(newUrl); player.play(); } catch {}
+                } else if (isCasting) {
+                  seekRemote(t);
+                } else {
+                  player.currentTime = t;
+                }
+              }}
+            />
+          )}
+
+          {/* ── TV scrubber row ───────────────────────────────────────────────
+              RNGH Pan gestures do not fire from the D-pad remote.  Instead we
+              render a focusable anchor bar (progress + times) with invisible
+              "bounce" Pressables wired to its nextFocusLeft / nextFocusRight.
+              When D-pad left/right lands on a bounce target its onFocus handler
+              seeks ±10 s and immediately returns focus to the anchor — the same
+              focus-bounce technique used for live TV channel switching. */}
+          {Platform.isTV && (
+            <>
+              {/* Invisible seek-back target — receives focus when D-pad LEFT on anchor */}
+              <Pressable
+                ref={tvSeekBackRef as any}
+                focusable
+                style={[styles.tvSeekBounce, { left: 0, bottom: insets.bottom + 12 }]}
+                onFocus={() => {
+                  seek(-10);
+                  scheduleHide();
+                  setTimeout(() => (tvScrubAnchorRef.current as any)?.focus?.(), 70);
+                }}
+              />
+
+              {/* Focusable progress bar — D-pad can reach it; LEFT/RIGHT wired below */}
+              <FocusablePressable
+                ref={tvScrubAnchorRef}
+                focusable
+                style={[styles.tvScrubAnchor, { bottom: insets.bottom + 12 }]}
+                focusedStyle={styles.tvScrubAnchorFocused}
+                onPress={() => { /* OK on scrubber: no-op; LEFT/RIGHT seek via bounce targets */ }}
+              >
+                <View style={styles.tvScrubRail}>
+                  <View style={[styles.tvScrubFill, { width: `${Math.max(0, Math.min(100, progress))}%` as any }]} />
+                </View>
+                <View style={styles.tvScrubTimes}>
+                  <Text style={styles.tvScrubTimeText}>{fmtSecs(currentTime)}</Text>
+                  <Text style={styles.tvScrubTimeText}>
+                    {duration > 0 && isFinite(duration) ? fmtSecs(duration) : isCatchup ? 'CATCH-UP' : 'LIVE'}
+                  </Text>
+                </View>
+              </FocusablePressable>
+
+              {/* Invisible seek-forward target — receives focus when D-pad RIGHT on anchor */}
+              <Pressable
+                ref={tvSeekFwdRef as any}
+                focusable
+                style={[styles.tvSeekBounce, { right: 0, bottom: insets.bottom + 12 }]}
+                onFocus={() => {
+                  seek(+10);
+                  scheduleHide();
+                  setTimeout(() => (tvScrubAnchorRef.current as any)?.focus?.(), 70);
+                }}
+              />
+            </>
+          )}
         </Animated.View>
       )}
 
@@ -1801,6 +1960,53 @@ export default function PlayerScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000' },
+
+  // ── TV / Fire TV VOD scrubber ────────────────────────────────────────────
+  // Invisible bounce targets sit to the left/right of the anchor.
+  // Their onFocus seeks ±10 s then returns focus to the anchor.
+  tvSeekBounce: {
+    position: 'absolute',
+    width: 8,
+    height: 64,
+    opacity: 0,
+  },
+  // Focusable progress-bar shown on TV in place of the RNGH drag scrubber.
+  tvScrubAnchor: {
+    position: 'absolute',
+    left: 16, right: 16,
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: 'transparent',
+    backgroundColor: 'rgba(0,0,0,0.35)',
+  },
+  tvScrubAnchorFocused: {
+    borderColor: '#00E5FF',
+    backgroundColor: 'rgba(0,229,255,0.08)',
+  },
+  tvScrubRail: {
+    height: 4,
+    backgroundColor: 'rgba(255,255,255,0.25)',
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  tvScrubFill: {
+    position: 'absolute',
+    left: 0, top: 0, bottom: 0,
+    backgroundColor: '#7C3AED',
+    borderRadius: 2,
+  },
+  tvScrubTimes: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  tvScrubTimeText: {
+    fontSize: 13,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#fff',
+  },
 
   overlay: {
     position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
