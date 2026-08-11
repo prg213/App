@@ -185,6 +185,13 @@ const ReminderCard = React.forwardRef<View, {
    */
   onReschedule: (editBtnRef: React.RefObject<View | null>) => void;
   onWatchLive?: () => void;
+  /**
+   * TV: called whenever any focusable zone of this card (info, edit, delete)
+   * receives D-pad focus.  The parent uses this to track which reminder id
+   * was last focused so it can rescue focus to the first card when the
+   * focused card is auto-removed by the 30 s expiry ticker.
+   */
+  onCardFocus?: () => void;
 }>(function ReminderCard({
   reminder,
   colors,
@@ -193,6 +200,7 @@ const ReminderCard = React.forwardRef<View, {
   onDelete,
   onReschedule,
   onWatchLive,
+  onCardFocus,
 }, forwardedRef) {
   const startMs = new Date(reminder.start).getTime();
   const endMs = new Date(reminder.end).getTime();
@@ -274,6 +282,7 @@ const ReminderCard = React.forwardRef<View, {
         ref={setInfoRef}
         style={styles.infoArea}
         onPress={cardPress}
+        onFocus={onCardFocus}
       >
         {/* Left: channel logo */}
         <View style={[styles.logoWrap, { backgroundColor: colors.secondary }]}>
@@ -344,6 +353,7 @@ const ReminderCard = React.forwardRef<View, {
             ref={editRef}
             style={[styles.actionBtn, { borderColor: colors.border }]}
             onPress={() => onReschedule(editRef)}
+            onFocus={onCardFocus}
           >
             <Text style={styles.actionBtnText}>✎</Text>
           </FocusablePressable>
@@ -352,6 +362,7 @@ const ReminderCard = React.forwardRef<View, {
           ref={deleteRef}
           style={[styles.actionBtn, { borderColor: colors.border }]}
           onPress={onDelete}
+          onFocus={onCardFocus}
         >
           <Text style={styles.actionBtnText}>✕</Text>
         </FocusablePressable>
@@ -427,6 +438,9 @@ export default function RemindersScreen() {
     const t = setTimeout(() => (firstReminderRef.current as any)?.focus?.(), 300);
     return () => clearTimeout(t);
   }, []));
+  // TV: tracks which reminder id currently holds D-pad focus so the expiry
+  // ticker can rescue focus to the first card if the focused card is removed.
+  const lastFocusedReminderIdRef = useRef<string | null>(null);
   useFocusEffect(
     useCallback(() => {
       StorageService.getReminderLeadMins().then(setReminderLeadMins);
@@ -455,6 +469,16 @@ export default function RemindersScreen() {
           setAutoRemovedCount(ended.length);
           if (autoRemovedTimerRef.current) clearTimeout(autoRemovedTimerRef.current);
           autoRemovedTimerRef.current = setTimeout(() => setAutoRemovedCount(0), 3500);
+          // TV: if the currently focused reminder card is being removed, rescue
+          // D-pad focus to the first remaining card so the cursor is not left
+          // on a detached (unmounted) node with no way to navigate.
+          if (Platform.isTV && lastFocusedReminderIdRef.current) {
+            const focusedIsRemoved = ended.some((r) => r.id === lastFocusedReminderIdRef.current);
+            if (focusedIsRemoved) {
+              lastFocusedReminderIdRef.current = null;
+              setTimeout(() => (firstReminderRef.current as any)?.focus?.(), 200);
+            }
+          }
           return prev.filter((r) => new Date(r.end).getTime() > now);
         });
       }, 30_000);
@@ -868,6 +892,7 @@ export default function RemindersScreen() {
                   setRescheduleTarget(item.item);
                 }}
                 onWatchLive={() => handleWatchLive(item.item)}
+                onCardFocus={() => { lastFocusedReminderIdRef.current = item.item.id; }}
               />
             );
           }}

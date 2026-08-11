@@ -353,6 +353,14 @@ export default function LiveTVScreen() {
       } else {
         setVideoKey((k) => k + 1);
       }
+      // TV: restore D-pad focus to the mini-player box so the remote cursor
+      // has a sensible target after collapsing from fullscreen.  Without this
+      // the cursor is left wherever fullscreen last placed it (often a hidden
+      // player control), and the user must navigate blindly.
+      // 400 ms gives the VideoView remount time to settle before focus lands.
+      if (Platform.isTV) {
+        setTimeout(() => (miniPlayerRef.current as any)?.focus?.(), 400);
+      }
       return;
     }
     // Normal focus return (tab switch, etc.) — show flash overlay to cover the

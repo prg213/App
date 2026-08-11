@@ -225,11 +225,19 @@ export default function SeriesScreen() {
     return () => clearTimeout(t);
   }, []));
 
-  // Scroll back to top and clear search whenever the category changes
+  // Scroll back to top and clear search whenever the category changes.
+  // Also clear lastFocusedCardRef so the tab-entry useFocusEffect doesn't try
+  // to focus a stale card View from the previous category (that card is now
+  // unmounted; focusing a detached node silently fails and leaves the remote
+  // cursor with no focused element on return).
   useEffect(() => {
     gridRef.current?.scrollToOffset({ offset: 0, animated: false });
     setShowScrollTop(false);
     setSearch('');
+    if (Platform.isTV) {
+      lastFocusedCardRef.current = null;
+      cardRefMap.current.clear();
+    }
   }, [selectedCat]);
   const cycleSortOrder = useCallback(() => {
     setSortOrder((s) => {

@@ -1323,8 +1323,13 @@ function FullGuide({
 
   // Focus the first channel cell whenever the selected category changes (covers
   // both the initial mount from CategoryGrid and ‹ › prev/next navigation).
+  // Also clear the allChannelRefs Map immediately so that any programme-cell
+  // onFocus UP/DOWN wiring that fires during the TVEpgRow remount cycle cannot
+  // read stale node handles from the old category's rows.  New TVEpgRows will
+  // repopulate the Map via their callback refs as they mount.
   useEffect(() => {
     if (!Platform.isTV) return;
+    allChannelRefs.current.clear();
     const timer = setTimeout(() => { firstChannelRef.current?.focus(); }, 100);
     return () => clearTimeout(timer);
   }, [selectedCat]);
