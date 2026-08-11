@@ -341,6 +341,10 @@ export default function HomeScreen() {
         logo: ch.logo ?? '',
         epgId: ch.epgId ?? ch.id,
         channelId: ch.id,
+        // Pass groupTitle so the player knows which Live TV category to land
+        // on when the user presses Back (navigates to the Live TV tab,
+        // category pre-selected to where this channel lives).
+        groupTitle: ch.groupTitle ?? '',
       },
     });
   }, [router]);

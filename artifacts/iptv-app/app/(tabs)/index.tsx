@@ -278,13 +278,15 @@ export default function LiveTVScreen() {
   const xmltvUrl = creds ? getXtreamXmltvUrl(creds) : null;
 
   const [selectedCatId, setSelectedCatId] = useState<string>(FAVS_CAT_ID);
-  // Persist and restore the last-selected category so the user lands where they left off
-  useEffect(() => {
+  // Persist and restore the last-selected category so the user lands where
+  // they left off.  useFocusEffect (not useEffect[]) so that when the player
+  // navigates back here after a recently-watched channel it re-reads the pref
+  // that the player wrote (groupTitle → @pref_live_cat) before navigating.
+  useFocusEffect(useCallback(() => {
     import('@react-native-async-storage/async-storage').then(({ default: AS }) =>
       AS.getItem('@pref_live_cat').then((v) => { if (v) setSelectedCatId(v); })
     );
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, []));
   const [catSearch, setCatSearch] = useState('');
   const [channelFilter, setChannelFilter] = useState('');
   const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null);

@@ -275,6 +275,10 @@ export default function PlayerScreen() {
     catchupStartTimestamp?: string;
     /** When 'true', backing out of live TV stops the stream instead of collapsing to mini-player. */
     stopOnBack?: string;
+    /** groupTitle of the channel — used when launched from the Home screen so
+     *  pressing Back lands on the correct Live TV category instead of going
+     *  back to Home. */
+    groupTitle?: string;
   }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -991,8 +995,19 @@ export default function PlayerScreen() {
     // measureInWindow + rAF chain runs and setOverlayVisible(true) fires,
     // this state update will already have committed to the native layer.
     setVideoMounted(false);
+    // If launched from the Home screen (groupTitle present, no channelsJson),
+    // write the channel's category to storage so the Live TV tab's
+    // useFocusEffect picks it up, then navigate there directly instead of
+    // going back to Home.
+    if (params.groupTitle && !params.channelsJson) {
+      import('@react-native-async-storage/async-storage').then(({ default: AS }) => {
+        AS.setItem('@pref_live_cat', params.groupTitle!).catch(() => {});
+      });
+      triggerCollapse(() => router.replace('/'));
+      return;
+    }
     triggerCollapse(() => router.back());
-  }, [params.stopOnBack, sharedPlayer, triggerCollapse, router, controlsOpacity, infoOpacity]);
+  }, [params.stopOnBack, params.groupTitle, params.channelsJson, sharedPlayer, triggerCollapse, router, controlsOpacity, infoOpacity]);
 
   /** Immediately hide the info bar — used by the Back-press dismiss flow. */
   const dismissInfoBar = useCallback(() => {
