@@ -1196,12 +1196,27 @@ export default function PlayerScreen() {
   }, [infoOpacity]);
 
   useEffect(() => {
-    scheduleInfoHide();
+    // TV + Live: no auto-hide — the overlay stays until BACK is pressed.
+    if (!(Platform.isTV && isLive)) {
+      scheduleInfoHide();
+    }
     return () => {
       if (hideTimer.current) clearTimeout(hideTimer.current);
       if (infoTimer.current) clearTimeout(infoTimer.current);
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scheduleInfoHide]);
+
+  // TV + Live: start with the info bar hidden so the screen opens clean.
+  // The user presses OK to reveal the overlay; BACK dismisses it.
+  // On non-TV paths the bar is shown immediately (showInfo defaults to true).
+  useEffect(() => {
+    if (!Platform.isTV || !isLive) return;
+    if (infoTimer.current) { clearTimeout(infoTimer.current); infoTimer.current = null; }
+    setShowInfo(false);
+    infoOpacity.setValue(0);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Allow TV D-pad channel nav after a short settle — prevents spurious
   // onFocus firing as the screen mounts from triggering an immediate switch.
@@ -1241,8 +1256,11 @@ export default function PlayerScreen() {
   const showInfoBar = useCallback(() => {
     setShowInfo(true);
     Animated.timing(infoOpacity, { toValue: 1, duration: 200, useNativeDriver: true }).start();
-    scheduleInfoHide();
-  }, [infoOpacity, scheduleInfoHide]);
+    // TV + Live: overlay stays until BACK is pressed — no auto-hide timer.
+    if (!(Platform.isTV && isLive)) {
+      scheduleInfoHide();
+    }
+  }, [infoOpacity, scheduleInfoHide, isLive]);
 
   // Show the TV channel-switch preview overlay, then call onCommit after ~1 s.
   // Only relevant on TV (Platform.isTV) — phone/tablet paths never call this.
