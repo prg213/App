@@ -543,6 +543,17 @@ export default function LiveTVScreen() {
   /** Set when navigating to fullscreen from recently-watched so that backing
    *  out stops the stream rather than leaving it playing in the mini-player. */
   const clearChannelOnReturnRef = useRef(false);
+  // When a recently-watched channel is opened from the Home screen the Live TV
+  // tab's playingChannel is never set (the channel was launched directly into
+  // the player, bypassing this tab).  The player emits this event before its
+  // collapse animation so the mini-player is visible and correctly sized for
+  // triggerCollapse's measureInWindow call.
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener('live:setPlayingChannel', (ch: Channel) => {
+      setPlayingChannel(ch);
+    });
+    return () => sub.remove();
+  }, []);
   // After reloading for the live edge, seek to end of DVR window once ready.
   const pendingLiveEdgeSeek = useRef(false);
   // Timestamp (ms) when the Live TV tab was last blurred — used to decide

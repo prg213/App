@@ -996,14 +996,34 @@ export default function PlayerScreen() {
     // this state update will already have committed to the native layer.
     setVideoMounted(false);
     // If launched from the Home screen (groupTitle present, no channelsJson),
-    // write the channel's category to storage so the Live TV tab's
-    // useFocusEffect picks it up, then navigate there directly instead of
-    // going back to Home.
+    // collapse to the mini-player in the Live TV tab, pre-selecting the
+    // channel's category so the user lands in the right place.
     if (params.groupTitle && !params.channelsJson) {
       import('@react-native-async-storage/async-storage').then(({ default: AS }) => {
         AS.setItem('@pref_live_cat', params.groupTitle!).catch(() => {});
       });
-      triggerCollapse(() => router.replace('/'));
+      // Tell the Live TV tab to show this channel in the mini-player BEFORE
+      // triggerCollapse runs.  The mini-player has display:none when
+      // playingChannel is null, so measureInWindow returns zeros and the
+      // collapse animation is skipped entirely.  Emitting first makes the
+      // mini-player visible and sized so triggerCollapse can hit it.
+      const { DeviceEventEmitter: DEE } = require('react-native');
+      DEE.emit('live:setPlayingChannel', {
+        id: params.channelId ?? '',
+        name: params.title ?? '',
+        logo: params.logo ?? '',
+        streamUrl: params.url ?? '',
+        epgId: params.epgId ?? params.channelId ?? '',
+        groupTitle: params.groupTitle ?? '',
+      });
+      // Two rAFs: first lets React commit the setPlayingChannel state update;
+      // second lets the native layout pass update the mini-player's rect so
+      // triggerCollapse's measureInWindow gets real pixel dimensions.
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          triggerCollapse(() => router.replace('/'));
+        });
+      });
       return;
     }
     triggerCollapse(() => router.back());
