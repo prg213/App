@@ -360,8 +360,10 @@ export default function PlayerScreen() {
   const tvVodIdleRef   = useRef<View>(null); // catch-all when controls are hidden
   const tvPlayBtnRef   = useRef<View>(null); // play/pause button (focused when controls appear)
   const tvScrubAnchorRef = useRef<View>(null); // focusable scrubber progress bar
-  const tvSeekBackRef  = useRef<View>(null); // hidden D-pad-left bounce target → seek −10 s
+  const tvSeekBackRef  = useRef<View>(null); // hidden D-pad-left  bounce target → seek −10 s
   const tvSeekFwdRef   = useRef<View>(null); // hidden D-pad-right bounce target → seek +10 s
+  const tvSeek30BackRef = useRef<View>(null); // visible −30 s button — wired nextFocusDown→scrubber
+  const tvSeek30FwdRef  = useRef<View>(null); // visible +30 s button — wired nextFocusDown→scrubber
 
   // ── TV channel-switch preview overlay ────────────────────────────────────
   // Shown for ~1 s when the user presses D-pad left/right so they can see
@@ -1046,18 +1048,28 @@ export default function PlayerScreen() {
     if (!Platform.isTV || isLive || isWeb) return;
     // Defer until after the controls overlay has mounted and laid out.
     const t = setTimeout(() => {
-      const backH = (tvSeekBackRef.current as any)
-        ? require('react-native').findNodeHandle(tvSeekBackRef.current)
-        : null;
-      const fwdH = (tvSeekFwdRef.current as any)
-        ? require('react-native').findNodeHandle(tvSeekFwdRef.current)
-        : null;
+      const { findNodeHandle } = require('react-native');
+      const backH  = tvSeekBackRef.current    ? findNodeHandle(tvSeekBackRef.current)    : null;
+      const fwdH   = tvSeekFwdRef.current     ? findNodeHandle(tvSeekFwdRef.current)     : null;
+      const scrubH = tvScrubAnchorRef.current ? findNodeHandle(tvScrubAnchorRef.current) : null;
+      const playH  = tvPlayBtnRef.current     ? findNodeHandle(tvPlayBtnRef.current)     : null;
+
+      // Scrubber anchor: LEFT/RIGHT → invisible seek-bounce targets (±10 s per tap).
+      // UP → play button (explicit so D-pad finds it reliably across absolute layers).
       if (tvScrubAnchorRef.current && backH != null && fwdH != null) {
         (tvScrubAnchorRef.current as any).setNativeProps({
-          nextFocusLeft: backH,
+          nextFocusLeft:  backH,
           nextFocusRight: fwdH,
+          nextFocusUp:    playH,
         });
       }
+
+      // Play button DOWN → scrubber; seek buttons DOWN → scrubber.
+      // Without explicit wiring the TV spatial engine can miss the target
+      // when all these elements are absolute-positioned on the same layer.
+      if (tvPlayBtnRef.current   && scrubH != null) (tvPlayBtnRef.current   as any).setNativeProps({ nextFocusDown: scrubH });
+      if (tvSeek30BackRef.current && scrubH != null) (tvSeek30BackRef.current as any).setNativeProps({ nextFocusDown: scrubH });
+      if (tvSeek30FwdRef.current  && scrubH != null) (tvSeek30FwdRef.current  as any).setNativeProps({ nextFocusDown: scrubH });
     }, 300);
     return () => clearTimeout(t);
   // Re-wire whenever controls become visible (overlay mounts its children).
@@ -1546,6 +1558,7 @@ export default function PlayerScreen() {
           {/* Seek + play/pause buttons — absolute centre */}
           <View style={styles.centerAbs} pointerEvents="box-none">
             <FocusablePressable
+              ref={tvSeek30BackRef}
               style={styles.seekBtn}
               onPress={() => seek(-30)}
             >
@@ -1566,6 +1579,7 @@ export default function PlayerScreen() {
               )}
             </View>
             <FocusablePressable
+              ref={tvSeek30FwdRef}
               style={styles.seekBtn}
               onPress={() => seek(+30)}
             >

@@ -192,13 +192,24 @@ export function CatchupSheet({
   const firstPlayableRowRef = useRef<View>(null);
 
   // Tracks whether the initial mount has passed so the day-change effect
-  // doesn't double-fire on first open (hasTVPreferredFocus covers that case).
+  // doesn't double-fire on first open (Modal.onShow handles initial focus).
   const dayChangedRef = useRef(false);
 
   // True when the last day-change placed focus on the day pill because
   // programme data hadn't loaded yet.  The data-arrival effect watches this
   // flag and re-routes focus to the first playable row once data populates.
   const focusPlacedOnDayPillRef = useRef(false);
+
+  // True when Modal.onShow placed focus on the close button because no
+  // playable rows had loaded yet on initial open.  Cleared and re-routed to
+  // the first programme row by the [firstPlayableIndex] data-arrival effect.
+  const focusPlacedOnCloseRef = useRef(false);
+
+  // TV: ref to the close button — used by Modal.onShow as the initial focus
+  // target when programme data hasn't arrived yet.  Replaces the previous
+  // hasTVPreferredFocus={firstPlayableIndex === -1} which fired requestFocus()
+  // on every re-render while data was loading.
+  const closeBtnRef = useRef<View>(null);
 
   // When the user selects a different day on TV, move focus to the first
   // playable row for that day.  If there are no playable rows yet (still
@@ -215,7 +226,7 @@ export function CatchupSheet({
   useEffect(() => {
     if (!Platform.isTV) return;
     if (!dayChangedRef.current) {
-      // Skip the initial mount — hasTVPreferredFocus handles initial focus.
+      // Skip the initial mount — Modal.onShow handles initial focus.
       dayChangedRef.current = true;
       return;
     }
@@ -232,12 +243,12 @@ export function CatchupSheet({
     const id = setTimeout(() => {
       if (firstPlayableIndex !== -1) {
         // Data was already available when the effect ran — focus the row.
-        firstPlayableRowRef.current?.setNativeProps({ hasTVPreferredFocus: true });
+        (firstPlayableRowRef.current as any)?.focus?.();
       } else if (focusPlacedOnDayPillRef.current) {
         // Data is still loading — focus the day pill so the user isn't stuck.
         // If the data-arrival effect already cleared the flag (data resolved
         // during the delay), we skip this to avoid overriding it.
-        firstDayPillRef.current?.setNativeProps({ hasTVPreferredFocus: true });
+        (firstDayPillRef.current as any)?.focus?.();
       }
       // else: data arrived during the delay and the data-arrival effect has
       //       already routed focus to the programme row; nothing to do here.
@@ -247,14 +258,17 @@ export function CatchupSheet({
   }, [selectedDay]);
 
   // Re-route TV focus to the first playable row when programme data arrives
-  // after a day switch that initially fell back to the day pill (loading state).
+  // after either:
+  //   (a) a day-switch that fell back to the day pill while loading, or
+  //   (b) the initial modal open that fell back to the close button while loading.
   useEffect(() => {
     if (!Platform.isTV) return;
-    if (!focusPlacedOnDayPillRef.current) return;
+    if (!focusPlacedOnDayPillRef.current && !focusPlacedOnCloseRef.current) return;
     if (firstPlayableIndex === -1) return;
     focusPlacedOnDayPillRef.current = false;
+    focusPlacedOnCloseRef.current = false;
     const id = setTimeout(() => {
-      firstPlayableRowRef.current?.setNativeProps({ hasTVPreferredFocus: true });
+      (firstPlayableRowRef.current as any)?.focus?.();
     }, 100);
     return () => clearTimeout(id);
   }, [firstPlayableIndex]);
@@ -297,6 +311,23 @@ export function CatchupSheet({
       animationType="slide"
       presentationStyle="pageSheet"
       onRequestClose={onClose}
+      onShow={() => {
+        // TV: move D-pad focus to the first playable row on open.  If data
+        // hasn't arrived yet fall back to the close button and set a flag so
+        // the [firstPlayableIndex] data-arrival effect re-routes to the row
+        // once the query resolves.  Modal.onShow fires once per open —
+        // avoids hasTVPreferredFocus re-firing requestFocus on every re-render
+        // while loading state or firstPlayableIndex change.
+        if (!Platform.isTV) return;
+        setTimeout(() => {
+          if (firstPlayableIndex !== -1 && firstPlayableRowRef.current) {
+            (firstPlayableRowRef.current as any)?.focus?.();
+          } else {
+            focusPlacedOnCloseRef.current = true;
+            (closeBtnRef.current as any)?.focus?.();
+          }
+        }, 100);
+      }}
     >
       <View style={[sheet.root, { backgroundColor: colors.background }]}>
 
@@ -314,11 +345,11 @@ export function CatchupSheet({
             📅 {channel.name}
           </Text>
           <FocusablePressable
+            ref={closeBtnRef}
             onPress={onClose}
             hitSlop={{ top: 12, bottom: 12, left: 16, right: 4 }}
             style={sheet.closeTouchable}
             focusedStyle={sheet.closeFocused}
-            hasTVPreferredFocus={Platform.isTV ? firstPlayableIndex === -1 : undefined}
           >
             <Text style={[sheet.closeIcon, { color: colors.mutedForeground }]}>✕</Text>
           </FocusablePressable>
@@ -416,7 +447,6 @@ export function CatchupSheet({
                   }
                   onPress={() => (canPlay ? handlePlayCatchup(prog) : handleFutureTap())}
                   focusable={canPlay}
-                  hasTVPreferredFocus={Platform.isTV && i === firstPlayableIndex ? true : undefined}
                   style={[
                     sheet.progRow,
                     { borderBottomColor: colors.border },
