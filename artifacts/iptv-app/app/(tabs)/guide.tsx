@@ -278,7 +278,7 @@ interface TVProgItem {
 const TVEpgRow = React.memo(function TVEpgRow({
   channel, programs, dayStartMs, now, isToday, isFirst, colors, reminderIds,
   onProgramPress, onWatchChannel, firstChannelRef, lastFocusedProgRef,
-  jumpToNowRef, rowIndex, allChannelRefs,
+  jumpToNowRef, rowIndex, allChannelRefs, isFav, onFavPress,
 }: {
   channel: Channel;
   programs: EpgProgram[];
@@ -318,6 +318,10 @@ const TVEpgRow = React.memo(function TVEpgRow({
    * Programme-cell onFocus reads adjacent-row entries to set nextFocusUp/Down.
    */
   allChannelRefs: React.RefObject<Map<number, View | null>>;
+  /** Whether this channel is currently favourited. */
+  isFav?: boolean;
+  /** Called when the user presses OK on the heart zone. */
+  onFavPress?: () => void;
 }) {
   const flatRef = useRef<FlatList>(null);
   // Ref to the first programme cell — used by the channel-press auto-advance
@@ -336,6 +340,27 @@ const TVEpgRow = React.memo(function TVEpgRow({
   // Detect window width changes (landscape ↔ portrait, split-screen resize).
   const { width: windowWidth } = useWindowDimensions();
   const dayEndMs = dayStartMs + DAY_MINS * 60_000;
+
+  // TV favourite heart zone refs — local channel cell ref (mirrors the callback
+  // ref that writes into allChannelRefs) + the heart button ref for D-pad wiring.
+  const channelCellRef = useRef<View>(null);
+  const heartRef = useRef<View>(null);
+
+  // TV: wire channel cell → RIGHT → heart, heart → LEFT → channel cell.
+  // Mirrors the two-zone pattern used by ChannelRow in index.tsx.
+  // Re-runs on windowWidth so orientation changes that remount the FlatList
+  // don't leave the wiring pointing at stale node handles.
+  useEffect(() => {
+    if (!Platform.isTV || !onFavPress) return;
+    const t = setTimeout(() => {
+      const channelNode = findNodeHandle(channelCellRef.current);
+      const heartNode   = findNodeHandle(heartRef.current);
+      if (channelNode == null || heartNode == null) return;
+      (channelCellRef.current as any)?.setNativeProps?.({ nextFocusRight: heartNode });
+      (heartRef.current    as any)?.setNativeProps?.({ nextFocusLeft: channelNode });
+    }, 300);
+    return () => clearTimeout(t);
+  }, [windowWidth, onFavPress]);
 
   // Pre-compute widths + cumulative offsets so getItemLayout is O(1)
   const items: TVProgItem[] = useMemo(() => {
@@ -509,6 +534,8 @@ const TVEpgRow = React.memo(function TVEpgRow({
           long-press watches the channel live (matches catchup auto-advance pattern) */}
       <FocusablePressable
         ref={(el: View | null) => {
+          // Keep the local ref so the heart-wiring useEffect can call findNodeHandle.
+          (channelCellRef as React.MutableRefObject<View | null>).current = el;
           // Store in the shared cross-row map so adjacent-row programme cells
           // can read this node handle for nextFocusUp / nextFocusDown wiring.
           if (el) allChannelRefs.current.set(rowIndex, el);
@@ -544,6 +571,23 @@ const TVEpgRow = React.memo(function TVEpgRow({
           {channel.name}
         </Text>
       </FocusablePressable>
+
+      {/* TV favourite heart zone — focusable via D-pad RIGHT from the channel cell.
+          Only rendered on TV when an onFavPress handler is provided. */}
+      {Platform.isTV && !!onFavPress && (
+        <FocusablePressable
+          ref={heartRef}
+          focusable
+          onPress={onFavPress}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          focusedStyle={styles.tvFocusedRound}
+          style={styles.tvChHeart}
+        >
+          <Text style={[styles.heartIcon, { color: isFav ? '#EF4444' : colors.mutedForeground }]}>
+            {isFav ? '♥' : '♡'}
+          </Text>
+        </FocusablePressable>
+      )}
 
       {/* Programme cells */}
       {items.length === 0 ? (
@@ -1754,6 +1798,17 @@ function FullGuide({
                 jumpToNowRef={index === 0 ? jumpToNowCallbackRef : undefined}
                 rowIndex={index}
                 allChannelRefs={allChannelRefs}
+                isFav={guideFavIds.has(ch.id)}
+                onFavPress={async () => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  const updated = await StorageService.toggleFavorite({
+                    id: ch.id, name: ch.name, logo: ch.logo ?? '',
+                    streamUrl: ch.streamUrl, groupTitle: ch.groupTitle ?? '', epgId: ch.epgId ?? '',
+                  });
+                  const isFaved = updated.some((f) => f.id === ch.id);
+                  setGuideFavIds(new Set(updated.map((f) => f.id)));
+                  setGuideToast(isFaved ? `♥ ${ch.name} added to Favourites` : `${ch.name} removed from Favourites`);
+                }}
                 onWatchChannel={(c) => {
                   const chList = channels.map((x) => ({
                     url: x.streamUrl, title: x.name,
@@ -2581,4 +2636,21 @@ const styles = StyleSheet.create({
     paddingVertical: 1,
   },
   tvReminderDot: { fontSize: 8 },
+
+  // ── TV favourite heart zone ──────────────────────────────────────────────
+  /** Focusable heart button in the channel-label column; D-pad RIGHT from cell. */
+  tvChHeart: {
+    width: 32,
+    alignSelf: 'stretch',
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexShrink: 0,
+  },
+  heartIcon: { fontSize: 16 },
+  /** Round cyan focus ring used on small icon buttons (heart, block). */
+  tvFocusedRound: {
+    borderWidth: 2,
+    borderColor: '#00E5FF',
+    borderRadius: 99,
+  },
 });
