@@ -959,6 +959,12 @@ function CategoryGrid({
   // the previous timer fires.
   const wireTimers = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
 
+  // Tracks the index of the last card that received D-pad focus.
+  // Survives FlatList remounts (key changes) because it lives in CategoryGrid
+  // scope — only the inner FlatList remounts, not CategoryGrid itself.
+  // Used to restore focus to the correct card after a remount.
+  const focusedIndexRef = useRef<number>(0);
+
   // ── Layout generation counter ────────────────────────────────────────────
   // Incremented *synchronously during render* when numCols changes — before
   // React runs any ref callbacks for the new layout.  Each 250 ms wire timer
@@ -975,6 +981,25 @@ function CategoryGrid({
     prevNumColsRef.current = numCols;
     layoutGenRef.current += 1;
   }
+
+  // After every numCols change the FlatList fully remounts (key={numCols}).
+  // Card refs are destroyed and re-populated as cards render, and the previously
+  // focused card silently loses focus.  This effect fires after each such remount
+  // and imperatively restores focus to:
+  //   1. The card the user was last focused on (focusedIndexRef.current), or
+  //   2. The first card if that card has not yet remounted.
+  // We wait TV_WIRE_DELAY_MS + 50 ms so the cross-row nextFocusLeft/Right wiring
+  // (which also needs TV_WIRE_DELAY_MS) is complete before focusing — otherwise
+  // the user would land on a card they cannot navigate away from.
+  useEffect(() => {
+    if (!Platform.isTV) return;
+    const t = setTimeout(() => {
+      const idx = focusedIndexRef.current;
+      const target = cardRefs.current[idx] ?? cardRefs.current[0];
+      (target as any)?.focus?.();
+    }, TV_WIRE_DELAY_MS + 50);
+    return () => clearTimeout(t);
+  }, [numCols]);
 
   // Called from the ref callback each time a card mounts.
   // It pairs the newly-mounted card with its already-mounted row neighbours
@@ -1057,6 +1082,7 @@ function CategoryGrid({
         }}
         focusedStyle={styles.tvFocused}
         style={[styles.catCard, { backgroundColor: colors.card, borderColor: colors.border, width: colW }]}
+        onFocus={() => { focusedIndexRef.current = index; }}
         onPress={() => onSelect(catId)}
       >
         {/* Icon bubble */}
