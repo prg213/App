@@ -61,6 +61,12 @@ import { normaliseStr } from '@/utils/normalise';
 const FAVS_CAT_ID = '__favs';
 const ALL_CAT_ID = '__all';
 
+// Module-level variable — survives React state resets that happen when
+// router.navigate('/') triggers a blur→focus cycle on the Live TV tab.
+// The player writes here before collapsing; the collapse-restore useFocusEffect
+// reads it back and calls setPlayingChannel after the tab regains focus.
+let _pendingPlayingChannel: Channel | null = null;
+
 function buildCreds(c: ReturnType<typeof useAppContext>['credentials']) {
   return { host: c!.host!, username: c!.username!, password: c!.password! };
 }
@@ -401,6 +407,14 @@ export default function LiveTVScreen() {
       } else {
         setVideoKey((k) => k + 1);
       }
+      // If a recently-watched channel set _pendingPlayingChannel before the
+      // collapse, restore it now.  The blur→focus cycle triggered by
+      // router.navigate('/') may have reset local state; this module-level
+      // variable survives that reset and ensures the mini-player appears.
+      if (_pendingPlayingChannel) {
+        setPlayingChannel(_pendingPlayingChannel);
+        _pendingPlayingChannel = null;
+      }
       // TV: restore D-pad focus to the mini-player box so the remote cursor
       // has a sensible target after collapsing from fullscreen.  Without this
       // the cursor is left wherever fullscreen last placed it (often a hidden
@@ -550,7 +564,12 @@ export default function LiveTVScreen() {
   // triggerCollapse's measureInWindow call.
   useEffect(() => {
     const sub = DeviceEventEmitter.addListener('live:setPlayingChannel', (ch: Channel) => {
+      // Set state immediately so the mini-player is visible before
+      // triggerCollapse measures its position.
       setPlayingChannel(ch);
+      // Also write to the module-level variable so it survives any state
+      // reset that the subsequent router.navigate('/') may trigger.
+      _pendingPlayingChannel = ch;
     });
     return () => sub.remove();
   }, []);

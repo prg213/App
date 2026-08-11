@@ -1021,7 +1021,7 @@ export default function PlayerScreen() {
       // triggerCollapse's measureInWindow gets real pixel dimensions.
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-          triggerCollapse(() => router.replace('/'));
+          triggerCollapse(() => router.navigate('/'));
         });
       });
       return;
