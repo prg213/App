@@ -1391,6 +1391,15 @@ export default function PlayerScreen() {
               const currentEntry = channelIdx >= 0 && channelList[channelIdx];
               player.replace(currentEntry ? currentEntry.url : params.url);
               player.play();
+              // TV belt-and-suspenders: once the error overlay unmounts and the
+              // video surface + tap-catcher remount, move D-pad focus to the
+              // right idle target so the user doesn't have to home in manually.
+              if (Platform.isTV) {
+                setTimeout(() => {
+                  if (isLive) (tvCenterRef.current as any)?.focus?.();
+                  else (tvVodIdleRef.current as any)?.focus?.();
+                }, 400);
+              }
             }}
           >
             <Text style={styles.actionBtnText}>Retry</Text>

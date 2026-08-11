@@ -120,6 +120,16 @@ export function TVLiveLayout({
     return () => clearTimeout(t);
   }, []));
 
+  // TV: if the selected category has no channels the category-press handler's
+  // firstChRef.focus() is a no-op (the channel FlatList is replaced by an
+  // empty view).  Detect the settled-empty state and return D-pad focus to
+  // the category list so the user always has a reachable target.
+  useEffect(() => {
+    if (!Platform.isTV || channelsLoading || channels.length > 0) return;
+    const t = setTimeout(() => (firstCatRef.current as any)?.focus?.(), 400);
+    return () => clearTimeout(t);
+  }, [channelsLoading, channels]);
+
   // Track which channel row is visually highlighted.
   // Updated on D-pad focus AND on successful OK press — never triggers stream load.
   const [highlightedChId, setHighlightedChId] = useState<string | null>(

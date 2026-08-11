@@ -170,11 +170,30 @@ export default function CatchupScreen() {
     return () => sub.remove();
   }, [selectedChannel, selectedCatId]));
 
-  // TV: D-pad focus lands on the first category row whenever this tab becomes active.
-  // [] deps — fires on every tab visit, not just mount.
+  // Refs that shadow selected-column state so the tab-return useFocusEffect
+  // below can read the current values without adding them to its dep array.
+  // Adding them as deps would cause the effect to re-fire and steal focus every
+  // time the user navigates between columns while the tab is active.
+  const selectedChannelForFocusRef = useRef<typeof selectedChannel>(null);
+  useEffect(() => { selectedChannelForFocusRef.current = selectedChannel; }, [selectedChannel]);
+  const selectedCatIdForFocusRef = useRef<string>(ALL_CAT_ID);
+  useEffect(() => { selectedCatIdForFocusRef.current = selectedCatId; }, [selectedCatId]);
+
+  // TV: focus the most contextually relevant element on every tab visit.
+  // [] deps — fires on tab-entry only; reads state via refs to avoid stale closures.
   useFocusEffect(useCallback(() => {
     if (!Platform.isTV) return;
-    const t = setTimeout(() => (firstCatRef.current as any)?.focus?.(), 200);
+    const t = setTimeout(() => {
+      const ch  = selectedChannelForFocusRef.current;
+      const cat = selectedCatIdForFocusRef.current;
+      // Narrow → broad: programme list → channel list → category grid.
+      const target = ch
+        ? firstProgRef.current
+        : cat !== ALL_CAT_ID
+          ? firstChannelRef.current
+          : firstCatRef.current;
+      (target as any)?.focus?.();
+    }, 200);
     return () => clearTimeout(t);
   }, []));
 

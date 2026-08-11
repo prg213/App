@@ -376,17 +376,28 @@ const TVEpgRow = React.memo(function TVEpgRow({
       }
       // No saved offset (initial mount or just after a day change): scroll to the
       // current/upcoming programme and optionally restore D-pad focus.
+      //
+      // TV first-row: handled separately so no other row steals focus from it.
+      if (Platform.isTV && isFirst) {
+        if (initialIdx != null) {
+          // Scroll to and focus the current/upcoming programme.
+          try {
+            flatRef.current?.scrollToIndex({ index: initialIdx, animated: false, viewPosition: 0 });
+          } catch (_) {}
+          focusTimer = setTimeout(() => initialProgRef.current?.focus(), 80);
+        } else {
+          // Future day — no "now" programme exists: focus the first cell so the
+          // user is never left without a D-pad entry point into the programme grid.
+          focusTimer = setTimeout(() => progFirstRef.current?.focus(), 80);
+        }
+        return;
+      }
+      // Non-first rows (and non-TV): scroll only — no focus call so non-first
+      // rows never compete with the first row's imperative focus above.
       if (initialIdx == null) return;
       try {
         flatRef.current?.scrollToIndex({ index: initialIdx, animated: false, viewPosition: 0 });
       } catch (_) {}
-      // Only restore D-pad focus on the first row (hasTVPreferredFocus owner).
-      // Every other row would compete and steal focus from the intended cell.
-      if (Platform.isTV && isFirst) {
-        focusTimer = setTimeout(() => {
-          initialProgRef.current?.focus();
-        }, 80);
-      }
     }, 150);
     return () => {
       clearTimeout(scrollTimer);
@@ -396,6 +407,23 @@ const TVEpgRow = React.memo(function TVEpgRow({
     // resize triggers a FlatList remount that resets scroll to 0, so this effect
     // must re-run to restore the saved offset.
   }, [initialIdx, isFirst, windowWidth]);
+
+  // TV: wire the first programme cell's LEFT D-pad back to the channel cell.
+  // Native spatial navigation is unreliable across the virtualised FlatList /
+  // channel-pane boundary, so we set nextFocusLeft imperatively after the row
+  // mounts or the window resizes (orientation change remounts the FlatList).
+  useEffect(() => {
+    if (!Platform.isTV) return;
+    const t = setTimeout(() => {
+      // firstChannelRef is typed React.Ref (union with callback); cast to RefObject
+      // so we can access .current — it is always a RefObject in practice here.
+      const chRef = firstChannelRef as React.RefObject<View | null> | undefined;
+      const channelNode = findNodeHandle(chRef?.current ?? null);
+      if (!channelNode || !progFirstRef.current) return;
+      (progFirstRef.current as any).setNativeProps?.({ nextFocusLeft: channelNode });
+    }, 300);
+    return () => clearTimeout(t);
+  }, [windowWidth]);
 
   // Populate jumpToNowRef (first row only) with a fn FullGuide can call to
   // scroll the horizontal list to the current programme and focus it.
