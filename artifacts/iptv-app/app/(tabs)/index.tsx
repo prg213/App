@@ -1,5 +1,6 @@
 import { FocusablePressable } from '@/components/FocusablePressable';
 import { TVTextInput } from '@/components/TVTextInput';
+import { ConfirmModal } from '@/components/ConfirmModal';
 import React, {
   useCallback,
   useEffect,
@@ -98,8 +99,17 @@ const CategoryRow = React.memo(function CategoryRow({
           ? { backgroundColor: '#3B82F6' }
           : { borderBottomColor: colors.border },
       ]}
-      onPress={onPress}
-      onLongPress={onLongPress}
+      onPress={() => {
+        // TV: pressing OK on the already-selected category triggers the block/
+        // unblock flow (same as long-press on touch) — gives a reliable D-pad path.
+        if (Platform.isTV && isSelected && onLongPress) {
+          onLongPress();
+        } else {
+          onPress();
+        }
+      }}
+      // On TV the double-tap OK pattern handles block; keep long-press for touch.
+      onLongPress={Platform.isTV ? undefined : onLongPress}
       delayLongPress={500}
     >
       <Text
@@ -134,6 +144,7 @@ const ChannelRow = React.memo(function ChannelRow({
   onPress,
   onHeartPress,
   onLongPress,
+  onTvBlockPress,
   hideHeart = false,
 }: {
   channel: Channel;
@@ -144,24 +155,35 @@ const ChannelRow = React.memo(function ChannelRow({
   onPress: () => void;
   onHeartPress: () => void;
   onLongPress?: () => void;
+  /** TV-only: opens the block/unblock confirm modal for this channel. */
+  onTvBlockPress?: () => void;
   hideHeart?: boolean;
 }) {
-  // TV D-pad: wire channel row ↔ heart so D-pad RIGHT reaches the favourite
-  // button and D-pad LEFT brings focus back to the channel row.
+  // TV D-pad: wire row ↔ heart ↔ block so D-pad RIGHT advances through zones
+  // and D-pad LEFT goes back.  Three zones when onTvBlockPress is provided,
+  // otherwise two.
   const rowRef   = useRef<View>(null);
   const heartRef = useRef<View>(null);
+  const blockRef = useRef<View>(null);
 
   useEffect(() => {
     if (!Platform.isTV || hideHeart) return;
     const t = setTimeout(() => {
       const rowH   = findNodeHandle(rowRef.current);
       const heartH = findNodeHandle(heartRef.current);
+      const blockH = onTvBlockPress ? findNodeHandle(blockRef.current) : null;
       if (!rowH || !heartH) return;
-      (rowRef.current as any)?.setNativeProps({ nextFocusRight: heartH });
-      (heartRef.current as any)?.setNativeProps({ nextFocusLeft: rowH });
+      if (blockH) {
+        (rowRef.current   as any)?.setNativeProps({ nextFocusRight: heartH });
+        (heartRef.current as any)?.setNativeProps({ nextFocusLeft: rowH, nextFocusRight: blockH });
+        (blockRef.current as any)?.setNativeProps({ nextFocusLeft: heartH });
+      } else {
+        (rowRef.current   as any)?.setNativeProps({ nextFocusRight: heartH });
+        (heartRef.current as any)?.setNativeProps({ nextFocusLeft: rowH });
+      }
     }, 300);
     return () => clearTimeout(t);
-  }, [hideHeart]);
+  }, [hideHeart, onTvBlockPress]);
 
   return (
     <FocusablePressable
@@ -222,6 +244,21 @@ const ChannelRow = React.memo(function ChannelRow({
           </Text>
         </FocusablePressable>
       )}
+      {/* TV: D-pad-reachable ⊘ block button — third zone after the heart.
+          The long-press menu is not reliably triggerable on Fire OS, so this
+          provides a reliable path to block / unblock any channel. */}
+      {Platform.isTV && !hideHeart && onTvBlockPress && (
+        <FocusablePressable
+          ref={blockRef}
+          focusable
+          onPress={onTvBlockPress}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          focusedStyle={styles.tvFocusedRound}
+          style={styles.heartBtn}
+        >
+          <Text style={[styles.heartIcon, { color: '#EF4444', opacity: 0.7 }]}>⊘</Text>
+        </FocusablePressable>
+      )}
     </FocusablePressable>
   );
 });
@@ -256,6 +293,15 @@ export default function LiveTVScreen() {
   const [isBuffering, setIsBuffering] = useState(false);
   const [hasError, setHasError] = useState(false);
   const [nowTs, setNowTs] = useState(Date.now());
+
+  // ── TV block/unblock confirm modal ───────────────────────────────────────
+  // Alert.alert buttons are not reliably D-pad-focusable on Fire OS; we use
+  // ConfirmModal instead for both category and channel block actions on TV.
+  const [blockConfirm, setBlockConfirm] = useState<
+    | { type: 'cat'; catId: string; name: string; isBlocked: boolean }
+    | { type: 'chan'; channel: Channel; isBlocked: boolean }
+    | null
+  >(null);
 
   // ── Catch-up sheet ───────────────────────────────────────────────────────
   const [showCatchup, setShowCatchup] = useState(false);
@@ -1024,15 +1070,22 @@ export default function LiveTVScreen() {
         colors={colors}
         onPress={() => handleSelectCat(item.id)}
         onLongPress={isBlockable ? () => {
-          const action = isBlocked ? 'Unblock' : 'Block';
-          Alert.alert(
-            `${action} Category`,
-            `${action} all channels in "${item.name}"?`,
-            [
-              { text: 'Cancel', style: 'cancel' },
-              { text: action, style: isBlocked ? 'default' : 'destructive', onPress: () => toggleBlockedCategory(item.id) },
-            ],
-          );
+          if (Platform.isTV) {
+            // TV: show ConfirmModal (Alert.alert buttons unreliable on Fire OS).
+            // CategoryRow's onPress already calls this on second-OK of a selected
+            // category, so the user has a reliable D-pad path.
+            setBlockConfirm({ type: 'cat', catId: item.id, name: item.name, isBlocked });
+          } else {
+            const action = isBlocked ? 'Unblock' : 'Block';
+            Alert.alert(
+              `${action} Category`,
+              `${action} all channels in "${item.name}"?`,
+              [
+                { text: 'Cancel', style: 'cancel' },
+                { text: action, style: isBlocked ? 'default' : 'destructive', onPress: () => toggleBlockedCategory(item.id) },
+              ],
+            );
+          }
         } : undefined}
       />
     );
@@ -1041,6 +1094,12 @@ export default function LiveTVScreen() {
   const handleLongPressChannel = useCallback((ch: Channel) => {
     const isBlocked = blockedChannels.includes(ch.id);
     const action = isBlocked ? 'Unblock' : 'Block';
+    if (Platform.isTV) {
+      // TV: the ⊘ block button in ChannelRow already calls this (via onTvBlockPress
+      // → handleLongPressChannel), so we show the ConfirmModal directly.
+      setBlockConfirm({ type: 'chan', channel: ch, isBlocked });
+      return;
+    }
     Alert.alert(
       ch.name,
       isBlocked ? 'Unblock this channel?' : 'Block this channel? It will be hidden everywhere.',
@@ -1086,6 +1145,9 @@ export default function LiveTVScreen() {
       onPress={() => handleSelectChannel(item)}
       onHeartPress={() => handleToggleFav(item)}
       onLongPress={() => handleLongPressChannel(item)}
+      // TV: dedicated ⊘ block button as a 3rd D-pad zone (RIGHT of heart).
+      // Calls handleLongPressChannel which routes to ConfirmModal on TV.
+      onTvBlockPress={Platform.isTV ? () => handleLongPressChannel(item) : undefined}
     />
   ), [selectedChannel?.id, favSet, nowPlayingMap, colors, handleSelectChannel, handleToggleFav, handleLongPressChannel]);
 
@@ -1564,6 +1626,42 @@ export default function LiveTVScreen() {
           onClose={() => setShowCatchup(false)}
         />
       )}
+
+      {/* ── TV-safe block/unblock confirmation ── */}
+      {/* Replaces Alert.alert (unreliable on Fire OS) for category and channel
+          block actions.  Triggered by: second OK on a selected category, the
+          dedicated ⊘ button in ChannelRow (D-pad RIGHT of heart), or long-press
+          (still works as a secondary path on touch). */}
+      <ConfirmModal
+        visible={!!blockConfirm}
+        title={
+          blockConfirm?.type === 'cat'
+            ? `${blockConfirm.isBlocked ? 'Unblock' : 'Block'} Category`
+            : `${blockConfirm?.isBlocked ? 'Unblock' : 'Block'} Channel`
+        }
+        message={
+          blockConfirm?.type === 'cat'
+            ? `${blockConfirm.isBlocked ? 'Unblock' : 'Block'} all channels in "${blockConfirm.name}"?`
+            : blockConfirm?.isBlocked
+              ? `Unblock "${blockConfirm.channel.name}"?`
+              : `Block "${blockConfirm?.channel.name}"? It will be hidden everywhere.`
+        }
+        confirmLabel={blockConfirm?.isBlocked ? 'Unblock' : 'Block'}
+        destructive={!blockConfirm?.isBlocked}
+        onConfirm={() => {
+          if (!blockConfirm) return;
+          if (blockConfirm.type === 'cat') {
+            toggleBlockedCategory(blockConfirm.catId);
+          } else {
+            const updated = blockConfirm.isBlocked
+              ? blockedChannels.filter((id) => id !== blockConfirm.channel.id)
+              : [...blockedChannels, blockConfirm.channel.id];
+            setBlockedChannelIds(updated);
+          }
+          setBlockConfirm(null);
+        }}
+        onCancel={() => setBlockConfirm(null)}
+      />
     </View>
   );
 }

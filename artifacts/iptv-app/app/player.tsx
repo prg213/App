@@ -1542,11 +1542,14 @@ export default function PlayerScreen() {
                 🎵 {activeAudioTrack?.label || activeAudioTrack?.language || 'Audio'}
               </Text>
             </FocusablePressable>
-            {/* CC / Subtitle button — tap cycles off→first→next→off; long-press opens picker */}
+            {/* CC / Subtitle button.
+                Touch: tap cycles off→first→next→off; long-press opens picker.
+                TV/D-pad: OK always opens the picker so the user can jump to any
+                track without cycling through all of them. */}
             <FocusablePressable
               ref={ccChipRef}
               style={[styles.trackPill, subtitleTracks.length === 0 && { opacity: 0.35 }, activeSubtitleTrack !== null && styles.trackPillActive]}
-              onPress={handleCcPress}
+              onPress={Platform.isTV ? () => setShowSubPicker(true) : handleCcPress}
               onLongPress={() => setShowSubPicker(true)}
               delayLongPress={400}
             >
@@ -1709,11 +1712,13 @@ export default function PlayerScreen() {
               🎵 {activeAudioTrack?.label || activeAudioTrack?.language || 'Audio'}
             </Text>
           </FocusablePressable>
-          {/* CC / Subtitle button — tap cycles off→first→next→off; long-press opens picker */}
+          {/* CC / Subtitle button.
+              Touch: tap cycles off→first→next→off; long-press opens picker.
+              TV/D-pad: OK always opens the picker. */}
           <FocusablePressable
             ref={ccChipRef}
             style={[styles.trackPill, activeSubtitleTrack !== null && styles.trackPillActive]}
-            onPress={handleCcPress}
+            onPress={Platform.isTV ? () => setShowSubPicker(true) : handleCcPress}
             onLongPress={() => setShowSubPicker(true)}
             delayLongPress={400}
           >

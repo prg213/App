@@ -1,6 +1,8 @@
-import React, { forwardRef, memo, useEffect, useState } from 'react';
+import React, { forwardRef, memo, useCallback, useEffect, useRef, useState } from 'react';
 import { FocusablePressable } from '@/components/FocusablePressable';
 import {
+  findNodeHandle,
+  Platform,
   StyleSheet,
   Text,
   View,
@@ -61,10 +63,17 @@ interface MovieCardProps {
   onTrailerPress?: () => void;
   /** TV: called when this card's FocusablePressable receives D-pad focus */
   onFocus?: () => void;
+  /**
+   * TV-only: when provided, renders a ✕ delete button as a third independently
+   * D-pad-focusable zone (RIGHT of the heart, or RIGHT of the card when no
+   * heart is present).  Used in the Recently Watched grid to give remote users
+   * the same remove-from-history action that touch users get by swiping.
+   */
+  onTvDeletePress?: () => void;
 }
 
 const MovieCardComponent = forwardRef<View, MovieCardProps>(function MovieCardInner(
-  { name, cover, rating, genre, year, query = '', isFav, compact, progress, cardStyle, onPress, onFavPress, onLongPress, onFocus },
+  { name, cover, rating, genre, year, query = '', isFav, compact, progress, cardStyle, onPress, onFavPress, onLongPress, onFocus, onTvDeletePress },
   ref
 ) {
   const colors = useColors();
@@ -76,6 +85,46 @@ const MovieCardComponent = forwardRef<View, MovieCardProps>(function MovieCardIn
   const fgEpoch = useForegroundEpoch();
 
   const [tmdbPoster, setTmdbPoster] = useState<string | null>(null);
+
+  // ── TV: independently focusable heart button wiring ───────────────────────
+  // cardBodyRef is the primary card focus zone (forwarded so callers can restore
+  // focus to this card).  heartRef is the heart/favourite sub-zone.  We wire
+  // nextFocusRight card→heart and nextFocusLeft heart→card so D-pad RIGHT
+  // reaches the heart even though it is absolutely positioned inside the poster.
+  const cardBodyRef = useRef<View>(null);
+  const heartRef    = useRef<View>(null);
+  const deleteRef   = useRef<View>(null);
+
+  const setCardRef = useCallback((node: View | null) => {
+    (cardBodyRef as React.MutableRefObject<View | null>).current = node;
+    if (typeof ref === 'function') ref(node);
+    else if (ref) (ref as React.MutableRefObject<View | null>).current = node;
+  }, [ref]);
+
+  // TV: wire the card body → heart → delete zone chain (RIGHT to advance,
+  // LEFT to go back) so the remote can reach all three zones.  Falls back to
+  // a 2-zone chain when only one secondary zone is present.
+  useEffect(() => {
+    if (!Platform.isTV || (!onFavPress && !onTvDeletePress)) return;
+    const t = setTimeout(() => {
+      const cardH   = findNodeHandle(cardBodyRef.current);
+      const heartH  = onFavPress      ? findNodeHandle(heartRef.current)  : null;
+      const deleteH = onTvDeletePress ? findNodeHandle(deleteRef.current) : null;
+      if (!cardH) return;
+      if (heartH && deleteH) {
+        (cardBodyRef.current as any)?.setNativeProps({ nextFocusRight: heartH  });
+        (heartRef.current   as any)?.setNativeProps({ nextFocusLeft:  cardH,  nextFocusRight: deleteH });
+        (deleteRef.current  as any)?.setNativeProps({ nextFocusLeft:  heartH  });
+      } else if (heartH) {
+        (cardBodyRef.current as any)?.setNativeProps({ nextFocusRight: heartH  });
+        (heartRef.current   as any)?.setNativeProps({ nextFocusLeft:  cardH   });
+      } else if (deleteH) {
+        (cardBodyRef.current as any)?.setNativeProps({ nextFocusRight: deleteH });
+        (deleteRef.current  as any)?.setNativeProps({ nextFocusLeft:  cardH   });
+      }
+    }, 100);
+    return () => clearTimeout(t);
+  }, [onFavPress, onTvDeletePress]);
 
   useEffect(() => {
     if (cover) { setTmdbPoster(null); return; }
@@ -90,7 +139,7 @@ const MovieCardComponent = forwardRef<View, MovieCardProps>(function MovieCardIn
   const posterUri = cover || tmdbPoster;
 
   return (
-    <FocusablePressable ref={ref as any} onFocus={onFocus} style={[styles.card, compact && styles.cardCompact, cardStyle]} onPress={onPress} onLongPress={onLongPress} delayLongPress={500} accessibilityLabel={name} accessibilityRole="button">
+    <FocusablePressable ref={setCardRef} onFocus={onFocus} style={[styles.card, compact && styles.cardCompact, cardStyle]} onPress={onPress} onLongPress={onLongPress} delayLongPress={500} accessibilityLabel={name} accessibilityRole="button">
       {/* Poster */}
       <View style={[styles.poster, { backgroundColor: colors.secondary }]}>
         {posterUri ? (
@@ -105,13 +154,15 @@ const MovieCardComponent = forwardRef<View, MovieCardProps>(function MovieCardIn
             <Text style={styles.ratingText}>★ {parseFloat(rating).toFixed(1)}</Text>
           </View>
         )}
-        {/* Heart favourite button — focusable={false} on TV prevents a nested-
-            focusable D-pad trap; long-press on the card opens the action menu
-            which includes "Toggle Favourite" as the TV-safe alternative. */}
+        {/* Heart favourite button.  On TV it is an independently D-pad-focusable
+            zone reached by pressing RIGHT from the card body; LEFT returns to
+            the card.  On touch it is not focusable — the card body OK opens
+            details, and the heart is tapped directly on the poster overlay. */}
         {onFavPress && (
           <FocusablePressable
+            ref={heartRef}
             style={styles.heartBtn}
-            focusable={false}
+            focusable={Platform.isTV}
             onPress={(e) => { (e as any).stopPropagation?.(); onFavPress(); }}
             hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
           >
@@ -125,6 +176,19 @@ const MovieCardComponent = forwardRef<View, MovieCardProps>(function MovieCardIn
           <View style={styles.progressRail}>
             <View style={[styles.progressFill, { width: `${Math.max(2, Math.min(100, progress * 100))}%` as any }]} />
           </View>
+        )}
+        {/* TV delete button — third D-pad zone, shown only when onTvDeletePress
+            is supplied (e.g. the Recently Watched grid).  Replaces swipe-to-delete
+            for remote users. */}
+        {Platform.isTV && onTvDeletePress && (
+          <FocusablePressable
+            ref={deleteRef}
+            style={styles.tvDeleteBtn}
+            onPress={onTvDeletePress}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Text style={styles.tvDeleteIcon}>✕</Text>
+          </FocusablePressable>
         )}
       </View>
 
@@ -211,6 +275,23 @@ const styles = StyleSheet.create({
     height: '100%',
     backgroundColor: '#3B82F6',
     borderRadius: 1.5,
+  },
+  tvDeleteBtn: {
+    position: 'absolute',
+    bottom: 6,
+    right: 6,
+    backgroundColor: 'rgba(239,68,68,0.88)',
+    borderRadius: 99,
+    width: 26,
+    height: 26,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  tvDeleteIcon: {
+    fontSize: 11,
+    color: '#fff',
+    lineHeight: 13,
+    fontFamily: 'Inter_700Bold',
   },
   info: {
     marginTop: 7,

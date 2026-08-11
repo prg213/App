@@ -507,6 +507,9 @@ export default function SeriesScreen() {
                 progress={isRecentSelected ? seriesProgressMap.get(item.id) : undefined}
                 cardStyle={isRecentSelected ? { flex: 1, maxWidth: '100%' } : undefined}
                 onFavPress={() => handleToggleFav(item)}
+                onTvDeletePress={isRecentSelected && Platform.isTV
+                  ? () => StorageService.removeSeriesFromHistory(item.id).then(refreshWatchHistory)
+                  : undefined}
                 onLongPress={() => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                   const isFav = favSet.has(item.id);
@@ -525,7 +528,7 @@ export default function SeriesScreen() {
                 }}
               />
               );
-              if (isRecentSelected) {
+              if (isRecentSelected && !Platform.isTV) {
                 return (
                   <SwipeToDeleteCard
                     key={item.id}

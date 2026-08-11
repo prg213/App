@@ -515,6 +515,9 @@ export default function MoviesScreen() {
                 progress={isRecentSelected ? movieProgressMap.get(item.id) : undefined}
                 cardStyle={isRecentSelected ? { flex: 1, maxWidth: '100%' } : undefined}
                 onFavPress={() => handleToggleFav(item)}
+                onTvDeletePress={isRecentSelected && Platform.isTV
+                  ? () => StorageService.removeFromHistory(item.id).then(refreshWatchHistory)
+                  : undefined}
                 onLongPress={() => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                   const isFav = favSet.has(item.id);
@@ -552,7 +555,9 @@ export default function MoviesScreen() {
                 }}
               />
               );
-              if (isRecentSelected) {
+              // On TV the card has a built-in ✕ zone (onTvDeletePress); on touch
+              // the swipe gesture reveals the delete action.
+              if (isRecentSelected && !Platform.isTV) {
                 return (
                   <SwipeToDeleteCard
                     key={item.id}

@@ -9,6 +9,7 @@ import {
   View,
 } from 'react-native';
 import { FocusablePressable } from '@/components/FocusablePressable';
+import { ConfirmModal } from '@/components/ConfirmModal';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from 'expo-router';
 import * as Haptics from 'expo-haptics';
@@ -50,12 +51,20 @@ interface RowProps {
 
 const HistoryRow = React.memo(function HistoryRow({ item, colors, onDelete, onPress }: RowProps) {
   const progress = item.position && item.duration ? item.position / Math.max(item.duration, 1) : 0;
+  // TV: show ConfirmModal instead of native Alert (Alert buttons are not
+  // reliably D-pad-focusable on Fire OS).
+  const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
+  const tvDelBtnRef = useRef<View>(null);
 
   function confirmDelete() {
-    Alert.alert('Remove', `Remove "${item.title}" from history?`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Remove', style: 'destructive', onPress: () => onDelete(item.id) },
-    ]);
+    if (Platform.isTV) {
+      setDeleteConfirmVisible(true);
+    } else {
+      Alert.alert('Remove', `Remove "${item.title}" from history?`, [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Remove', style: 'destructive', onPress: () => onDelete(item.id) },
+      ]);
+    }
   }
 
   return (
@@ -134,12 +143,25 @@ const HistoryRow = React.memo(function HistoryRow({ item, colors, onDelete, onPr
           On touch, long-press on the row already triggers the confirmation. */}
       {Platform.isTV && (
         <FocusablePressable
+          ref={tvDelBtnRef}
           style={[styles.tvDelBtn, { borderLeftColor: colors.border }]}
           onPress={confirmDelete}
         >
           <Text style={[styles.tvDelIcon, { color: colors.destructive }]}>✕</Text>
         </FocusablePressable>
       )}
+
+      {/* TV-safe confirmation modal for the delete action */}
+      <ConfirmModal
+        visible={deleteConfirmVisible}
+        title="Remove Entry"
+        message={`Remove "${item.title}" from watch history?`}
+        confirmLabel="Remove"
+        destructive
+        openerRef={tvDelBtnRef}
+        onConfirm={() => { setDeleteConfirmVisible(false); onDelete(item.id); }}
+        onCancel={() => setDeleteConfirmVisible(false)}
+      />
     </View>
   );
 });
@@ -154,6 +176,10 @@ export default function WatchHistoryScreen() {
   // TV focus restoration: when the last item is deleted the list empties and
   // there are no more rows to receive focus — move focus to the Back button.
   const backBtnRef = useRef<any>(null);
+  // TV: ConfirmModal for "Clear All" (Alert.alert buttons are not reliably
+  // D-pad-focusable on Fire OS).
+  const [clearAllVisible, setClearAllVisible] = useState(false);
+  const clearAllBtnRef = useRef<View>(null);
 
   const load = useCallback(async () => {
     const h = await StorageService.getWatchHistory();
@@ -183,25 +209,28 @@ export default function WatchHistoryScreen() {
     });
   }, []);
 
+  const doClearAll = useCallback(async () => {
+    await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    await StorageService.clearHistory();
+    setHistory([]);
+    if (Platform.isTV) setTimeout(() => (backBtnRef.current as any)?.focus?.(), 150);
+  }, []);
+
   const handleClearAll = useCallback(() => {
     if (history.length === 0) return;
-    Alert.alert(
-      'Clear Watch History',
-      'This will remove all watch history entries. This cannot be undone.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Clear All',
-          style: 'destructive',
-          onPress: async () => {
-            await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-            await StorageService.clearHistory();
-            setHistory([]);
-          },
-        },
-      ],
-    );
-  }, [history.length]);
+    if (Platform.isTV) {
+      setClearAllVisible(true);
+    } else {
+      Alert.alert(
+        'Clear Watch History',
+        'This will remove all watch history entries. This cannot be undone.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Clear All', style: 'destructive', onPress: doClearAll },
+        ],
+      );
+    }
+  }, [history.length, doClearAll]);
 
   const handlePress = useCallback((item: WatchHistoryEntry) => {
     if (item.type === 'movie') {
@@ -249,7 +278,7 @@ export default function WatchHistoryScreen() {
           </Text>
         </View>
         {history.length > 0 && (
-          <FocusablePressable onPress={handleClearAll} style={styles.clearBtn}>
+          <FocusablePressable ref={clearAllBtnRef} onPress={handleClearAll} style={styles.clearBtn}>
             <Text style={[styles.clearBtnText, { color: colors.destructive }]}>Clear All</Text>
           </FocusablePressable>
         )}
@@ -273,6 +302,17 @@ export default function WatchHistoryScreen() {
           removeClippedSubviews={false}
         />
       )}
+      {/* TV-safe Clear All confirmation modal */}
+      <ConfirmModal
+        visible={clearAllVisible}
+        title="Clear Watch History"
+        message="This will remove all watch history entries. This cannot be undone."
+        confirmLabel="Clear All"
+        destructive
+        openerRef={clearAllBtnRef}
+        onConfirm={() => { setClearAllVisible(false); doClearAll(); }}
+        onCancel={() => setClearAllVisible(false)}
+      />
     </View>
   );
 }

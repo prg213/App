@@ -10,8 +10,9 @@
  */
 
 import React, { useEffect, useRef } from 'react';
-import { Animated, StyleSheet, Text, TouchableOpacity } from 'react-native';
+import { Animated, Platform, StyleSheet, Text } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { FocusablePressable } from '@/components/FocusablePressable';
 
 interface ToastProps {
   message: string;
@@ -65,9 +66,11 @@ export function Toast({ message, visible, duration = 3000, onHide }: ToastProps)
     <Animated.View
       style={[styles.container, { opacity, bottom: Math.max(80, insets.bottom + 16) }]}
     >
-      <TouchableOpacity onPress={dismiss} activeOpacity={0.85} style={{ flex: 1 }}>
+      {/* On TV the toast auto-dismisses — don't steal D-pad focus by making
+          it a focus target.  On touch, tapping dismisses it immediately. */}
+      <FocusablePressable onPress={dismiss} focusable={!Platform.isTV} style={{ flex: 1 }}>
         <Text style={styles.text}>{message}</Text>
-      </TouchableOpacity>
+      </FocusablePressable>
     </Animated.View>
   );
 }
