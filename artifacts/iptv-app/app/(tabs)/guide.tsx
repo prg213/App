@@ -648,6 +648,20 @@ function ProgramModal({ program, channel, onClose, onWatch, colors }: {
     return () => sub.remove();
   }, []);
 
+  // TV: focus the primary action button on mount.  The component mounts when
+  // the parent renders `selected && <ProgramModal/>`, so [] fires exactly once
+  // per open — no hasTVPreferredFocus re-render race on Fire OS.
+  const closeBtnRef = React.useRef<View>(null);
+  const watchBtnRef = React.useRef<View>(null);
+  React.useEffect(() => {
+    if (!Platform.isTV) return;
+    const t = setTimeout(() => {
+      ((isNow ? watchBtnRef : closeBtnRef).current as any)?.focus?.();
+    }, 80);
+    return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const handleToggleReminder = async () => {
     if (hasReminder) {
       // Cancel the scheduled notification before removing the reminder
@@ -736,9 +750,9 @@ function ProgramModal({ program, channel, onClose, onWatch, colors }: {
 
           <View style={styles.modalActions}>
             <FocusablePressable
+              ref={closeBtnRef}
               style={[styles.closeBtn, { backgroundColor: colors.secondary, borderColor: colors.border }]}
               onPress={onClose}
-              hasTVPreferredFocus={!isNow}
             >
               <Text style={[styles.closeBtnText, { color: colors.foreground }]}>Close</Text>
             </FocusablePressable>
@@ -753,7 +767,7 @@ function ProgramModal({ program, channel, onClose, onWatch, colors }: {
               </FocusablePressable>
             )}
             {isNow && (
-              <FocusablePressable style={styles.watchBtn} onPress={onWatch} hasTVPreferredFocus>
+              <FocusablePressable ref={watchBtnRef} style={styles.watchBtn} onPress={onWatch}>
                 <Text style={styles.watchBtnText}>▶  Watch Live</Text>
               </FocusablePressable>
             )}
@@ -783,7 +797,10 @@ function TVTimePickerOverlay({
 }) {
   const [selHour, setSelHour] = useState(defaultHour);
   const [selMin,  setSelMin]  = useState(0);
-  const hourListRef = useRef<FlatList>(null);
+  const hourListRef  = useRef<FlatList>(null);
+  // TV: ref to the default-hour cell — focused via useEffect on open instead of
+  // hasTVPreferredFocus which re-fires on every selHour/selMin state change.
+  const firstHourRef = useRef<View>(null);
 
   // 12 minute steps give comfortable D-pad travel without being too coarse
   const HOURS = useMemo(() => Array.from({ length: 24 }, (_, i) => i), []);
@@ -813,6 +830,14 @@ function TVTimePickerOverlay({
     });
     return () => sub.remove();
   }, [visible, onDismiss]);
+
+  // TV: focus the default hour cell when the picker becomes visible.
+  // Fires whenever visible transitions true→false→true (picker re-opens).
+  useEffect(() => {
+    if (!Platform.isTV || !visible) return;
+    const t = setTimeout(() => (firstHourRef.current as any)?.focus?.(), 200);
+    return () => clearTimeout(t);
+  }, [visible]);
 
   if (!visible) return null;
 
@@ -848,7 +873,7 @@ function TVTimePickerOverlay({
                   <FocusablePressable
                     style={[styles.timePickerItem, selHour === h && styles.timePickerItemSel]}
                     focusedStyle={styles.tvFocused}
-                    hasTVPreferredFocus={h === defaultHour}
+                    ref={h === defaultHour ? firstHourRef : undefined}
                     onFocus={() => setSelHour(h)}
                     onPress={() => setSelHour(h)}
                   >
@@ -875,7 +900,6 @@ function TVTimePickerOverlay({
                   <FocusablePressable
                     style={[styles.timePickerItem, selMin === m && styles.timePickerItemSel]}
                     focusedStyle={styles.tvFocused}
-                    hasTVPreferredFocus={m === 0}
                     onFocus={() => setSelMin(m)}
                     onPress={() => setSelMin(m)}
                   >

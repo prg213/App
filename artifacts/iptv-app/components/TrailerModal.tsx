@@ -208,6 +208,11 @@ export function TrailerModal({ videoIds, onClose }: Props) {
     };
   }, []);
 
+  // TV: ref to the close button — focused via Modal onShow instead of
+  // hasTVPreferredFocus which re-fires requestFocus on every re-render
+  // (loading state, webview events, idx changes all trigger re-renders).
+  const closeBtnRef = useRef<View>(null);
+
   const handleUnmuteTap = () => {
     if (unmuteTimer.current) clearTimeout(unmuteTimer.current);
     webviewRef.current?.postMessage(JSON.stringify({ cmd: 'unmute' }));
@@ -268,12 +273,17 @@ export function TrailerModal({ videoIds, onClose }: Props) {
       animationType="slide"
       onRequestClose={onClose}
       statusBarTranslucent
+      onShow={() => {
+        // TV: focus the close button on modal open — avoids hasTVPreferredFocus
+        // races when loading state, idx, or unmute visibility change mid-session.
+        if (Platform.isTV) setTimeout(() => (closeBtnRef.current as any)?.focus?.(), 80);
+      }}
     >
       <View style={[styles.container, { paddingTop: insets.top }]}>
         {/* ── Header ── */}
         <View style={styles.header}>
           <Text style={styles.title}>Trailer</Text>
-          <FocusablePressable style={styles.closeBtn} onPress={onClose} hitSlop={12} hasTVPreferredFocus={Platform.isTV}>
+          <FocusablePressable ref={closeBtnRef} style={styles.closeBtn} onPress={onClose} hitSlop={12}>
             <Text style={styles.closeTxt}>✕</Text>
           </FocusablePressable>
         </View>

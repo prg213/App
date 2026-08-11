@@ -166,6 +166,14 @@ export default function SettingsScreen() {
   const leadTimeRowRef = useRef<View>(null);
   const ratingRowRef = useRef<View>(null);
   const setPinRowRef = useRef<View>(null);
+  // TV: ref to the initially-focused item in each picker sheet.
+  // Set on the currently-selected (or first) row, then called in Modal onShow.
+  // Replaces hasTVPreferredFocus which re-fires requestFocus on every re-render
+  // and causes focus-racing on Fire OS.
+  const firstAudioOptRef  = useRef<View>(null);
+  const firstSubOptRef    = useRef<View>(null);
+  const firstLeadOptRef   = useRef<View>(null);
+  const firstRatingOptRef = useRef<View>(null);
 
   // TV: focus the first action row (Refresh All Content) whenever the Settings
   // tab becomes active.  Replaces hasTVPreferredFocus to avoid Fire OS re-render
@@ -761,6 +769,9 @@ export default function SettingsScreen() {
         visible={showAudioLangSheet}
         transparent
         animationType="slide"
+        onShow={() => {
+          if (Platform.isTV) setTimeout(() => (firstAudioOptRef.current as any)?.focus?.(), 80);
+        }}
         onRequestClose={() => setShowAudioLangSheet(false)}
       >
         {/* focusable={false}: BACK closes via onRequestClose; this prevents the
@@ -776,7 +787,7 @@ export default function SettingsScreen() {
           {AUDIO_LANG_OPTIONS.map((opt, index) => (
             <FocusablePressable
               key={opt.value}
-              hasTVPreferredFocus={Platform.isTV && (prefAudioLang ? opt.value === prefAudioLang : index === 0)}
+              ref={Platform.isTV && (prefAudioLang ? opt.value === prefAudioLang : index === 0) ? firstAudioOptRef : undefined}
               style={[styles.sheetRow, { borderBottomColor: colors.border }]}
               onPress={async () => {
                 Haptics.selectionAsync();
@@ -797,6 +808,9 @@ export default function SettingsScreen() {
         visible={showSubtitleLangSheet}
         transparent
         animationType="slide"
+        onShow={() => {
+          if (Platform.isTV) setTimeout(() => (firstSubOptRef.current as any)?.focus?.(), 80);
+        }}
         onRequestClose={() => setShowSubtitleLangSheet(false)}
       >
         <Pressable
@@ -810,7 +824,7 @@ export default function SettingsScreen() {
           {LANG_OPTIONS.map((opt, index) => (
             <FocusablePressable
               key={opt.value}
-              hasTVPreferredFocus={Platform.isTV && (prefSubtitleLang ? opt.value === prefSubtitleLang : index === 0)}
+              ref={Platform.isTV && (prefSubtitleLang ? opt.value === prefSubtitleLang : index === 0) ? firstSubOptRef : undefined}
               style={[styles.sheetRow, { borderBottomColor: colors.border }]}
               onPress={async () => {
                 Haptics.selectionAsync();
@@ -831,6 +845,9 @@ export default function SettingsScreen() {
         visible={showLeadTimeSheet}
         transparent
         animationType="slide"
+        onShow={() => {
+          if (Platform.isTV) setTimeout(() => (firstLeadOptRef.current as any)?.focus?.(), 80);
+        }}
         onRequestClose={() => setShowLeadTimeSheet(false)}
       >
         <Pressable
@@ -844,7 +861,7 @@ export default function SettingsScreen() {
           {LEAD_TIME_OPTIONS.map((opt) => (
             <FocusablePressable
               key={opt.value}
-              hasTVPreferredFocus={Platform.isTV && opt.value === reminderLeadMins}
+              ref={Platform.isTV && opt.value === reminderLeadMins ? firstLeadOptRef : undefined}
               style={[styles.sheetRow, { borderBottomColor: colors.border }]}
               onPress={() => handleLeadTimeSelect(opt.value)}
             >
@@ -860,6 +877,9 @@ export default function SettingsScreen() {
         visible={showRatingSheet}
         transparent
         animationType="slide"
+        onShow={() => {
+          if (Platform.isTV) setTimeout(() => (firstRatingOptRef.current as any)?.focus?.(), 80);
+        }}
         onRequestClose={() => setShowRatingSheet(false)}
       >
         <Pressable
@@ -873,7 +893,7 @@ export default function SettingsScreen() {
           {RATING_OPTIONS.map((opt) => (
             <FocusablePressable
               key={opt.value}
-              hasTVPreferredFocus={Platform.isTV && opt.value === maxRating}
+              ref={Platform.isTV && opt.value === maxRating ? firstRatingOptRef : undefined}
               style={[styles.sheetRow, { borderBottomColor: colors.border }]}
               onPress={() => handleRatingPress(opt.value)}
             >

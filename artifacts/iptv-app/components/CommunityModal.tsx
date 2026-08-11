@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Modal,
@@ -27,6 +27,8 @@ interface Props {
 export function CommunityModal({ visible, onClose }: Props) {
   const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(true);
+  // TV: close button ref for imperative onShow focus (replaces hasTVPreferredFocus).
+  const closeBtnRef = useRef<View>(null);
 
   return (
     <Modal
@@ -34,18 +36,21 @@ export function CommunityModal({ visible, onClose }: Props) {
       animationType="slide"
       onRequestClose={onClose}
       statusBarTranslucent
+      onShow={() => {
+        // TV: focus close button on open — avoids hasTVPreferredFocus races
+        // when the loading state changes while the modal is visible.
+        if (Platform.isTV) setTimeout(() => (closeBtnRef.current as any)?.focus?.(), 80);
+      }}
     >
       <View style={[styles.container, { paddingTop: insets.top }]}>
         {/* ── Header ── */}
         <View style={styles.header}>
           <Text style={styles.title}>💬 Community</Text>
-          {/* FocusablePressable + hasTVPreferredFocus so the Fire TV remote
-              lands on the close button immediately when the modal opens */}
           <FocusablePressable
+            ref={closeBtnRef}
             style={styles.closeBtn}
             onPress={onClose}
             hitSlop={12}
-            hasTVPreferredFocus={Platform.isTV}
           >
             <Text style={styles.closeTxt}>✕</Text>
           </FocusablePressable>

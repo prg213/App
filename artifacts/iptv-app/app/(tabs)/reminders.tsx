@@ -100,6 +100,10 @@ function RescheduleModal({
   onClose: () => void;
   onSelect: (leadMins: number) => void;
 }) {
+  // Declared before the early return to satisfy Rules of Hooks.
+  // TV: first option gets focus via onShow instead of hasTVPreferredFocus.
+  const firstOptRef = React.useRef<View>(null);
+
   if (!reminder) return null;
   const currentLeadMins = reminder.leadMins ?? null;
   return (
@@ -107,6 +111,11 @@ function RescheduleModal({
       visible={visible}
       transparent
       animationType="fade"
+      onShow={() => {
+        // TV: move D-pad focus into the list on open so the user doesn't
+        // have to home in from whatever was focused behind the modal.
+        if (Platform.isTV) setTimeout(() => (firstOptRef.current as any)?.focus?.(), 80);
+      }}
       onRequestClose={onClose}
     >
       {/* focusable={false} on both wrappers so D-pad goes straight to the
@@ -120,11 +129,12 @@ function RescheduleModal({
             {reminder.programTitle}
           </Text>
           <View style={[styles.modalDivider, { backgroundColor: colors.border }]} />
-          {LEAD_OPTIONS.map((opt) => {
+          {LEAD_OPTIONS.map((opt, idx) => {
             const isCurrent = currentLeadMins === opt.value;
             return (
               <FocusablePressable
                 key={opt.value}
+                ref={idx === 0 ? firstOptRef : undefined}
                 style={[
                   styles.modalOption,
                   isCurrent && { backgroundColor: colors.secondary },
