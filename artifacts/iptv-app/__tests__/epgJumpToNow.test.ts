@@ -490,3 +490,108 @@ describe('jumpToNowRef lifecycle simulation (runtime behaviour)', () => {
     expect(jumpToNow).not.toHaveBeenCalled();
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// #323. jumpToNow gracefully handles a channel with no live programme
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('jumpToNowRef — graceful no-programme handling (#323)', () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+
+  it('does not call scrollToIndex when initialIdx is undefined', () => {
+    const jumpToNowRef = makeRef<(() => void) | null>(null);
+    const scrollMock   = jest.fn();
+    const focusMock    = jest.fn();
+
+    // Mount row with no live programme (undefined initialIdx)
+    runJumpToNowPopulateEffect(jumpToNowRef, undefined, scrollMock, focusMock);
+
+    // The callback itself is registered even when there is no live programme
+    expect(jumpToNowRef.current).not.toBeNull();
+
+    // Invoke jumpToNow — the guard `if (initialIdx == null) return` must prevent a scroll
+    jumpToNowRef.current!();
+    jest.runAllTimers();
+
+    expect(scrollMock).not.toHaveBeenCalled();
+    expect(focusMock).not.toHaveBeenCalled();
+  });
+
+  it('short Play/Pause press does not throw when no live programme exists', () => {
+    const jumpToNowRef = makeRef<(() => void) | null>(null);
+    const scrollMock   = jest.fn();
+    const focusMock    = jest.fn();
+
+    runJumpToNowPopulateEffect(jumpToNowRef, undefined, scrollMock, focusMock);
+
+    const selectedRef   = makeRef<unknown>(null);
+    const showPickerRef = makeRef<boolean>(false);
+    const jumpToNow     = () => { jumpToNowRef.current?.(); };
+    const openPicker    = jest.fn();
+    const sim = makeHWKeyEventSimulator(selectedRef, showPickerRef, true, jumpToNow, openPicker);
+
+    expect(() => {
+      sim({ eventType: 'playPause', eventKeyAction: 0 });
+      jest.advanceTimersByTime(200);
+      sim({ eventType: 'playPause', eventKeyAction: 1 });
+      jest.runAllTimers();
+    }).not.toThrow();
+
+    expect(scrollMock).not.toHaveBeenCalled();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// #324. jumpToNow scrolls to the correct position after today→future→today
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('jumpToNowRef — correct position after day navigation (#324)', () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+
+  it('scrolls to today\'s live programme after today → tomorrow → today navigation', () => {
+    const jumpToNowRef = makeRef<(() => void) | null>(null);
+    const todayScroll  = jest.fn();
+    const todayFocus   = jest.fn();
+
+    // Today: live programme at index 5
+    const cleanupToday = runJumpToNowPopulateEffect(jumpToNowRef, 5, todayScroll, todayFocus);
+    expect(jumpToNowRef.current).not.toBeNull();
+
+    // Switch to tomorrow: today's row unmounts → ref is nulled by cleanup
+    cleanupToday();
+    expect(jumpToNowRef.current).toBeNull();
+
+    // Tomorrow's first row mounts: no live programme for that day
+    const tomorrowScroll  = jest.fn();
+    const tomorrowFocus   = jest.fn();
+    const cleanupTomorrow = runJumpToNowPopulateEffect(jumpToNowRef, undefined, tomorrowScroll, tomorrowFocus);
+
+    // Return to today: tomorrow's row unmounts → ref nulled again
+    cleanupTomorrow();
+    expect(jumpToNowRef.current).toBeNull();
+
+    // Today's first row re-mounts with today's index
+    const todayScroll2 = jest.fn();
+    const todayFocus2  = jest.fn();
+    runJumpToNowPopulateEffect(jumpToNowRef, 5, todayScroll2, todayFocus2);
+
+    // Fire jumpToNow — must scroll to today's index (5), not tomorrow's (undefined)
+    jumpToNowRef.current!();
+    jest.runAllTimers();
+
+    expect(todayScroll2).toHaveBeenCalledWith({ index: 5, animated: true, viewPosition: 0 });
+    expect(tomorrowScroll).not.toHaveBeenCalled();
+    expect(todayFocus2).toHaveBeenCalledTimes(1);
+  });
+
+  it('FullGuide jumpToNow defers the callback after a day-switch (≥ 200 ms)', () => {
+    // Source-level: confirm the setTimeout delay is ≥ 200 ms so newly-mounted
+    // TVEpgRow effects have time to run before the jump fires.
+    const match = src.match(/setTimeout\s*\([^,]+jumpToNowCallbackRef\.current\?\.\(\)[^,]*,\s*(\d+)\s*\)/);
+    expect(match).not.toBeNull();
+    const delay = parseInt(match![1], 10);
+    expect(delay).toBeGreaterThanOrEqual(200);
+  });
+});

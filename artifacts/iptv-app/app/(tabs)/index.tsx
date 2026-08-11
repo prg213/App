@@ -836,6 +836,9 @@ export default function LiveTVScreen() {
 
   // ── Mini-guide reminder state ─────────────────────────────────────────────
   const [miniReminderIds, setMiniReminderIds] = useState<Set<string>>(new Set());
+  // #249: track which EPG future row currently has D-pad focus so the bell icon
+  // brightens alongside the cyan focus ring (TV only; no-op on touch).
+  const [focusedProgIdx, setFocusedProgIdx] = useState<number | null>(null);
 
   // Reload which programs have reminders whenever the EPG list changes or the
   // screen comes back into focus (e.g. after visiting the Reminders tab).
@@ -1545,6 +1548,8 @@ export default function LiveTVScreen() {
                         isCurrent && { backgroundColor: 'rgba(59,130,246,0.08)' },
                       ]}
                       focusedStyle={isFuture ? styles.tvFocused : {}}
+                      onFocus={Platform.isTV && isFuture ? () => setFocusedProgIdx(i) : undefined}
+                      onBlur={Platform.isTV && isFuture ? () => setFocusedProgIdx(null) : undefined}
                     >
                       <View style={styles.epgTimeCol}>
                         <Text style={[styles.epgTime, { color: isCurrent ? '#3B82F6' : colors.mutedForeground }]}>
@@ -1587,7 +1592,13 @@ export default function LiveTVScreen() {
                         ) : null}
                       </View>
                       {isFuture && (
-                        <Text style={[styles.epgBell, { color: hasReminder ? '#3B82F6' : colors.mutedForeground }]}>
+                        <Text style={[styles.epgBell, {
+                          // #249: brighten bell when this row is D-pad focused so it
+                          // stays readable against the cyan focus ring on Fire OS.
+                          color: (Platform.isTV && focusedProgIdx === i)
+                            ? '#FFFFFF'
+                            : (hasReminder ? '#3B82F6' : colors.mutedForeground),
+                        }]}>
                           {hasReminder ? '🔔' : '🔕'}
                         </Text>
                       )}
