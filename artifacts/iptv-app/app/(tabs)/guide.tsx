@@ -915,6 +915,10 @@ function FullGuide({
   // Ref to the programme cell that was last pressed — written by each TVEpgRow
   // on programme-cell press, read on ProgramModal close to restore D-pad focus.
   const lastFocusedProgViewRef = useRef<View | null>(null);
+  // Separate ref that persists the same View across a player navigation so that
+  // D-pad focus can be restored when the user presses Back from the player and
+  // the guide tab regains focus.  Cleared in the useFocusEffect once consumed.
+  const lastWatchedProgViewRef = useRef<View | null>(null);
   // ── Jump-to-now hardware shortcut (Play/Pause key on Fire TV) ────────────
   // The first TVEpgRow populates this ref with a fn that scrolls its horizontal
   // FlatList to the current programme and focuses that cell.  FullGuide calls
@@ -963,6 +967,24 @@ function FullGuide({
     const timer = setTimeout(() => { firstChannelRef.current?.focus(); }, 100);
     return () => clearTimeout(timer);
   }, [selectedCat]);
+
+  // Restore D-pad focus to the programme cell the user was watching when they
+  // press Back from the player and the guide tab regains focus.
+  // lastWatchedProgViewRef is set in onWatch before router.push('/player').
+  // Both the outer and inner FlatLists use removeClippedSubviews={false}, so
+  // the cell View node remains mounted during the navigation and the ref stays valid.
+  useFocusEffect(
+    useCallback(() => {
+      if (!Platform.isTV) return;
+      const savedView = lastWatchedProgViewRef.current;
+      if (!savedView) return;
+      lastWatchedProgViewRef.current = null;
+      const timer = setTimeout(() => {
+        savedView.focus();
+      }, 150);
+      return () => clearTimeout(timer);
+    }, []),
+  );
 
   // Debounce chFilter so rapid keystrokes don't thrash visibleChannels useMemo
   useEffect(() => {
@@ -1503,6 +1525,9 @@ function FullGuide({
               channelId: ch.id,
             }));
             const idx = channels.findIndex((ch) => ch.id === selected!.channel.id);
+            // Persist the programme cell View so we can re-focus it when the
+            // user presses Back from the player and the guide tab regains focus.
+            lastWatchedProgViewRef.current = lastFocusedProgViewRef.current;
             setSelected(null);
             router.push({
               pathname: '/player',
