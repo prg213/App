@@ -981,6 +981,12 @@ function CategoryGrid({
   // (and reciprocally updates those neighbours to point back at this card).
   const wireCard = useCallback((index: number) => {
     if (!Platform.isTV) return;
+    // numCols < 2 means every card is simultaneously isFirstInRow AND
+    // isLastInRow (col = index % 1 = 0 always).  Wiring in that state would
+    // chain every card right→right instead of forming a grid.  The native TV
+    // focus engine already handles single-column vertical lists correctly, so
+    // skip cross-row wiring entirely when there is only one column.
+    if (numCols < 2) return;
     const total = categoryIds.length;
     const col   = index % numCols;
     const isFirstInRow = col === 0;

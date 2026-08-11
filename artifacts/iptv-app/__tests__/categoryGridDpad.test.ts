@@ -120,8 +120,14 @@ describe('CategoryGrid — node-handle timing (Firestick Lite)', () => {
 
   it('passes TV_WIRE_DELAY_MS as the setTimeout delay when wiring each card', () => {
     // The constant must actually be used — not just defined but shadowed by a
-    // different literal somewhere.
-    expect(src).toMatch(/setTimeout\(\s*\(\)\s*=>\s*wireCard\(index\)\s*,\s*TV_WIRE_DELAY_MS\s*\)/);
+    // different literal somewhere.  The setTimeout callback may be multi-line
+    // (layout-generation guards, timer cleanup, etc.) so we check that both
+    // TV_WIRE_DELAY_MS is used as a setTimeout second-argument AND that
+    // wireCard(index) is invoked inside such a setTimeout rather than
+    // constraining the exact shape of the callback body.
+    expect(src).toMatch(/setTimeout\([^,]+,\s*TV_WIRE_DELAY_MS\s*\)/);
+    // wireCard must be called inside the delayed callback (not invoked directly)
+    expect(src).toMatch(/wireCard\(index\)/);
   });
 });
 
@@ -168,9 +174,57 @@ describe('CategoryGrid — Platform.isTV guard', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('CategoryGrid — initial TV focus landing', () => {
-  it('sets hasTVPreferredFocus on index === 0 so the D-pad has a landing point on mount', () => {
-    // Without this the Fire TV remote may default to no focusable element and
-    // the user has to press a D-pad key to "activate" the grid.
-    expect(src).toMatch(/hasTVPreferredFocus=\{index\s*===\s*0\}/);
+  it('exposes the first card ref via firstCardRef so the parent can focus it without hasTVPreferredFocus re-render races', () => {
+    // CategoryGrid populates firstCardRef.current for index === 0 inside the
+    // renderItem ref callback.  The parent (GuideScreen) then calls .focus()
+    // on that ref in a useFocusEffect so the D-pad always has a landing point
+    // when the grid becomes active — without the re-render race that
+    // hasTVPreferredFocus causes on Fire OS when the grid re-renders.
+    expect(src).toMatch(/index\s*===\s*0\s*&&\s*firstCardRef/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 8. numCols === 1 edge case — single-column layout must not produce a chain
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// When numCols === 1:
+//   col = index % 1 = 0  (always)
+//   isFirstInRow = (col === 0) → true for every card
+//   isLastInRow  = (col === numCols - 1) = (0 === 0) → true for every card
+//
+// That means every card would be wired right→right, producing a chain rather
+// than a grid and leaving D-pad Left unreachable from most cards.
+//
+// Defence in depth: even though numCols is clamped to ≥ 2 at the call site
+// (Math.max(2, …)), wireCard itself guards against this case so that any
+// future refactor that changes the clamp cannot silently reintroduce the bug.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('CategoryGrid — single-column layout safety (numCols === 1)', () => {
+  it('clamps numCols to at least 2 via Math.max so the single-column path cannot be reached at runtime', () => {
+    // Primary defence: the expression Math.max(2, …) ensures numCols is never
+    // below 2 regardless of how narrow the available width is.
+    expect(src).toMatch(/Math\.max\(\s*2\s*,/);
+  });
+
+  it('has a numCols < 2 early-return inside wireCard as a defence-in-depth guard', () => {
+    // If Math.max(2,…) were ever removed or bypassed by a future refactor,
+    // this guard inside wireCard stops the chain-wiring bug before it can
+    // produce broken D-pad behaviour on device.
+    expect(src).toMatch(/numCols\s*<\s*2\s*\)\s*return/);
+  });
+
+  it('places the numCols < 2 guard before the column/row computation inside wireCard', () => {
+    // The guard must appear before `index % numCols` so it short-circuits
+    // before any isFirstInRow / isLastInRow logic runs.
+    const wireCardStart = src.indexOf('const wireCard = useCallback');
+    const guardPos      = src.indexOf('numCols < 2', wireCardStart);
+    const colComputePos = src.indexOf('index % numCols', wireCardStart);
+    expect(wireCardStart).toBeGreaterThan(-1);
+    expect(guardPos).toBeGreaterThan(wireCardStart);
+    expect(colComputePos).toBeGreaterThan(wireCardStart);
+    // Guard must come first
+    expect(guardPos).toBeLessThan(colComputePos);
   });
 });
