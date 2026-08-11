@@ -1,4 +1,5 @@
 import { FocusablePressable } from '@/components/FocusablePressable';
+import { TVTextInput } from '@/components/TVTextInput';
 import React, {
   useCallback,
   useEffect,
@@ -1158,9 +1159,13 @@ export default function LiveTVScreen() {
         <Text style={[styles.panelHeader, { color: colors.mutedForeground, borderBottomColor: colors.border }]}>
           CATEGORIES
         </Text>
-        {/* Category search box */}
+        {/* Category search box
+            TV: TVTextInput wraps the field in a FocusablePressable so D-pad
+            focus lands on it and OK opens the system keyboard.  Plain TextInput
+            is invisible to D-pad navigation on Fire OS (requestFocus places the
+            cursor but never opens the keyboard without the explicit wrapper). */}
         <View style={[styles.catSearchWrap, { borderBottomColor: colors.border }]}>
-          <TextInput
+          <TVTextInput
             focusable
             style={[styles.catSearchInput, { color: colors.foreground, backgroundColor: colors.secondary }]}
             placeholder="Search…"
@@ -1169,6 +1174,7 @@ export default function LiveTVScreen() {
             onChangeText={setCatSearch}
             clearButtonMode="while-editing"
             returnKeyType="search"
+            onSubmitEditing={() => Keyboard.dismiss()}
           />
         </View>
         <FlatList
@@ -1231,10 +1237,11 @@ export default function LiveTVScreen() {
           )}
         </View>
 
-        {/* Channel filter input — hidden during drag-reorder */}
+        {/* Channel filter input — hidden during drag-reorder
+            TV: same TVTextInput pattern as the category search above. */}
         {!isReordering && (
           <View style={[styles.catSearchWrap, { borderBottomColor: colors.border }]}>
-            <TextInput
+            <TVTextInput
               focusable
               style={[styles.catSearchInput, { color: colors.foreground, backgroundColor: colors.secondary }]}
               placeholder="Filter channels…"
