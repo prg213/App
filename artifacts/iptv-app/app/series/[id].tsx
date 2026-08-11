@@ -281,11 +281,13 @@ export default function SeriesDetailScreen() {
   };
 
   const ratingNum = params.rating ? parseFloat(params.rating) : 0;
-  const director = params.director || data?.info?.director || '';
-  const cast = params.cast || data?.info?.cast || '';
-  const plot = params.plot || data?.info?.plot || '';
-  const genre = params.genre || data?.info?.genre || '';
-  const releaseDate = data?.info?.releaseDate || '';
+  // #231: data.info is not in the query return type; the API fields are mapped
+  // onto the Series object so data.series.X is the correct accessor.
+  const director = params.director || data?.series?.director || '';
+  const cast = params.cast || data?.series?.cast || '';
+  const plot = params.plot || data?.series?.plot || '';
+  const genre = params.genre || data?.series?.genre || '';
+  const releaseDate = data?.series?.releaseDate || '';
   const genreDisplay = genre ? genre.split(',').slice(0, 2).map((g) => g.trim()).join(' / ') : '';
 
   // #165: Fetch TMDB poster as fallback only when needed, and store it in a ref

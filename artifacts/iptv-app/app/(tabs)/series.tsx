@@ -65,18 +65,34 @@ export default function SeriesScreen() {
         const merged = mergeFavourites(remote.series, local);
         await StorageService.saveSeriesFavorites(merged);
         setFavSeries(merged);
-        // #21: push back any items added while offline
+        // #21: push back any items added while offline (local > remote after merge).
         if (merged.length > remote.series.length) {
-          pushRemoteSeries(deviceMac, merged).then((ok) => {
-            if (!ok) pendingFavPushRef.current = merged;
+          pushRemoteSeries(deviceMac, merged).then(async (ok) => {
+            if (!ok) {
+              pendingFavPushRef.current = merged;
+              await StorageService.setPendingSeriesPush(merged); // persist across restarts
+            } else {
+              pendingFavPushRef.current = null;
+              await StorageService.setPendingSeriesPush(null);   // clear stale entry
+            }
+          });
+        } else {
+          // Local and remote are in sync — clear any stale persisted payload.
+          StorageService.setPendingSeriesPush(null).catch(() => {});
+        }
+      } else {
+        // No remote connectivity — load the persisted queue and retry.
+        const pending = pendingFavPushRef.current
+          ?? (await StorageService.getPendingSeriesPush());
+        if (pending) {
+          pendingFavPushRef.current = pending;
+          pushRemoteSeries(deviceMac, pending).then(async (ok) => {
+            if (ok) {
+              pendingFavPushRef.current = null;
+              await StorageService.setPendingSeriesPush(null);
+            }
           });
         }
-      } else if (pendingFavPushRef.current) {
-        // Retry previously-queued push now that we have connectivity
-        const toRetry = pendingFavPushRef.current;
-        pushRemoteSeries(deviceMac, toRetry).then((ok) => {
-          if (ok) pendingFavPushRef.current = null;
-        });
       }
       setFavSyncState('synced');
       setTimeout(() => setFavSyncState('idle'), 2000);
@@ -311,8 +327,8 @@ export default function SeriesScreen() {
 
   const handleRefresh = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    if (isFavsSelected && credentials?.deviceMac) {
-      fetchRemoteFavourites(credentials.deviceMac).then(async (remote) => {
+    if (isFavsSelected && deviceMac) {
+      fetchRemoteFavourites(deviceMac).then(async (remote) => {
         if (remote?.series?.length) {
           const local = await StorageService.getSeriesFavorites();
           const merged = mergeFavourites(remote.series, local);

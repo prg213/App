@@ -1097,3 +1097,160 @@ describe('AppContextProvider — startup hiccup + recovery does not poison the f
     expect(getIsActivated()).toBe(false); // logged out
   });
 });
+
+// ── #279: startup hiccup + interval-path counter ───────────────────────────────
+//
+// When startup returns 'inactive' the consecutiveMacFailRef is seeded at 1.
+// The FIRST interval tick that returns 'active' must reset the counter to 0.
+// After the reset, exactly 5 fresh interval failures are still required to
+// trigger doLogout — proving the startup hiccup did not shorten the threshold.
+
+describe('AppContextProvider — startup hiccup does not shorten interval failure threshold (#279)', () => {
+  const FAKE_CREDS  = JSON.stringify({ url: 'http://example.com', username: 'u', password: 'p' });
+  const INTERVAL_MS = 5 * 60_000;
+
+  let currentRenderer: ReturnType<typeof import('react-test-renderer').create> | null = null;
+
+  beforeEach(() => { jest.useFakeTimers(); });
+  afterEach(async () => {
+    if (currentRenderer) {
+      await act(async () => { currentRenderer!.unmount(); });
+      currentRenderer = null;
+    }
+    jest.useRealTimers();
+  });
+
+  test('interval success after startup failure resets counter — 5 fresh failures are still needed to logout', async () => {
+    const inactive = { ok: true, json: jest.fn().mockResolvedValue({ status: 'inactive' }) };
+    const active   = { ok: true, json: jest.fn().mockResolvedValue({ status: 'active'   }) };
+
+    // Startup: returns inactive — counter = 1, user stays in.
+    (SecureStore.getItemAsync as jest.Mock).mockResolvedValueOnce(FAKE_CREDS);
+    (global.fetch as jest.Mock).mockResolvedValueOnce(inactive);
+    const { renderer, getIsActivated } = await renderProvider();
+    currentRenderer = renderer;
+    expect(getIsActivated()).toBe(true); // counter = 1, threshold not reached
+
+    // Interval tick 1: active → counter resets to 0.
+    (global.fetch as jest.Mock).mockResolvedValueOnce(active);
+    await act(async () => { await jest.advanceTimersByTimeAsync(INTERVAL_MS); });
+    await act(async () => {});
+    expect(getIsActivated()).toBe(true); // counter = 0
+
+    // Interval ticks 2–5: inactive → counter climbs 1 → 4.
+    // User must remain logged in for all four — the reset must hold.
+    for (let i = 0; i < 4; i++) {
+      (global.fetch as jest.Mock).mockResolvedValueOnce(inactive);
+      await act(async () => { await jest.advanceTimersByTimeAsync(INTERVAL_MS); });
+      await act(async () => {});
+    }
+    expect(getIsActivated()).toBe(true); // counter = 4, threshold not reached
+
+    // Interval tick 6: inactive → counter = 5 → doLogout.
+    (global.fetch as jest.Mock).mockResolvedValueOnce(inactive);
+    await act(async () => { await jest.advanceTimersByTimeAsync(INTERVAL_MS); });
+    await act(async () => {});
+    expect(getIsActivated()).toBe(false); // logged out
+  });
+});
+
+// ── #298: AppState 'inactive' pauses the interval ─────────────────────────────
+//
+// The existing #278 tests confirm that 'background' stops the MAC-check
+// interval.  This test confirms that 'inactive' (incoming call, notification
+// pull-down, etc.) has the same effect — the interval must not fire while
+// the app is partially obscured.
+
+describe('AppContextProvider — AppState inactive pauses the MAC-check interval (#298)', () => {
+  const FAKE_CREDS  = JSON.stringify({ url: 'http://example.com', username: 'u', password: 'p' });
+  const INTERVAL_MS = 5 * 60_000;
+
+  let currentRenderer: ReturnType<typeof import('react-test-renderer').create> | null = null;
+
+  beforeEach(() => { jest.useFakeTimers(); });
+  afterEach(async () => {
+    if (currentRenderer) {
+      await act(async () => { currentRenderer!.unmount(); });
+      currentRenderer = null;
+    }
+    jest.useRealTimers();
+  });
+
+  test('AppState inactive stops the interval — no MAC fetch fires while the app is inactive', async () => {
+    (SecureStore.getItemAsync as jest.Mock).mockResolvedValueOnce(FAKE_CREDS);
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true, json: jest.fn().mockResolvedValue({ status: 'active' }),
+    });
+    const { renderer } = await renderProvider();
+    currentRenderer = renderer;
+
+    // Startup complete; interval is running.
+    const fetchesAfterStartup = (global.fetch as jest.Mock).mock.calls.length;
+
+    // App transitions to 'inactive' (e.g. incoming phone call overlay).
+    await act(async () => { await capturedAppStateListener!('inactive'); });
+    await act(async () => {});
+
+    // Advance the clock past one full interval period.
+    await jest.advanceTimersByTimeAsync(INTERVAL_MS);
+    await act(async () => {});
+
+    // No extra fetch must have fired — the interval is paused.
+    expect((global.fetch as jest.Mock).mock.calls.length).toBe(fetchesAfterStartup);
+  });
+});
+
+// ── #299: interval stays permanently off after logout ─────────────────────────
+//
+// After doLogout the isActivatedRef is false and deviceMacRef is empty.
+// Re-foregrounding the app must NOT restart the MAC-check interval, and
+// advancing the clock must NOT trigger any additional fetch calls.
+
+describe('AppContextProvider — interval stays off permanently after logout (#299)', () => {
+  const FAKE_CREDS  = JSON.stringify({ url: 'http://example.com', username: 'u', password: 'p' });
+  const INTERVAL_MS = 5 * 60_000;
+
+  let currentRenderer: ReturnType<typeof import('react-test-renderer').create> | null = null;
+
+  beforeEach(() => { jest.useFakeTimers(); });
+  afterEach(async () => {
+    if (currentRenderer) {
+      await act(async () => { currentRenderer!.unmount(); });
+      currentRenderer = null;
+    }
+    jest.useRealTimers();
+  });
+
+  test('foregrounding after logout does not restart the MAC-check interval', async () => {
+    const inactive = { ok: true, json: jest.fn().mockResolvedValue({ status: 'inactive' }) };
+
+    // Startup succeeds → interval running.
+    (SecureStore.getItemAsync as jest.Mock).mockResolvedValueOnce(FAKE_CREDS);
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true, json: jest.fn().mockResolvedValue({ status: 'active' }),
+    });
+    const { renderer, getIsActivated } = await renderProvider();
+    currentRenderer = renderer;
+
+    // Drive 5 consecutive foreground-check failures to trigger doLogout.
+    for (let i = 0; i < 5; i++) {
+      (global.fetch as jest.Mock).mockResolvedValueOnce(inactive);
+      await act(async () => { await capturedAppStateListener!('active'); });
+      await act(async () => {});
+    }
+    expect(getIsActivated()).toBe(false); // confirmed logged out
+
+    const fetchCountAfterLogout = (global.fetch as jest.Mock).mock.calls.length;
+
+    // App re-foregrounds — the AppState 'active' handler must be a no-op
+    // because isActivated is false (no credentials, no MAC).
+    await act(async () => { await capturedAppStateListener!('active'); });
+    await act(async () => {});
+
+    // Advance past one full interval period — interval must NOT fire.
+    await jest.advanceTimersByTimeAsync(INTERVAL_MS);
+    await act(async () => {});
+
+    expect((global.fetch as jest.Mock).mock.calls.length).toBe(fetchCountAfterLogout);
+  });
+});

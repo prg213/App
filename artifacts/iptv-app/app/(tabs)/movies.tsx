@@ -68,18 +68,35 @@ export default function MoviesScreen() {
         const merged = mergeFavourites(remote.movies, local);
         await StorageService.saveMovieFavorites(merged);
         setFavMovies(merged);
-        // #21: push back any items added while offline
+        // #21: push back any items added while offline (local > remote after merge).
         if (merged.length > remote.movies.length) {
-          pushRemoteMovies(deviceMac, merged).then((ok) => {
-            if (!ok) pendingFavPushRef.current = merged;
+          pushRemoteMovies(deviceMac, merged).then(async (ok) => {
+            if (!ok) {
+              pendingFavPushRef.current = merged;
+              await StorageService.setPendingMoviesPush(merged); // persist across restarts
+            } else {
+              pendingFavPushRef.current = null;
+              await StorageService.setPendingMoviesPush(null);   // clear stale entry
+            }
+          });
+        } else {
+          // Local and remote are in sync — clear any stale persisted payload.
+          StorageService.setPendingMoviesPush(null).catch(() => {});
+        }
+      } else {
+        // No remote connectivity — load the persisted queue (survives app restarts)
+        // and retry the push.  If still offline the queue stays intact for next mount.
+        const pending = pendingFavPushRef.current
+          ?? (await StorageService.getPendingMoviesPush());
+        if (pending) {
+          pendingFavPushRef.current = pending;
+          pushRemoteMovies(deviceMac, pending).then(async (ok) => {
+            if (ok) {
+              pendingFavPushRef.current = null;
+              await StorageService.setPendingMoviesPush(null);
+            }
           });
         }
-      } else if (pendingFavPushRef.current) {
-        // Retry previously-queued push now that we have connectivity
-        const toRetry = pendingFavPushRef.current;
-        pushRemoteMovies(deviceMac, toRetry).then((ok) => {
-          if (ok) pendingFavPushRef.current = null;
-        });
       }
       setFavSyncState('synced');
       setTimeout(() => setFavSyncState('idle'), 2000);
@@ -319,9 +336,9 @@ export default function MoviesScreen() {
 
   const handleRefresh = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    if (isFavsSelected && credentials?.deviceMac) {
+    if (isFavsSelected && deviceMac) {
       // Re-sync remote favourites when the user pull-to-refreshes in Favs mode
-      fetchRemoteFavourites(credentials.deviceMac).then(async (remote) => {
+      fetchRemoteFavourites(deviceMac).then(async (remote) => {
         if (remote?.movies?.length) {
           const local = await StorageService.getMovieFavorites();
           const merged = mergeFavourites(remote.movies, local);

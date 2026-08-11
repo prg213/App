@@ -180,7 +180,14 @@ const MediaResultRow = React.memo(function MediaResultRow({
         <FocusablePressable
           style={[styles.trailerPill, !isOnline && styles.trailerPillOffline]}
           focusable={false}
-          onPress={(e) => { (e as any).stopPropagation?.(); onTrailer(); }}
+          onPress={(e) => {
+            // #129: visual guard already dims to "✕ Offline" — also prevent
+            // the tap handler from firing so an offline-only trailer fetch
+            // isn't triggered when there is no connectivity.
+            if (!isOnline) return;
+            (e as any).stopPropagation?.();
+            onTrailer();
+          }}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
           <Text style={[styles.trailerPillText, !isOnline && styles.trailerPillTextOffline]}>

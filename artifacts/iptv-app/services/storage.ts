@@ -37,6 +37,10 @@ export const KEYS = {
   // #267: persisted consecutive MAC-check failure count so force-quitting and
   // relaunching cannot indefinitely reset the deactivation streak to 0.
   STARTUP_FAIL_COUNT: 'sv_startup_fail_count',
+  // #21: pending remote-fav push payloads that survived an app restart.
+  // Cleared on logout (they are tied to the previous device MAC).
+  PENDING_PUSH_MOVIES: 'sv_pending_push_movies',
+  PENDING_PUSH_SERIES: 'sv_pending_push_series',
 };
 
 export const StorageService = {
@@ -78,7 +82,9 @@ export const StorageService = {
       KEYS.PREF_SEARCH_QUERY, // #122: clear saved search query on logout
       KEYS.BACKFILL_TS,
       KEYS.RECENT_SEARCHES,  // #122: also clear recent search history on logout
-      KEYS.STARTUP_FAIL_COUNT, // #267: reset persisted failure streak on logout
+      KEYS.STARTUP_FAIL_COUNT,     // #267: reset persisted failure streak on logout
+      KEYS.PENDING_PUSH_MOVIES,    // #21: pending push tied to previous MAC
+      KEYS.PENDING_PUSH_SERIES,    // #21
       // NOTE: LOGOUT_REASON is intentionally excluded — it must survive logout
       // so the activation screen can display a one-time explanation banner.
     ]);
@@ -191,6 +197,41 @@ export const StorageService = {
     const updated = [item, ...current.slice(0, idx), ...current.slice(idx + 1)];
     await AsyncStorage.setItem(KEYS.SERIES_FAVORITES, JSON.stringify(updated));
     return updated;
+  },
+
+  // ── Pending remote-fav push queue (#21) ──────────────────────────────────
+  //
+  // Persists a failed remote-push payload across app restarts so the next
+  // successful startup can retry the push without losing the queued data.
+  // Both keys are cleared in clearCredentials because the payload is tied to
+  // the device MAC of the previous session.
+
+  async getPendingMoviesPush(): Promise<FavoriteMovie[] | null> {
+    try {
+      const data = await AsyncStorage.getItem(KEYS.PENDING_PUSH_MOVIES);
+      return data ? (JSON.parse(data) as FavoriteMovie[]) : null;
+    } catch { return null; }
+  },
+  async setPendingMoviesPush(items: FavoriteMovie[] | null): Promise<void> {
+    if (items === null) {
+      await AsyncStorage.removeItem(KEYS.PENDING_PUSH_MOVIES);
+    } else {
+      await AsyncStorage.setItem(KEYS.PENDING_PUSH_MOVIES, JSON.stringify(items));
+    }
+  },
+
+  async getPendingSeriesPush(): Promise<FavoriteSeries[] | null> {
+    try {
+      const data = await AsyncStorage.getItem(KEYS.PENDING_PUSH_SERIES);
+      return data ? (JSON.parse(data) as FavoriteSeries[]) : null;
+    } catch { return null; }
+  },
+  async setPendingSeriesPush(items: FavoriteSeries[] | null): Promise<void> {
+    if (items === null) {
+      await AsyncStorage.removeItem(KEYS.PENDING_PUSH_SERIES);
+    } else {
+      await AsyncStorage.setItem(KEYS.PENDING_PUSH_SERIES, JSON.stringify(items));
+    }
   },
 
   // ── Series Favourites (AsyncStorage) ──────────────────────────────────────

@@ -120,6 +120,12 @@ export function makeStorageMock(
     getPrefSearchQuery:        jest.fn().mockResolvedValue(''),
     setPrefSearchQuery:        jest.fn().mockResolvedValue(undefined),
 
+    // ── Pending remote-fav push queue (#21) ──────────────────────────────────
+    getPendingMoviesPush:      jest.fn().mockResolvedValue(null),
+    setPendingMoviesPush:      jest.fn().mockResolvedValue(undefined),
+    getPendingSeriesPush:      jest.fn().mockResolvedValue(null),
+    setPendingSeriesPush:      jest.fn().mockResolvedValue(undefined),
+
     // ── Persisted MAC failure count (#267) ───────────────────────────────────
     getStartupFailCount:       jest.fn().mockResolvedValue(0),
     saveStartupFailCount:      jest.fn().mockResolvedValue(undefined),

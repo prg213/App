@@ -42,8 +42,9 @@ interface ParentalContextValue {
   /** Toggle a whole category in/out of the blocked list. */
   toggleBlockedCategory: (catId: string) => Promise<void>;
   /** #11: Remove any blockedCategoryIds that no longer appear in the provider's list. */
-  /** #11: Remove any blockedCategoryIds that no longer appear in the provider's list. */
   pruneBlockedCategories: (validCatIds: string[]) => Promise<void>;
+  /** #11: Remove any blockedChannelIds that no longer appear in the live channel list. */
+  pruneBlockedChannelIds: (validChannelIds: string[]) => Promise<void>;
   /** Provided by the root layout — clears credentials (logout) as the forgot-PIN escape. */
   resetAndLogout: () => void;
 }
@@ -66,6 +67,7 @@ const ParentalContext = createContext<ParentalContextValue>({
   setBlockedChannelIds: async () => {},
   toggleBlockedCategory: async () => {},
   pruneBlockedCategories: async () => {},
+  pruneBlockedChannelIds: async () => {},
   resetAndLogout: () => {},
 });
 
@@ -215,6 +217,20 @@ export function ParentalContextProvider({
     });
   }, []);
 
+  // #11: Remove blocked channel IDs that no longer exist in the provider's
+  // live channel list (e.g. after a credential change or a provider reshuffle).
+  const pruneBlockedChannelIds = useCallback(async (validChannelIds: string[]) => {
+    const validSet = new Set(validChannelIds);
+    setBlockedChannels((prev) => {
+      const pruned = prev.filter((id) => validSet.has(id));
+      if (pruned.length === prev.length) return prev; // nothing to do
+      StorageService.getParentalSettings().then((settings) =>
+        StorageService.saveParentalSettings({ ...settings, blockedChannels: pruned })
+      );
+      return pruned;
+    });
+  }, []);
+
   return (
     <ParentalContext.Provider
       value={{
@@ -235,6 +251,7 @@ export function ParentalContextProvider({
         setBlockedChannelIds,
         toggleBlockedCategory,
         pruneBlockedCategories,
+        pruneBlockedChannelIds,
         resetAndLogout: onForgotPin,
       }}
     >

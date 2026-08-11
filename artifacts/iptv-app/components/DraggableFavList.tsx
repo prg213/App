@@ -15,7 +15,7 @@
  *   />
  */
 
-import React, { useCallback, useRef } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { Platform, StyleSheet, Text, View, ScrollView } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { FocusablePressable } from '@/components/FocusablePressable';
@@ -199,6 +199,17 @@ export function DraggableFavList<T>({
   const dataRef = useRef(data);
   dataRef.current = data;
 
+  // #343: Hide the D-pad hint after the user has moved a row at least once.
+  const [hasMovedOnce, setHasMovedOnce] = useState(false);
+
+  // #344: Keep the moved row visible by scrolling the list to its new position.
+  const scrollRef = useRef<ScrollView>(null);
+  const scrollToRow = useCallback((targetIdx: number) => {
+    setTimeout(() => {
+      scrollRef.current?.scrollTo({ y: Math.max(0, targetIdx * rowHeight), animated: true });
+    }, 60);
+  }, [rowHeight]);
+
   const handleDragEnd = useCallback((fromIdx: number, toIdx: number) => {
     if (fromIdx === toIdx) return;
     const next = [...dataRef.current];
@@ -209,10 +220,20 @@ export function DraggableFavList<T>({
 
   return (
     <ScrollView
+      ref={scrollRef}
       showsVerticalScrollIndicator={false}
       // Prevent the ScrollView from intercepting the pan gesture
       scrollEnabled
     >
+      {/* #343: One-time "press ▶ to reach the move buttons" hint for TV users.
+          Disappears the moment they successfully move a row for the first time. */}
+      {Platform.isTV && !hasMovedOnce && data.length > 1 && (
+        <View style={styles.tvReorderHint}>
+          <Text style={[styles.tvReorderHintText, { color: colors.mutedForeground }]}>
+            Press ▶ on any row to reach the ▲▼ move buttons
+          </Text>
+        </View>
+      )}
       {data.map((item, index) => (
         <DraggableRow
           key={keyExtractor(item)}
@@ -223,8 +244,16 @@ export function DraggableFavList<T>({
           dragOffset={dragOffset}
           colors={colors}
           onDragEnd={handleDragEnd}
-          onMoveUp={() => handleDragEnd(index, index - 1)}
-          onMoveDown={() => handleDragEnd(index, index + 1)}
+          onMoveUp={() => {
+            handleDragEnd(index, index - 1);
+            setHasMovedOnce(true);
+            scrollToRow(index - 1); // #344
+          }}
+          onMoveDown={() => {
+            handleDragEnd(index, index + 1);
+            setHasMovedOnce(true);
+            scrollToRow(index + 1); // #344
+          }}
         >
           {renderItem(item, index)}
         </DraggableRow>
@@ -236,6 +265,16 @@ export function DraggableFavList<T>({
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
+  tvReorderHint: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    alignItems: 'center',
+  },
+  tvReorderHintText: {
+    fontSize: 11,
+    fontFamily: 'Inter_400Regular',
+    textAlign: 'center',
+  },
   rowWrap: {
     flexDirection: 'row',
     alignItems: 'stretch',
