@@ -45,10 +45,35 @@ function lruSet(cache: Map<string, string | null>, key: string, value: string | 
 function cacheGet(key: string) { return lruGet(trailerCache, key); }
 function cacheSet(key: string, value: string | null) { lruSet(trailerCache, key, value); }
 
-/** Clear the trailer and poster caches (call on logout or account switch). */
+// ── Provider-supplied series trailer URL cache (#124) ────────────────────────
+// Keyed by series streamId (string).  Populated when the series detail screen
+// resolves a trailerUrl from the Xtream API so search result rows can skip the
+// YouTube full-text search for any series the user has previously opened.
+const seriesTrailerUrlCache = new Map<string, string>();
+
+/**
+ * Store the resolved YouTube video ID for a series.
+ * Called from the series detail screen after `getXtreamSeriesInfo` resolves a
+ * provider-supplied `trailerUrl`.
+ */
+export function setSeriesTrailerUrl(seriesId: string | number, ytId: string): void {
+  seriesTrailerUrlCache.set(String(seriesId), ytId);
+}
+
+/**
+ * Look up a cached YouTube video ID for a series.
+ * Returns `undefined` on cache miss — the caller should fall back to a TMDB
+ * or YouTube search.
+ */
+export function getSeriesTrailerUrl(seriesId: string | number): string | undefined {
+  return seriesTrailerUrlCache.get(String(seriesId));
+}
+
+/** Clear the trailer, poster, and series-trailer caches (call on logout or account switch). */
 export function clearTmdbTrailerCache(): void {
   trailerCache.clear();
   posterCache.clear();
+  seriesTrailerUrlCache.clear();
 }
 
 interface TmdbSearchResult {

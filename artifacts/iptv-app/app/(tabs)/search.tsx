@@ -16,7 +16,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useFocusEffect, useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { Alert, BackHandler, DeviceEventEmitter } from 'react-native';
-import { getTmdbTrailerCandidates } from '@/services/tmdb';
+import { getTmdbTrailerCandidates, getSeriesTrailerUrl } from '@/services/tmdb';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { useIsOnline } from '@/hooks/useIsOnline';
@@ -575,6 +575,10 @@ export default function SearchScreen() {
             onTrailer={async () => {
               setTrailerLoading(true);
               try {
+                // #124: prefer the cached provider-supplied ID from a previous
+                // detail-page visit before falling back to a YouTube search.
+                const cached = getSeriesTrailerUrl(item.item.id);
+                if (cached) { setTrailerVideoIds([cached]); return; }
                 const raw = item.item.trailerUrl;
                 const ytId = raw
                   ? raw.startsWith('http')

@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { FocusablePressable } from '@/components/FocusablePressable';
 import { TrailerModal } from '@/components/TrailerModal';
-import { getTmdbTrailerCandidates, getTmdbPosterUrl } from '@/services/tmdb';
+import { getTmdbTrailerCandidates, getTmdbPosterUrl, setSeriesTrailerUrl } from '@/services/tmdb';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -175,9 +175,12 @@ export default function SeriesDetailScreen() {
 
   // When the series-info query delivers fresh data (e.g. after staleTime expires),
   // bump thumbResetKey so previously-errored episode thumbnails remount and retry.
+  // Also reset coverError (#165) so the main poster can re-attempt loading if the
+  // provider fixed a broken URL since the screen was first opened.
   useEffect(() => {
     if (data !== undefined) {
       setThumbResetKey((k) => k + 1);
+      setCoverError(false); // #165: allow poster retry after a background data refresh
     }
   }, [data]);
 
@@ -459,6 +462,9 @@ export default function SeriesDetailScreen() {
                     : (raw.length === 11 ? raw : null)
                   : null;
                 const resolved = ytId ?? (await getTmdbTrailerCandidates(params.title, 'tv'))[0] ?? null;
+                // #124: cache the resolved ID so search results can skip the
+                // YouTube search for this series on future presses.
+                if (resolved) { setSeriesTrailerUrl(params.id, resolved); }
                 if (resolved) {
                   setTrailerVideoIds([resolved]);
                 } else {

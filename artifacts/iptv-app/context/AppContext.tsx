@@ -94,6 +94,7 @@ export function AppContextProvider({ children }: { children: React.ReactNode }) 
       await StorageService.saveLogoutReason(reason);
     }
     void StorageService.clearStartupFailCount(); // #267: reset persisted streak on logout
+    void StorageService.setPrefSearchQuery(''); // #122: clear stale query across sessions
     await StorageService.clearCredentials();
     clearTmdbTrailerCache();
     clearReminderRefreshCache(); // #126: reset backfill gate so fresh credentials always get a new URL check

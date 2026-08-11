@@ -1030,3 +1030,70 @@ describe('AppContextProvider — interval grace window after foreground check (#
     expect((global.fetch as jest.Mock).mock.calls.length).toBe(fetchCountAfterForeground + 1);
   });
 });
+
+// ── #266 ─────────────────────────────────────────────────────────────────────
+
+describe('AppContextProvider — startup hiccup + recovery does not poison the failure counter (#266)', () => {
+  /**
+   * Scenario:
+   *   1. Cold start → MAC check returns `inactive` → counter = 1 (below threshold;
+   *      user stays logged in — this is the "startup hiccup").
+   *   2. First foreground → MAC check returns `active` → counter resets to 0.
+   *   3. Next 4 foreground checks return `inactive` → counter climbs to 4.
+   *      User must STILL be logged in; counter is below the threshold of 5.
+   *   4. 5th foreground failure → counter = 5 → doLogout fires.
+   *
+   * Without the `consecutiveMacFailRef.current = 0` reset on a successful
+   * check (AppContext.tsx line ~204), the counter would be stuck at 1 after
+   * the hiccup and only need 4 more failures (not 5) to reach the threshold —
+   * shortchanging the user's tolerance window.
+   */
+  test('5 consecutive failures after a mid-session recovery trigger logout, not 4', async () => {
+    // Credentials present so the startup MAC check runs.
+    (SecureStore.getItemAsync as jest.Mock).mockResolvedValueOnce(
+      JSON.stringify({ url: 'http://example.com', username: 'user', password: 'pass' }),
+    );
+
+    // Sequential fetch responses:
+    //   startup        → inactive (counter: 0 → 1, still in)
+    //   foreground 1   → active   (counter: 1 → 0, recovered)
+    //   foreground 2   → inactive (counter: 0 → 1)
+    //   foreground 3   → inactive (counter: 1 → 2)
+    //   foreground 4   → inactive (counter: 2 → 3)
+    //   foreground 5   → inactive (counter: 3 → 4, still in — key assertion)
+    //   foreground 6   → inactive (counter: 4 → 5, logout fires)
+    const inactive = { ok: true, json: jest.fn().mockResolvedValue({ status: 'inactive' }) };
+    const active   = { ok: true, json: jest.fn().mockResolvedValue({ status: 'active'   }) };
+    (global.fetch as jest.Mock)
+      .mockResolvedValueOnce(inactive) // startup
+      .mockResolvedValueOnce(active)   // foreground 1 — recovery
+      .mockResolvedValueOnce(inactive) // foreground 2
+      .mockResolvedValueOnce(inactive) // foreground 3
+      .mockResolvedValueOnce(inactive) // foreground 4
+      .mockResolvedValueOnce(inactive) // foreground 5 — still in (counter = 4)
+      .mockResolvedValueOnce(inactive); // foreground 6 — logout (counter = 5)
+
+    const { getIsActivated } = await renderProvider();
+
+    // After startup hiccup (counter = 1), user must still be active.
+    expect(getIsActivated()).toBe(true);
+
+    // Foreground 1: clean check — counter resets to 0.
+    await act(async () => { await capturedAppStateListener!('active'); });
+    await act(async () => {});
+    expect(getIsActivated()).toBe(true);
+
+    // Foreground 2–5: four consecutive failures (counter goes 1 → 4).
+    // The user must remain logged in for all four — counter is below 5.
+    for (let i = 0; i < 4; i++) {
+      await act(async () => { await capturedAppStateListener!('active'); });
+      await act(async () => {});
+    }
+    expect(getIsActivated()).toBe(true); // counter = 4, threshold not reached
+
+    // Foreground 6: fifth consecutive failure — counter hits 5 → doLogout.
+    await act(async () => { await capturedAppStateListener!('active'); });
+    await act(async () => {});
+    expect(getIsActivated()).toBe(false); // logged out
+  });
+});
