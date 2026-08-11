@@ -2,7 +2,8 @@
 - [StreamVault Build Policy](streamvault-build-policy.md) — Only one GitHub Actions build per session; batch all changes before triggering.
 - [Collapse surface race fix](collapse-surface-race.md) — Mini-player black after collapse: timing race (navigation > 200 ms) + surface ordering; fix uses collapseRestorePendingRef + pendingCollapseRemountRef.
 - [Task sweep methodology](task-sweep-methodology.md) — Parallel subagent sweeps (7-8 tasks/batch, explore config) to audit PROPOSED tasks; scan getProjectTask refs 1–300 for gaps; confirmed-NO tasks get implemented immediately.
-- [StreamVault task audit complete](streamvault-task-audit.md) — All 48 PROPOSED tasks swept; genuine gaps implemented in commits cd4ecc7→a889c05 on main; two low-priority gaps deferred (#23 retry queue persistence, #155 TMDB disk cache).
+- [StreamVault task audit complete](streamvault-task-audit.md) — All 48 PROPOSED tasks swept; 10 genuine gaps implemented this session (see below); #155 TMDB disk cache deferred.
+- [StreamVault fav sync counter](fav-sync-counter.md) — recordPushFailure/resetSessionPushFailures in favoritesSync.ts; movies/series toast at ≥3 failures; reset in doLogout.
 - [MAC failure count persistence](mac-fail-persistence.md) — sv_startup_fail_count in AsyncStorage survives force-quits; loaded at cold-start, persisted on every failure path, cleared on success/logout; also added to clearCredentials multiRemove.
 - [Runtime ReferenceError patterns](runtime-referror-patterns.md) — Three crash classes: TDZ in hook dep arrays (TS2448), missing prop destructures (TS2304 = runtime ReferenceError), StyleSheet.absoluteFillObject removed from RN types. Run `npx tsc --noEmit` and treat TS2304/TS2448 as crash-blockers.
 - [TV focus restoration pattern](tv-focus-restoration.md) — forwardRef+onFocus on cards, refMap per screen, useFocusEffect restores; useEffect(wasOpen) pattern for modal openers in settings.
