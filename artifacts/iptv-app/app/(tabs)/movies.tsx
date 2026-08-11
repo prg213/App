@@ -207,12 +207,22 @@ export default function MoviesScreen() {
   const lastFocusedCardRef = useRef<View>(null);
   /** TV: stable map of item.id → card View node */
   const cardRefMap = useRef(new Map<string, View>());
+  /** TV: first category item — used as initial focus target on first screen entry */
+  const firstCatItemRef = useRef<View>(null);
 
   // TV: restore D-pad focus to the last focused card on return from detail.
+  // On first entry (no prior card) focus the first category item so the
+  // remote cursor has a deterministic starting point rather than relying on
+  // the native Android TV focus heuristic (which can land anywhere).
   useFocusEffect(useCallback(() => {
-    if (!Platform.isTV || !lastFocusedCardRef.current) return;
+    if (!Platform.isTV) return;
     const node = lastFocusedCardRef.current;
-    const t = setTimeout(() => (node as any)?.focus?.(), 200);
+    if (node) {
+      const t = setTimeout(() => (node as any)?.focus?.(), 200);
+      return () => clearTimeout(t);
+    }
+    // No prior card — focus the first category item.
+    const t = setTimeout(() => (firstCatItemRef.current as any)?.focus?.(), 200);
     return () => clearTimeout(t);
   }, []));
 
@@ -337,10 +347,11 @@ export default function MoviesScreen() {
           keyExtractor={(item) => String(item.id)}
           showsVerticalScrollIndicator={false}
           removeClippedSubviews={false}
-          renderItem={({ item }) => {
+          renderItem={({ item, index }) => {
             const active = selectedCat === item.id;
             return (
               <FocusablePressable
+                ref={index === 0 ? firstCatItemRef : undefined}
                 style={[
                   styles.catItem,
                   active && { backgroundColor: 'rgba(59,130,246,0.15)' },

@@ -187,6 +187,11 @@ export function CatchupSheet({
   // last playable programme row so D-pad Down doesn't wrap to the header.
   const firstDayPillRef = useRef<View>(null);
 
+  // Map from day-pill index → View node.  Populated by callback refs on each
+  // pill so the post-mount effect can wire nextFocusLeft / nextFocusRight
+  // between adjacent pills without needing a re-render.
+  const dayPillRefs = useRef<Map<number, View | null>>(new Map());
+
   // Ref to the first playable programme row — used to programmatically route
   // D-pad focus after the user switches days in the day strip.
   const firstPlayableRowRef = useRef<View>(null);
@@ -256,6 +261,39 @@ export function CatchupSheet({
     return () => clearTimeout(id);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDay]);
+
+  // Wire nextFocusLeft / nextFocusRight between adjacent day-strip pills after
+  // the strip mounts or the day list changes.  Using setNativeProps in a
+  // post-mount effect (rather than passing handles as props during render)
+  // ensures all callback refs have fired and every node handle is valid.
+  // Native spatial navigation inside a horizontal ScrollView is unreliable on
+  // Fire OS — explicit wiring makes LEFT/RIGHT between pills deterministic.
+  useEffect(() => {
+    if (!Platform.isTV) return;
+    const count = days.length;
+    const timer = setTimeout(() => {
+      for (let i = 0; i < count; i++) {
+        const node = dayPillRefs.current.get(i);
+        if (!node) continue;
+        const props: Record<string, number> = {};
+        const leftNode = i > 0 ? dayPillRefs.current.get(i - 1) : null;
+        const rightNode = i < count - 1 ? dayPillRefs.current.get(i + 1) : null;
+        if (leftNode) {
+          const h = findNodeHandle(leftNode);
+          if (h != null) props.nextFocusLeft = h;
+        }
+        if (rightNode) {
+          const h = findNodeHandle(rightNode);
+          if (h != null) props.nextFocusRight = h;
+        }
+        if (Object.keys(props).length > 0) {
+          (node as any).setNativeProps?.(props);
+        }
+      }
+    }, 100);
+    return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [days]);
 
   // Re-route TV focus to the first playable row when programme data arrives
   // after either:
@@ -367,7 +405,15 @@ export function CatchupSheet({
             return (
               <FocusablePressable
                 key={i}
-                ref={i === 0 ? firstDayPillRef : undefined}
+                ref={(el: View | null) => {
+                  // Populate the cross-pill ref map for nextFocusLeft/Right wiring.
+                  if (el) dayPillRefs.current.set(i, el);
+                  else dayPillRefs.current.delete(i);
+                  // Forward to firstDayPillRef for existing day-change focus logic.
+                  if (i === 0) {
+                    (firstDayPillRef as React.MutableRefObject<View | null>).current = el;
+                  }
+                }}
                 onPress={() => setSelectedDay(d)}
                 style={[
                   sheet.dayPill,
