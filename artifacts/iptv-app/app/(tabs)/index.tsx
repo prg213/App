@@ -402,18 +402,41 @@ export default function LiveTVScreen() {
       //   setOverlayVisible(false) has already committed, so the overlay is
       //   gone.  Call setVideoKey directly — it's safe to mount now.
       collapseRestorePendingRef.current = false;
+
+      if (_pendingPlayingChannel) {
+        // ── Recently-watched back path ──────────────────────────────────────
+        // playingChannel was null while the user was in the player (channel
+        // was opened from Home, bypassing this tab), so the mini-player
+        // VideoView has display:none and expo-video has no native surface.
+        //
+        // Critical ordering: we MUST make the view visible BEFORE mounting
+        // a fresh VideoView, otherwise expo-video receives a zero-size surface
+        // and renders only audio with no picture.
+        //
+        // Step 1 — setPlayingChannel removes display:none → mini-player
+        //           container becomes visible and the native layout pass runs.
+        // Step 2 — rAF fires after the native frame; the container is now
+        //           sized.  setVideoKey mounts a fresh VideoView onto the
+        //           properly-sized surface → video appears.
+        const ch = _pendingPlayingChannel;
+        _pendingPlayingChannel = null;
+        setPlayingChannel(ch);
+        requestAnimationFrame(() => {
+          setVideoKey((k) => k + 1);
+          if (Platform.isTV) {
+            setTimeout(() => (miniPlayerRef.current as any)?.focus?.(), 400);
+          }
+        });
+        return;
+      }
+
+      // ── Normal collapse path ────────────────────────────────────────────
+      // playingChannel was already set; mini-player was visible the whole
+      // time.  Use the existing fast/slow timing logic for videoKey.
       if (pendingCollapseRemountRef.current) {
         onCollapseCompleteRef.current = () => setVideoKey((k) => k + 1);
       } else {
         setVideoKey((k) => k + 1);
-      }
-      // If a recently-watched channel set _pendingPlayingChannel before the
-      // collapse, restore it now.  The blur→focus cycle triggered by
-      // router.navigate('/') may have reset local state; this module-level
-      // variable survives that reset and ensures the mini-player appears.
-      if (_pendingPlayingChannel) {
-        setPlayingChannel(_pendingPlayingChannel);
-        _pendingPlayingChannel = null;
       }
       // TV: restore D-pad focus to the mini-player box so the remote cursor
       // has a sensible target after collapsing from fullscreen.  Without this
