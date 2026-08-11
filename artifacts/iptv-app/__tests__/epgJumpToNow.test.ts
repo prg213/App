@@ -161,7 +161,7 @@ describe('FullGuide — jumpToNow() callback', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 6.  Play/Pause hardware key triggers jumpToNow
+// 6.  Play/Pause hardware key — short-press (jump to now) / long-press (picker)
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('FullGuide — Play/Pause hardware key listener', () => {
@@ -169,12 +169,30 @@ describe('FullGuide — Play/Pause hardware key listener', () => {
     expect(src).toMatch(/DeviceEventEmitter\.addListener\s*\(\s*['"]onHWKeyEvent['"]/);
   });
 
-  it('checks eventType === "playPause" before invoking jumpToNow', () => {
+  it('checks eventType === "playPause" before acting', () => {
+    // Guard must use === so unrelated key events (volumeUp, fastForward, …)
+    // are never mistaken for the Play/Pause button.
     expect(src).toMatch(/e\.eventType\s*===\s*['"]playPause['"]/);
   });
 
-  it('checks eventKeyAction === 0 to handle key-down only (avoids double-fire on key-up)', () => {
+  it('handles eventKeyAction === 0 (key down) to arm the hold timer', () => {
     expect(src).toMatch(/e\.eventKeyAction\s*===\s*0/);
+  });
+
+  it('handles eventKeyAction === 1 (key up) to trigger short-press action', () => {
+    // Short-press fires jumpToNow on key-UP so that a held key (long-press)
+    // can be distinguished by whether the 600 ms timer fired first.
+    expect(src).toMatch(/e\.eventKeyAction\s*===\s*1/);
+  });
+
+  it('guards repeated key-down events so the hold timer is only armed once', () => {
+    // Android TV remotes emit repeated key-down events while a button is held.
+    // The guard prevents each repeat from resetting the 600 ms timer.
+    expect(src).toMatch(/playPauseHoldTimer\.current\s*!==\s*null/);
+  });
+
+  it('opens the time picker on long-press (timer fires before key-up)', () => {
+    expect(src).toMatch(/setShowTimePicker\s*\(\s*true\s*\)/);
   });
 });
 
@@ -253,22 +271,57 @@ function runJumpToNowPopulateEffect(
 }
 
 /**
- * Mirror of FullGuide's onHWKeyEvent handler logic.
+ * Minimal mirror of FullGuide's onHWKeyEvent handler.
  *
- * Returns true when jumpToNow was called (key accepted), false otherwise.
+ * Manages a hold timer internally; the caller drives the simulation by
+ * calling this with successive key-down (0) / key-up (1) events, advancing
+ * fake timers between them as needed.
+ *
+ * Returns an action tag so callers can assert which branch was taken:
+ *   'timerArmed'  — key-down received, 600 ms hold timer started
+ *   'ignored'     — event skipped (wrong type / repeat key-down / no timer)
+ *   'jumpToNow'   — short press confirmed on key-up, jumpToNow() called
+ *   'openPicker'  — long press confirmed by timer expiry, openPicker() called
  */
-function simulateHWKeyEvent(
-  e: { eventType: string; eventKeyAction: number },
+function makeHWKeyEventSimulator(
   selectedRef: { current: unknown },
+  showPickerRef: { current: boolean },
   isTV: boolean,
   jumpToNow: () => void,
-): boolean {
-  if (!isTV) return false;
-  if (e.eventType === 'playPause' && e.eventKeyAction === 0 && !selectedRef.current) {
-    jumpToNow();
-    return true;
-  }
-  return false;
+  openPicker: () => void,
+) {
+  const timerRef = makeRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const simulate = (e: { eventType: string; eventKeyAction: number }):
+    'timerArmed' | 'ignored' | 'jumpToNow' | 'openPicker' => {
+    if (!isTV) return 'ignored';
+    if (e.eventType === 'playPause') {
+      if (e.eventKeyAction === 0) {
+        // Ignore repeated key-downs while timer is already running
+        if (timerRef.current !== null) return 'ignored';
+        timerRef.current = setTimeout(() => {
+          timerRef.current = null;
+          if (!selectedRef.current && !showPickerRef.current) {
+            openPicker();
+          }
+        }, 600);
+        return 'timerArmed';
+      } else if (e.eventKeyAction === 1) {
+        if (timerRef.current !== null) {
+          clearTimeout(timerRef.current);
+          timerRef.current = null;
+          if (!selectedRef.current && !showPickerRef.current) {
+            jumpToNow();
+            return 'jumpToNow';
+          }
+        }
+        return 'ignored';
+      }
+    }
+    return 'ignored';
+  };
+
+  return simulate;
 }
 
 describe('jumpToNowRef lifecycle simulation (runtime behaviour)', () => {
@@ -326,69 +379,114 @@ describe('jumpToNowRef lifecycle simulation (runtime behaviour)', () => {
     expect(scrollA).not.toHaveBeenCalled();
   });
 
-  // 13. Play/Pause fires the callback → scrollToIndex is called
-  it('13. Play/Pause key event invokes the ref callback and calls scrollToIndex', () => {
+  // 13. Short press (key-down → key-up within 600 ms) triggers jumpToNow
+  it('13. short press (key-up before 600 ms) invokes jumpToNow and scrollToIndex', () => {
     const jumpToNowRef = makeRef<(() => void) | null>(null);
     const scrollMock   = jest.fn();
     const focusMock    = jest.fn();
 
     runJumpToNowPopulateEffect(jumpToNowRef, 4, scrollMock, focusMock);
 
-    const selectedRef = makeRef<unknown>(null); // no modal open
-    const jumpToNow   = () => { jumpToNowRef.current?.(); };
+    const selectedRef   = makeRef<unknown>(null);
+    const showPickerRef = makeRef<boolean>(false);
+    const openPicker    = jest.fn();
+    const jumpToNow     = () => { jumpToNowRef.current?.(); };
 
-    const handled = simulateHWKeyEvent(
-      { eventType: 'playPause', eventKeyAction: 0 },
-      selectedRef,
-      /* isTV */ true,
-      jumpToNow,
-    );
+    const sim = makeHWKeyEventSimulator(selectedRef, showPickerRef, true, jumpToNow, openPicker);
 
+    // Key down → timer armed
+    expect(sim({ eventType: 'playPause', eventKeyAction: 0 })).toBe('timerArmed');
+    // Key up before 600 ms → short press → jumpToNow
+    jest.advanceTimersByTime(200);
+    expect(sim({ eventType: 'playPause', eventKeyAction: 1 })).toBe('jumpToNow');
     jest.runAllTimers();
 
-    expect(handled).toBe(true);
     expect(scrollMock).toHaveBeenCalledWith({ index: 4, animated: true, viewPosition: 0 });
     expect(focusMock).toHaveBeenCalledTimes(1);
+    expect(openPicker).not.toHaveBeenCalled();
+  });
+
+  // 13b. Long press (key-down held ≥ 600 ms) opens the time picker
+  it('13b. long press (key held ≥ 600 ms) opens the time-jump picker', () => {
+    const jumpToNow  = jest.fn();
+    const openPicker = jest.fn();
+    const selectedRef   = makeRef<unknown>(null);
+    const showPickerRef = makeRef<boolean>(false);
+
+    const sim = makeHWKeyEventSimulator(selectedRef, showPickerRef, true, jumpToNow, openPicker);
+
+    expect(sim({ eventType: 'playPause', eventKeyAction: 0 })).toBe('timerArmed');
+    // Let the 600 ms timer fire (long press)
+    jest.advanceTimersByTime(600);
+
+    expect(openPicker).toHaveBeenCalledTimes(1);
+    expect(jumpToNow).not.toHaveBeenCalled();
+
+    // Key-up after the timer fires is a no-op (timer already cleared itself)
+    expect(sim({ eventType: 'playPause', eventKeyAction: 1 })).toBe('ignored');
+    expect(openPicker).toHaveBeenCalledTimes(1);
+  });
+
+  // 13c. Repeated key-down events do NOT reset the hold timer
+  it('13c. repeated key-down events (Android repeat) are ignored while timer runs', () => {
+    const jumpToNow  = jest.fn();
+    const openPicker = jest.fn();
+    const selectedRef   = makeRef<unknown>(null);
+    const showPickerRef = makeRef<boolean>(false);
+
+    const sim = makeHWKeyEventSimulator(selectedRef, showPickerRef, true, jumpToNow, openPicker);
+
+    // First key-down: arm the timer
+    expect(sim({ eventType: 'playPause', eventKeyAction: 0 })).toBe('timerArmed');
+    // Simulate Android repeat key-down events at 50 ms intervals
+    jest.advanceTimersByTime(50);
+    expect(sim({ eventType: 'playPause', eventKeyAction: 0 })).toBe('ignored');
+    jest.advanceTimersByTime(50);
+    expect(sim({ eventType: 'playPause', eventKeyAction: 0 })).toBe('ignored');
+    jest.advanceTimersByTime(50);
+    expect(sim({ eventType: 'playPause', eventKeyAction: 0 })).toBe('ignored');
+    // Advance to the original timer expiry (600 ms from first key-down)
+    jest.advanceTimersByTime(450);
+
+    // Timer should have fired exactly once at 600 ms
+    expect(openPicker).toHaveBeenCalledTimes(1);
+    expect(jumpToNow).not.toHaveBeenCalled();
   });
 
   // 14. Play/Pause is ignored when the modal is open
   it('14. Play/Pause is ignored while a ProgramModal is open', () => {
-    const jumpToNowRef = makeRef<(() => void) | null>(null);
-    const scrollMock   = jest.fn();
-    const focusMock    = jest.fn();
+    const jumpToNow  = jest.fn();
+    const openPicker = jest.fn();
+    const selectedRef   = makeRef<unknown>({ program: {}, channel: {} }); // modal open
+    const showPickerRef = makeRef<boolean>(false);
 
-    runJumpToNowPopulateEffect(jumpToNowRef, 2, scrollMock, focusMock);
+    const sim = makeHWKeyEventSimulator(selectedRef, showPickerRef, true, jumpToNow, openPicker);
 
-    const selectedRef = makeRef<unknown>({ program: {}, channel: {} }); // modal open
-    const jumpToNow   = jest.fn();
-
-    const handled = simulateHWKeyEvent(
-      { eventType: 'playPause', eventKeyAction: 0 },
-      selectedRef,
-      /* isTV */ true,
-      jumpToNow,
-    );
-
-    jest.runAllTimers();
-
-    expect(handled).toBe(false);
+    // Key-down arms the timer (guard check happens inside timer callback)
+    sim({ eventType: 'playPause', eventKeyAction: 0 });
+    // Short press while modal open → key-up cancels the timer but does NOT call jumpToNow
+    expect(sim({ eventType: 'playPause', eventKeyAction: 1 })).toBe('ignored');
     expect(jumpToNow).not.toHaveBeenCalled();
-    expect(scrollMock).not.toHaveBeenCalled();
+
+    // Likewise long press should not open picker while modal is open
+    const sim2 = makeHWKeyEventSimulator(selectedRef, showPickerRef, true, jumpToNow, openPicker);
+    sim2({ eventType: 'playPause', eventKeyAction: 0 });
+    jest.advanceTimersByTime(600);
+    expect(openPicker).not.toHaveBeenCalled();
   });
 
   // 15. Play/Pause is ignored on non-TV platforms
   it('15. Play/Pause is ignored when Platform.isTV is false (phone/tablet)', () => {
-    const jumpToNow = jest.fn();
-    const selectedRef = makeRef<unknown>(null);
+    const jumpToNow  = jest.fn();
+    const openPicker = jest.fn();
+    const selectedRef   = makeRef<unknown>(null);
+    const showPickerRef = makeRef<boolean>(false);
 
-    const handled = simulateHWKeyEvent(
-      { eventType: 'playPause', eventKeyAction: 0 },
-      selectedRef,
-      /* isTV */ false,
-      jumpToNow,
-    );
+    const sim = makeHWKeyEventSimulator(selectedRef, showPickerRef, false, jumpToNow, openPicker);
 
-    expect(handled).toBe(false);
+    expect(sim({ eventType: 'playPause', eventKeyAction: 0 })).toBe('ignored');
+    jest.advanceTimersByTime(600);
+    expect(openPicker).not.toHaveBeenCalled();
     expect(jumpToNow).not.toHaveBeenCalled();
   });
 });

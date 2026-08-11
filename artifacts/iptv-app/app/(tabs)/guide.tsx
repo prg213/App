@@ -55,6 +55,7 @@ const SLOT_MINS = 60;           // 1-hour time slots
 const DAY_MINS = 24 * 60;       // full day
 const SLOT_W = SLOT_MINS * PX_PER_MIN;   // 120px per hour
 const TOTAL_DAY_W = DAY_MINS * PX_PER_MIN; // 2880px
+const TV_PICKER_ITEM_H = 52;   // height of each row in the time-picker FlatList
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -415,6 +416,47 @@ const TVEpgRow = React.memo(function TVEpgRow({
     };
   }, [jumpToNowRef, initialIdx]);
 
+  // ── epg:jumpToTime — scroll this row to the requested time slot ──────────
+  // All TVEpgRow instances subscribe so the whole grid pans together.
+  // Only the first row also D-pad-focuses the matching cell.
+  //
+  // We use scrollToOffset (not scrollToIndex) so we can land at the exact
+  // sub-item position where the target time falls, rather than always at an
+  // item's left edge.  The compacted FlatList layout packs items sequentially,
+  // so we derive the pixel offset from the matching item's cumulative position
+  // plus the fraction of that item's width that the target time represents.
+  useEffect(() => {
+    if (!Platform.isTV) return;
+    const sub = DeviceEventEmitter.addListener(
+      'epg:jumpToTime',
+      ({ hour, minute }: { hour: number; minute: number }) => {
+        const targetMs = dayStartMs + (hour * 60 + minute) * 60_000;
+        // Find the first item whose end time is after targetMs
+        const idx = items.findIndex((it) => it.prog.end.getTime() > targetMs);
+        if (idx < 0 || !flatRef.current) return;
+
+        const it = items[idx];
+        // How far into this item does the target time fall?  Clamp [0,1] so
+        // that channels with no programme before targetMs land at the item's
+        // left edge (the earliest available content) rather than scrolling off.
+        const itemStartMs = Math.max(it.prog.start.getTime(), dayStartMs);
+        const itemDurMs   = Math.max(1, it.prog.end.getTime() - itemStartMs);
+        const fraction    = Math.max(0, Math.min(1, (targetMs - itemStartMs) / itemDurMs));
+        const scrollOffset = it.offset + fraction * it.width;
+
+        try {
+          flatRef.current.scrollToOffset({ offset: scrollOffset, animated: true });
+        } catch (_) {}
+        if (isFirst) {
+          setTimeout(() => {
+            progRefs.current.get(idx)?.focus();
+          }, 120);
+        }
+      },
+    );
+    return () => sub.remove();
+  }, [items, dayStartMs, isFirst]);
+
   const getItemLayout = useCallback((_: any, index: number) => {
     const it = items[index];
     return { length: (it?.width ?? 0) + TV_CELL_GAP, offset: it?.offset ?? 0, index };
@@ -694,6 +736,152 @@ function ProgramModal({ program, channel, onClose, onWatch, colors }: {
   );
 }
 
+// ─── TV Time-jump overlay ─────────────────────────────────────────────────────
+// A D-pad–navigable hour/minute picker shown when the user long-presses
+// Play/Pause on the Fire TV remote while the EPG grid is focused.
+
+function TVTimePickerOverlay({
+  visible,
+  defaultHour,
+  onConfirm,
+  onDismiss,
+  colors,
+}: {
+  visible: boolean;
+  defaultHour: number;
+  onConfirm: (hour: number, minute: number) => void;
+  onDismiss: () => void;
+  colors: any;
+}) {
+  const [selHour, setSelHour] = useState(defaultHour);
+  const [selMin,  setSelMin]  = useState(0);
+  const hourListRef = useRef<FlatList>(null);
+
+  // 12 minute steps give comfortable D-pad travel without being too coarse
+  const HOURS = useMemo(() => Array.from({ length: 24 }, (_, i) => i), []);
+  const MINS  = useMemo(() => [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55], []);
+
+  // Reset to current hour each time the overlay opens
+  useEffect(() => {
+    if (!visible) return;
+    const h = new Date().getHours();
+    setSelHour(h);
+    setSelMin(0);
+    setTimeout(() => {
+      try {
+        hourListRef.current?.scrollToIndex({ index: h, animated: false, viewPosition: 0.5 });
+      } catch (_) {}
+    }, 120);
+  }, [visible]);
+
+  // BackHandler: TV hardware Back dismisses the picker before any enclosing
+  // handler fires.  BackHandler uses LIFO order, so this listener takes
+  // precedence over the guide's BackHandler that navigates to CategoryGrid.
+  useEffect(() => {
+    if (!visible) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      onDismiss();
+      return true; // consumed — do not propagate
+    });
+    return () => sub.remove();
+  }, [visible, onDismiss]);
+
+  if (!visible) return null;
+
+  return (
+    <Modal transparent animationType="fade" onRequestClose={onDismiss}>
+      <Pressable style={styles.modalBg} focusable={false} onPress={onDismiss}>
+        <View style={[styles.timePickerCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Text style={[styles.timePickerTitle, { color: colors.foreground }]}>🕐  Jump to Time</Text>
+          <Text style={[styles.timePickerSub, { color: colors.mutedForeground }]}>
+            Focus an hour and minute then press Confirm
+          </Text>
+
+          {/* Live preview of selected time */}
+          <View style={styles.timePickerPreview}>
+            <Text style={[styles.timePickerPreviewText, { color: colors.primary }]}>
+              {String(selHour).padStart(2, '0')}:{String(selMin).padStart(2, '0')}
+            </Text>
+          </View>
+
+          <View style={styles.timePickerCols}>
+            {/* ── Hour column ── */}
+            <View style={styles.timePickerColWrap}>
+              <Text style={[styles.timePickerColLabel, { color: colors.mutedForeground }]}>HOUR</Text>
+              <FlatList
+                ref={hourListRef}
+                data={HOURS}
+                keyExtractor={(h) => `h${h}`}
+                style={styles.timePickerList}
+                showsVerticalScrollIndicator={false}
+                getItemLayout={(_, i) => ({ length: TV_PICKER_ITEM_H, offset: i * TV_PICKER_ITEM_H, index: i })}
+                initialScrollIndex={defaultHour}
+                renderItem={({ item: h }) => (
+                  <FocusablePressable
+                    style={[styles.timePickerItem, selHour === h && styles.timePickerItemSel]}
+                    focusedStyle={styles.tvFocused}
+                    hasTVPreferredFocus={h === defaultHour}
+                    onFocus={() => setSelHour(h)}
+                    onPress={() => setSelHour(h)}
+                  >
+                    <Text style={[styles.timePickerItemText, { color: selHour === h ? '#fff' : colors.foreground }]}>
+                      {String(h).padStart(2, '0')}
+                    </Text>
+                  </FocusablePressable>
+                )}
+              />
+            </View>
+
+            <Text style={[styles.timePickerColon, { color: colors.foreground }]}>:</Text>
+
+            {/* ── Minute column ── */}
+            <View style={styles.timePickerColWrap}>
+              <Text style={[styles.timePickerColLabel, { color: colors.mutedForeground }]}>MIN</Text>
+              <FlatList
+                data={MINS}
+                keyExtractor={(m) => `m${m}`}
+                style={styles.timePickerList}
+                showsVerticalScrollIndicator={false}
+                getItemLayout={(_, i) => ({ length: TV_PICKER_ITEM_H, offset: i * TV_PICKER_ITEM_H, index: i })}
+                renderItem={({ item: m }) => (
+                  <FocusablePressable
+                    style={[styles.timePickerItem, selMin === m && styles.timePickerItemSel]}
+                    focusedStyle={styles.tvFocused}
+                    hasTVPreferredFocus={m === 0}
+                    onFocus={() => setSelMin(m)}
+                    onPress={() => setSelMin(m)}
+                  >
+                    <Text style={[styles.timePickerItemText, { color: selMin === m ? '#fff' : colors.foreground }]}>
+                      {String(m).padStart(2, '0')}
+                    </Text>
+                  </FocusablePressable>
+                )}
+              />
+            </View>
+          </View>
+
+          <View style={styles.modalActions}>
+            <FocusablePressable
+              style={[styles.closeBtn, { backgroundColor: colors.secondary, borderColor: colors.border }]}
+              onPress={onDismiss}
+            >
+              <Text style={[styles.closeBtnText, { color: colors.foreground }]}>Cancel</Text>
+            </FocusablePressable>
+            <FocusablePressable
+              style={styles.watchBtn}
+              onPress={() => onConfirm(selHour, selMin)}
+            >
+              <Text style={styles.watchBtnText}>
+                → {String(selHour).padStart(2, '0')}:{String(selMin).padStart(2, '0')}  Confirm
+              </Text>
+            </FocusablePressable>
+          </View>
+        </View>
+      </Pressable>
+    </Modal>
+  );
+}
+
 // ─── Category grid ────────────────────────────────────────────────────────────
 
 function CategoryGrid({
@@ -942,26 +1130,61 @@ function FullGuide({
     }
   }, [selectedDay]);
 
+  // ── Time-jump overlay state (long-press Play/Pause) ───────────────────────
+  const [showTimePicker, setShowTimePicker] = useState(false);
+  // Ref mirrors so the async key handler can read these without stale closures
+  const showTimePickerRef = useRef(false);
+  useEffect(() => { showTimePickerRef.current = showTimePicker; }, [showTimePicker]);
+
   // Ref mirror of `selected` so the onHWKeyEvent handler can check whether a
   // modal is open without capturing stale closure state.
   const selectedRef = useRef(selected);
   useEffect(() => { selectedRef.current = selected; }, [selected]);
 
   // ── Play/Pause hardware shortcut — Fire TV / Android TV ──────────────────
-  // React Native emits onHWKeyEvent as a global DeviceEventEmitter event
-  // (not a View prop). We subscribe here so the shortcut works from any
-  // focused cell anywhere in the EPG grid. Key-action 0 = key-down only.
+  // Short-press  → jump to "now" (existing behaviour)
+  // Long-press   → open time-picker overlay (new)
+  // We detect the long-press ourselves: key-down starts a 600 ms hold timer;
+  // key-up before it fires = short press; timer firing = long press.
+  const playPauseHoldTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (!Platform.isTV) return;
     const sub = DeviceEventEmitter.addListener(
       'onHWKeyEvent',
       (e: { eventType: string; eventKeyAction: number }) => {
-        if (e.eventType === 'playPause' && e.eventKeyAction === 0 && !selectedRef.current) {
-          jumpToNow();
+        if (e.eventType === 'playPause') {
+          if (e.eventKeyAction === 0) {
+            // Key down — arm hold timer only for the FIRST down event.
+            // Android TV remotes send repeated key-down events while a button
+            // is held; re-arming the timer on each repeat would reset it and
+            // prevent it from ever firing.  If the timer is already armed we
+            // ignore the repeat event entirely.
+            if (playPauseHoldTimer.current !== null) return;
+            playPauseHoldTimer.current = setTimeout(() => {
+              playPauseHoldTimer.current = null;
+              // Long-press confirmed: open time picker (if no modal is open)
+              if (!selectedRef.current && !showTimePickerRef.current) {
+                setShowTimePicker(true);
+              }
+            }, 600);
+          } else if (e.eventKeyAction === 1) {
+            // Key up — if the timer is still pending it was a short press
+            if (playPauseHoldTimer.current !== null) {
+              clearTimeout(playPauseHoldTimer.current);
+              playPauseHoldTimer.current = null;
+              if (!selectedRef.current && !showTimePickerRef.current) {
+                jumpToNow();
+              }
+            }
+            // else: long-press was already handled by the timer callback
+          }
         }
       },
     );
-    return () => sub.remove();
+    return () => {
+      sub.remove();
+      if (playPauseHoldTimer.current) clearTimeout(playPauseHoldTimer.current);
+    };
   }, [jumpToNow]);
 
   // Focus the first channel cell whenever the selected category changes (covers
@@ -1506,6 +1729,26 @@ function FullGuide({
 
       {guideToast !== null && (
         <Toast message={guideToast} visible duration={2500} onHide={() => setGuideToast(null)} />
+      )}
+
+      {/* ── TV time-jump overlay (long-press Play/Pause on Fire TV remote) ── */}
+      {Platform.isTV && (
+        <TVTimePickerOverlay
+          visible={showTimePicker}
+          defaultHour={new Date(now).getHours()}
+          onConfirm={(hour, minute) => {
+            setShowTimePicker(false);
+            // If we're on a future day, switch to today first then wait for
+            // the day-change re-render before emitting the scroll event.
+            const needsDaySwitch = selectedDay !== 0;
+            if (needsDaySwitch) setSelectedDay(0);
+            setTimeout(() => {
+              DeviceEventEmitter.emit('epg:jumpToTime', { hour, minute });
+            }, needsDaySwitch ? 220 : 0);
+          }}
+          onDismiss={() => setShowTimePicker(false)}
+          colors={colors}
+        />
       )}
 
       {selected && (
@@ -2115,6 +2358,77 @@ const styles = StyleSheet.create({
   },
   tvProgTitle: { fontSize: 11, fontFamily: 'Inter_600SemiBold' },
   tvProgTime: { fontSize: 9, fontFamily: 'Inter_400Regular' },
+  // ── TV Time Picker Overlay ──
+  timePickerCard: {
+    width: 440,
+    maxWidth: '88%',
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 24,
+    gap: 14,
+  },
+  timePickerTitle: {
+    fontSize: 22,
+    fontFamily: 'Inter_700Bold',
+    letterSpacing: -0.4,
+    textAlign: 'center',
+  },
+  timePickerSub: {
+    fontSize: 13,
+    fontFamily: 'Inter_400Regular',
+    textAlign: 'center',
+    opacity: 0.8,
+  },
+  timePickerPreview: {
+    alignSelf: 'center',
+    paddingVertical: 6,
+  },
+  timePickerPreviewText: {
+    fontSize: 44,
+    fontFamily: 'Inter_700Bold',
+    letterSpacing: 4,
+  },
+  timePickerCols: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  timePickerColWrap: {
+    flex: 1,
+    gap: 6,
+  },
+  timePickerColLabel: {
+    fontSize: 10,
+    fontFamily: 'Inter_600SemiBold',
+    letterSpacing: 1.5,
+    textAlign: 'center',
+  },
+  timePickerList: {
+    height: TV_PICKER_ITEM_H * 4,  // show ~4 items at a time
+    borderRadius: 10,
+  },
+  timePickerItem: {
+    height: TV_PICKER_ITEM_H,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 8,
+  },
+  timePickerItemSel: {
+    backgroundColor: '#3B82F6',
+  },
+  timePickerItemText: {
+    fontSize: 24,
+    fontFamily: 'Inter_600SemiBold',
+  },
+  timePickerColon: {
+    fontSize: 36,
+    fontFamily: 'Inter_700Bold',
+    lineHeight: 44,
+    alignSelf: 'center',
+    marginTop: 22,  // align with list items (accounts for the HOUR/MIN label above)
+    paddingHorizontal: 2,
+  },
+
   /** Dark pill that wraps the 🔔 so it's readable regardless of cell background or focus border. */
   tvReminderBadge: {
     position: 'absolute',
