@@ -15,8 +15,8 @@
  *   />
  */
 
-import React, { useCallback, useRef, useState } from 'react';
-import { Platform, StyleSheet, Text, View, ScrollView } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { findNodeHandle, Platform, StyleSheet, Text, View, ScrollView } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { FocusablePressable } from '@/components/FocusablePressable';
 import Animated, {
@@ -26,7 +26,6 @@ import Animated, {
   runOnJS,
 } from 'react-native-reanimated';
 import type { useColors } from '@/hooks/useColors';
-
 const SPRING_CONFIG = { damping: 20, stiffness: 200, mass: 0.8 };
 
 function clamp(v: number, lo: number, hi: number): number {
@@ -138,14 +137,55 @@ const DraggableRow = React.memo(function DraggableRow({
   const canMoveUp   = index > 0;
   const canMoveDown = index < itemCount - 1;
 
+  // TV D-pad: refs for the three zones — row content, ▲ button, ▼ button.
+  // Wire: row → nextFocusRight → ▲, ▲ → nextFocusLeft → row,
+  //       ▲ → nextFocusDown → ▼, ▼ → nextFocusUp → ▲, ▼ → nextFocusLeft → row.
+  const tvRowRef  = useRef<View>(null);
+  const upRef     = useRef<View>(null);
+  const downRef   = useRef<View>(null);
+
+  useEffect(() => {
+    if (!Platform.isTV) return;
+    const t = setTimeout(() => {
+      const rowH  = findNodeHandle(tvRowRef.current);
+      const upH   = findNodeHandle(upRef.current);
+      const downH = findNodeHandle(downRef.current);
+      if (!rowH || !upH || !downH) return;
+      // Row zone → D-pad RIGHT → UP button
+      (tvRowRef.current  as any)?.setNativeProps({ nextFocusRight: upH });
+      // UP button: LEFT → row zone, DOWN → DOWN button
+      (upRef.current     as any)?.setNativeProps({ nextFocusLeft: rowH, nextFocusDown: downH });
+      // DOWN button: LEFT → row zone, UP → UP button
+      (downRef.current   as any)?.setNativeProps({ nextFocusLeft: rowH, nextFocusUp: upH });
+    }, 300);
+    return () => clearTimeout(t);
+  }, [index, itemCount]); // re-wire if position changes (itemCount affects canMoveUp/Down)
+
   return (
     <Animated.View style={[styles.rowWrap, { height: rowHeight }, animStyle]}>
-      <View style={styles.rowContent}>{children}</View>
+      {Platform.isTV ? (
+        // #339: On TV the children (ChannelRow with hideHeart) are not focusable,
+        // so wrap them in a FocusablePressable "row zone" that D-pad can land on.
+        // Pressing OK on this zone does nothing — it just acts as a D-pad waypoint
+        // so the user can D-pad RIGHT to reach the ▲/▼ reorder buttons.
+        <FocusablePressable
+          ref={tvRowRef}
+          style={styles.rowContent}
+          focusedStyle={styles.tvRowFocused}
+          onPress={undefined}
+          focusable
+        >
+          {children}
+        </FocusablePressable>
+      ) : (
+        <View style={styles.rowContent}>{children}</View>
+      )}
 
       {Platform.isTV ? (
-        // #253: Firestick/Android TV users can't drag — offer focusable ▲ ▼ buttons.
+        // #253 / #339: Firestick/Android TV users can't drag — offer focusable ▲ ▼ buttons.
         <View style={[styles.tvHandle, { borderLeftColor: colors.border }]}>
           <FocusablePressable
+            ref={upRef}
             onPress={canMoveUp ? onMoveUp : undefined}
             style={[styles.tvMoveBtn, !canMoveUp && styles.tvMoveBtnDisabled]}
             focusedStyle={styles.tvMoveBtnFocused}
@@ -153,6 +193,7 @@ const DraggableRow = React.memo(function DraggableRow({
             <Text style={[styles.tvMoveBtnIcon, { color: canMoveUp ? colors.foreground : colors.border }]}>▲</Text>
           </FocusablePressable>
           <FocusablePressable
+            ref={downRef}
             onPress={canMoveDown ? onMoveDown : undefined}
             style={[styles.tvMoveBtn, !canMoveDown && styles.tvMoveBtnDisabled]}
             focusedStyle={styles.tvMoveBtnFocused}
@@ -293,7 +334,14 @@ const styles = StyleSheet.create({
     fontSize: 18,
   },
 
-  // #253: TV remote up/down move buttons (replaces drag handle on isTV)
+  // #339: subtle highlight when the row zone has D-pad focus on TV
+  tvRowFocused: {
+    backgroundColor: 'rgba(59,130,246,0.12)',
+    borderWidth: 2,
+    borderColor: '#00E5FF',
+  },
+
+  // #253 / #339: TV remote up/down move buttons (replaces drag handle on isTV)
   tvHandle: {
     width: 48,
     justifyContent: 'center',
