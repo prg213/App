@@ -1196,8 +1196,8 @@ export default function PlayerScreen() {
   }, [infoOpacity]);
 
   useEffect(() => {
-    // TV + Live: no auto-hide — the overlay stays until BACK is pressed.
-    if (!(Platform.isTV && isLive)) {
+    // Live TV (any platform): overlay stays until dismissed — no auto-hide timer.
+    if (!isLive) {
       scheduleInfoHide();
     }
     return () => {
@@ -1207,11 +1207,12 @@ export default function PlayerScreen() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scheduleInfoHide]);
 
-  // TV + Live: start with the info bar hidden so the screen opens clean.
-  // The user presses OK to reveal the overlay; BACK dismisses it.
-  // On non-TV paths the bar is shown immediately (showInfo defaults to true).
+  // Live TV (all platforms): start with the info bar hidden so the stream opens
+  // clean.  On TV the user presses OK to reveal it; on phone/tablet a tap shows
+  // it.  BACK / swipe-right dismisses it.  (showInfo defaults to true, so we
+  // need this effect to immediately zero it out on Live TV screens.)
   useEffect(() => {
-    if (!Platform.isTV || !isLive) return;
+    if (!isLive) return;
     if (infoTimer.current) { clearTimeout(infoTimer.current); infoTimer.current = null; }
     setShowInfo(false);
     infoOpacity.setValue(0);
@@ -1256,8 +1257,8 @@ export default function PlayerScreen() {
   const showInfoBar = useCallback(() => {
     setShowInfo(true);
     Animated.timing(infoOpacity, { toValue: 1, duration: 200, useNativeDriver: true }).start();
-    // TV + Live: overlay stays until BACK is pressed — no auto-hide timer.
-    if (!(Platform.isTV && isLive)) {
+    // Live TV (any platform): overlay stays until BACK/swipe — no auto-hide.
+    if (!isLive) {
       scheduleInfoHide();
     }
   }, [infoOpacity, scheduleInfoHide, isLive]);
@@ -1326,7 +1327,21 @@ export default function PlayerScreen() {
       setDoubleTapSide(isLeft ? 'back' : 'forward');
       doubleTapTimer.current = setTimeout(() => setDoubleTapSide(null), 700);
     });
-  const combinedGesture = Gesture.Exclusive(doubleTapGesture, tapGesture);
+  // Live TV phone/tablet: swipe right → dismiss overlay if visible, else go back.
+  // activeOffsetX(30) lets short taps through to tapGesture; failOffsetY prevents
+  // stealing vertical scrolls inside any child.
+  const liveSwipeGesture = Gesture.Pan()
+    .runOnJS(true)
+    .activeOffsetX(30)
+    .failOffsetY([-25, 25])
+    .onEnd((e) => {
+      if (!isLive || Platform.isTV) return;
+      if (e.translationX > 60 && e.velocityX > 0) {
+        if (showInfoRef.current) { dismissInfoBar(); }
+        else { handleBackLive(); }
+      }
+    });
+  const combinedGesture = Gesture.Race(liveSwipeGesture, Gesture.Exclusive(doubleTapGesture, tapGesture));
 
   const togglePlay = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
