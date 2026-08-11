@@ -1,11 +1,13 @@
-import React, { useRef, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Platform,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
 import { FocusablePressable } from '@/components/FocusablePressable';
+import { useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import WebView from 'react-native-webview';
 import { useAppContext } from '@/context/AppContext';
@@ -62,6 +64,16 @@ export default function TelegramScreen() {
   const colors = useColors();
   const [loading, setLoading] = useState(true);
   const webViewRef = useRef<WebView>(null);
+  // TV: focus the refresh button on entry — the WebView itself cannot receive
+  // D-pad focus (platform limitation), so the refresh button is the only
+  // operable control.  The useFocusEffect pattern runs every time the tab
+  // becomes active, matching the behaviour of other tab screens.
+  const refreshBtnRef = useRef<View>(null);
+  useFocusEffect(useCallback(() => {
+    if (!Platform.isTV) return;
+    const t = setTimeout(() => (refreshBtnRef.current as any)?.focus?.(), 200);
+    return () => clearTimeout(t);
+  }, []));
 
   const url = credentials?.telegramChannel ?? null;
 
@@ -85,6 +97,7 @@ export default function TelegramScreen() {
 
         {url ? (
           <FocusablePressable
+            ref={refreshBtnRef}
             onPress={handleRefresh}
             hitSlop={10}
             style={styles.refreshBtn}

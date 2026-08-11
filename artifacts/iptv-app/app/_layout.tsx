@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Platform, View } from 'react-native';
 import { UpdateModal } from '@/components/UpdateModal';
+import { ConfirmModal } from '@/components/ConfirmModal';
 import { checkForUpdate, type UpdateInfo } from '@/services/updateService';
 import { Toast } from '@/components/Toast';
 import {
@@ -168,21 +169,38 @@ function RootLayoutNav() {
  */
 function ParentalWrapper({ children }: { children: React.ReactNode }) {
   const { logout } = useAppContext();
+  // TV: Alert.alert buttons are unreliable on Fire OS — ConfirmModal is the
+  // safe alternative.  Touch keeps the native Alert (matching existing UX).
+  const [forgotPinVisible, setForgotPinVisible] = useState(false);
 
   const handleForgotPin = useCallback(() => {
-    Alert.alert(
-      'Reset App',
-      'This will remove your IPTV credentials and disable the PIN. You will need to set up the app again.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Reset & Logout', style: 'destructive', onPress: logout },
-      ],
-    );
+    if (Platform.isTV) {
+      setForgotPinVisible(true);
+    } else {
+      Alert.alert(
+        'Reset App',
+        'This will remove your IPTV credentials and disable the PIN. You will need to set up the app again.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Reset & Logout', style: 'destructive', onPress: logout },
+        ],
+      );
+    }
   }, [logout]);
 
   return (
     <ParentalContextProvider onForgotPin={handleForgotPin}>
       {children}
+      {/* TV-safe "Forgot PIN / Reset App" confirmation modal */}
+      <ConfirmModal
+        visible={forgotPinVisible}
+        title="Reset App"
+        message="This will remove your IPTV credentials and disable the PIN. You will need to set up the app again."
+        confirmLabel="Reset & Logout"
+        destructive
+        onConfirm={() => { setForgotPinVisible(false); logout(); }}
+        onCancel={() => setForgotPinVisible(false)}
+      />
     </ParentalContextProvider>
   );
 }

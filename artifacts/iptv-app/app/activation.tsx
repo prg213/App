@@ -58,6 +58,16 @@ export default function ActivationScreen() {
     ).start();
   }, [pulse]);
 
+  // TV: imperatively focus the "Check Activation" button on mount.
+  // hasTVPreferredFocus is forbidden (re-fires requestFocus on every render);
+  // useEffect + ref.focus() fires exactly once.
+  const checkBtnRef = useRef<View>(null);
+  useEffect(() => {
+    if (!Platform.isTV) return;
+    const t = setTimeout(() => (checkBtnRef.current as any)?.focus?.(), 200);
+    return () => clearTimeout(t);
+  }, []);
+
   const { data, isFetching, refetch } = useQuery({
     queryKey: ['activation', deviceMac],
     queryFn: () => checkActivation(deviceMac),
@@ -163,10 +173,10 @@ export default function ActivationScreen() {
         ))}
 
         <FocusablePressable
+          ref={checkBtnRef}
           style={[styles.checkBtn, isFetching && styles.checkBtnDisabled]}
           onPress={handleCheck}
           disabled={isFetching}
-          hasTVPreferredFocus={Platform.isTV}
         >
           {isFetching
             ? <ActivityIndicator color="#fff" />

@@ -1,9 +1,20 @@
-import { Link, Stack } from 'expo-router';
-import { StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { Stack, useRouter } from 'expo-router';
+import { Platform, StyleSheet, Text, View } from 'react-native';
+import { FocusablePressable } from '@/components/FocusablePressable';
 import { useColors } from '@/hooks/useColors';
 
 export default function NotFoundScreen() {
   const colors = useColors();
+  const router = useRouter();
+  // TV: give the "Go home" button immediate D-pad focus so the user is not
+  // stranded on a screen with no focusable element.
+  const homeBtnRef = useRef<View>(null);
+  useEffect(() => {
+    if (!Platform.isTV) return;
+    const t = setTimeout(() => (homeBtnRef.current as any)?.focus?.(), 150);
+    return () => clearTimeout(t);
+  }, []);
 
   return (
     <>
@@ -13,11 +24,12 @@ export default function NotFoundScreen() {
           This screen doesn&apos;t exist.
         </Text>
 
-        <Link href="/" style={styles.link}>
+        {/* Expo Link is not TV-focusable; FocusablePressable + router.replace is. */}
+        <FocusablePressable ref={homeBtnRef} style={styles.link} onPress={() => router.replace('/')}>
           <Text style={[styles.linkText, { color: colors.primary }]}>
             Go to home screen!
           </Text>
-        </Link>
+        </FocusablePressable>
       </View>
     </>
   );
@@ -37,6 +49,7 @@ const styles = StyleSheet.create({
   link: {
     marginTop: 15,
     paddingVertical: 15,
+    paddingHorizontal: 20,
   },
   linkText: {
     fontSize: 14,
