@@ -1273,6 +1273,7 @@ function FullGuide({
   const [guideReminderIds, setGuideReminderIds] = useState<Set<string>>(new Set());
   const [chFilter, setChFilter] = useState('');
   const [debouncedChFilter, setDebouncedChFilter] = useState('');
+  const [favFilterActive, setFavFilterActive] = useState(false);
 
   // ── Auto-advance D-pad focus between columns (TV / Fire TV only) ───────────
   // Ref attached to the first channel cell so we can programmatically focus it.
@@ -1506,11 +1507,16 @@ function FullGuide({
     Animated.timing(nowXAnim, { toValue: nowX, duration: 800, useNativeDriver: false }).start();
   }, [nowX]);
 
-  // Channel filter — applied on top of the already-filtered channels prop
+  // Channel filter — applied on top of the already-filtered channels prop.
+  // When favFilterActive is true, only channels whose id is in guideFavIds are shown.
   const visibleChannels = useMemo(() => {
+    let result = channels;
+    if (favFilterActive) {
+      result = result.filter((c) => guideFavIds.has(c.id));
+    }
     const q = normaliseStr(debouncedChFilter.trim());
-    return q ? channels.filter((c) => normaliseStr(c.name).includes(q)) : channels;
-  }, [channels, debouncedChFilter]);
+    return q ? result.filter((c) => normaliseStr(c.name).includes(q)) : result;
+  }, [channels, debouncedChFilter, favFilterActive, guideFavIds]);
 
   // Height of the full programme column — used for the "Now" indicator line
   const nowLineH = visibleChannels.length * ROW_H;
@@ -1659,6 +1665,22 @@ function FullGuide({
           </Text>
         </FocusablePressable>
 
+        {/* Favourites-only filter toggle */}
+        <FocusablePressable
+          focusedStyle={styles.tvFocused}
+          style={[
+            styles.todayBtn,
+            favFilterActive
+              ? { backgroundColor: '#EF4444', borderColor: '#EF4444' }
+              : { backgroundColor: colors.secondary, borderColor: colors.border },
+          ]}
+          onPress={() => setFavFilterActive((v) => !v)}
+        >
+          <Text style={[styles.todayBtnText, { color: favFilterActive ? '#fff' : colors.mutedForeground }]}>
+            {favFilterActive ? '♥ Favs' : '♡ All'}
+          </Text>
+        </FocusablePressable>
+
         <TVTextInput
           focusable
           value={chFilter}
@@ -1745,7 +1767,23 @@ function FullGuide({
           column and right programme area always scroll together — no JS-based
           sync needed, no de-sync possible.
           ──────────────────────────────────────────────────────────────────── */}
-      {visibleChannels.length === 0 && chFilter.trim() ? (
+      {visibleChannels.length === 0 && favFilterActive && !chFilter.trim() ? (
+        <View style={[styles.empty, { paddingTop: 64 }]}>
+          <Text style={{ fontSize: 36 }}>♡</Text>
+          <Text style={[styles.emptyTitle, { color: colors.foreground }]}>No favourited channels here</Text>
+          <Text style={[styles.emptySub, { color: colors.mutedForeground }]}>
+            None of the channels in this category are in your favourites yet.{'\n'}
+            Long-press a channel row to add one, or tap ♡ All to see everything.
+          </Text>
+          <FocusablePressable
+            focusedStyle={styles.tvFocused}
+            style={[styles.clearFilterBtn, { backgroundColor: colors.secondary, borderColor: colors.border }]}
+            onPress={() => setFavFilterActive(false)}
+          >
+            <Text style={[styles.clearFilterBtnText, { color: colors.primary }]}>♡ Show all channels</Text>
+          </FocusablePressable>
+        </View>
+      ) : visibleChannels.length === 0 && chFilter.trim() ? (
         <View style={[styles.empty, { paddingTop: 64 }]}>
           <Text style={{ fontSize: 36 }}>🔍</Text>
           <Text style={[styles.emptyTitle, { color: colors.foreground }]}>No channels match</Text>
