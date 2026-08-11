@@ -938,6 +938,14 @@ export default function PlayerScreen() {
       if (isLive) liveUrlRef.current = entry.url; // keep shared ref in sync
       player.replace(entry.url);
       player.play();
+      // TV: relocate focus to the center zone at 150 ms so the remote cursor
+      // is never stranded during the brief gap before the useEffect([channelIdx])
+      // fires at 600 ms.  Critical at channel boundaries where the adjacent
+      // left/right focus zone becomes non-focusable immediately after the switch
+      // (e.g. switching to channel 0 makes the left zone non-focusable).
+      if (Platform.isTV && isLive) {
+        setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 150);
+      }
     } catch {}
   }, [isLive, liveUrlRef, player, setLastWatchedUrl]);
 
@@ -1812,15 +1820,24 @@ export default function PlayerScreen() {
           ────────────────────────────────────────────────────────────────── */}
       {Platform.isTV && isLive && !hasError && !isWeb && (
         <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
-          {/* Left third — D-pad left lands here → show prev-channel preview, then switch */}
+          {/* Left third — D-pad left lands here → show prev-channel preview, then switch.
+              Always focusable (unconditional) so this zone is never in a non-focusable
+              state while it holds D-pad focus.  On Fire OS a view that becomes
+              non-focusable while focused creates a dead zone where the remote stops
+              responding.  Instead, onFocus bounces focus to center when there is no
+              previous channel to switch to. */}
           <Pressable
-            focusable={!!prevChannel}
+            focusable
             style={styles.tvZoneLeft}
-            // Safety fallback: if focus ever gets stuck on this zone, OK still
-            // shows/hides the info bar instead of doing nothing.
             onPress={showInfo ? dismissInfoBar : showInfoBar}
             onFocus={() => {
-              if (!tvNavReadyRef.current || !prevChannel || navCooldownRef.current) return;
+              if (!prevChannel || !tvNavReadyRef.current) {
+                // No previous channel or nav not yet settled — immediately bounce
+                // D-pad focus to center so the remote stays responsive.
+                setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 50);
+                return;
+              }
+              if (navCooldownRef.current) return;
               // Claim the cooldown upfront so rapid D-pad presses during the preview are ignored
               navCooldownRef.current = true;
               setTimeout(() => { navCooldownRef.current = false; }, 1400);
@@ -1862,15 +1879,20 @@ export default function PlayerScreen() {
               }
             }}
           />
-          {/* Right third — D-pad right lands here → show next-channel preview, then switch */}
+          {/* Right third — D-pad right lands here → show next-channel preview, then switch.
+              Always focusable for the same reason as the left zone above — prevents
+              a dead zone at the last channel when this zone becomes non-focusable. */}
           <Pressable
-            focusable={!!nextChannel}
+            focusable
             style={styles.tvZoneRight}
-            // Safety fallback: if focus ever gets stuck on this zone, OK still
-            // shows/hides the info bar instead of doing nothing.
             onPress={showInfo ? dismissInfoBar : showInfoBar}
             onFocus={() => {
-              if (!tvNavReadyRef.current || !nextChannel || navCooldownRef.current) return;
+              if (!nextChannel || !tvNavReadyRef.current) {
+                // No next channel or nav not yet settled — bounce focus to center.
+                setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 50);
+                return;
+              }
+              if (navCooldownRef.current) return;
               navCooldownRef.current = true;
               setTimeout(() => { navCooldownRef.current = false; }, 1400);
               const targetChannel = nextChannel;

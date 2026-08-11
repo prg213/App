@@ -278,7 +278,7 @@ interface TVProgItem {
 const TVEpgRow = React.memo(function TVEpgRow({
   channel, programs, dayStartMs, now, isToday, isFirst, colors, reminderIds,
   onProgramPress, onWatchChannel, firstChannelRef, lastFocusedProgRef,
-  jumpToNowRef,
+  jumpToNowRef, rowIndex, allChannelRefs,
 }: {
   channel: Channel;
   programs: EpgProgram[];
@@ -305,6 +305,19 @@ const TVEpgRow = React.memo(function TVEpgRow({
    * FullGuide calls it via the global onHWKeyEvent Play/Pause listener.
    */
   jumpToNowRef?: React.MutableRefObject<(() => void) | null>;
+  /**
+   * Index of this row in the outer vertical FlatList. Used together with
+   * allChannelRefs to wire D-pad nextFocusUp / nextFocusDown from programme
+   * cells to the channel cells of adjacent rows so UP/DOWN navigation is
+   * reliable across independently-virtualised horizontal FlatLists on Fire OS.
+   */
+  rowIndex: number;
+  /**
+   * Shared Map (owned by FullGuide) from row-index → channel-cell View.
+   * Every TVEpgRow writes its channel-cell ref into this map on mount.
+   * Programme-cell onFocus reads adjacent-row entries to set nextFocusUp/Down.
+   */
+  allChannelRefs: React.RefObject<Map<number, View | null>>;
 }) {
   const flatRef = useRef<FlatList>(null);
   // Ref to the first programme cell — used by the channel-press auto-advance
@@ -495,7 +508,18 @@ const TVEpgRow = React.memo(function TVEpgRow({
       {/* Channel info cell — OK/Select advances focus to first programme;
           long-press watches the channel live (matches catchup auto-advance pattern) */}
       <FocusablePressable
-        ref={firstChannelRef}
+        ref={(el: View | null) => {
+          // Store in the shared cross-row map so adjacent-row programme cells
+          // can read this node handle for nextFocusUp / nextFocusDown wiring.
+          if (el) allChannelRefs.current.set(rowIndex, el);
+          else allChannelRefs.current.delete(rowIndex);
+          // Forward to firstChannelRef (only provided for row 0) so FullGuide
+          // can programmatically focus the first channel cell on entry.
+          if (firstChannelRef) {
+            if (typeof firstChannelRef === 'function') firstChannelRef(el);
+            else (firstChannelRef as React.MutableRefObject<View | null>).current = el;
+          }
+        }}
         focusedStyle={styles.tvFocused}
         style={[styles.tvChCell, { backgroundColor: colors.card, borderRightColor: colors.border }]}
         onPress={() => {
@@ -570,6 +594,27 @@ const TVEpgRow = React.memo(function TVEpgRow({
                     borderColor: isNow ? '#3B82F6' : colors.border,
                   },
                 ]}
+                onFocus={() => {
+                  // TV: wire D-pad UP/DOWN from this programme cell to the channel
+                  // cells of the rows immediately above and below.  Native spatial
+                  // navigation cannot reliably cross the independently-virtualised
+                  // horizontal FlatList boundaries on Fire OS, so we set the target
+                  // node handles imperatively each time a cell receives focus (the
+                  // focused row + adjacent rows may have scrolled since last wired).
+                  if (!Platform.isTV) return;
+                  const prevCh = allChannelRefs.current.get(rowIndex - 1);
+                  const nextCh = allChannelRefs.current.get(rowIndex + 1);
+                  const prevNode = prevCh ? findNodeHandle(prevCh) : null;
+                  const nextNode = nextCh ? findNodeHandle(nextCh) : null;
+                  const cell = progRefs.current.get(index);
+                  if (!cell) return;
+                  const nativeProps: Record<string, number> = {};
+                  if (prevNode != null) nativeProps.nextFocusUp = prevNode;
+                  if (nextNode != null) nativeProps.nextFocusDown = nextNode;
+                  if (Object.keys(nativeProps).length > 0) {
+                    (cell as any).setNativeProps?.(nativeProps);
+                  }
+                }}
                 onPress={() => {
                   // Record the pressed cell so focus can be restored after the modal closes
                   if (lastFocusedProgRef) {
@@ -1188,6 +1233,11 @@ function FullGuide({
   // ── Auto-advance D-pad focus between columns (TV / Fire TV only) ───────────
   // Ref attached to the first channel cell so we can programmatically focus it.
   const firstChannelRef = useRef<View>(null);
+  // Shared Map from row-index → channel-cell View node.  Every TVEpgRow writes
+  // itself in on mount; programme-cell onFocus reads adjacent entries to set
+  // nextFocusUp / nextFocusDown, enabling reliable UP/DOWN across the
+  // independently-virtualised horizontal FlatLists on Fire OS.
+  const allChannelRefs = useRef<Map<number, View | null>>(new Map());
   // Ref to the programme cell that was last pressed — written by each TVEpgRow
   // on programme-cell press, read on ProgramModal close to restore D-pad focus.
   const lastFocusedProgViewRef = useRef<View | null>(null);
@@ -1697,6 +1747,8 @@ function FullGuide({
                 firstChannelRef={index === 0 ? firstChannelRef : undefined}
                 lastFocusedProgRef={lastFocusedProgViewRef}
                 jumpToNowRef={index === 0 ? jumpToNowCallbackRef : undefined}
+                rowIndex={index}
+                allChannelRefs={allChannelRefs}
                 onWatchChannel={(c) => {
                   const chList = channels.map((x) => ({
                     url: x.streamUrl, title: x.name,
