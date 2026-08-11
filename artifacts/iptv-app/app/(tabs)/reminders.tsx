@@ -149,15 +149,7 @@ function RescheduleModal({
   );
 }
 
-function ReminderCard({
-  reminder,
-  colors,
-  nowTs,
-  leadMins,
-  onDelete,
-  onReschedule,
-  onWatchLive,
-}: {
+const ReminderCard = React.forwardRef<View, {
   reminder: Reminder;
   colors: any;
   nowTs: number;
@@ -166,7 +158,15 @@ function ReminderCard({
   onDelete: () => void;
   onReschedule: () => void;
   onWatchLive?: () => void;
-}) {
+}>(function ReminderCard({
+  reminder,
+  colors,
+  nowTs,
+  leadMins,
+  onDelete,
+  onReschedule,
+  onWatchLive,
+}, forwardedRef) {
   const startMs = new Date(reminder.start).getTime();
   const endMs = new Date(reminder.end).getTime();
   const isPast = startMs < nowTs;
@@ -188,7 +188,14 @@ function ReminderCard({
   //   • deleteRef — delete button (always present)
   // D-pad RIGHT from infoRef → editRef (or deleteRef if no edit) → deleteRef.
   // D-pad LEFT reverses the chain back to infoRef.
-  const infoRef   = useRef<View>(null);
+  // infoRef is also exposed via forwardedRef so the parent screen can call
+  // .focus() on the first card's info zone for TV initial-focus placement.
+  const infoRef = useRef<View>(null);
+  const setInfoRef = useCallback((node: View | null) => {
+    (infoRef as React.MutableRefObject<View | null>).current = node;
+    if (typeof forwardedRef === 'function') forwardedRef(node);
+    else if (forwardedRef) (forwardedRef as React.MutableRefObject<View | null>).current = node;
+  }, [forwardedRef]);
   const editRef   = useRef<View>(null);
   const deleteRef = useRef<View>(null);
 
@@ -237,7 +244,7 @@ function ReminderCard({
       {/* Info zone (logo + content) — the primary D-pad focus target on TV.
           On phone the entire zone is tappable (same behaviour as the old outer card). */}
       <FocusablePressable
-        ref={infoRef}
+        ref={setInfoRef}
         style={styles.infoArea}
         onPress={cardPress}
       >
@@ -325,7 +332,7 @@ function ReminderCard({
     </View>
     </View>
   );
-}
+});
 
 export default function RemindersScreen() {
   const colors = useColors();
@@ -383,6 +390,13 @@ export default function RemindersScreen() {
   const prunedKeyRef = useRef('');
   // #152: track last background refresh failure timestamp to enforce a 5-min backoff
   const lastRefreshFailureRef = useRef<number>(0);
+  // TV: D-pad focus lands on the first reminder card's info zone on every tab visit.
+  const firstReminderRef = useRef<View>(null);
+  useFocusEffect(useCallback(() => {
+    if (!Platform.isTV) return;
+    const t = setTimeout(() => (firstReminderRef.current as any)?.focus?.(), 300);
+    return () => clearTimeout(t);
+  }, []));
   useFocusEffect(
     useCallback(() => {
       StorageService.getReminderLeadMins().then(setReminderLeadMins);
@@ -747,6 +761,10 @@ export default function RemindersScreen() {
     pastReminders.forEach((r) => flatItems.push({ kind: 'reminder', item: r }));
   }
 
+  // Index of the first non-divider item — used to attach firstReminderRef so the
+  // TV initial-focus useFocusEffect can focus the info zone of that card.
+  const firstReminderFlatIdx = flatItems.findIndex((i) => i.kind === 'reminder');
+
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       {/* Header */}
@@ -798,7 +816,7 @@ export default function RemindersScreen() {
             tintColor={colors.primary}
           />
           }
-          renderItem={({ item }) => {
+          renderItem={({ item, index }) => {
             if (item.kind === 'divider') {
               return (
                 <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>
@@ -808,6 +826,7 @@ export default function RemindersScreen() {
             }
             return (
               <ReminderCard
+                ref={index === firstReminderFlatIdx ? firstReminderRef : null}
                 reminder={item.item}
                 colors={colors}
                 nowTs={nowTs}

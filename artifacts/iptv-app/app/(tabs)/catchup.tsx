@@ -6,6 +6,7 @@ import {
   findNodeHandle,
   FlatList,
   Image,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -58,23 +59,20 @@ const ALL_CAT_ID = '__all__';
 
 // ─── Category Row ─────────────────────────────────────────────────────────────
 
-const CategoryRow = React.memo(function CategoryRow({
-  cat, isSelected, colors, onPress, hasTVPreferredFocus,
-}: {
+const CategoryRow = React.memo(React.forwardRef<View, {
   cat: Category;
   isSelected: boolean;
   colors: ReturnType<typeof useColors>;
   onPress: () => void;
-  hasTVPreferredFocus?: boolean;
-}) {
+}>(function CategoryRow({ cat, isSelected, colors, onPress }, ref) {
   return (
     <FocusablePressable
+      ref={ref}
       style={[
         styles.catRow,
         isSelected ? { backgroundColor: '#3B82F6' } : { borderBottomColor: colors.border },
       ]}
       onPress={onPress}
-      hasTVPreferredFocus={hasTVPreferredFocus}
     >
       <Text
         style={[styles.catRowText, { color: isSelected ? '#fff' : colors.foreground }]}
@@ -84,7 +82,7 @@ const CategoryRow = React.memo(function CategoryRow({
       </Text>
     </FocusablePressable>
   );
-});
+}));
 
 // ─── Channel Row ──────────────────────────────────────────────────────────────
 
@@ -144,8 +142,9 @@ export default function CatchupScreen() {
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
 
   // Refs for auto-advancing D-pad focus between columns
+  const firstCatRef     = useRef<View>(null);
   const firstChannelRef = useRef<View>(null);
-  const firstProgRef = useRef<View>(null);
+  const firstProgRef    = useRef<View>(null);
   // Set to true when a channel is selected so the useEffect below fires focus
   // once the programme list data arrives (EPG is fetched asynchronously).
   const pendingProgFocusRef = useRef(false);
@@ -170,6 +169,14 @@ export default function CatchupScreen() {
     });
     return () => sub.remove();
   }, [selectedChannel, selectedCatId]));
+
+  // TV: D-pad focus lands on the first category row whenever this tab becomes active.
+  // [] deps — fires on every tab visit, not just mount.
+  useFocusEffect(useCallback(() => {
+    if (!Platform.isTV) return;
+    const t = setTimeout(() => (firstCatRef.current as any)?.focus?.(), 200);
+    return () => clearTimeout(t);
+  }, []));
 
   // ── Categories ──
   const { data: rawCategories = [], isLoading: catLoading } = useQuery<Category[]>({
@@ -327,11 +334,11 @@ export default function CatchupScreen() {
 
   const renderCategory = useCallback(({ item, index }: { item: Category; index: number }) => (
     <CategoryRow
+      ref={index === 0 ? firstCatRef : undefined}
       cat={item}
       isSelected={item.id === selectedCatId}
       colors={colors}
       onPress={() => handleSelectCat(item.id)}
-      hasTVPreferredFocus={index === 0}
     />
   ), [selectedCatId, colors, handleSelectCat]);
 

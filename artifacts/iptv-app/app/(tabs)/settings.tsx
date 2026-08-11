@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { FocusablePressable } from '@/components/FocusablePressable';
 import {
   Alert,
@@ -13,7 +13,7 @@ import {
   View,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
@@ -166,6 +166,16 @@ export default function SettingsScreen() {
   const leadTimeRowRef = useRef<View>(null);
   const ratingRowRef = useRef<View>(null);
   const setPinRowRef = useRef<View>(null);
+
+  // TV: focus the first action row (Refresh All Content) whenever the Settings
+  // tab becomes active.  Replaces hasTVPreferredFocus to avoid Fire OS re-render
+  // requestFocus races.
+  const firstSettingsRowRef = useRef<View>(null);
+  useFocusEffect(useCallback(() => {
+    if (!Platform.isTV) return;
+    const t = setTimeout(() => (firstSettingsRowRef.current as any)?.focus?.(), 150);
+    return () => clearTimeout(t);
+  }, []));
 
   const audioLangWasOpen = useRef(false);
   useEffect(() => {
@@ -377,16 +387,17 @@ export default function SettingsScreen() {
     );
   }
 
-  function ActionRow({ title, sub, icon, onPress, destructive, firstTV }: {
+  function ActionRow({ title, sub, icon, onPress, destructive, refProp }: {
     title: string; sub?: string; icon: string; onPress: () => void; destructive?: boolean;
-    /** Set true on the first action row of the screen so TV focus lands here on entry. */
-    firstTV?: boolean;
+    /** Ref forwarded to the underlying FocusablePressable — used by useFocusEffect
+     *  to restore D-pad focus on screen entry without hasTVPreferredFocus races. */
+    refProp?: React.RefObject<View | null>;
   }) {
     return (
       <FocusablePressable
+        ref={refProp}
         style={[styles.actionRow, { borderBottomColor: colors.border }]}
         onPress={onPress}
-        hasTVPreferredFocus={firstTV && Platform.isTV}
       >
         <View style={{ flex: 1 }}>
           <Text style={[styles.actionTitle, { color: destructive ? colors.destructive : colors.foreground }]}>{title}</Text>
@@ -518,7 +529,7 @@ export default function SettingsScreen() {
             sub="Reload channels, movies & series"
             icon="↻"
             onPress={handleRefreshContent}
-            firstTV
+            refProp={firstSettingsRowRef}
           />
           <ActionRow
             title="Refresh TV Guide (EPG)"

@@ -144,6 +144,14 @@ export default function WatchHistoryScreen() {
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
+  // TV: restore focus to the Back button every time this screen becomes active
+  // (covers both initial entry and return from a detail push).
+  useFocusEffect(useCallback(() => {
+    if (!Platform.isTV) return;
+    const t = setTimeout(() => (backBtnRef.current as any)?.focus?.(), 150);
+    return () => clearTimeout(t);
+  }, []));
+
   const handleDelete = useCallback(async (id: string) => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     await StorageService.removeFromHistory(id);
@@ -211,7 +219,7 @@ export default function WatchHistoryScreen() {
           { paddingTop: insets.top + 12, borderBottomColor: colors.border },
         ]}
       >
-        <FocusablePressable ref={backBtnRef} style={styles.backBtn} onPress={() => router.back()} hasTVPreferredFocus={Platform.isTV}>
+        <FocusablePressable ref={backBtnRef} style={styles.backBtn} onPress={() => router.back()}>
           <Text style={[styles.backIcon, { color: colors.foreground }]}>←</Text>
         </FocusablePressable>
         <View style={{ flex: 1 }}>

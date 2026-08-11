@@ -1,15 +1,16 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
   Image,
   Keyboard,
+  Platform,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
 import { TVTextInput } from '@/components/TVTextInput';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { FocusablePressable } from '@/components/FocusablePressable';
 import { useQuery } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
@@ -179,6 +180,14 @@ export default function BlockedChannelsScreen() {
     }
   }, [allChannels]);
 
+  // TV: D-pad focus lands on the Back button every time this screen becomes active.
+  const backBtnRef = useRef<View>(null);
+  useFocusEffect(useCallback(() => {
+    if (!Platform.isTV) return;
+    const t = setTimeout(() => (backBtnRef.current as any)?.focus?.(), 150);
+    return () => clearTimeout(t);
+  }, []));
+
   // ── #10: Derive category groups ───────────────────────────────────────────
   const categories = useMemo(() => {
     const map = new Map<string, Channel[]>();
@@ -250,7 +259,7 @@ export default function BlockedChannelsScreen() {
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 12, borderBottomColor: colors.border }]}>
-        <FocusablePressable style={styles.backBtn} onPress={() => router.back()}>
+        <FocusablePressable ref={backBtnRef} style={styles.backBtn} onPress={() => router.back()}>
           <Text style={[styles.backIcon, { color: colors.foreground }]}>←</Text>
         </FocusablePressable>
         <View style={{ flex: 1 }}>
