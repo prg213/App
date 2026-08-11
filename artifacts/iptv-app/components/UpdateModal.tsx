@@ -112,18 +112,28 @@ export function UpdateModal({ update, onDismiss }: Props) {
     const file = apkFileRef.current;
     if (!file) return;
     try {
-      // getContentUriAsync converts file:// → content:// via FileProvider
+      // getContentUriAsync converts file:// → content:// via FileProvider.
+      // Flags:
+      //   FLAG_GRANT_READ_URI_PERMISSION = 0x00000001 (let installer read the file)
+      //   FLAG_ACTIVITY_NEW_TASK         = 0x10000000 (required on Fire OS / Android 11+
+      //                                               to launch an activity from a non-
+      //                                               activity context)
       const contentUri = await getContentUriAsync(file.uri);
       await startActivityAsync('android.intent.action.VIEW', {
         data: contentUri,
-        flags: 1, // FLAG_GRANT_READ_URI_PERMISSION
+        flags: 0x10000001, // FLAG_GRANT_READ_URI_PERMISSION | FLAG_ACTIVITY_NEW_TASK
         type: 'application/vnd.android.package-archive',
       });
     } catch (e) {
       console.warn('[UpdateModal] install intent failed', e);
       Alert.alert(
         'Install Failed',
-        'Could not open the installer. Make sure "Install unknown apps" is enabled for StreamVault in Android Settings.',
+        Platform.isTV
+          ? 'StreamVault needs permission to install updates.\n\n' +
+            'Go to:\nSettings → My Fire TV → Developer Options → Install Unknown Apps → StreamVault → Allow\n\n' +
+            'Then press "Install Now" again.'
+          : 'Could not open the installer.\n\n' +
+            'Go to Settings → Apps → Special App Access → Install Unknown Apps → StreamVault → Allow',
         [{ text: 'OK' }],
       );
     }
