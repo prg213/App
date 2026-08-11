@@ -22,6 +22,11 @@ interface Props {
    */
   videoIds: string[] | 'loading' | null;
   onClose: () => void;
+  /**
+   * TV only: ref to the button that opened this modal.  When the modal closes,
+   * focus is restored to this element so the D-pad cursor doesn't go dead.
+   */
+  openerRef?: React.RefObject<View | null>;
 }
 
 /**
@@ -149,7 +154,7 @@ function isVideoId(s: string): boolean {
   return YT_ID_RE.test(s);
 }
 
-export function TrailerModal({ videoIds, onClose }: Props) {
+export function TrailerModal({ videoIds, onClose, openerRef }: Props) {
   const insets = useSafeAreaInsets();
   const [idx, setIdx] = useState(0);
   const [webviewLoading, setWebviewLoading] = useState(true);
@@ -213,6 +218,15 @@ export function TrailerModal({ videoIds, onClose }: Props) {
   // (loading state, webview events, idx changes all trigger re-renders).
   const closeBtnRef = useRef<View>(null);
 
+  // TV: unified close handler — dismisses the modal then returns D-pad focus
+  // to whichever button opened it so the cursor doesn't go dead on close.
+  const handleClose = React.useCallback(() => {
+    onClose();
+    if (Platform.isTV && openerRef?.current) {
+      setTimeout(() => (openerRef.current as any)?.focus?.(), 150);
+    }
+  }, [onClose, openerRef]);
+
   const handleUnmuteTap = () => {
     if (unmuteTimer.current) clearTimeout(unmuteTimer.current);
     webviewRef.current?.postMessage(JSON.stringify({ cmd: 'unmute' }));
@@ -271,7 +285,7 @@ export function TrailerModal({ videoIds, onClose }: Props) {
     <Modal
       visible
       animationType="slide"
-      onRequestClose={onClose}
+      onRequestClose={handleClose}
       statusBarTranslucent
       onShow={() => {
         // TV: focus the close button on modal open — avoids hasTVPreferredFocus
@@ -283,7 +297,7 @@ export function TrailerModal({ videoIds, onClose }: Props) {
         {/* ── Header ── */}
         <View style={styles.header}>
           <Text style={styles.title}>Trailer</Text>
-          <FocusablePressable ref={closeBtnRef} style={styles.closeBtn} onPress={onClose} hitSlop={12}>
+          <FocusablePressable ref={closeBtnRef} style={styles.closeBtn} onPress={handleClose} hitSlop={12}>
             <Text style={styles.closeTxt}>✕</Text>
           </FocusablePressable>
         </View>

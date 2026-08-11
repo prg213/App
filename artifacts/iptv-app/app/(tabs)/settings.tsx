@@ -166,6 +166,9 @@ export default function SettingsScreen() {
   const leadTimeRowRef = useRef<View>(null);
   const ratingRowRef = useRef<View>(null);
   const setPinRowRef = useRef<View>(null);
+  // TV: ref to the Community row — passed as openerRef to CommunityModal so
+  // focus returns here after the modal closes.
+  const communityRowRef = useRef<View>(null);
   // TV: ref to the initially-focused item in each picker sheet.
   // Set on the currently-selected (or first) row, then called in Modal onShow.
   // Replaces hasTVPreferredFocus which re-fires requestFocus on every re-render
@@ -724,6 +727,7 @@ export default function SettingsScreen() {
             sub="Chat with other StreamVault users on Telegram"
             icon="💬"
             onPress={() => setShowCommunity(true)}
+            refProp={communityRowRef}
           />
         </View>
 
@@ -921,7 +925,7 @@ export default function SettingsScreen() {
       </Modal>
 
       {/* ── Community / Telegram modal ── */}
-      <CommunityModal visible={showCommunity} onClose={() => setShowCommunity(false)} />
+      <CommunityModal visible={showCommunity} onClose={() => setShowCommunity(false)} openerRef={communityRowRef} />
     </View>
   );
 }

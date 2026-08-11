@@ -57,6 +57,19 @@ export function PinPad({ mode, title, subtitle, onSuccess, onCancel, onForgotPin
   const [busy, setBusy] = useState(false);
   const shakeX = useRef(new Animated.Value(0)).current;
 
+  // TV: ref to the '1' key (index 0 in the pad grid) — focused once on mount
+  // via useEffect([]) so the remote cursor lands on the digit pad immediately.
+  // useEffect is used instead of hasTVPreferredFocus because hasTVPreferredFocus
+  // re-fires requestFocus() on EVERY re-render (every digit press) on Fire OS,
+  // snapping focus back to '1' mid-entry and making PIN input impossible.
+  const firstKeyRef = useRef<View>(null);
+  useEffect(() => {
+    if (!Platform.isTV) return;
+    const t = setTimeout(() => (firstKeyRef.current as any)?.focus?.(), 120);
+    return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const shake = useCallback(() => {
     shakeX.setValue(0);
     Animated.sequence([
@@ -183,20 +196,21 @@ export function PinPad({ mode, title, subtitle, onSuccess, onCancel, onForgotPin
 
       {/* Number pad
           All buttons are FocusablePressable so Fire TV D-pad can reach them.
-          The '1' key (index 0) gets hasTVPreferredFocus so the remote
-          cursor lands on the pad as soon as the PIN screen opens. */}
+          The '1' key (index 0) gets an imperative focus via useEffect([]) so
+          the remote cursor lands on the pad as soon as the PIN screen opens.
+          useEffect is used instead of hasTVPreferredFocus because
+          hasTVPreferredFocus re-fires requestFocus on every re-render (every
+          digit press) on Fire OS, moving focus back to '1' mid-entry. */}
       <View style={styles.pad}>
         {PAD_KEYS.map((key, idx) => {
           if (key === '') return <View key={idx} style={styles.padCell} />;
           return (
             <FocusablePressable
               key={idx}
+              ref={idx === 0 ? firstKeyRef : undefined}
               style={styles.padCell}
               onPress={() => (key === '⌫' ? handleDelete() : handleDigit(key))}
               disabled={busy}
-              // Give the '1' key initial TV focus so the remote can immediately
-              // start entering digits without needing to navigate to the pad.
-              hasTVPreferredFocus={Platform.isTV && idx === 0}
             >
               <View style={[styles.padBtn, key === '⌫' && styles.padBtnDelete]}>
                 <Text style={[styles.padKey, key === '⌫' && styles.padKeyDelete]}>{key}</Text>

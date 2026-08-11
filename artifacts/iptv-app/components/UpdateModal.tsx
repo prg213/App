@@ -11,17 +11,17 @@
  * Works on Android phones and Fire TV (D-pad navigable).
  * Requires android.permission.REQUEST_INSTALL_PACKAGES in the manifest.
  */
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Animated,
   Modal,
   Platform,
-  Pressable,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { FocusablePressable } from '@/components/FocusablePressable';
 import { DownloadTask, File, Paths } from 'expo-file-system';
 import { getContentUriAsync } from 'expo-file-system/legacy';
 import { startActivityAsync } from 'expo-intent-launcher';
@@ -41,6 +41,28 @@ export function UpdateModal({ update, onDismiss }: Props) {
   const progressAnim = useRef(new Animated.Value(0)).current;
   const taskRef = useRef<DownloadTask | null>(null);
   const apkFileRef = useRef<File | null>(null);
+
+  // TV: refs for the primary action button in each stage.
+  // Focused imperatively via onShow (initial) + useEffect([stage]) (transitions).
+  // Replaces hasTVPreferredFocus which re-fires requestFocus on every re-render.
+  const promptPrimaryRef      = useRef<View>(null);
+  const downloadingCancelRef  = useRef<View>(null);
+  const readyPrimaryRef       = useRef<View>(null);
+  const errorPrimaryRef       = useRef<View>(null);
+  // Skip the first useEffect([stage]) run — onShow handles the initial focus.
+  const stageChangedRef = useRef(false);
+
+  useEffect(() => {
+    if (!Platform.isTV) return;
+    if (!stageChangedRef.current) return; // onShow handles initial open
+    const t = setTimeout(() => {
+      if (stage === 'prompt')      (promptPrimaryRef.current     as any)?.focus?.();
+      else if (stage === 'downloading') (downloadingCancelRef.current as any)?.focus?.();
+      else if (stage === 'ready')  (readyPrimaryRef.current      as any)?.focus?.();
+      else if (stage === 'error')  (errorPrimaryRef.current      as any)?.focus?.();
+    }, 80);
+    return () => clearTimeout(t);
+  }, [stage]);
 
   const updateProgress = (pct: number) => {
     setProgress(pct);
@@ -124,6 +146,13 @@ export function UpdateModal({ update, onDismiss }: Props) {
       transparent
       animationType="fade"
       onRequestClose={stage === 'downloading' ? undefined : onDismiss}
+      onShow={() => {
+        // TV: focus the primary button on first open.
+        // Stage transitions are handled by the useEffect([stage]) above.
+        if (!Platform.isTV) return;
+        stageChangedRef.current = true;
+        setTimeout(() => (promptPrimaryRef.current as any)?.focus?.(), 80);
+      }}
     >
       <View style={styles.backdrop}>
         <View style={styles.card}>
@@ -154,75 +183,79 @@ export function UpdateModal({ update, onDismiss }: Props) {
             </Text>
           )}
 
-          {/* ── Buttons ── */}
+          {/* ── Buttons ──
+              FocusablePressable: cyan focus ring on Fire TV.
+              Focus is managed imperatively via refs + onShow/useEffect([stage])
+              instead of hasTVPreferredFocus which races on re-renders. */}
           <View style={styles.actions}>
             {stage === 'prompt' && (
               <>
-                <Pressable
-                  focusable
-                  hasTVPreferredFocus
-                  style={(s: any) => [styles.btn, styles.btnPrimary, s.focused && styles.btnFocused]}
+                <FocusablePressable
+                  ref={promptPrimaryRef}
+                  style={styles.btn}
+                  focusedStyle={[styles.btnPrimary, styles.btnFocused]}
                   onPress={startDownload}
                 >
                   <Text style={styles.btnPrimaryText}>⬇  Download & Install</Text>
-                </Pressable>
-                <Pressable
-                  focusable
-                  style={(s: any) => [styles.btn, styles.btnSecondary, s.focused && styles.btnFocused]}
+                </FocusablePressable>
+                <FocusablePressable
+                  style={[styles.btn, styles.btnSecondary]}
+                  focusedStyle={styles.btnFocused}
                   onPress={onDismiss}
                 >
                   <Text style={styles.btnSecondaryText}>Later</Text>
-                </Pressable>
+                </FocusablePressable>
               </>
             )}
 
             {stage === 'downloading' && (
-              <Pressable
-                focusable
-                style={(s: any) => [styles.btn, styles.btnSecondary, s.focused && styles.btnFocused]}
+              <FocusablePressable
+                ref={downloadingCancelRef}
+                style={[styles.btn, styles.btnSecondary]}
+                focusedStyle={styles.btnFocused}
                 onPress={cancelDownload}
               >
                 <Text style={styles.btnSecondaryText}>Cancel</Text>
-              </Pressable>
+              </FocusablePressable>
             )}
 
             {stage === 'ready' && (
               <>
-                <Pressable
-                  focusable
-                  hasTVPreferredFocus
-                  style={(s: any) => [styles.btn, styles.btnPrimary, s.focused && styles.btnFocused]}
+                <FocusablePressable
+                  ref={readyPrimaryRef}
+                  style={[styles.btn, styles.btnPrimary]}
+                  focusedStyle={styles.btnFocused}
                   onPress={installApk}
                 >
                   <Text style={styles.btnPrimaryText}>📦  Install Now</Text>
-                </Pressable>
-                <Pressable
-                  focusable
-                  style={(s: any) => [styles.btn, styles.btnSecondary, s.focused && styles.btnFocused]}
+                </FocusablePressable>
+                <FocusablePressable
+                  style={[styles.btn, styles.btnSecondary]}
+                  focusedStyle={styles.btnFocused}
                   onPress={onDismiss}
                 >
                   <Text style={styles.btnSecondaryText}>Install Later</Text>
-                </Pressable>
+                </FocusablePressable>
               </>
             )}
 
             {stage === 'error' && (
               <>
-                <Pressable
-                  focusable
-                  hasTVPreferredFocus
-                  style={(s: any) => [styles.btn, styles.btnPrimary, s.focused && styles.btnFocused]}
+                <FocusablePressable
+                  ref={errorPrimaryRef}
+                  style={[styles.btn, styles.btnPrimary]}
+                  focusedStyle={styles.btnFocused}
                   onPress={startDownload}
                 >
                   <Text style={styles.btnPrimaryText}>Retry</Text>
-                </Pressable>
-                <Pressable
-                  focusable
-                  style={(s: any) => [styles.btn, styles.btnSecondary, s.focused && styles.btnFocused]}
+                </FocusablePressable>
+                <FocusablePressable
+                  style={[styles.btn, styles.btnSecondary]}
+                  focusedStyle={styles.btnFocused}
                   onPress={onDismiss}
                 >
                   <Text style={styles.btnSecondaryText}>Cancel</Text>
-                </Pressable>
+                </FocusablePressable>
               </>
             )}
           </View>

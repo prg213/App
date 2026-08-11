@@ -22,19 +22,33 @@ const CHROME_UA =
 interface Props {
   visible: boolean;
   onClose: () => void;
+  /**
+   * TV only: ref to the button that opened this modal.  When the modal closes,
+   * focus is restored to this element so the D-pad cursor doesn't go dead.
+   */
+  openerRef?: React.RefObject<View | null>;
 }
 
-export function CommunityModal({ visible, onClose }: Props) {
+export function CommunityModal({ visible, onClose, openerRef }: Props) {
   const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(true);
   // TV: close button ref for imperative onShow focus (replaces hasTVPreferredFocus).
   const closeBtnRef = useRef<View>(null);
 
+  // TV: unified close handler — dismisses the modal then returns D-pad focus
+  // to whichever button opened it so the cursor doesn't go dead on close.
+  const handleClose = React.useCallback(() => {
+    onClose();
+    if (Platform.isTV && openerRef?.current) {
+      setTimeout(() => (openerRef.current as any)?.focus?.(), 150);
+    }
+  }, [onClose, openerRef]);
+
   return (
     <Modal
       visible={visible}
       animationType="slide"
-      onRequestClose={onClose}
+      onRequestClose={handleClose}
       statusBarTranslucent
       onShow={() => {
         // TV: focus close button on open — avoids hasTVPreferredFocus races
@@ -49,7 +63,7 @@ export function CommunityModal({ visible, onClose }: Props) {
           <FocusablePressable
             ref={closeBtnRef}
             style={styles.closeBtn}
-            onPress={onClose}
+            onPress={handleClose}
             hitSlop={12}
           >
             <Text style={styles.closeTxt}>✕</Text>

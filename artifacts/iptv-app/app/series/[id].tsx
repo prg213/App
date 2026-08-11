@@ -93,6 +93,11 @@ export default function SeriesDetailScreen() {
   const [pendingEpisode, setPendingEpisode] = useState<{ ep: Episode; startAt?: number } | null>(null);
   const [selectedSeason, setSelectedSeason] = useState(0);
   const [showSeasonPicker, setShowSeasonPicker] = useState(false);
+  // TV: refs for season picker initial focus + opener restoration on close.
+  const firstSeasonRef    = React.useRef<View>(null);
+  const seasonPickerOpenerRef = React.useRef<View>(null);
+  // TV: ref to the trailer button for opener focus restoration after TrailerModal closes.
+  const trailerBtnRef     = React.useRef<View>(null);
   const [isFav, setIsFav] = useState(false);
   const [episodeHistory, setEpisodeHistory] = useState<Record<string, WatchHistoryEntry>>({});
   const [activeTab, setActiveTab] = useState<ActiveTab>('episodes');
@@ -425,6 +430,7 @@ export default function SeriesDetailScreen() {
 
           {seasons.length > 1 && (
             <FocusablePressable
+              ref={seasonPickerOpenerRef}
               focusable
               style={(focused) => [styles.outlineBtn, { borderColor: focused ? '#00E5FF' : 'rgba(255,255,255,0.2)' }]}
               onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowSeasonPicker(true); }}
@@ -436,6 +442,7 @@ export default function SeriesDetailScreen() {
           )}
 
           <FocusablePressable
+            ref={trailerBtnRef}
             focusable
             style={(focused) => [styles.outlineBtn, { borderColor: focused ? '#00E5FF' : 'rgba(255,255,255,0.15)' }, (!isOnline || trailerLoading) && styles.offlineBtn, focused && styles.focusRing]}
             onPress={async () => {
@@ -618,12 +625,19 @@ export default function SeriesDetailScreen() {
         visible={showSeasonPicker}
         transparent
         animationType="fade"
-        onRequestClose={() => setShowSeasonPicker(false)}
+        onRequestClose={() => {
+          setShowSeasonPicker(false);
+          // TV: restore focus to the season picker opener button on close.
+          if (Platform.isTV) setTimeout(() => (seasonPickerOpenerRef.current as any)?.focus?.(), 150);
+        }}
+        onShow={() => {
+          // TV: focus the currently-selected season row on open.
+          // Replaces hasTVPreferredFocus which re-fired on every re-render.
+          if (Platform.isTV) setTimeout(() => (firstSeasonRef.current as any)?.focus?.(), 80);
+        }}
       >
-        {/* focusable={false}: BACK already closes via onRequestClose; this
-            prevents the backdrop from stealing D-pad focus from the season rows */}
-        {/* focusable={false}: prevents this backdrop from stealing D-pad
-            focus away from the season option rows inside the sheet */}
+        {/* focusable={false}: BACK closes via onRequestClose; this prevents
+            the backdrop from stealing D-pad focus from the season rows */}
         <View style={styles.pickerBackdrop} pointerEvents="box-none" focusable={false} />
         <View style={[styles.pickerSheet, { paddingBottom: insets.bottom + 16 }]}>
           <Text style={[styles.pickerTitle, { color: 'rgba(255,255,255,0.5)', borderBottomColor: 'rgba(255,255,255,0.08)' }]}>
@@ -632,14 +646,16 @@ export default function SeriesDetailScreen() {
           {seasons.map((season, idx) => (
             <FocusablePressable
               key={season.id}
+              ref={idx === selectedSeason ? firstSeasonRef : undefined}
               style={[styles.pickerRow, { borderBottomColor: 'rgba(255,255,255,0.06)' }]}
-              hasTVPreferredFocus={Platform.isTV && idx === selectedSeason}
               onPress={() => {
                 setSelectedSeason(idx);
                 setShowSeasonPicker(false);
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                 // Scroll episode list back to top when user switches seasons
                 scrollRef.current?.scrollTo({ y: 0, animated: false });
+                // TV: restore focus to the opener after dismissing.
+                if (Platform.isTV) setTimeout(() => (seasonPickerOpenerRef.current as any)?.focus?.(), 150);
               }}
             >
               <Text style={[styles.pickerRowText, { color: idx === selectedSeason ? '#3B82F6' : '#fff' }]}>
@@ -671,7 +687,7 @@ export default function SeriesDetailScreen() {
           onCancel={() => { setShowEpPinGate(false); setPendingEpisode(null); }}
         />
       </Modal>
-      <TrailerModal videoIds={trailerVideoIds} onClose={() => setTrailerVideoIds(null)} />
+      <TrailerModal videoIds={trailerVideoIds} onClose={() => setTrailerVideoIds(null)} openerRef={trailerBtnRef} />
     </View>
   );
 }

@@ -93,12 +93,15 @@ function RescheduleModal({
   visible,
   onClose,
   onSelect,
+  openerRef,
 }: {
   reminder: Reminder | null;
   colors: any;
   visible: boolean;
   onClose: () => void;
   onSelect: (leadMins: number) => void;
+  /** TV only: ref to the ✎ button that opened this modal; D-pad focus is restored to it on close. */
+  openerRef?: React.RefObject<View | null>;
 }) {
   // Declared before the early return to satisfy Rules of Hooks.
   // TV: first option gets focus via onShow instead of hasTVPreferredFocus.
@@ -106,6 +109,15 @@ function RescheduleModal({
 
   if (!reminder) return null;
   const currentLeadMins = reminder.leadMins ?? null;
+
+  // TV: close handler that restores D-pad focus to the opener after dismissing.
+  const handleClose = () => {
+    onClose();
+    if (Platform.isTV && openerRef?.current) {
+      setTimeout(() => (openerRef.current as any)?.focus?.(), 150);
+    }
+  };
+
   return (
     <Modal
       visible={visible}
@@ -116,11 +128,11 @@ function RescheduleModal({
         // have to home in from whatever was focused behind the modal.
         if (Platform.isTV) setTimeout(() => (firstOptRef.current as any)?.focus?.(), 80);
       }}
-      onRequestClose={onClose}
+      onRequestClose={handleClose}
     >
       {/* focusable={false} on both wrappers so D-pad goes straight to the
           FocusablePressable options inside; BACK closes via onRequestClose. */}
-      <Pressable style={styles.modalOverlay} focusable={false} onPress={onClose}>
+      <Pressable style={styles.modalOverlay} focusable={false} onPress={handleClose}>
         <Pressable style={[styles.modalSheet, { backgroundColor: colors.card, borderColor: colors.border }]} focusable={false}>
           <Text style={[styles.modalTitle, { color: colors.foreground }]}>
             ⏰  Reschedule Reminder
@@ -150,7 +162,7 @@ function RescheduleModal({
               </FocusablePressable>
             );
           })}
-          <FocusablePressable style={styles.modalCancel} onPress={onClose}>
+          <FocusablePressable style={styles.modalCancel} onPress={handleClose}>
             <Text style={[styles.modalCancelText, { color: colors.mutedForeground }]}>Cancel</Text>
           </FocusablePressable>
         </Pressable>
@@ -166,7 +178,12 @@ const ReminderCard = React.forwardRef<View, {
   /** #100: current global notification lead time to display on the card */
   leadMins: number;
   onDelete: () => void;
-  onReschedule: () => void;
+  /**
+   * Called when the user presses the reschedule (✎) button.
+   * Receives the ref to the reschedule button so the parent can restore
+   * D-pad focus to it after the RescheduleModal closes on Fire TV.
+   */
+  onReschedule: (editBtnRef: React.RefObject<View | null>) => void;
   onWatchLive?: () => void;
 }>(function ReminderCard({
   reminder,
@@ -326,7 +343,7 @@ const ReminderCard = React.forwardRef<View, {
           <FocusablePressable
             ref={editRef}
             style={[styles.actionBtn, { borderColor: colors.border }]}
-            onPress={onReschedule}
+            onPress={() => onReschedule(editRef)}
           >
             <Text style={styles.actionBtnText}>✎</Text>
           </FocusablePressable>
@@ -353,6 +370,9 @@ export default function RemindersScreen() {
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [nowTs, setNowTs] = useState(() => Date.now());
   const [rescheduleTarget, setRescheduleTarget] = useState<Reminder | null>(null);
+  // TV: stores a ref to whichever card's reschedule (✎) button opened the
+  // RescheduleModal so focus can be restored to it when the modal closes.
+  const rescheduleOpenerRef = React.useRef<View>(null);
   // #100/#114: global lead time, reloaded on every focus
   const [reminderLeadMins, setReminderLeadMins] = useState(5);
 
@@ -842,7 +862,11 @@ export default function RemindersScreen() {
                 nowTs={nowTs}
                 leadMins={reminderLeadMins}
                 onDelete={() => handleDelete(item.item)}
-                onReschedule={() => setRescheduleTarget(item.item)}
+                onReschedule={(editBtnRef) => {
+                  // TV: store the opener ref so RescheduleModal can restore focus on close.
+                  (rescheduleOpenerRef as React.MutableRefObject<View | null>).current = editBtnRef.current;
+                  setRescheduleTarget(item.item);
+                }}
                 onWatchLive={() => handleWatchLive(item.item)}
               />
             );
@@ -884,6 +908,7 @@ export default function RemindersScreen() {
         visible={rescheduleTarget !== null}
         onClose={() => setRescheduleTarget(null)}
         onSelect={handleReschedule}
+        openerRef={rescheduleOpenerRef}
       />
     </View>
   );

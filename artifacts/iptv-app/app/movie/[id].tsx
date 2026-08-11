@@ -107,6 +107,8 @@ export default function MovieDetailScreen() {
   const [trailerLoading, setTrailerLoading] = useState(false);
   const [trailerVideoIds, setTrailerVideoIds] = useState<string[] | 'loading' | null>(null);
   const [pendingStartAt, setPendingStartAt] = useState<number | undefined>(undefined);
+  // TV: ref to the trailer button so TrailerModal can restore focus on close.
+  const trailerBtnRef = React.useRef<View>(null);
 
   const params = useLocalSearchParams<{
     id: string; title: string; cover: string; genre: string; rating: string;
@@ -321,6 +323,7 @@ export default function MovieDetailScreen() {
             </FocusablePressable>
           )}
           <FocusablePressable
+            ref={trailerBtnRef}
             focusable
             style={(focused) => [styles.outlineBtn, { borderColor: 'rgba(255,255,255,0.15)' }, (!isOnline || trailerLoading) && styles.offlineBtn, focused && styles.focusRing]}
             onPress={async () => {
@@ -369,7 +372,7 @@ export default function MovieDetailScreen() {
           onCancel={() => setShowPinGate(false)}
         />
       </Modal>
-      <TrailerModal videoIds={trailerVideoIds} onClose={() => setTrailerVideoIds(null)} />
+      <TrailerModal videoIds={trailerVideoIds} onClose={() => setTrailerVideoIds(null)} openerRef={trailerBtnRef} />
     </View>
   );
 }
