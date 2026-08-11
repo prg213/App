@@ -26,7 +26,7 @@ import { Toast } from '@/components/Toast';
 import { getXtreamSeriesCategories, getXtreamSeries } from '@/services/xtreamApi';
 import { StorageService } from '@/services/storage';
 import { SwipeToDeleteCard } from '@/components/SwipeToDeleteCard';
-import { fetchRemoteFavourites, pushRemoteSeries, mergeFavourites } from '@/services/favoritesSync';
+import { fetchRemoteFavourites, pushRemoteSeries, mergeFavourites, recordPushFailure } from '@/services/favoritesSync';
 import type { Series, Category, FavoriteSeries, WatchHistoryEntry } from '@/types';
 import { normaliseStr } from '@/utils/normalise';
 import { buildSeriesProgressMap } from '@/utils/progressMap';
@@ -295,9 +295,15 @@ export default function SeriesScreen() {
     setFavSeries(updated);
     setSortToast(wasAdded ? `♥ Added to Favourites` : `Removed from Favourites`);
     setFavSyncState('syncing');
-    // #22/#23: show indicator + queue for retry if server rejects
+    // #22/#23: show indicator + queue for retry if server rejects;
+    // after 3 session failures surface a non-blocking toast warning.
     pushRemoteSeries(deviceMac, updated).then((ok) => {
-      if (!ok) pendingFavPushRef.current = updated;
+      if (!ok) {
+        pendingFavPushRef.current = updated;
+        if (recordPushFailure() >= 3) {
+          setSortToast('⚠ Sync failed — favourites will retry automatically');
+        }
+      }
       setFavSyncState('synced');
       setTimeout(() => setFavSyncState('idle'), 2000);
     });

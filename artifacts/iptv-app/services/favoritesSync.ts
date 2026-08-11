@@ -13,6 +13,22 @@
 
 import type { FavoriteChannel, FavoriteMovie, FavoriteSeries } from '@/types';
 
+// ── Session-scoped push-failure tracking ─────────────────────────────────────
+// Counts how many server/network push failures have occurred this session.
+// Cleared on logout so each fresh credentials cycle starts clean.
+let _sessionPushFailCount = 0;
+
+/** Increment the session push-failure counter and return the new total. */
+export function recordPushFailure(): number {
+  return ++_sessionPushFailCount;
+}
+
+/** Reset the counter — call from doLogout so a new login gets a clean slate. */
+export function resetSessionPushFailures(): void {
+  _sessionPushFailCount = 0;
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 const DOMAIN = process.env.EXPO_PUBLIC_DOMAIN ?? '';
 function apiBase() {
   return DOMAIN ? `https://${DOMAIN}/api` : null;

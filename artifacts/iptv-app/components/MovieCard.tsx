@@ -73,7 +73,7 @@ interface MovieCardProps {
 }
 
 const MovieCardComponent = forwardRef<View, MovieCardProps>(function MovieCardInner(
-  { name, cover, rating, genre, year, query = '', isFav, compact, progress, cardStyle, onPress, onFavPress, onLongPress, onFocus, onTvDeletePress },
+  { name, cover, rating, genre, year, query = '', isFav, compact, progress, cardStyle, onPress, onFavPress, onLongPress, onFocus, onTvDeletePress, onTrailerPress },
   ref
 ) {
   const colors = useColors();
@@ -153,6 +153,21 @@ const MovieCardComponent = forwardRef<View, MovieCardProps>(function MovieCardIn
           <View style={[styles.ratingBadge, { backgroundColor: 'rgba(0,0,0,0.75)' }]}>
             <Text style={styles.ratingText}>★ {parseFloat(rating).toFixed(1)}</Text>
           </View>
+        )}
+        {/* Trailer pill — touch only; opens a YouTube preview without entering
+            the detail page.  Positioned bottom-left of the poster, safely away
+            from the rating badge (top-right) and heart (top-left on TV).
+            On TV, the detail page already has the trailer button so we skip
+            the overlay to keep the D-pad focus chain simple. */}
+        {onTrailerPress && !Platform.isTV && (
+          <FocusablePressable
+            style={styles.trailerBtn}
+            focusable={false}
+            onPress={(e) => { (e as any).stopPropagation?.(); onTrailerPress(); }}
+            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+          >
+            <Text style={styles.trailerBtnText}>▶ Trailer</Text>
+          </FocusablePressable>
         )}
         {/* Heart favourite button.  On TV it is an independently D-pad-focusable
             zone reached by pressing RIGHT from the card body; LEFT returns to
@@ -275,6 +290,21 @@ const styles = StyleSheet.create({
     height: '100%',
     backgroundColor: '#3B82F6',
     borderRadius: 1.5,
+  },
+  trailerBtn: {
+    position: 'absolute',
+    bottom: 6,
+    left: 6,
+    backgroundColor: 'rgba(0,0,0,0.72)',
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+  },
+  trailerBtnText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontFamily: 'Inter_600SemiBold',
+    lineHeight: 13,
   },
   tvDeleteBtn: {
     position: 'absolute',
