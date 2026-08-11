@@ -1015,12 +1015,11 @@ export default function LiveTVScreen() {
     triggerExpand(navigate);
   }, [selectedChannel, channels, player, router, triggerExpand]);
 
-  /** Navigate directly to the fullscreen player from a recently-watched card. */
+  /** Navigate directly to the fullscreen player from a recently-watched card.
+   *  Behaves identically to handleWatch (TV menu): back collapses to mini-player,
+   *  full channel list is passed for prev/next navigation. */
   const handleWatchChannel = useCallback((ch: Channel, cardRef?: React.RefObject<View | null>) => {
     goingToPlayerRef.current = true;
-    // Mark that we came from recently-watched so backing out stops the stream
-    // rather than leaving it playing silently in the mini-player.
-    clearChannelOnReturnRef.current = true;
     // Update the right-panel EPG to show this channel's guide
     setSelectedChannel(ch);
 
@@ -1042,8 +1041,8 @@ export default function LiveTVScreen() {
         logo: ch.logo ?? '',
         epgId: ch.epgId ?? ch.id,
         channelId: ch.id,
-        stopOnBack: 'true',
-        // If the channel isn't in the current category list, skip nav arrows
+        // Pass full channel list for prev/next navigation, same as the TV menu.
+        // No stopOnBack — BACK collapses to mini-player just like a normal watch.
         channelsJson: idx >= 0 ? JSON.stringify(chList) : '[]',
         channelIndex: String(idx),
       },

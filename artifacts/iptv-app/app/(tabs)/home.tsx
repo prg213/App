@@ -324,12 +324,24 @@ export default function HomeScreen() {
     });
   }, [router]);
 
-  // #229: navigate straight to the player when tapping a recent live channel
+  // #229: navigate straight to the player when tapping a recent live channel.
+  // Pass the full set of params so the channel bar (logo, EPG id) displays
+  // correctly.  No stopOnBack — BACK collapses to mini-player like a normal watch.
+  // channelsJson is omitted here because home.tsx doesn't load the full channel
+  // list; prev/next navigation will be unavailable until the user switches to
+  // the Live TV tab (which is the expected path from the Home screen).
   const handleRecentChannelWatch = useCallback((ch: Channel, _cardRef: React.RefObject<View | null>) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     router.push({
       pathname: '/player',
-      params: { url: ch.streamUrl, title: ch.name, type: 'live' },
+      params: {
+        url: ch.streamUrl,
+        title: ch.name,
+        type: 'live',
+        logo: ch.logo ?? '',
+        epgId: ch.epgId ?? ch.id,
+        channelId: ch.id,
+      },
     });
   }, [router]);
 

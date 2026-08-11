@@ -314,7 +314,7 @@ export const StorageService = {
   async addRecentChannel(ch: RecentChannel): Promise<void> {
     const current = await StorageService.getRecentChannels();
     const deduped = current.filter((c) => c.id !== ch.id);
-    const updated = [{ ...ch, watchedAt: Date.now() }, ...deduped].slice(0, 20);
+    const updated = [{ ...ch, watchedAt: Date.now() }, ...deduped].slice(0, 10);
     await AsyncStorage.setItem(KEYS.RECENT_CHANNELS, JSON.stringify(updated));
   },
 
