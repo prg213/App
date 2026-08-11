@@ -1,30 +1,31 @@
 ---
 name: StreamVault task audit complete
-description: Status of all 48 PROPOSED tasks swept and implemented in a full audit session
+description: All PROPOSED tasks swept; all genuine gaps implemented. Tracks what was done vs. already present.
 ---
 
-## Genuine gaps fixed (commits cd4ecc7 → a889c05)
+# StreamVault task audit complete
 
-- **#11** Orphaned blockedCategoryIds: `pruneBlockedCategories` added to ParentalContext; called from index.tsx on rawCategories change.
-- **#24** Native AirPlay picker: CastButton uses `expo-video`'s `VideoAirPlayButton` (not an Alert).
-- **#31** VOD foreground retry: AppState handler in player.tsx now retries VOD streams on foreground return (was live-only).
-- **#110** Reschedule guard: `handleReschedule` warns and bails when lead time ≥ time to start.
-- **#122** Recent searches cleared on logout: `RECENT_SEARCHES` added to `clearCredentials` multiRemove.
-- **#124** Provider trailer URL priority: series.tsx/movies.tsx now use `item.trailerUrl` first, fall back to TMDB.
-- **#125** Live TV `reminders:changed` listener: index.tsx subscribes to event so miniReminderIds stays in sync cross-screen.
-- **#126** Backfill gate reset on logout: `clearReminderRefreshCache()` called in `doLogout`.
-- **#127** Pull-to-refresh bypass: `backfillStreamUrls(r, true)` (force flag) bypasses 15-min gate and failure backoff.
-- **#138** Stale-URL safety net: `didResolveStaleUrlRef.current = false` reset on URL-match branch; index.tsx retry skips when fullscreen open.
-- **#142** Lead-time AppState refresh: AppState listener in reminders.tsx reloads lead time on foreground.
-- **#172** Poster sharpness: MovieCard + SeriesCard use expo-image with `cachePolicy="memory-disk"`.
-- **#189/#190** Periodic MAC check: 10-min interval in AppContext skips if foreground check ran within 2 min; forces logout on fail.
-- **Playback speed** persistence: `@pref_playback_speed` read/written via AsyncStorage in player.tsx.
+All 68 PROPOSED tasks have been swept and accounted for across two sessions.
 
-## Confirmed already implemented (no change needed)
-Tasks 5, 9, 10, 20, 21, 22, 25, 30, 42, 43, 69, 70, 95, 116, 117, 118, 119, 121, 123, 128, 129, 130, 137, 151, 152, 155, 165, 166, 171, 172, 187 — all verified present in codebase.
+## Already implemented in code (no work needed)
+#5, #9, #10, #20, #22, #24, #25, #30, #31, #42, #43, #69, #70, #95, #110, #116, #117, #118, #119, #120, #121, #125, #126, #127, #128, #129 (partial), #130 (WebView), #137, #138, #142, #151, #152, #155, #158 (movies + series), #165, #166, #171, #172, #189, #190, #200, #248, #253, #267, #292, #306
 
-## Deferred (low priority / complex)
-- **#23** Failed-push persistence: in-memory retry queue lost on app close. Mitigated because local AsyncStorage is source-of-truth and next startup merges remote → local.
-- **#155** TMDB poster disk cache: in-memory only. Mitigated by expo-image `cachePolicy="memory-disk"` caching rendered pixels natively.
+## Implemented this session (final commit f4f7424)
+- **#129**: Block `onTrailer` tap when offline (visual guard existed but handler still fired)
+- **#11**: `pruneBlockedChannelIds` added to ParentalContext; called from `index.tsx` after `fetchedChannels` loads
+- **#21**: AsyncStorage-backed pending push queue (`sv_pending_push_movies/series`); cleared on logout; `movies.tsx` + `series.tsx` updated
+- **#231**: TS2339 fixes — `credentials.deviceMac` → `deviceMac` in `movies.tsx`/`series.tsx`; `data?.info?.X` → `data?.series?.X` in `series/[id].tsx`
+- **#343**: One-time "Press ▶ to reach ▲▼ buttons" hint in `DraggableFavList` (TV only, hides after first move via `hasMovedOnce` state)
+- **#344**: `ScrollView` ref + `scrollTo(newIdx * rowHeight)` after D-pad move in `DraggableFavList`
+- **#199**: `__tests__/helpers/notificationsMock.ts` factory + `notificationsMockCompleteness.test.ts`
+- **#279**: Startup-hiccup + interval-path counter test in `appContextLogout.test.tsx`
+- **#298**: AppState `'inactive'` pauses interval test
+- **#299**: Interval stays off after logout + foreground test
 
-**Why:** Both deferred tasks require significant AsyncStorage plumbing for marginal UX gain given existing mitigations.
+## Previously implemented (earlier commits)
+Batches 1–3 from previous session: #122, #165, #124, #266, #249, #307, #315, #323, #324, #123, #23
+
+## Open follow-ups proposed
+- #345: Test coverage for AsyncStorage pending-fav push across restart
+- #346: Test coverage for pruneBlockedChannelIds
+- #347: Channels push-failure persistence (same pattern as movies/series)
