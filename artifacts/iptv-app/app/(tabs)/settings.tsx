@@ -26,6 +26,7 @@ import {
 } from '@/services/xtreamApi';
 import { StorageService } from '@/services/storage';
 import { CommunityModal } from '@/components/CommunityModal';
+import { ConfirmModal } from '@/components/ConfirmModal';
 import { UpdateModal } from '@/components/UpdateModal';
 import { rescheduleRemindersForLeadTime } from '@/services/reminderReschedule';
 import { clearReminderRefreshCache } from '@/services/reminderUrlCache';
@@ -157,6 +158,25 @@ export default function SettingsScreen() {
   const [pendingLock, setPendingLock] = useState<boolean | null>(null);
   const [showRatingSheet, setShowRatingSheet] = useState(false);
 
+  // ── Confirmation dialog (TV-safe replacement for Alert.alert destructive) ───
+  // A single modal instance driven by this state; swapped out per-action.
+  // openerRef is stored so focus returns to the triggering row on close.
+  const [confirmDialog, setConfirmDialog] = useState<{
+    title: string;
+    message: string;
+    confirmLabel: string;
+    onConfirm: () => void;
+  } | null>(null);
+  // Stores the View node of whichever row opened the current confirm dialog so
+  // ConfirmModal can restore D-pad focus when it closes.  Set synchronously
+  // before each setConfirmDialog() call so the ref is always up-to-date.
+  const confirmOpenerRef = useRef<View | null>(null);
+  // Per-row refs for the four rows that open the confirm dialog.
+  const clearHistoryRowRef  = useRef<View>(null);
+  const clearRecentRowRef   = useRef<View>(null);
+  const clearSearchRowRef   = useRef<View>(null);
+  const logoutRowRef        = useRef<View>(null);
+
   // ── TV: D-pad focus restoration after picker sheets / PIN modal close ──────
   // Each opener FocusablePressable stores a ref; a useEffect per sheet watches
   // the show-flag and, when the sheet closes (true → false), calls focus() on
@@ -257,18 +277,19 @@ export default function SettingsScreen() {
   };
 
   const handleLogout = () => {
-    Alert.alert('Unlink Device', 'This will remove your IPTV credentials and return you to the activation screen.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Unlink Device', style: 'destructive',
-        onPress: async () => {
-          setLoggingOut(true);
-          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-          clearReminderRefreshCache(); // #126: reset so new credentials get a fresh URL check
-          await logout();
-        },
+    confirmOpenerRef.current = logoutRowRef.current;
+    setConfirmDialog({
+      title: 'Unlink Device',
+      message: 'This will remove your IPTV credentials and return you to the activation screen.',
+      confirmLabel: 'Unlink Device',
+      onConfirm: async () => {
+        setConfirmDialog(null);
+        setLoggingOut(true);
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        clearReminderRefreshCache(); // #126: reset so new credentials get a fresh URL check
+        await logout();
       },
-    ]);
+    });
   };
 
   // ── Parental controls actions ──────────────────────────────────────────────
@@ -322,25 +343,31 @@ export default function SettingsScreen() {
   };
 
   const handleClearHistory = () => {
-    Alert.alert('Clear Watch History', 'Remove all watched items? This cannot be undone.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Clear All', style: 'destructive',
-        onPress: () => StorageService.clearHistory().then(() => {
+    confirmOpenerRef.current = clearHistoryRowRef.current;
+    setConfirmDialog({
+      title: 'Clear Watch History',
+      message: 'Remove all watched items? This cannot be undone.',
+      confirmLabel: 'Clear All',
+      onConfirm: () => {
+        setConfirmDialog(null);
+        StorageService.clearHistory().then(() => {
           DeviceEventEmitter.emit('history:cleared');
-        }).catch(() => {}),
+        }).catch(() => {});
       },
-    ]);
+    });
   };
 
   const handleClearRecentChannels = () => {
-    Alert.alert('Clear Recent Channels', 'Remove all recently-watched channels?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Clear', style: 'destructive',
-        onPress: () => StorageService.clearRecentChannels().catch(() => {}),
+    confirmOpenerRef.current = clearRecentRowRef.current;
+    setConfirmDialog({
+      title: 'Clear Recent Channels',
+      message: 'Remove all recently-watched channels?',
+      confirmLabel: 'Clear',
+      onConfirm: () => {
+        setConfirmDialog(null);
+        StorageService.clearRecentChannels().catch(() => {});
       },
-    ]);
+    });
   };
 
   // PIN modal success callbacks
@@ -563,27 +590,32 @@ export default function SettingsScreen() {
             sub="Remove all watched items"
             icon="🗑️"
             onPress={handleClearHistory}
+            refProp={clearHistoryRowRef}
           />
           <ActionRow
             title="Clear Recent Channels"
             sub="Remove the recently-watched channel rail"
             icon="⏮"
             onPress={handleClearRecentChannels}
+            refProp={clearRecentRowRef}
           />
           <ActionRow
             title="Clear Search History"
             sub="Remove saved recent searches"
             icon="🔍"
+            refProp={clearSearchRowRef}
             onPress={() => {
-              Alert.alert('Clear Search History', 'Remove all saved recent searches?', [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                  text: 'Clear', style: 'destructive', onPress: () => {
-                    StorageService.clearRecentSearches();
-                    DeviceEventEmitter.emit('search-history:cleared');
-                  }
+              confirmOpenerRef.current = clearSearchRowRef.current;
+              setConfirmDialog({
+                title: 'Clear Search History',
+                message: 'Remove all saved recent searches?',
+                confirmLabel: 'Clear',
+                onConfirm: () => {
+                  setConfirmDialog(null);
+                  StorageService.clearRecentSearches();
+                  DeviceEventEmitter.emit('search-history:cleared');
                 },
-              ]);
+              });
             }}
           />
         </View>
@@ -757,7 +789,7 @@ export default function SettingsScreen() {
 
         <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>ACCOUNT</Text>
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <FocusablePressable style={styles.logoutRow} onPress={handleLogout} disabled={loggingOut}>
+          <FocusablePressable ref={logoutRowRef} style={styles.logoutRow} onPress={handleLogout} disabled={loggingOut}>
             <Text style={[styles.logoutText, { color: colors.destructive }]}>Logout / Unlink Device</Text>
           </FocusablePressable>
         </View>
@@ -926,6 +958,21 @@ export default function SettingsScreen() {
 
       {/* ── Community / Telegram modal ── */}
       <CommunityModal visible={showCommunity} onClose={() => setShowCommunity(false)} openerRef={communityRowRef} />
+
+      {/* ── Destructive confirmation dialog (TV-safe: FocusablePressable buttons) ── */}
+      {confirmDialog && (
+        <ConfirmModal
+          visible
+          title={confirmDialog.title}
+          message={confirmDialog.message}
+          confirmLabel={confirmDialog.confirmLabel}
+          cancelLabel="Cancel"
+          destructive
+          openerRef={confirmOpenerRef as React.RefObject<View | null>}
+          onConfirm={confirmDialog.onConfirm}
+          onCancel={() => setConfirmDialog(null)}
+        />
+      )}
     </View>
   );
 }
