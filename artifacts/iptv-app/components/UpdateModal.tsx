@@ -145,7 +145,7 @@ export function UpdateModal({ update, onDismiss }: Props) {
       visible
       transparent
       animationType="fade"
-      onRequestClose={stage === 'downloading' ? undefined : onDismiss}
+      onRequestClose={stage === 'downloading' ? cancelDownload : onDismiss}
       onShow={() => {
         // TV: focus the primary button on first open.
         // Stage transitions are handled by the useEffect([stage]) above.
