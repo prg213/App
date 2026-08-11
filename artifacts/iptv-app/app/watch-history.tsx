@@ -51,78 +51,96 @@ interface RowProps {
 const HistoryRow = React.memo(function HistoryRow({ item, colors, onDelete, onPress }: RowProps) {
   const progress = item.position && item.duration ? item.position / Math.max(item.duration, 1) : 0;
 
+  function confirmDelete() {
+    Alert.alert('Remove', `Remove "${item.title}" from history?`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Remove', style: 'destructive', onPress: () => onDelete(item.id) },
+    ]);
+  }
+
   return (
-    <FocusablePressable
-      style={[styles.row, { backgroundColor: colors.background, borderBottomColor: colors.border }]}
-      onPress={() => onPress(item)}
-      onLongPress={() => {
-        Alert.alert('Remove', `Remove "${item.title}" from history?`, [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Remove', style: 'destructive', onPress: () => onDelete(item.id) },
-        ]);
-      }}
-      delayLongPress={500}
-    >
-        {/* Thumbnail */}
-        <View style={[styles.thumb, { backgroundColor: colors.secondary }]}>
-          {item.cover ? (
-            <Image source={{ uri: item.cover }} style={StyleSheet.absoluteFill} resizeMode="cover" />
-          ) : (
-            <Text style={[styles.thumbIcon, { color: colors.mutedForeground }]}>
-              {item.type === 'movie' ? '🎬' : '📺'}
-            </Text>
-          )}
-          {/* Progress bar */}
-          {progress > 0 && (
-            <View style={styles.progressRail}>
-              <View
-                style={[
-                  styles.progressFill,
-                  { width: `${Math.max(2, Math.min(100, progress * 100))}%` as any },
-                ]}
-              />
-            </View>
-          )}
-        </View>
-
-        {/* Info */}
-        <View style={styles.info}>
-          <View style={styles.infoTop}>
-            <Text style={[styles.title, { color: colors.foreground }]} numberOfLines={2}>
-              {item.title}
-            </Text>
-            <View
-              style={[
-                styles.typeBadge,
-                { backgroundColor: item.type === 'movie' ? 'rgba(59,130,246,0.15)' : 'rgba(34,197,94,0.15)' },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.typeBadgeText,
-                  { color: item.type === 'movie' ? '#3B82F6' : '#22C55E' },
-                ]}
-              >
-                {item.type === 'movie' ? 'Movie' : 'Series'}
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.infoBottom}>
-            {progress > 0 && (
-              <Text style={[styles.meta, { color: colors.mutedForeground }]}>
-                {fmtProgress(item.position, item.duration)}
+    // Outer wrapper allows a separate D-pad-focusable delete button on TV.
+    <View style={styles.rowWrapper}>
+      <FocusablePressable
+        style={[styles.row, { flex: 1, backgroundColor: colors.background, borderBottomColor: colors.border }]}
+        onPress={() => onPress(item)}
+        onLongPress={confirmDelete}
+        delayLongPress={500}
+      >
+          {/* Thumbnail */}
+          <View style={[styles.thumb, { backgroundColor: colors.secondary }]}>
+            {item.cover ? (
+              <Image source={{ uri: item.cover }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+            ) : (
+              <Text style={[styles.thumbIcon, { color: colors.mutedForeground }]}>
+                {item.type === 'movie' ? '🎬' : '📺'}
               </Text>
             )}
-            <Text style={[styles.meta, { color: colors.mutedForeground }]}>
-              {fmtTimestamp(item.timestamp)}
-            </Text>
+            {/* Progress bar */}
+            {progress > 0 && (
+              <View style={styles.progressRail}>
+                <View
+                  style={[
+                    styles.progressFill,
+                    { width: `${Math.max(2, Math.min(100, progress * 100))}%` as any },
+                  ]}
+                />
+              </View>
+            )}
           </View>
-        </View>
 
-        {/* Long-press hint */}
-        <Text style={[styles.swipeHint, { color: colors.mutedForeground }]}>⋯</Text>
-      </FocusablePressable>
+          {/* Info */}
+          <View style={styles.info}>
+            <View style={styles.infoTop}>
+              <Text style={[styles.title, { color: colors.foreground }]} numberOfLines={2}>
+                {item.title}
+              </Text>
+              <View
+                style={[
+                  styles.typeBadge,
+                  { backgroundColor: item.type === 'movie' ? 'rgba(59,130,246,0.15)' : 'rgba(34,197,94,0.15)' },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.typeBadgeText,
+                    { color: item.type === 'movie' ? '#3B82F6' : '#22C55E' },
+                  ]}
+                >
+                  {item.type === 'movie' ? 'Movie' : 'Series'}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.infoBottom}>
+              {progress > 0 && (
+                <Text style={[styles.meta, { color: colors.mutedForeground }]}>
+                  {fmtProgress(item.position, item.duration)}
+                </Text>
+              )}
+              <Text style={[styles.meta, { color: colors.mutedForeground }]}>
+                {fmtTimestamp(item.timestamp)}
+              </Text>
+            </View>
+          </View>
+
+          {/* Long-press hint — touch only */}
+          {!Platform.isTV && (
+            <Text style={[styles.swipeHint, { color: colors.mutedForeground }]}>⋯</Text>
+          )}
+        </FocusablePressable>
+
+      {/* TV remote: visible ✕ delete button — separately D-pad-focusable.
+          On touch, long-press on the row already triggers the confirmation. */}
+      {Platform.isTV && (
+        <FocusablePressable
+          style={[styles.tvDelBtn, { borderLeftColor: colors.border }]}
+          onPress={confirmDelete}
+        >
+          <Text style={[styles.tvDelIcon, { color: colors.destructive }]}>✕</Text>
+        </FocusablePressable>
+      )}
+    </View>
   );
 });
 
@@ -226,7 +244,7 @@ export default function WatchHistoryScreen() {
           <Text style={[styles.headerTitle, { color: colors.foreground }]}>Watch History</Text>
           <Text style={[styles.headerSub, { color: colors.mutedForeground }]}>
             {history.length > 0
-              ? `${history.length} item${history.length === 1 ? '' : 's'} · Swipe left to remove`
+              ? `${history.length} item${history.length === 1 ? '' : 's'} · Long-press to remove`
               : 'No watch history yet'}
           </Text>
         </View>
@@ -322,6 +340,16 @@ const styles = StyleSheet.create({
   meta: { fontSize: 11, fontFamily: 'Inter_400Regular' },
 
   swipeHint: { fontSize: 16, opacity: 0.35 },
+
+  // TV remote: row wrapper + side-by-side delete button
+  rowWrapper: { flexDirection: 'row', alignItems: 'stretch' },
+  tvDelBtn: {
+    width: 56,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderLeftWidth: StyleSheet.hairlineWidth,
+  },
+  tvDelIcon: { fontSize: 18, fontWeight: '700' },
 
   deleteAction: {
     backgroundColor: '#EF4444',

@@ -246,6 +246,14 @@ export default function SearchScreen() {
   const [watchHistory, setWatchHistory] = useState<WatchHistoryEntry[]>([]);
   const inputRef = useRef<TextInput>(null);
   const listRef = useRef<FlatList<ListItem>>(null);
+  // TV: D-pad lands on the first type-filter pill when this tab becomes active.
+  // Replaces hasTVPreferredFocus (which re-fires on every re-render on Fire OS).
+  const firstPillRef = useRef<View>(null);
+  useFocusEffect(useCallback(() => {
+    if (!Platform.isTV) return;
+    const t = setTimeout(() => (firstPillRef.current as any)?.focus?.(), 200);
+    return () => clearTimeout(t);
+  }, []));
 
   // Restore the last-used search filter and query from storage on mount
   useEffect(() => {
@@ -727,7 +735,7 @@ export default function SearchScreen() {
             return (
               <FocusablePressable
                 key={t.id}
-                hasTVPreferredFocus={Platform.isTV && index === 0}
+                ref={index === 0 ? firstPillRef : undefined}
                 style={[
                   styles.pill,
                   { borderColor: active ? colors.primary : colors.border,

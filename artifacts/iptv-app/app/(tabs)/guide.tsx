@@ -427,7 +427,6 @@ const TVEpgRow = React.memo(function TVEpgRow({
       <FocusablePressable
         ref={firstChannelRef}
         focusedStyle={styles.tvFocused}
-        hasTVPreferredFocus={isFirst}
         style={[styles.tvChCell, { backgroundColor: colors.card, borderRightColor: colors.border }]}
         onPress={() => {
           // Auto-advance D-pad focus to the current/upcoming programme cell
@@ -698,7 +697,7 @@ function ProgramModal({ program, channel, onClose, onWatch, colors }: {
 // ─── Category grid ────────────────────────────────────────────────────────────
 
 function CategoryGrid({
-  categoryIds, categoryNameMap, channelCountByCategory, colors, insets, onSelect, epgLoading,
+  categoryIds, categoryNameMap, channelCountByCategory, colors, insets, onSelect, epgLoading, firstCardRef,
 }: {
   categoryIds: string[];
   categoryNameMap: Record<string, string>;
@@ -707,6 +706,9 @@ function CategoryGrid({
   insets: any;
   onSelect: (catId: string) => void;
   epgLoading: boolean;
+  /** TV: ref exposed to the parent so a useFocusEffect can place D-pad focus on
+   *  the first card without hasTVPreferredFocus re-render races on Fire OS. */
+  firstCardRef?: React.RefObject<View | null>;
 }) {
   const { width } = useWindowDimensions();
   const availW = width - 190; // sidebar is 190px
@@ -805,6 +807,9 @@ function CategoryGrid({
       <FocusablePressable
         ref={(r) => {
           cardRefs.current[index] = r as View | null;
+          // Expose the first card to the parent (GuideScreen) so a useFocusEffect
+          // can set D-pad focus without hasTVPreferredFocus re-render races on Fire OS.
+          if (index === 0 && firstCardRef) firstCardRef.current = r;
           // Cancel any previously-scheduled wire for this index (can happen
           // when a cell re-mounts during scroll virtualisation).
           const prev = wireTimers.current.get(index);
@@ -829,7 +834,6 @@ function CategoryGrid({
           }
         }}
         focusedStyle={styles.tvFocused}
-        hasTVPreferredFocus={index === 0}
         style={[styles.catCard, { backgroundColor: colors.card, borderColor: colors.border, width: colW }]}
         onPress={() => onSelect(catId)}
       >
@@ -1590,6 +1594,15 @@ export default function GuideScreen() {
 
   const [selectedCat, setSelectedCat] = useState<string | null>(null);
 
+  // TV: ref to the first category card — populated by CategoryGrid's renderItem
+  // ref callback so we can focus it without hasTVPreferredFocus re-render races.
+  const firstCatCardRef = useRef<View | null>(null);
+  useFocusEffect(useCallback(() => {
+    if (!Platform.isTV || selectedCat !== null) return;
+    const t = setTimeout(() => (firstCatCardRef.current as any)?.focus?.(), 300);
+    return () => clearTimeout(t);
+  }, [selectedCat]));
+
   // ── Hardware BACK: return from FullGuide to CategoryGrid ─────────────────
   // Without this, pressing BACK while viewing a category's programme grid
   // would exit the tab entirely (or navigate back in the app stack) rather
@@ -1600,6 +1613,8 @@ export default function GuideScreen() {
     if (!selectedCat) return;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
       setSelectedCat(null);
+      // TV: return focus to the first category card after FullGuide dismisses.
+      if (Platform.isTV) setTimeout(() => (firstCatCardRef.current as any)?.focus?.(), 350);
       return true; // consumed — do not propagate
     });
     return () => sub.remove();
@@ -1794,6 +1809,7 @@ export default function GuideScreen() {
       insets={insets}
       onSelect={setSelectedCat}
       epgLoading={epgLoading}
+      firstCardRef={firstCatCardRef}
     />
   );
 }

@@ -384,6 +384,12 @@ export default function PlayerScreen() {
   const audioChipRef = useRef<any>(null);
   const ccChipRef    = useRef<any>(null);
   const settingsChipRef = useRef<any>(null);
+  // TV: refs for elements that get imperative focus instead of hasTVPreferredFocus
+  // (hasTVPreferredFocus re-fires requestFocus on every re-render on Fire OS).
+  const retryBtnRef       = useRef<any>(null);   // error-state retry button
+  const firstAudioChipRef = useRef<any>(null);   // first audio-track chip in picker
+  const firstSubChipRef   = useRef<any>(null);   // "Off" subtitle chip in picker
+  const firstSpeedChipRef = useRef<any>(null);   // first speed chip in settings tray
   const [speed, setSpeed] = useState(1);
   const [contentFit, setContentFit] = useState<'contain' | 'cover' | 'fill'>('contain');
 
@@ -1058,6 +1064,25 @@ export default function PlayerScreen() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLive, isWeb, showControls]);
 
+  // TV: when the error screen appears, move D-pad focus to the Retry button.
+  // Uses imperative focus rather than hasTVPreferredFocus to avoid Fire OS races.
+  useEffect(() => {
+    if (!Platform.isTV || !hasError) return;
+    const t = setTimeout(() => retryBtnRef.current?.focus(), 100);
+    return () => clearTimeout(t);
+  }, [hasError]);
+
+  // TV VOD: when controls hide, return D-pad focus to the transparent idle
+  // tap-catcher so the next OK press shows controls again.  Mirrors the
+  // tvCenterRef.focus() call in hideLiveControls() for the live case.
+  useEffect(() => {
+    if (!Platform.isTV || isLive || isWeb || hasError) return;
+    if (!showControls) {
+      const t = setTimeout(() => (tvVodIdleRef.current as any)?.focus?.(), 80);
+      return () => clearTimeout(t);
+    }
+  }, [showControls, isLive, isWeb, hasError]);
+
   // ── Save history on exit and navigate back ────────────────────────────────
   const handleBack = useCallback(async () => {
     // Clear hide/info timers before navigating so they don't fire on an unmounted component
@@ -1358,8 +1383,8 @@ export default function PlayerScreen() {
           )}
           <Text style={styles.msgSub}>Unable to load stream. Check your connection or try another channel.</Text>
           <FocusablePressable
+            ref={retryBtnRef}
             style={styles.actionBtn}
-            hasTVPreferredFocus={Platform.isTV}
             onPress={() => {
               setHasError(false);
               setIsBuffering(true);
@@ -1446,7 +1471,6 @@ export default function PlayerScreen() {
         <Pressable
           ref={tvVodIdleRef as any}
           focusable={!showControls}
-          hasTVPreferredFocus={!showControls}
           style={StyleSheet.absoluteFill}
           onPress={showVodControls}
         />
@@ -1876,6 +1900,11 @@ export default function PlayerScreen() {
         visible={showAudioPicker}
         transparent
         animationType="slide"
+        onShow={() => {
+          // TV: focus the first audio chip on modal open (replaces hasTVPreferredFocus
+          // which fires requestFocus on every re-render and causes races on Fire OS).
+          if (Platform.isTV) setTimeout(() => firstAudioChipRef.current?.focus(), 80);
+        }}
         onRequestClose={() => {
           setShowAudioPicker(false);
           // Return D-pad focus to the chip that opened this picker
@@ -1902,7 +1931,7 @@ export default function PlayerScreen() {
                 return (
                   <FocusablePressable
                     key={track.id ?? `audio-${idx}`}
-                    hasTVPreferredFocus={Platform.isTV && idx === 0}
+                    ref={idx === 0 ? firstAudioChipRef : undefined}
                     focusedStyle={styles.chipFocus}
                     style={[styles.chip, isActive && styles.chipActive]}
                     onPress={() => {
@@ -1932,6 +1961,9 @@ export default function PlayerScreen() {
         visible={showSubPicker}
         transparent
         animationType="slide"
+        onShow={() => {
+          if (Platform.isTV) setTimeout(() => firstSubChipRef.current?.focus(), 80);
+        }}
         onRequestClose={() => {
           setShowSubPicker(false);
           setTimeout(() => ccChipRef.current?.focus(), 150);
@@ -1948,7 +1980,7 @@ export default function PlayerScreen() {
           ) : (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
               <FocusablePressable
-                hasTVPreferredFocus={Platform.isTV}
+                ref={firstSubChipRef}
                 focusedStyle={styles.chipFocus}
                 style={[styles.chip, activeSubtitleTrack === null && styles.chipActive]}
                 onPress={() => {
@@ -1999,6 +2031,9 @@ export default function PlayerScreen() {
         visible={showSettings}
         transparent
         animationType="slide"
+        onShow={() => {
+          if (Platform.isTV) setTimeout(() => firstSpeedChipRef.current?.focus(), 80);
+        }}
         onRequestClose={() => {
           setShowSettings(false);
           setTimeout(() => settingsChipRef.current?.focus(), 150);
@@ -2023,7 +2058,7 @@ export default function PlayerScreen() {
             {SPEEDS.map((s, idx) => (
               <FocusablePressable
                 key={s}
-                hasTVPreferredFocus={Platform.isTV && idx === 0}
+                ref={idx === 0 ? firstSpeedChipRef : undefined}
                 focusedStyle={styles.chipFocus}
                 style={[styles.chip, speed === s && styles.chipActive]}
                 onPress={() => {
