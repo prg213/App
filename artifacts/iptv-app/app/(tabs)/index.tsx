@@ -405,22 +405,34 @@ export default function LiveTVScreen() {
 
       if (_pendingPlayingChannel) {
         // ── Recently-watched back path ──────────────────────────────────────
-        // playingChannel was null while the user was in the player (channel
-        // was opened from Home, bypassing this tab), so the mini-player
-        // VideoView has display:none and expo-video has no native surface.
+        // The channel was launched directly from the Home screen, bypassing
+        // the Live TV tab entirely.  Two separate problems must be solved:
         //
-        // Critical ordering: we MUST make the view visible BEFORE mounting
-        // a fresh VideoView, otherwise expo-video receives a zero-size surface
-        // and renders only audio with no picture.
+        // PHONE — The mini-player container has display:none (playingChannel
+        // is null).  expo-video mounts a VideoView onto a zero-size surface
+        // → audio plays but no video.
+        // Fix: setPlayingChannel first (removes display:none, layout runs),
+        // then rAF → setVideoKey so the fresh VideoView lands on a measured
+        // surface.
         //
-        // Step 1 — setPlayingChannel removes display:none → mini-player
-        //           container becomes visible and the native layout pass runs.
-        // Step 2 — rAF fires after the native frame; the container is now
-        //           sized.  setVideoKey mounts a fresh VideoView onto the
-        //           properly-sized surface → video appears.
+        // TV (FIRESTICK) — TVLiveLayout only renders its VideoView when
+        // selectedChannel is non-null.  playingChannel is ignored by
+        // TVLiveLayout entirely.  Even if setVideoKey fires, the conditional
+        // branch means the VideoView is never mounted → audio plays, no video.
+        // Fix: also call setSelectedChannel so TVLiveLayout mounts its
+        // VideoView immediately.  The stream-load useEffect sees that
+        // liveUrlRef already matches (player.tsx set it) and just calls
+        // player.play() — no stream restart.
+        //
+        // Step 1 — setPlayingChannel (phone: removes display:none)
+        //        + setSelectedChannel (TV: makes TVLiveLayout mount VideoView)
+        //        → native layout pass runs → container has real pixel dimensions
+        // Step 2 — rAF → setVideoKey mounts a fresh VideoView onto the
+        //           properly-sized surface → video appears on both platforms.
         const ch = _pendingPlayingChannel;
         _pendingPlayingChannel = null;
         setPlayingChannel(ch);
+        setSelectedChannel(ch);
         requestAnimationFrame(() => {
           setVideoKey((k) => k + 1);
           if (Platform.isTV) {
@@ -1269,6 +1281,7 @@ export default function LiveTVScreen() {
           videoKey={videoKey}
           isBuffering={isBuffering}
           hasError={hasError}
+          miniPlayerRef={miniPlayerRef}
         />
         {showCatchup && selectedChannel && creds && (
           <CatchupSheet

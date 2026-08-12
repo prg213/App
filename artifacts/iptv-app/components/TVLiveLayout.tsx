@@ -63,6 +63,12 @@ export interface TVLiveLayoutProps {
   videoKey: number;
   isBuffering: boolean;
   hasError: boolean;
+  /**
+   * Ref to the video preview container — passed in from LivePlayerContext so
+   * triggerCollapse / triggerExpand can measure this view's on-screen position
+   * for the fullscreen ↔ mini-player animation on TV.
+   */
+  miniPlayerRef?: React.RefObject<View | null>;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -92,6 +98,7 @@ export function TVLiveLayout({
   videoKey,
   isBuffering,
   hasError,
+  miniPlayerRef,
 }: TVLiveLayoutProps) {
 
   const catListRef = useRef<FlatList<Category>>(null);
@@ -325,6 +332,8 @@ export function TVLiveLayout({
           <>
             {/* 3a — Video preview (OK = full screen) */}
             <FocusablePressable
+              ref={miniPlayerRef as any}
+              collapsable={false}
               accessible
               accessibilityRole="button"
               accessibilityLabel="Watch fullscreen — press OK"
