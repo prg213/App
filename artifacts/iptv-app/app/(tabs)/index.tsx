@@ -433,6 +433,19 @@ export default function LiveTVScreen() {
         _pendingPlayingChannel = null;
         setPlayingChannel(ch);
         setSelectedChannel(ch);
+        // Switch to the channel's own category so it appears (and is
+        // highlighted) in the channel list.  Must NOT use handleSelectCat here
+        // because that helper calls setSelectedChannel(null), which would
+        // immediately undo the selection we just made.
+        // ch.groupTitle holds the category_id for Xtream providers, and the
+        // group-name string for M3U providers — both are used as the
+        // selectedCatId key, so this is always the correct value to write.
+        if (ch.groupTitle) {
+          setSelectedCatId(ch.groupTitle);
+          import('@react-native-async-storage/async-storage').then(
+            ({ default: AS }) => AS.setItem('@pref_live_cat', ch.groupTitle)
+          );
+        }
         requestAnimationFrame(() => {
           setVideoKey((k) => k + 1);
           if (Platform.isTV) {
