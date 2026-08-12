@@ -372,7 +372,11 @@ export default function LiveTVScreen() {
   useFocusEffect(useCallback(() => {
     if (isFirstFocusRef.current) {
       isFirstFocusRef.current = false;
-      return;
+      // If a recently-watched channel is pending (user pressed BACK from the
+      // player before ever visiting the Live TV tab), we must NOT skip — fall
+      // through to the collapseRestorePendingRef block to set selectedChannel.
+      // For all other first-focus cases, return as before.
+      if (!_pendingPlayingChannel) return;
     }
     // Returning from a fullscreen session started via recently-watched — the
     // player was paused in handleBackLive; just clear the playing channel so
