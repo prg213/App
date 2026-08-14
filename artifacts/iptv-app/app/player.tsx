@@ -280,6 +280,10 @@ export default function PlayerScreen() {
      *  pressing Back lands on the correct Live TV category instead of going
      *  back to Home. */
     groupTitle?: string;
+    /** 'true' when launched from the Home tab's recently-watched rail.  Tells
+     *  the Back handler to do the Live TV category handoff even when
+     *  channelsJson is also present (for prev/next navigation). */
+    fromHome?: string;
   }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -996,10 +1000,13 @@ export default function PlayerScreen() {
     // measureInWindow + rAF chain runs and setOverlayVisible(true) fires,
     // this state update will already have committed to the native layer.
     setVideoMounted(false);
-    // If launched from the Home screen (groupTitle present, no channelsJson),
-    // collapse to the mini-player in the Live TV tab, pre-selecting the
-    // channel's category so the user lands in the right place.
-    if (params.groupTitle && !params.channelsJson) {
+    // If launched from the Home screen (groupTitle present, and either fromHome
+    // is explicitly set or no channelsJson was supplied), collapse to the
+    // mini-player in the Live TV tab, pre-selecting the channel's category so
+    // the user lands in the right place.  fromHome decouples this check from
+    // channelsJson so prev/next navigation (#350) can coexist with the Back
+    // handoff when both params are present.
+    if (params.groupTitle && (params.fromHome === 'true' || !params.channelsJson)) {
       import('@react-native-async-storage/async-storage').then(({ default: AS }) => {
         AS.setItem('@pref_live_cat', params.groupTitle!).catch(() => {});
       });
@@ -1028,7 +1035,7 @@ export default function PlayerScreen() {
       return;
     }
     triggerCollapse(() => router.back());
-  }, [params.stopOnBack, params.groupTitle, params.channelsJson, sharedPlayer, triggerCollapse, router, controlsOpacity, infoOpacity]);
+  }, [params.stopOnBack, params.groupTitle, params.channelsJson, params.fromHome, sharedPlayer, triggerCollapse, router, controlsOpacity, infoOpacity]);
 
   /** Immediately hide the info bar — used by the Back-press dismiss flow. */
   const dismissInfoBar = useCallback(() => {

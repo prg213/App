@@ -30,8 +30,12 @@ interface Props {
   blockedIds: Set<string>;
   /** Map from EPG channel ID → currently airing programme title. */
   nowPlayingMap: Map<string, string>;
-  /** Called when the user taps a card — goes straight to fullscreen with expand animation. */
-  onWatchFullscreen: (ch: Channel, cardRef: React.RefObject<View | null>) => void;
+  /**
+   * Called when the user taps a card — goes straight to fullscreen with expand animation.
+   * `channels` is the full visible list (for prev/next navigation) and `index` is
+   * the tapped channel's position within that list.
+   */
+  onWatchFullscreen: (ch: Channel, channels: Channel[], index: number, cardRef: React.RefObject<View | null>) => void;
   /** Safe-area top inset — applied as paddingTop so the rail clears the status bar. */
   topInset?: number;
 }
@@ -40,13 +44,15 @@ interface Props {
 
 interface CardProps {
   item: RecentChannel;
+  index: number;
+  channels: Channel[];
   nowTitle: string | undefined;
   colors: ReturnType<typeof useColors>;
-  onWatchFullscreen: (ch: Channel, cardRef: React.RefObject<View | null>) => void;
+  onWatchFullscreen: (ch: Channel, channels: Channel[], index: number, cardRef: React.RefObject<View | null>) => void;
   onRemove: (id: string) => void;
 }
 
-function RecentCard({ item, nowTitle, colors, onWatchFullscreen, onRemove }: CardProps) {
+function RecentCard({ item, index, channels, nowTitle, colors, onWatchFullscreen, onRemove }: CardProps) {
   const cardRef = useRef<View>(null);
   const ch = toChannel(item);
 
@@ -54,7 +60,7 @@ function RecentCard({ item, nowTitle, colors, onWatchFullscreen, onRemove }: Car
     <FocusablePressable
       ref={cardRef as any}
       style={styles.card}
-      onPress={() => onWatchFullscreen(ch, cardRef)}
+      onPress={() => onWatchFullscreen(ch, channels, index, cardRef)}
       onLongPress={() => onRemove(item.id)}
       delayLongPress={500}
     >
@@ -140,12 +146,17 @@ export function RecentChannelsRail({
         keyExtractor={(item) => item.id}
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.list}
-        renderItem={({ item }) => {
+        renderItem={({ item, index }) => {
           const epgKey = item.epgId ?? item.id;
           const nowTitle = nowPlayingMap.get(epgKey);
+          // Build the full channel list once per render so every card gets
+          // the same reference for prev/next navigation.
+          const channelList = recent.map(toChannel);
           return (
             <RecentCard
               item={item}
+              index={index}
+              channels={channelList}
               nowTitle={nowTitle}
               colors={colors}
               onWatchFullscreen={onWatchFullscreen}

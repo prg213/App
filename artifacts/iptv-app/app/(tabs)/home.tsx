@@ -324,30 +324,43 @@ export default function HomeScreen() {
     });
   }, [router]);
 
-  // #229: navigate straight to the player when tapping a recent live channel.
-  // Pass the full set of params so the channel bar (logo, EPG id) displays
-  // correctly.  No stopOnBack — BACK collapses to mini-player like a normal watch.
-  // channelsJson is omitted here because home.tsx doesn't load the full channel
-  // list; prev/next navigation will be unavailable until the user switches to
-  // the Live TV tab (which is the expected path from the Home screen).
-  const handleRecentChannelWatch = useCallback((ch: Channel, _cardRef: React.RefObject<View | null>) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    router.push({
-      pathname: '/player',
-      params: {
-        url: ch.streamUrl,
-        title: ch.name,
-        type: 'live',
-        logo: ch.logo ?? '',
-        epgId: ch.epgId ?? ch.id,
-        channelId: ch.id,
-        // Pass groupTitle so the player knows which Live TV category to land
-        // on when the user presses Back (navigates to the Live TV tab,
-        // category pre-selected to where this channel lives).
-        groupTitle: ch.groupTitle ?? '',
-      },
-    });
-  }, [router]);
+  // #229 / #350: navigate straight to the player when tapping a recent live channel.
+  // Pass the full visible rail list as channelsJson so the Firestick remote's
+  // left/right arrows (prev/next channel) work when launched from the Home tab.
+  const handleRecentChannelWatch = useCallback(
+    (ch: Channel, channels: Channel[], index: number, _cardRef: React.RefObject<View | null>) => {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      const chList = channels.map((c) => ({
+        url: c.streamUrl,
+        title: c.name,
+        epgId: c.epgId ?? c.id,
+        logo: c.logo ?? '',
+        channelId: c.id,
+      }));
+      router.push({
+        pathname: '/player',
+        params: {
+          url: ch.streamUrl,
+          title: ch.name,
+          type: 'live',
+          logo: ch.logo ?? '',
+          epgId: ch.epgId ?? ch.id,
+          channelId: ch.id,
+          // Pass groupTitle so the player knows which Live TV category to land
+          // on when the user presses Back (navigates to the Live TV tab,
+          // category pre-selected to where this channel lives).
+          groupTitle: ch.groupTitle ?? '',
+          // #350: full list enables prev/next channel navigation on Firestick.
+          channelsJson: chList.length > 0 ? JSON.stringify(chList) : '[]',
+          channelIndex: String(index),
+          // Tell the player Back handler to do the Live TV category handoff
+          // even though channelsJson is also present (#350).
+          fromHome: 'true',
+        },
+      });
+    },
+    [router],
+  );
 
   // Stable empty map — Home doesn't load EPG data; the rail still shows channel
   // names and logos without programme titles.
