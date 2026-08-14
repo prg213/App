@@ -882,6 +882,19 @@ export default function LiveTVScreen() {
     }
   }, [channelFilter, filteredChannels]);
 
+  // Scroll the channel list to the playing channel when it is set from outside
+  // (e.g. returning from recently-watched on the Home screen).  Also depends on
+  // filteredChannels so it re-runs after the category switch populates the list.
+  // TV layout handles its own scroll inside TVLiveLayout.
+  useEffect(() => {
+    if (Platform.isTV || !selectedChannel) return;
+    const index = filteredChannels.findIndex((c) => c.id === selectedChannel.id);
+    if (index < 0) return;
+    try {
+      channelListRef.current?.scrollToIndex({ index, animated: false, viewPosition: 0.5 });
+    } catch (_) {}
+  }, [selectedChannel?.id, filteredChannels]);
+
   const { data: epgMap } = useQuery<Map<string, EpgProgram[]>>({
     queryKey: ['xmltv-epg', credentials],
     queryFn: ({ signal }) => fetchAndParseXmltv(xmltvUrl!, signal),

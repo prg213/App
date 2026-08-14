@@ -137,6 +137,18 @@ export function TVLiveLayout({
     if (selectedChannel) setHighlightedChId(selectedChannel.id);
   }, [selectedChannel?.id]);
 
+  // Scroll the channel list to the selected channel when it is set from outside
+  // (e.g. returning from recently-watched on the Home screen).  Also depends on
+  // `channels` so it re-runs after the category switch populates the list.
+  useEffect(() => {
+    if (!selectedChannel) return;
+    const index = channels.findIndex((c) => c.id === selectedChannel.id);
+    if (index < 0) return;
+    try {
+      chListRef.current?.scrollToIndex({ index, animated: false, viewPosition: 0.5 });
+    } catch (_) {}
+  }, [selectedChannel?.id, channels]);
+
   // EPG for the currently playing channel (panel 3 mini-guide)
   const channelEpg = useMemo(() => {
     if (!selectedChannel || !epgMap) return [];
