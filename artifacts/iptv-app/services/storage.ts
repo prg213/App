@@ -301,7 +301,15 @@ export const StorageService = {
   async getRecentChannels(): Promise<RecentChannel[]> {
     try {
       const data = await AsyncStorage.getItem(KEYS.RECENT_CHANNELS);
-      return data ? (JSON.parse(data) as RecentChannel[]) : [];
+      if (!data) return [];
+      const parsed = JSON.parse(data) as RecentChannel[];
+      // Silently trim legacy lists that exceeded the 10-entry cap.
+      if (parsed.length > 10) {
+        const trimmed = parsed.slice(0, 10);
+        await AsyncStorage.setItem(KEYS.RECENT_CHANNELS, JSON.stringify(trimmed));
+        return trimmed;
+      }
+      return parsed;
     } catch {
       return [];
     }
