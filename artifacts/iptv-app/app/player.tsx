@@ -38,6 +38,7 @@ import { Image } from 'expo-image';
 import { useCast } from '@/hooks/useCast';
 import { useTVRemote } from '@/hooks/useTVRemote';
 import CastButton from '@/components/CastButton';
+import { useBackHandler } from '@/hooks/useBackHandler';
 
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2] as const;
 const FITS = [
@@ -1073,22 +1074,18 @@ export default function PlayerScreen() {
   // Press 1: dismiss the controls bar if visible (Fire TV).
   // Press 2: dismiss the info bar if visible.
   // Press 3: collapse back to mini-player.
-  useEffect(() => {
-    if (!isLive || isWeb || Platform.OS !== 'android') return;
-    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (showControlsRef.current) {
-        hideLiveControls();
-        return true; // consumed — do not navigate back
-      }
-      if (showInfoRef.current) {
-        dismissInfoBar();
-        return true; // consumed — do not navigate back
-      }
-      handleBackLive();
-      return true;
-    });
-    return () => sub.remove();
-  }, [isLive, isWeb, handleBackLive, dismissInfoBar, hideLiveControls]);
+  useBackHandler(() => {
+    if (showControlsRef.current) {
+      hideLiveControls();
+      return true; // consumed — do not navigate back
+    }
+    if (showInfoRef.current) {
+      dismissInfoBar();
+      return true; // consumed — do not navigate back
+    }
+    handleBackLive();
+    return true;
+  }, isLive && !isWeb && Platform.OS === 'android');
 
   // ── Wire TV scrubber D-pad left/right via focus-bounce targets ───────────
   // The scrubber anchor uses nextFocusLeft / nextFocusRight (node handles)
@@ -1184,29 +1181,25 @@ export default function PlayerScreen() {
   // Without this handler the Android default would pop the screen immediately
   // regardless of overlay state, and on some TV navigation stacks could skip
   // back to the launcher instead of the previous in-app screen.
-  useEffect(() => {
-    if (isLive || isWeb || Platform.OS !== 'android') return;
-    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (showControlsRef.current) {
-        // Dismiss controls: cancel the hide timer, fade out, then unmount.
-        if (hideTimer.current) { clearTimeout(hideTimer.current); hideTimer.current = null; }
-        Animated.timing(controlsOpacity, { toValue: 0, duration: 300, useNativeDriver: true }).start();
-        setTimeout(() => {
-          setShowControls(false);
-          // Return TV focus to the idle catch-all so the next OK press
-          // can show controls again.
-          if (Platform.isTV) {
-            setTimeout(() => (tvVodIdleRef.current as any)?.focus?.(), 50);
-          }
-        }, 320);
-        return true; // consumed — do not navigate back
-      }
-      // Controls already hidden — save progress and navigate back.
-      handleBack();
-      return true;
-    });
-    return () => sub.remove();
-  }, [isLive, isWeb, handleBack, controlsOpacity]);
+  useBackHandler(() => {
+    if (showControlsRef.current) {
+      // Dismiss controls: cancel the hide timer, fade out, then unmount.
+      if (hideTimer.current) { clearTimeout(hideTimer.current); hideTimer.current = null; }
+      Animated.timing(controlsOpacity, { toValue: 0, duration: 300, useNativeDriver: true }).start();
+      setTimeout(() => {
+        setShowControls(false);
+        // Return TV focus to the idle catch-all so the next OK press
+        // can show controls again.
+        if (Platform.isTV) {
+          setTimeout(() => (tvVodIdleRef.current as any)?.focus?.(), 50);
+        }
+      }, 320);
+      return true; // consumed — do not navigate back
+    }
+    // Controls already hidden — save progress and navigate back.
+    handleBack();
+    return true;
+  }, !isLive && !isWeb && Platform.OS === 'android');
 
   // ── Firestick / Android TV media key bindings ────────────────────────────
   // Handles Play/Pause, Channel Up/Down (live), and FF/RW (VOD/catchup).
@@ -1442,6 +1435,34 @@ export default function PlayerScreen() {
     else           { player.seekBy(delta); }
     scheduleHide();
   }, [isCasting, currentTime, player, scheduleHide, seekRemote]);
+
+  // ── #357: TV remote media keys ────────────────────────────────────────────
+  // First-class media-key support in the player (short press = key-up only):
+  //   Play/Pause          → toggle playback (all modes)
+  //   Channel Up / Down   → next / previous channel (live mode only)
+  //   FF / Rewind         → ±30 s seek (VOD / catch-up mode only)
+  useTVRemote({
+    playPause: (e) => {
+      if (e.eventKeyAction !== 1 || isWeb) return;
+      togglePlay();
+    },
+    channelUp: (e) => {
+      if (e.eventKeyAction !== 1 || isWeb || !isLive) return;
+      handleNextChannel();
+    },
+    channelDown: (e) => {
+      if (e.eventKeyAction !== 1 || isWeb || !isLive) return;
+      handlePrevChannel();
+    },
+    fastForward: (e) => {
+      if (e.eventKeyAction !== 1 || isWeb || isLive) return;
+      seek(30);
+    },
+    rewind: (e) => {
+      if (e.eventKeyAction !== 1 || isWeb || isLive) return;
+      seek(-30);
+    },
+  });
 
   // ── CC pill behaviour ────────────────────────────────────────────────────
   // • Subtitles OFF + only 1 track  → enable that track directly.

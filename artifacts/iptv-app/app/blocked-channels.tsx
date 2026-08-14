@@ -10,8 +10,9 @@ import {
   View,
 } from 'react-native';
 import { TVTextInput } from '@/components/TVTextInput';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { FocusablePressable } from '@/components/FocusablePressable';
+import { useFocusRestore } from '@/hooks/useFocusRestore';
 import { useQuery } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -180,13 +181,10 @@ export default function BlockedChannelsScreen() {
     }
   }, [allChannels]);
 
-  // TV: D-pad focus lands on the Back button every time this screen becomes active.
-  const backBtnRef = useRef<View>(null);
-  useFocusEffect(useCallback(() => {
-    if (!Platform.isTV) return;
-    const t = setTimeout(() => (backBtnRef.current as any)?.focus?.(), 150);
-    return () => clearTimeout(t);
-  }, []));
+  // #357: shared TV focus-restoration — D-pad focus lands on the Back button
+  // every time this screen becomes active (no per-item tracking needed here,
+  // so only the fallback `firstRef` is used).
+  const { firstRef: backBtnRef } = useFocusRestore({ delay: 150 });
 
   // ── #10: Derive category groups ───────────────────────────────────────────
   const categories = useMemo(() => {

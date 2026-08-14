@@ -1,42 +1,58 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { BackHandler } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 
 /**
- * Register a hardware-back handler that is ONLY active while this screen
- * is focused.  Uses useFocusEffect internally so it registers on screen
- * focus and unregisters on screen blur automatically.
+ * #357: Shared hardware-back-button hook.
  *
- * This replaces the common mistake of using plain useEffect with
- * BackHandler.addEventListener — plain useEffect leaves the handler active
- * on every screen simultaneously, causing silent cross-screen conflicts.
+ * Registers a BackHandler listener that is active ONLY while the enclosing
+ * screen is focused (via useFocusEffect), so per-screen handlers never compete
+ * with each other when their screen is in the background.
  *
- * The handler is stored in a ref so callers do not need to memoize it;
- * closing over the latest state/props always works.
+ * The handler is kept in a ref internally, so callers do NOT need to memoize
+ * it — the latest render's closure is always the one invoked, with no
+ * re-subscription churn on state changes.
  *
- * Handlers fire in LIFO order (most-recently-registered wins).  Return true
- * to consume the event; return false to let it propagate to the next handler
- * (ultimately the global sidebar fallback in the tab layout).
+ * BackHandler dispatch is LIFO: the most recently registered listener fires
+ * first. Because focused screens (re-)register after the tab layout's global
+ * catch-all, per-screen handlers always get first pick; returning `false`
+ * propagates to the global handler (which focuses the sidebar).
  *
- * @example
- *   useBackHandler(() => {
- *     if (modalOpen)  { closeModal(); return true; }
- *     if (filterOn)   { clearFilter(); return true; }
- *     return false; // let the global handler focus the sidebar
- *   });
+ * @param handler  Return `true` to consume the press, `false` to propagate.
+ * @param enabled  Optional gate (default `true`) for handlers that should only
+ *                 be active under some condition (e.g. a modal being visible,
+ *                 live-mode only). When it flips to `true` the listener is
+ *                 re-registered, moving it to the front of the LIFO queue.
  */
-export function useBackHandler(handler: () => boolean): void {
+export function useBackHandler(handler: () => boolean, enabled: boolean = true) {
   const handlerRef = useRef(handler);
-  // Always keep the ref current so the registered callback below never goes stale.
   handlerRef.current = handler;
 
   useFocusEffect(
     useCallback(() => {
-      const sub = BackHandler.addEventListener(
-        'hardwareBackPress',
-        () => handlerRef.current(),
+      if (!enabled) return;
+      const sub = BackHandler.addEventListener('hardwareBackPress', () =>
+        handlerRef.current(),
       );
       return () => sub.remove();
-    }, []),
+    }, [enabled]),
   );
+}
+
+/**
+ * Variant for components that are NOT screens in a navigator (no navigation
+ * context) or that must stay registered regardless of screen focus — e.g. the
+ * tab layout's global catch-all. Uses a plain useEffect.
+ */
+export function useGlobalBackHandler(handler: () => boolean, enabled: boolean = true) {
+  const handlerRef = useRef(handler);
+  handlerRef.current = handler;
+
+  useEffect(() => {
+    if (!enabled) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () =>
+      handlerRef.current(),
+    );
+    return () => sub.remove();
+  }, [enabled]);
 }

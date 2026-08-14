@@ -1,97 +1,70 @@
 import { useCallback, useRef } from 'react';
-import { Platform, View } from 'react-native';
+import { Platform, type View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 
-interface UseFocusRestoreOptions {
-  /**
-   * Milliseconds before triggering focus after screen/tab entry.
-   * Default: 250.  Use a longer value (400) when the screen content
-   * takes extra time to mount (e.g. FlatList with many items).
-   */
+export interface FocusRestoreOptions {
+  /** Delay before the imperative .focus() call (ms). Default 250. */
   delay?: number;
   /**
-   * Only restore focus on TV platforms.  Default: true.
-   * Pass false if you need the hook to run on phones/tablets too.
+   * Optional externally-owned fallback ref (e.g. a Back button ref the screen
+   * already uses for other imperative focus calls). When provided it is used
+   * as `firstRef` instead of an internally created ref.
    */
+  targetRef?: React.RefObject<View | null>;
+  /** When true (default) the restore effect is a no-op off-TV. */
   tvOnly?: boolean;
 }
 
-export interface FocusRestoreResult {
+export interface FocusRestore {
   /**
-   * Attach this ref to the first / default focusable element.
-   * Used as the fallback when no item has been focused yet, or
-   * after clearFocus() has been called (e.g. on category change).
+   * Node of the last D-pad-focused item. Screens may clear this manually
+   * (e.g. when the category changes and the old card unmounts).
    */
+  lastFocusedRef: React.MutableRefObject<View | null>;
+  /** Fallback target focused when no item has been focused yet. */
   firstRef: React.RefObject<View | null>;
+  /** Call from each item's onFocus with its View node. */
+  markFocused: (node: View | null | undefined) => void;
   /**
-   * Call from an item's onFocus handler to record that node as the
-   * last-focused position.  On the next screen entry this node will
-   * receive focus automatically.
-   *
-   * @example
-   *   <FocusablePressable
-   *     onFocus={() => markFocused(cardRef.current)}
-   *   />
-   */
-  markFocused: (node: View | null) => void;
-  /**
-   * Reset the last-focused position so the next screen entry falls back
-   * to firstRef.  Call this when the content changes enough that the
-   * old focus position is no longer valid (e.g. category or search change).
+   * Reset the last-focused position so the next screen entry falls back to
+   * firstRef (e.g. when the category or search query changes).
    */
   clearFocus: () => void;
 }
 
 /**
- * Standardises the "restore D-pad focus on screen/tab return" pattern that
- * was previously copy-pasted into every screen with slightly different delays
- * and fallback logic.
+ * #357: Shared TV D-pad focus-restoration hook.
  *
- * On every useFocusEffect (initial mount AND tab return) the hook fires a
- * single setTimeout that focuses:
- *   1. The last node recorded via markFocused()
- *   2. firstRef.current as the default fallback
+ * Encapsulates the pattern used across screens: remember the last
+ * D-pad-focused item node; when the screen regains navigation focus, restore
+ * focus to it after a short delay (the native view must be mounted and laid
+ * out before .focus() works). Falls back to `firstRef` (e.g. the first
+ * category item or a Back button) when nothing was focused yet.
  *
- * Safe no-op on phones/tablets when tvOnly is true (the default).
- *
- * @example
- *   const { firstRef, markFocused, clearFocus } = useFocusRestore();
- *
- *   // First/default focusable element:
- *   <FocusablePressable ref={firstRef as any} onFocus={() => markFocused(firstRef.current)} />
- *
- *   // Every other card:
- *   <FocusablePressable onFocus={() => markFocused(cardNode)} />
- *
- *   // When category changes, clear so focus falls back to firstRef:
- *   useEffect(() => { clearFocus(); }, [selectedCat]);
+ * No-op on non-TV platforms — touch behaviour is unchanged.
  */
-export function useFocusRestore(
-  opts: UseFocusRestoreOptions = {},
-): FocusRestoreResult {
-  const { delay = 250, tvOnly = true } = opts;
+export function useFocusRestore(options: FocusRestoreOptions = {}): FocusRestore {
+  const { delay = 250, targetRef, tvOnly = true } = options;
+  const lastFocusedRef = useRef<View | null>(null);
+  const internalFirstRef = useRef<View | null>(null);
+  const firstRef = targetRef ?? internalFirstRef;
 
-  const firstRef = useRef<View | null>(null);
-  const lastRef  = useRef<View | null>(null);
-
-  const markFocused = useCallback((node: View | null) => {
-    lastRef.current = node;
+  const markFocused = useCallback((node: View | null | undefined) => {
+    if (node) lastFocusedRef.current = node;
   }, []);
 
   const clearFocus = useCallback(() => {
-    lastRef.current = null;
+    lastFocusedRef.current = null;
   }, []);
 
   useFocusEffect(
     useCallback(() => {
       if (tvOnly && !Platform.isTV) return;
-      const target = lastRef.current ?? firstRef.current;
+      const target = lastFocusedRef.current ?? firstRef.current;
       const t = setTimeout(() => (target as any)?.focus?.(), delay);
       return () => clearTimeout(t);
-    // delay and tvOnly are stable options — not runtime deps.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []),
+    }, [delay]),
   );
 
-  return { firstRef, markFocused, clearFocus };
+  return { lastFocusedRef, firstRef, markFocused, clearFocus };
 }

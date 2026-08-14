@@ -165,14 +165,25 @@ describe('FullGuide — jumpToNow() callback', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('FullGuide — Play/Pause hardware key listener', () => {
-  it('subscribes to the onHWKeyEvent DeviceEventEmitter event', () => {
-    expect(src).toMatch(/DeviceEventEmitter\.addListener\s*\(\s*['"]onHWKeyEvent['"]/);
+  // #357: the raw DeviceEventEmitter('onHWKeyEvent') subscription now lives in
+  // the shared useTVRemote hook; the guide consumes it via a playPause handler.
+  const hookSrc = fs.readFileSync(
+    path.join(__dirname, '..', 'hooks', 'useTVRemote.ts'),
+    'utf8',
+  );
+
+  it('shared useTVRemote hook subscribes to the onHWKeyEvent DeviceEventEmitter event', () => {
+    expect(hookSrc).toMatch(/DeviceEventEmitter\.addListener\s*\(\s*['"]onHWKeyEvent['"]/);
   });
 
-  it('checks eventType === "playPause" before acting', () => {
-    // Guard must use === so unrelated key events (volumeUp, fastForward, …)
+  it('shared useTVRemote hook routes eventType === "playPause" to the playPause handler', () => {
+    // Guard must use strict matching so unrelated key events (volumeUp, …)
     // are never mistaken for the Play/Pause button.
-    expect(src).toMatch(/e\.eventType\s*===\s*['"]playPause['"]/);
+    expect(hookSrc).toMatch(/case\s*['"]playPause['"]\s*:\s*h\.playPause\?\.\(e\)/);
+  });
+
+  it('guide uses the shared useTVRemote hook with a playPause handler', () => {
+    expect(src).toMatch(/useTVRemote\s*\(\s*\{\s*\n?\s*(on)?[Pp]layPause:/);
   });
 
   it('handles eventKeyAction === 0 (key down) to arm the hold timer', () => {

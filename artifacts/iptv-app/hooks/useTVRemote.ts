@@ -1,96 +1,79 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { DeviceEventEmitter, Platform } from 'react-native';
-import { useFocusEffect } from 'expo-router';
+import { useIsFocused } from 'expo-router';
 
-/** 0 = keydown, 1 = keyup */
-export type KeyAction = 0 | 1;
-
-export interface HWKeyEvent {
+/**
+ * Raw hardware key event delivered by react-native-tvos via
+ * DeviceEventEmitter('onHWKeyEvent').
+ *
+ * eventKeyAction: 0 = key down, 1 = key up. Android TV remotes emit repeated
+ * key-down events while a button is held; callers doing their own long-press
+ * detection must de-dupe repeats themselves (see guide.tsx hold-timer).
+ */
+export interface TVRemoteKeyEvent {
   eventType: string;
-  eventKeyAction: KeyAction;
+  eventKeyAction: number;
 }
 
 export interface TVRemoteHandlers {
-  /**
-   * Play/Pause media key on the Firestick/Android TV remote.
-   * eventKeyAction 0 = keydown, 1 = keyup (confirmed press).
-   * For long-press detection: arm a timer on keydown, commit or cancel on keyup.
-   */
-  onPlayPause?: (e: HWKeyEvent) => void;
-  /** Channel Up key (dedicated channel-change remotes). */
-  onChannelUp?: (e: HWKeyEvent) => void;
-  /** Channel Down key (dedicated channel-change remotes). */
-  onChannelDown?: (e: HWKeyEvent) => void;
-  /** Fast Forward key (some Firestick remotes). */
-  onFastForward?: (e: HWKeyEvent) => void;
-  /** Rewind key (some Firestick remotes). */
-  onRewind?: (e: HWKeyEvent) => void;
+  /** Play/Pause media key. */
+  playPause?: (e: TVRemoteKeyEvent) => void;
+  onPlayPause?: (e: TVRemoteKeyEvent) => void;
+  /** Channel Up key. */
+  channelUp?: (e: TVRemoteKeyEvent) => void;
+  onChannelUp?: (e: TVRemoteKeyEvent) => void;
+  /** Channel Down key. */
+  channelDown?: (e: TVRemoteKeyEvent) => void;
+  onChannelDown?: (e: TVRemoteKeyEvent) => void;
+  /** Fast Forward media key. */
+  fastForward?: (e: TVRemoteKeyEvent) => void;
+  onFastForward?: (e: TVRemoteKeyEvent) => void;
+  /** Rewind media key. */
+  rewind?: (e: TVRemoteKeyEvent) => void;
+  onRewind?: (e: TVRemoteKeyEvent) => void;
   /** Menu key. */
-  onMenu?: (e: HWKeyEvent) => void;
+  menu?: (e: TVRemoteKeyEvent) => void;
+  onMenu?: (e: TVRemoteKeyEvent) => void;
 }
 
+/** Alias kept for callers that import the upstream name. */
+export type HWKeyEvent = TVRemoteKeyEvent;
+export type KeyAction = 0 | 1;
+
 /**
- * Subscribe to hardware media-key events from a Firestick / Android TV remote,
- * active ONLY while this screen has focus.
+ * #357: Shared TV remote media-key hook.
  *
- * Handles: Play/Pause, Channel Up/Down, Fast Forward, Rewind, Menu.
- * D-pad (UP/DOWN/LEFT/RIGHT/OK) is handled by the native spatial-focus engine.
- * BACK is handled by useBackHandler / BackHandler.
- * Never intercept D-pad or BACK here.
+ * Centralises the DeviceEventEmitter('onHWKeyEvent') subscription:
+ * - Only runs on TV platforms (Platform.isTV).
+ * - Only listens while the enclosing screen is focused (useIsFocused), so two
+ *   screens never both react to the same key press.
+ * - Handlers are kept in a ref, so callers do NOT need to memoize them.
  *
- * Focus tracking uses useFocusEffect (from expo-router) so the subscription
- * never fires while another screen is in the foreground.
- *
- * This is a no-op on phones/tablets (Platform.isTV === false).
- *
- * @example
- *   useTVRemote({
- *     onPlayPause: ({ eventKeyAction }) => {
- *       if (eventKeyAction === 1) togglePlay(); // key-up = confirmed single press
- *     },
- *     onChannelUp:   ({ eventKeyAction }) => { if (eventKeyAction === 1) nextChannel(); },
- *     onChannelDown: ({ eventKeyAction }) => { if (eventKeyAction === 1) prevChannel(); },
- *     onFastForward: ({ eventKeyAction }) => { if (eventKeyAction === 1) seek(+30); },
- *     onRewind:      ({ eventKeyAction }) => { if (eventKeyAction === 1) seek(-30); },
- *   });
+ * Handlers receive the raw `{ eventType, eventKeyAction }` event so they can
+ * implement their own short/long-press detection (key down = 0, key up = 1).
  */
-export function useTVRemote(handlers: TVRemoteHandlers): void {
-  // Track focus via a ref so the DeviceEventEmitter callback (set up once in
-  // useEffect) always sees the current focused state without being re-registered
-  // on every focus change.
-  const isFocusedRef = useRef(false);
-  // Keep handlers in a ref so the listener closure never goes stale.
+export function useTVRemote(handlers: TVRemoteHandlers) {
   const handlersRef = useRef(handlers);
   handlersRef.current = handlers;
 
-  useFocusEffect(
-    useCallback(() => {
-      isFocusedRef.current = true;
-      return () => { isFocusedRef.current = false; };
-    }, []),
-  );
+  const isFocused = useIsFocused();
 
   useEffect(() => {
-    // No-op on phones/tablets.
-    if (!Platform.isTV) return;
-
+    if (!Platform.isTV || !isFocused) return;
     const sub = DeviceEventEmitter.addListener(
       'onHWKeyEvent',
-      (e: HWKeyEvent) => {
-        // Guard: silently drop events when this screen is not focused.
-        if (!isFocusedRef.current) return;
+      (e: TVRemoteKeyEvent) => {
         const h = handlersRef.current;
         switch (e.eventType) {
-          case 'playPause':   h.onPlayPause?.(e);   break;
-          case 'channelUp':   h.onChannelUp?.(e);   break;
-          case 'channelDown': h.onChannelDown?.(e); break;
-          case 'fastForward': h.onFastForward?.(e); break;
-          case 'rewind':      h.onRewind?.(e);      break;
-          case 'menu':        h.onMenu?.(e);        break;
+          case 'playPause':   h.playPause?.(e);   h.onPlayPause?.(e);   break;
+          case 'channelUp':   h.channelUp?.(e);   h.onChannelUp?.(e);   break;
+          case 'channelDown': h.channelDown?.(e); h.onChannelDown?.(e); break;
+          case 'fastForward': h.fastForward?.(e); h.onFastForward?.(e); break;
+          case 'rewind':      h.rewind?.(e);      h.onRewind?.(e);      break;
+          case 'menu':        h.menu?.(e);        h.onMenu?.(e);        break;
         }
       },
     );
     return () => sub.remove();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [isFocused]);
 }

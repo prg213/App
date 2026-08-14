@@ -12,6 +12,7 @@ import { FocusablePressable } from '@/components/FocusablePressable';
 import { ConfirmModal } from '@/components/ConfirmModal';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from 'expo-router';
+import { useFocusRestore } from '@/hooks/useFocusRestore';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 // Swipeable removed in gesture-handler v3 — long-press triggers delete instead
@@ -188,13 +189,9 @@ export default function WatchHistoryScreen() {
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
-  // TV: restore focus to the Back button every time this screen becomes active
-  // (covers both initial entry and return from a detail push).
-  useFocusEffect(useCallback(() => {
-    if (!Platform.isTV) return;
-    const t = setTimeout(() => (backBtnRef.current as any)?.focus?.(), 150);
-    return () => clearTimeout(t);
-  }, []));
+  // #357: shared TV focus-restoration — focus returns to the Back button every
+  // time this screen becomes active (initial entry and return from a push).
+  useFocusRestore({ delay: 150, targetRef: backBtnRef });
 
   const handleDelete = useCallback(async (id: string) => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
