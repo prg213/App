@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FocusablePressable } from '@/components/FocusablePressable';
+import { useBackHandler } from '@/hooks/useBackHandler';
 import {
   ActivityIndicator,
-  BackHandler,
   findNodeHandle,
   FlatList,
   Image,
@@ -159,16 +159,12 @@ export default function CatchupScreen() {
   // nextFocusLeft / nextFocusRight without relying on render-time handles.
   const [dayTabHandles, setDayTabHandles] = useState<Map<string, number>>(new Map());
 
-  // D-pad / remote back: close programme list → reset category → hand off to
-  // the global handler which focuses the sidebar.
-  useFocusEffect(useCallback(() => {
-    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (selectedChannel) { setSelectedChannel(null); return true; }
-      if (selectedCatId !== ALL_CAT_ID) { setSelectedCatId(ALL_CAT_ID); return true; }
-      return false;
-    });
-    return () => sub.remove();
-  }, [selectedChannel, selectedCatId]));
+  // Hardware BACK: close programme list → reset category → sidebar fallback.
+  useBackHandler(() => {
+    if (selectedChannel) { setSelectedChannel(null); return true; }
+    if (selectedCatId !== ALL_CAT_ID) { setSelectedCatId(ALL_CAT_ID); return true; }
+    return false;
+  });
 
   // Refs that shadow selected-column state so the tab-return useFocusEffect
   // below can read the current values without adding them to its dep array.

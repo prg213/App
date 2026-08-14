@@ -36,6 +36,7 @@ import { fetchAndParseXmltv } from '@/services/epgService';
 import type { EpgProgram } from '@/types';
 import { Image } from 'expo-image';
 import { useCast } from '@/hooks/useCast';
+import { useTVRemote } from '@/hooks/useTVRemote';
 import CastButton from '@/components/CastButton';
 
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2] as const;
@@ -1200,6 +1201,42 @@ export default function PlayerScreen() {
     return () => sub.remove();
   }, [isLive, isWeb, handleBack, controlsOpacity]);
 
+  // ── Firestick / Android TV media key bindings ────────────────────────────
+  // Handles Play/Pause, Channel Up/Down (live), and FF/RW (VOD/catchup).
+  // useTVRemote gates the subscription on screen focus so it never fires
+  // while a different screen (Guide, Movies, etc.) is in the foreground.
+  // D-pad navigation (UP/DOWN/LEFT/RIGHT) and BACK are handled separately by
+  // the native spatial-focus engine and BackHandler respectively.
+  useTVRemote({
+    onPlayPause: ({ eventKeyAction }) => {
+      if (eventKeyAction !== 1) return; // act on key-up (confirmed press)
+      // If controls are hidden on VOD, show them first (same as an OK press).
+      if (!showControlsRef.current && !isLive) {
+        showVodControls();
+        return;
+      }
+      togglePlay();
+    },
+    onChannelUp: ({ eventKeyAction }) => {
+      // Channel Up = next channel in the list (higher index).
+      if (eventKeyAction !== 1 || !isLive) return;
+      handleNextChannel();
+    },
+    onChannelDown: ({ eventKeyAction }) => {
+      // Channel Down = previous channel in the list (lower index).
+      if (eventKeyAction !== 1 || !isLive) return;
+      handlePrevChannel();
+    },
+    onFastForward: ({ eventKeyAction }) => {
+      if (eventKeyAction !== 1 || isLive) return;
+      seek(30);
+    },
+    onRewind: ({ eventKeyAction }) => {
+      if (eventKeyAction !== 1 || isLive) return;
+      seek(-30);
+    },
+  });
+
   // ── Pause local playback while casting (device becomes the remote) ────────
   useEffect(() => {
     if (isCasting && !isWeb) {
@@ -1215,6 +1252,9 @@ export default function PlayerScreen() {
 
   // ── Controls visibility ──────────────────────────────────────────────────
   const scheduleHide = useCallback(() => {
+    // On TV/Firestick: controls stay visible until the user presses BACK.
+    // Professional IPTV apps never auto-dismiss overlays while on a remote.
+    if (Platform.isTV) return;
     if (hideTimer.current) clearTimeout(hideTimer.current);
     hideTimer.current = setTimeout(() => {
       Animated.timing(controlsOpacity, { toValue: 0, duration: 400, useNativeDriver: true }).start();

@@ -8,13 +8,13 @@ import React, {
   useRef,
   useState,
 } from 'react';
+import { useBackHandler } from '@/hooks/useBackHandler';
 import {
   ActivityIndicator,
   Alert,
   Animated,
   AppState,
   AppStateStatus,
-  BackHandler,
   DeviceEventEmitter,
   findNodeHandle,
   FlatList,
@@ -757,24 +757,17 @@ export default function LiveTVScreen() {
   // Clear channel filter whenever the user switches category
   useEffect(() => { setChannelFilter(''); }, [selectedCatId]);
 
-  // Android back button: pop through active states one level at a time
-  useEffect(() => {
-    const handler = BackHandler.addEventListener('hardwareBackPress', () => {
-      // Exit reorder mode first
-      if (isReordering) { setIsReordering(false); return true; }
-      // Dismiss catch-up sheet
-      if (showCatchup) { setShowCatchup(false); return true; }
-      // Clear channel-list text filter
-      if (channelFilter.trim()) { setChannelFilter(''); Keyboard.dismiss(); return true; }
-      // Clear category search
-      if (catSearch.trim()) { setCatSearch(''); return true; }
-      // Stop/deselect the playing channel
-      if (selectedChannel) { setPlayingChannel(null); setSelectedChannel(null); return true; }
-      // Nothing left to pop — let global handler focus the sidebar
-      return false;
-    });
-    return () => handler.remove();
-  }, [isReordering, showCatchup, channelFilter, catSearch, selectedChannel]);
+  // Hardware BACK: pop through active states one level at a time.
+  // useBackHandler (via useFocusEffect) ensures this is only active while Live TV is focused —
+  // fixing the previous plain-useEffect bug that registered the handler on every tab.
+  useBackHandler(() => {
+    if (isReordering) { setIsReordering(false); return true; }
+    if (showCatchup) { setShowCatchup(false); return true; }
+    if (channelFilter.trim()) { setChannelFilter(''); Keyboard.dismiss(); return true; }
+    if (catSearch.trim()) { setCatSearch(''); return true; }
+    if (selectedChannel) { setPlayingChannel(null); setSelectedChannel(null); return true; }
+    return false; // let global handler focus the sidebar
+  });
 
   const channelListRef = useRef<FlatList<Channel>>(null);
   // filteredChannels and its useEffect are declared AFTER channels (below) to

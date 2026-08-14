@@ -6,6 +6,8 @@ import React, {
   useRef,
   useState,
 } from 'react';
+import { useBackHandler } from '@/hooks/useBackHandler';
+import { useTVRemote } from '@/hooks/useTVRemote';
 import {
   ActivityIndicator,
   Alert,
@@ -1320,51 +1322,42 @@ function FullGuide({
   const selectedRef = useRef(selected);
   useEffect(() => { selectedRef.current = selected; }, [selected]);
 
-  // ── Play/Pause hardware shortcut — Fire TV / Android TV ──────────────────
-  // Short-press  → jump to "now" (existing behaviour)
-  // Long-press   → open time-picker overlay (new)
-  // We detect the long-press ourselves: key-down starts a 600 ms hold timer;
-  // key-up before it fires = short press; timer firing = long press.
+  // ── Play/Pause hardware key — Fire TV / Android TV ───────────────────────
+  // Short-press  → jump to "now"
+  // Long-press   → open time-picker overlay (600 ms hold detection)
+  // useTVRemote gates the subscription on screen focus so it never fires
+  // while another screen is active.
   const playPauseHoldTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => {
-    if (!Platform.isTV) return;
-    const sub = DeviceEventEmitter.addListener(
-      'onHWKeyEvent',
-      (e: { eventType: string; eventKeyAction: number }) => {
-        if (e.eventType === 'playPause') {
-          if (e.eventKeyAction === 0) {
-            // Key down — arm hold timer only for the FIRST down event.
-            // Android TV remotes send repeated key-down events while a button
-            // is held; re-arming the timer on each repeat would reset it and
-            // prevent it from ever firing.  If the timer is already armed we
-            // ignore the repeat event entirely.
-            if (playPauseHoldTimer.current !== null) return;
-            playPauseHoldTimer.current = setTimeout(() => {
-              playPauseHoldTimer.current = null;
-              // Long-press confirmed: open time picker (if no modal is open)
-              if (!selectedRef.current && !showTimePickerRef.current) {
-                setShowTimePicker(true);
-              }
-            }, 600);
-          } else if (e.eventKeyAction === 1) {
-            // Key up — if the timer is still pending it was a short press
-            if (playPauseHoldTimer.current !== null) {
-              clearTimeout(playPauseHoldTimer.current);
-              playPauseHoldTimer.current = null;
-              if (!selectedRef.current && !showTimePickerRef.current) {
-                jumpToNow();
-              }
-            }
-            // else: long-press was already handled by the timer callback
+  useTVRemote({
+    onPlayPause: (e) => {
+      if (e.eventKeyAction === 0) {
+        // Key down — arm hold timer on first event only.
+        // Remotes send repeated keydown events while held; re-arming would
+        // reset the timer and prevent it from ever firing.
+        if (playPauseHoldTimer.current !== null) return;
+        playPauseHoldTimer.current = setTimeout(() => {
+          playPauseHoldTimer.current = null;
+          if (!selectedRef.current && !showTimePickerRef.current) {
+            setShowTimePicker(true);
+          }
+        }, 600);
+      } else if (e.eventKeyAction === 1) {
+        // Key up — short press if timer is still pending
+        if (playPauseHoldTimer.current !== null) {
+          clearTimeout(playPauseHoldTimer.current);
+          playPauseHoldTimer.current = null;
+          if (!selectedRef.current && !showTimePickerRef.current) {
+            jumpToNow();
           }
         }
-      },
-    );
-    return () => {
-      sub.remove();
-      if (playPauseHoldTimer.current) clearTimeout(playPauseHoldTimer.current);
-    };
-  }, [jumpToNow]);
+        // else: long-press was already handled by the timer callback
+      }
+    },
+  });
+  // Clean up the hold timer on unmount.
+  useEffect(() => () => {
+    if (playPauseHoldTimer.current) clearTimeout(playPauseHoldTimer.current);
+  }, []);
 
   // Focus the first channel cell whenever the selected category changes (covers
   // both the initial mount from CategoryGrid and ‹ › prev/next navigation).
@@ -2081,21 +2074,18 @@ export default function GuideScreen() {
   }, [selectedCat]));
 
   // ── Hardware BACK: return from FullGuide to CategoryGrid ─────────────────
-  // Without this, pressing BACK while viewing a category's programme grid
-  // would exit the tab entirely (or navigate back in the app stack) rather
-  // than returning the user to the category selection grid.
-  // The ProgramModal registers its own BackHandler listener that fires first
-  // (LIFO) when the modal is open, so we never intercept BACK mid-modal.
-  useEffect(() => {
-    if (!selectedCat) return;
-    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      setSelectedCat(null);
-      // TV: return focus to the first category card after FullGuide dismisses.
-      if (Platform.isTV) setTimeout(() => (firstCatCardRef.current as any)?.focus?.(), 350);
-      return true; // consumed — do not propagate
-    });
-    return () => sub.remove();
-  }, [selectedCat]);
+  // When selectedCat is set the user is viewing a category's programme grid;
+  // BACK should return them to the category selection view, not exit the tab.
+  // The ProgramModal registers its own BackHandler (LIFO) so modal BACK fires
+  // first and this handler never intercepts BACK while a modal is open.
+  // useBackHandler (useFocusEffect) ensures this only fires while the Guide
+  // tab is focused — not while the user is on any other tab.
+  useBackHandler(() => {
+    if (!selectedCat) return false; // no category open — let sidebar handler run
+    setSelectedCat(null);
+    if (Platform.isTV) setTimeout(() => (firstCatCardRef.current as any)?.focus?.(), 350);
+    return true;
+  });
 
   // Channel to auto-highlight after notification tap
   const [pendingHighlightId, setPendingHighlightId] = useState<string | null>(notifChannelId ?? null);

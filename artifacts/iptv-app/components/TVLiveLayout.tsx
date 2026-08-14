@@ -33,6 +33,7 @@ import {
 } from 'react-native';
 import { VideoView, type VideoPlayer } from 'expo-video';
 import { FocusablePressable } from '@/components/FocusablePressable';
+import { useFocusRestore } from '@/hooks/useFocusRestore';
 import type { Category, Channel, EpgProgram } from '@/types';
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -105,27 +106,14 @@ export function TVLiveLayout({
   const chListRef  = useRef<FlatList<Channel>>(null);
 
   // ── TV remote initial focus ───────────────────────────────────────────────
-  // Refs to the first items in each panel so we can programmatically focus
-  // them without relying on hasTVPreferredFocus (which fires on every re-render
-  // on Fire OS and would fight with the user's own D-pad navigation).
-  const firstCatRef = useRef<View>(null);
+  // useFocusRestore handles the full restore lifecycle:
+  //   • firstRef (firstCatRef) — default fallback on first visit or after clearFocus()
+  //   • markChFocused(node)    — records the last D-pad-focused channel row
+  //   • On every tab visit (initial + return from player) the last-focused channel
+  //     is restored; if none exists focus falls back to the first category item.
+  const { firstRef: firstCatRef, markFocused: markChFocused } = useFocusRestore({ delay: 400 });
   const firstChRef  = useRef<View>(null);
-
-  // Ref tracking for the last D-pad-focused channel row.
-  // On return from the fullscreen player this lets us restore focus to the
-  // channel the user was watching rather than forcing them back to the top.
-  const lastFocusedChRef = useRef<View>(null);
   const chRefMap = useRef(new Map<string, View>());
-
-  // On tab focus: restore to last focused channel, or fall back to the first
-  // category.  useFocusEffect fires on every tab visit (initial mount AND
-  // return from the fullscreen player), replacing the old mount-only useEffect.
-  useFocusEffect(useCallback(() => {
-    if (!Platform.isTV) return;
-    const target = lastFocusedChRef.current ?? firstCatRef.current;
-    const t = setTimeout(() => (target as any)?.focus?.(), 400);
-    return () => clearTimeout(t);
-  }, []));
 
   // TV: if the selected category has no channels the category-press handler's
   // firstChRef.focus() is a no-op (the channel FlatList is replaced by an
@@ -235,7 +223,7 @@ export function TVLiveLayout({
         onFocus={() => {
           handleChFocus(item, index);
           const node = chRefMap.current.get(item.id);
-          if (node) lastFocusedChRef.current = node;
+          if (node) markChFocused(node);
         }}
         onPress={() => {
           onChannelSelect(item);

@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FocusablePressable } from '@/components/FocusablePressable';
 import { TrailerModal } from '@/components/TrailerModal';
+import { useBackHandler } from '@/hooks/useBackHandler';
+import { useFocusRestore } from '@/hooks/useFocusRestore';
 import {
   Alert,
-  BackHandler,
   FlatList,
   Keyboard,
   Platform,
@@ -209,39 +210,21 @@ export default function MoviesScreen() {
   const [sortToast, setSortToast] = useState<string | null>(null);
   const [showScrollTop, setShowScrollTop] = useState(false);
 
-  // D-pad / remote back: pop through filter state before the global handler
-  // focuses the sidebar.
-  useFocusEffect(useCallback(() => {
-    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (search) { setSearch(''); return true; }
-      if (selectedCat !== ALL_CAT_ID) { setSelectedCat(ALL_CAT_ID); return true; }
-      return false; // nothing to pop — global handler will focus the sidebar
-    });
-    return () => sub.remove();
-  }, [search, selectedCat]));
-  const gridRef = useRef<FlatList<Movie>>(null);
-  /** TV: view node of the last D-pad-focused movie card */
-  const lastFocusedCardRef = useRef<View>(null);
-  /** TV: stable map of item.id → card View node */
-  const cardRefMap = useRef(new Map<string, View>());
-  /** TV: first category item — used as initial focus target on first screen entry */
-  const firstCatItemRef = useRef<View>(null);
+  // Hardware BACK: pop through filter state before the global handler focuses the sidebar.
+  useBackHandler(() => {
+    if (search) { setSearch(''); return true; }
+    if (selectedCat !== ALL_CAT_ID) { setSelectedCat(ALL_CAT_ID); return true; }
+    return false;
+  });
 
-  // TV: restore D-pad focus to the last focused card on return from detail.
-  // On first entry (no prior card) focus the first category item so the
-  // remote cursor has a deterministic starting point rather than relying on
-  // the native Android TV focus heuristic (which can land anywhere).
-  useFocusEffect(useCallback(() => {
-    if (!Platform.isTV) return;
-    const node = lastFocusedCardRef.current;
-    if (node) {
-      const t = setTimeout(() => (node as any)?.focus?.(), 200);
-      return () => clearTimeout(t);
-    }
-    // No prior card — focus the first category item.
-    const t = setTimeout(() => (firstCatItemRef.current as any)?.focus?.(), 200);
-    return () => clearTimeout(t);
-  }, []));
+  const gridRef = useRef<FlatList<Movie>>(null);
+  /** TV: stable map of item.id → card View node (used for focus-node lookup) */
+  const cardRefMap = useRef(new Map<string, View>());
+
+  // TV focus restore: remembers the last focused card and restores it on tab return.
+  // Falls back to the first category item on the initial visit or after clearFocus().
+  const { firstRef: firstCatItemRef, markFocused: markCardFocused, clearFocus: clearCardFocus } =
+    useFocusRestore({ delay: 200 });
 
   // Scroll back to top and clear search whenever the category changes.
   // Also clear lastFocusedCardRef so the tab-entry useFocusEffect doesn't try
@@ -253,7 +236,7 @@ export default function MoviesScreen() {
     setShowScrollTop(false);
     setSearch('');
     if (Platform.isTV) {
-      lastFocusedCardRef.current = null;
+      clearCardFocus();
       cardRefMap.current.clear();
     }
   }, [selectedCat]);
@@ -519,12 +502,12 @@ export default function MoviesScreen() {
               const card = (
               <MovieCard
                 ref={(node: View | null) => {
-                  if (node) cardRefMap.current.set(item.id, node);
+                  if (node) { cardRefMap.current.set(item.id, node); }
                   else cardRefMap.current.delete(item.id);
                 }}
                 onFocus={() => {
                   const node = cardRefMap.current.get(item.id);
-                  if (node) lastFocusedCardRef.current = node;
+                  if (node) markCardFocused(node);
                 }}
                 id={item.id}
                 name={item.name}

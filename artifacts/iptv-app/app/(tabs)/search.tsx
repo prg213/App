@@ -15,7 +15,8 @@ import { TrailerModal } from '@/components/TrailerModal';
 import { useQuery } from '@tanstack/react-query';
 import { useFocusEffect, useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import { Alert, BackHandler, DeviceEventEmitter } from 'react-native';
+import { useBackHandler } from '@/hooks/useBackHandler';
+import { Alert, DeviceEventEmitter } from 'react-native';
 import { getTmdbTrailerCandidates, getSeriesTrailerUrl } from '@/services/tmdb';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
@@ -238,15 +239,11 @@ export default function SearchScreen() {
   const [query, setQuery] = useState('');
   const [searchType, setSearchType] = useState<SearchType>('all');
 
-  // D-pad / remote back: clear the search query before handing off to the
-  // global handler which focuses the sidebar.
-  useFocusEffect(useCallback(() => {
-    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (query) { setQuery(''); return true; }
-      return false;
-    });
-    return () => sub.remove();
-  }, [query]));
+  // Hardware BACK: clear search query first, then fall through to sidebar.
+  useBackHandler(() => {
+    if (query) { setQuery(''); return true; }
+    return false;
+  });
   const [trailerLoading, setTrailerLoading] = useState(false);
   const [trailerVideoIds, setTrailerVideoIds] = useState<string[] | 'loading' | null>(null);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
