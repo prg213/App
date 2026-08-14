@@ -7,3 +7,4 @@
 - [MAC failure count persistence](mac-fail-persistence.md) — sv_startup_fail_count in AsyncStorage survives force-quits; loaded at cold-start, persisted on every failure path, cleared on success/logout; also added to clearCredentials multiRemove.
 - [Runtime ReferenceError patterns](runtime-referror-patterns.md) — Three crash classes: TDZ in hook dep arrays (TS2448), missing prop destructures (TS2304 = runtime ReferenceError), StyleSheet.absoluteFillObject removed from RN types. Run `npx tsc --noEmit` and treat TS2304/TS2448 as crash-blockers.
 - [TV focus restoration pattern](tv-focus-restoration.md) — forwardRef+onFocus on cards, refMap per screen, useFocusEffect restores; useEffect(wasOpen) pattern for modal openers in settings.
+- [TV input & navigation system](tv-input-system.md) — useBackHandler/useTVRemote/useFocusRestore hooks; which screens migrated; player media keys; scheduleHide no-op on TV.
