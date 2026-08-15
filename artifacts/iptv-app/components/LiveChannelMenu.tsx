@@ -104,6 +104,7 @@ export interface LiveChannelMenuProps {
   onClose: () => void;
 }
 
+
 // ─── Component ─────────────────────────────────────────────────────────────────
 // Internal implementation — exported as a memoised wrapper below so the
 // channel browser only re-renders when its own props change, not on every
@@ -154,10 +155,12 @@ function LiveChannelMenuImpl({
 
   // ── Favourites ────────────────────────────────────────────────────────────────
   const [favIds, setFavIds] = useState<Set<string>>(new Set());
+  const favLoadedRef = useRef(false);
   useEffect(() => {
-    StorageService.getFavorites().then((favs) =>
-      setFavIds(new Set(favs.map((f) => f.id))),
-    );
+    StorageService.getFavorites().then((favs) => {
+      setFavIds(new Set(favs.map((f) => f.id)));
+      favLoadedRef.current = true;
+    });
   }, []);
 
   // ── Recently watched channels ─────────────────────────────────────────────────
@@ -214,19 +217,31 @@ function LiveChannelMenuImpl({
   // contains the currently-playing channel so it's immediately visible.
   // _autoSelected ensures this only runs once per session; subsequent opens
   // restore the viewer's last manually-chosen category instead.
+  // favLoadedRef gates execution so favourites membership is known before we
+  // decide — otherwise a bookmarked channel might fall through to groupTitle.
   useEffect(() => {
-    if (isLoading || _autoSelected) return;
+    if (isLoading || _autoSelected || !favLoadedRef.current) return;
     _autoSelected = true;
 
     // Restore saved category if it's something specific the user chose.
     if (_savedCat !== CAT_ALL) return;
 
     const currentCh = sorted.find((ch) => ch.id === currentChannelId);
-    if (currentCh?.groupTitle) {
+    if (!currentCh) return;
+
+    // Prefer Favourites when the channel is bookmarked
+    if (favIds.has(currentChannelId)) {
+      setSelectedCat(CAT_FAV);
+      return;
+    }
+
+    // Otherwise land on the channel's provider category
+    if (currentCh.groupTitle) {
       setSelectedCat(currentCh.groupTitle);
     }
+    // No groupTitle → stays on CAT_ALL (already the default)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLoading]);
+  }, [isLoading, favIds]);
 
   // Guard: if the saved category no longer exists (e.g. different provider),
   // fall back to All Channels so the list is never empty.
