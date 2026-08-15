@@ -1634,9 +1634,10 @@ export default function PlayerScreen() {
       setDoubleTapSide(isLeft ? 'back' : 'forward');
       doubleTapTimer.current = setTimeout(() => setDoubleTapSide(null), 700);
     });
-  // Live TV phone/tablet: swipe right → dismiss overlay if visible, else go back.
-  // activeOffsetX(30) lets short taps through to tapGesture; failOffsetY prevents
-  // stealing vertical scrolls inside any child.
+  // Live TV phone/tablet — horizontal: swipe right → dismiss OSD or go back.
+  // activeOffsetX(30) lets short taps reach tapGesture; failOffsetY([-25,25])
+  // yields to the vertical channel-change gesture below for primarily-vertical
+  // swipes so the two gestures don't compete.
   const liveSwipeGesture = Gesture.Pan()
     .runOnJS(true)
     .activeOffsetX(30)
@@ -1648,7 +1649,39 @@ export default function PlayerScreen() {
         else { handleBackLive(); }
       }
     });
-  const combinedGesture = Gesture.Race(liveSwipeGesture, Gesture.Exclusive(doubleTapGesture, tapGesture));
+
+  // Live TV phone/tablet — vertical: swipe UP → next channel, DOWN → prev channel.
+  //
+  // This is the touch equivalent of the Firestick D-pad LEFT/RIGHT zones and the
+  // media channel-up/down keys.  All three input methods call the same
+  // handleNextChannel / handlePrevChannel functions, which call switchChannel —
+  // one code path for every input source.
+  //
+  // failOffsetX([-30,30]) — yields to liveSwipeGesture for horizontal intent so
+  //   an angled swipe-right (e.g. iOS edge swipe) still triggers the back path.
+  // 50 px translation + 200 px/s velocity — prevents accidental channel changes
+  //   on small taps or slow drags that just happen to be slightly vertical.
+  // navCooldownRef inside handleNext/PrevChannel — shared with the TV D-pad path,
+  //   so swipe-spam and D-pad-spam are both rate-limited by the same 1 200 ms gate.
+  const liveVerticalSwipeGesture = Gesture.Pan()
+    .runOnJS(true)
+    .activeOffsetY([-40, 40])
+    .failOffsetX([-30, 30])
+    .onEnd((e) => {
+      if (!isLive || Platform.isTV) return;
+      if (Math.abs(e.translationY) < 50 || Math.abs(e.velocityY) < 200) return;
+      if (e.translationY < 0) {
+        handleNextChannel(); // swipe UP   → next channel  (mirrors TV ch-up / D-pad right)
+      } else {
+        handlePrevChannel(); // swipe DOWN → prev channel  (mirrors TV ch-down / D-pad left)
+      }
+    });
+
+  const combinedGesture = Gesture.Race(
+    liveSwipeGesture,
+    liveVerticalSwipeGesture,
+    Gesture.Exclusive(doubleTapGesture, tapGesture),
+  );
 
   const togglePlay = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
