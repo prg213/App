@@ -6,8 +6,9 @@ import { clearTmdbTrailerCache } from '@/services/tmdb';
 import { clearReminderRefreshCache } from '@/services/reminderUrlCache';
 import { resetSessionPushFailures } from '@/services/favoritesSync';
 import { resetChannelMenuState } from '@/components/LiveChannelMenu';
-import { resetEpgScrollState } from '@/app/(tabs)/guide';
+import { resetEpgScrollState } from '@/services/epgScrollState';
 import type { Credentials } from '@/types';
+import { resetEpgFilterState } from '@/services/epgFilterState';
 
 export type LogoutReason = 'deactivated' | null;
 
@@ -104,6 +105,7 @@ export function AppContextProvider({ children }: { children: React.ReactNode }) 
     resetSessionPushFailures(); // #23: new login gets a clean failure counter
     resetChannelMenuState(); // #390: clear stale category/search/scroll so next login auto-selects fresh
     resetEpgScrollState(); // #400: clear stale EPG scroll offsets so guide opens at current time on next login
+    resetEpgFilterState();  // #399: clear EPG category and Favourites filter so next login starts fresh
     setCredentials(null);
     setIsActivated(false);
     isActivatedRef.current = false;

@@ -47,6 +47,18 @@ import {
 } from '@/services/notifications';
 import type { Channel, EpgProgram, Reminder } from '@/types';
 import { normaliseStr } from '@/utils/normalise';
+import {
+  getEpgFavFilterActive,
+  getEpgSelectedCat,
+  setEpgFavFilterActive,
+  setEpgSelectedCat,
+} from '@/services/epgFilterState';
+import {
+  getEpgScrollX,
+  getEpgScrollY,
+  setEpgScrollX,
+  setEpgScrollY,
+} from '@/services/epgScrollState';
 
 // ─── Guide constants ────────────────────────────────────────────────────────
 const PX_PER_MIN = 2;
@@ -1280,7 +1292,10 @@ function FullGuide({
   const [guideReminderIds, setGuideReminderIds] = useState<Set<string>>(new Set());
   const [chFilter, setChFilter] = useState('');
   const [debouncedChFilter, setDebouncedChFilter] = useState('');
-  const [favFilterActive, setFavFilterActive] = useState(false);
+  const [favFilterActive, setFavFilterActive] = useState(getEpgFavFilterActive());
+  // Sync back to module-level store so resetEpgFilterState() has accurate state
+  // and so a re-mount after re-login picks up the reset default.
+  useEffect(() => { setEpgFavFilterActive(favFilterActive); }, [favFilterActive]);
 
   // ── Auto-advance D-pad focus between columns (TV / Fire TV only) ───────────
   // Ref attached to the first channel cell so we can programmatically focus it.
@@ -1533,9 +1548,9 @@ function FullGuide({
 
   // Tracks the latest horizontal scroll offset so it can be restored after an
   // orientation change or split-screen resize resets the ScrollView position.
-  const gridScrollOffsetRef = useRef<number>(_epgScrollX);
+  const gridScrollOffsetRef = useRef<number>(getEpgScrollX());
   // Tracks the latest vertical scroll offset for the same reason.
-  const gridVertOffsetRef = useRef<number>(_epgScrollY);
+  const gridVertOffsetRef = useRef<number>(getEpgScrollY());
   // Tracks the previous window width so the orientation-change restore effect
   // can tell the difference between a real resize and the initial mount.
   const { width: windowWidth } = useWindowDimensions();
@@ -1548,7 +1563,7 @@ function FullGuide({
     // scroll so that an orientation change immediately after a day change restores
     // the right position, and logout clears the correct value.
     gridScrollOffsetRef.current = scrollX;
-    _epgScrollX = scrollX;
+    setEpgScrollX(scrollX);
     const timer = setTimeout(() => {
       gridHorizRef.current?.scrollTo({ x: scrollX, animated: false });
       timeHeaderRef.current?.scrollTo({ x: scrollX, animated: false });
@@ -1584,14 +1599,14 @@ function FullGuide({
   const onGridHorizScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const x = e.nativeEvent.contentOffset.x;
     gridScrollOffsetRef.current = x;
-    _epgScrollX = x; // keep module-level state in sync for logout reset
+    setEpgScrollX(x); // keep module-level state in sync for logout reset
     timeHeaderRef.current?.scrollTo({ x, animated: false });
   }, []);
 
   const onGridVertScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const y = e.nativeEvent.contentOffset.y;
     gridVertOffsetRef.current = y;
-    _epgScrollY = y; // keep module-level state in sync for logout reset
+    setEpgScrollY(y); // keep module-level state in sync for logout reset
   }, []);
 
   return (
@@ -2060,63 +2075,21 @@ function normalizeEpgId(s: string): string {
     // Collapse everything non-alphanumeric
     .replace(/[^a-z0-9]/g, '');
 }
-
-// ─── Module-level EPG scroll state ────────────────────────────────────────────
-// Survives tab switches (component stays mounted) but must be cleared on logout
-// so the next login always opens the guide at the current time slot.
+// ─── Phone/tablet EPG scroll state ────────────────────────────────────────────
+// The horizontal (time-axis) and vertical (channel-axis) scroll offsets are
+// stored in services/epgScrollState.ts so that resetEpgScrollState() can be
+// called from doLogout() without importing this screen file (which would create
+// a circular dependency and break the test environment).
 //
-// TV / Firestick path note:
-//   _epgScrollX / _epgScrollY are only used by the phone/tablet ScrollView path
-//   (FullGuide's gridHorizRef / gridVertRef).  The TV path uses a FlatList for
-//   vertical scrolling — no module-level Y offset is needed because the FlatList
-//   always starts at the top on a fresh mount, and D-pad focus drives subsequent
-//   scrolling.  Each TVEpgRow tracks its own horizontal position via scrollOffsetRef
-//   (a useRef<number | null>(null)) which is initialised to null on every mount.
-//   Because logout navigates away from the tab screen (router.replace('/activation'))
-//   all TVEpgRow instances unmount; on re-login they remount with scrollOffsetRef
-//   null, so the mount effect correctly scrolls each row to initialIdx (the current
-//   or upcoming programme).  The dayStartMs effect inside TVEpgRow provides the same
-//   reset for day-switches within a session.  No additional action is required here
-//   for the TV vertical or horizontal reset.
-
-// COLD-START SAFETY NOTE (phone / tablet path)
-// ─────────────────────────────────────────────
-// These are plain JS module-level variables — they live exclusively in the
-// Metro JS runtime heap and are NEVER written to AsyncStorage or any other
-// form of persistent storage.  When the user force-quits the app and
-// relaunches (a "cold-start"), the JS runtime is torn down and restarted from
-// scratch, so both variables are always initialised to 0 by the time the
-// GuideScreen first renders.  No explicit reset is needed on cold-start.
+// TV / Firestick path: no module-level reset needed — TVEpgRow instances unmount
+// on logout (router.replace('/activation')) and remount with null scrollOffsetRef,
+// so each row's mount effect re-scrolls to the current programme automatically.
 //
-// The resetEpgScrollState() call inside doLogout() handles the *soft-logout*
-// path (user taps "Sign out" without force-quitting): the app stays in memory,
-// so the module variables survive; resetEpgScrollState() zeroes them so the
-// next login opens the guide at the current time slot rather than a stale
-// position from the previous session.
-//
-// To keep this guarantee intact, do NOT pass _epgScrollX or _epgScrollY
-// (or any derived key) to AsyncStorage.setItem / multiSet.  The CI guard
-// script scripts/check-epg-scroll-not-persisted.sh enforces this automatically.
-let _epgScrollX = 0;
-let _epgScrollY = 0;
+// Cold-start safety: the module-level vars in epgScrollState.ts are plain JS
+// heap values, never persisted to AsyncStorage, so a force-quit always resets
+// them to 0 implicitly.  The CI guard script enforces this: see
+// scripts/check-epg-scroll-not-persisted.sh.
 
-/**
- * Resets the saved EPG scroll offsets to zero (phone / tablet ScrollView path).
- * Call on logout so the guide always opens at the current time on the next login.
- *
- * Cold-start: no action needed — the JS runtime always initialises these module
- * variables to 0 on launch (see the block comment above).
- *
- * TV / Firestick: reset is handled automatically by component lifecycle — see the
- * block comment further above.  This function only needs to clear the module-level
- * _epgScrollX / _epgScrollY that are used by the non-TV ScrollView path.
- */
-export function resetEpgScrollState(): void {
-  _epgScrollX = 0;
-  _epgScrollY = 0;
-}
-
-// ─── Main screen ──────────────────────────────────────────────────────────────
 
 export default function GuideScreen() {
   const colors = useColors();
@@ -2127,7 +2100,9 @@ export default function GuideScreen() {
   // Receive channelId from notification deep-links (passed by _layout.tsx)
   const { channelId: notifChannelId } = useLocalSearchParams<{ channelId?: string }>();
 
-  const [selectedCat, setSelectedCat] = useState<string | null>(null);
+  const [selectedCat, setSelectedCat] = useState<string | null>(getEpgSelectedCat());
+  // Sync back to module-level store on every change.
+  useEffect(() => { setEpgSelectedCat(selectedCat); }, [selectedCat]);
 
   // TV: ref to the first category card — populated by CategoryGrid's renderItem
   // ref callback so we can focus it without hasTVPreferredFocus re-render races.
