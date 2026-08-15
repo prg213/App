@@ -412,6 +412,12 @@ export default function PlayerScreen() {
   // Ref to block spurious onFocus channel-switch on initial TV mount
   const tvNavReadyRef = useRef(false);
   const tvCenterRef = useRef<View>(null);
+  // Set to true by the D-pad zone onFocus handlers when a wrap-around channel
+  // switch is about to fire (ch 0 → last, or last → ch 0).  Read by the
+  // useEffect([channelIdx]) below to extend the focus-restoration delay from
+  // 600 ms to 900 ms — wrap-around switches involve a larger jump in the stream
+  // URL list and can trigger a longer ExoPlayer audio-focus handoff cycle.
+  const wrapAroundPendingRef = useRef(false);
   // TV VOD focus management refs
   const tvVodIdleRef   = useRef<View>(null); // catch-all when controls are hidden
   const tvPlayBtnRef   = useRef<View>(null); // play/pause button (focused when controls appear)
@@ -1000,7 +1006,12 @@ export default function PlayerScreen() {
     setLastWatchedUrl(params.url);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const switchChannel = useCallback((entry: ChannelEntry, newIdx: number) => {
+  const switchChannel = useCallback((entry: ChannelEntry, newIdx: number, isWrapAround = false) => {
+    // Signal the post-switch focus-restoration useEffect to use the extended
+    // 900 ms delay for wrap-around switches (ch 0 → last or last → ch 0).
+    // Must be set here — before player.replace() — so the flag is readable when
+    // the useEffect fires after the channelIdx state update.
+    wrapAroundPendingRef.current = isWrapAround;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setChannelIdx(newIdx);
     setActiveTitle(entry.title);
@@ -1051,7 +1062,15 @@ export default function PlayerScreen() {
       // fires at 600 ms.  Critical at channel boundaries where the adjacent
       // left/right focus zone becomes non-focusable immediately after the switch
       // (e.g. switching to channel 0 makes the left zone non-focusable).
-      if (Platform.isTV && isLive) {
+      //
+      // Wrap-around exception: when wrapAroundPendingRef is set the D-pad zone
+      // has already signalled that the useEffect will use the extended 900 ms
+      // delay.  Firing the 150 ms call here would race with ExoPlayer's longer
+      // audio-focus handoff before that guard completes, creating exactly the
+      // dead-zone this task is designed to prevent.  On the wrap path the
+      // useEffect at 900 ms (plus the 950 ms zone belt-and-suspenders) is the
+      // single authoritative focus restoration — skip the early call entirely.
+      if (Platform.isTV && isLive && !wrapAroundPendingRef.current) {
         setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 150);
       }
     } catch {}
@@ -1063,14 +1082,14 @@ export default function PlayerScreen() {
     navCooldownRef.current = true;
     setTimeout(() => { navCooldownRef.current = false; }, 1200);
     const n = channelList.length;
-    switchChannel(prevChannel, (channelIdx - 1 + n) % n);
+    switchChannel(prevChannel, (channelIdx - 1 + n) % n, channelIdx === 0);
   }, [prevChannel, channelIdx, channelList, switchChannel]);
 
   const handleNextChannel = useCallback(() => {
     if (!nextChannel || navCooldownRef.current) return;
     navCooldownRef.current = true;
     setTimeout(() => { navCooldownRef.current = false; }, 1200);
-    switchChannel(nextChannel, (channelIdx + 1) % channelList.length);
+    switchChannel(nextChannel, (channelIdx + 1) % channelList.length, channelIdx === channelList.length - 1);
   }, [nextChannel, channelIdx, channelList, switchChannel]);
 
   // ── Animated collapse back (live TV only) ────────────────────────────────
@@ -1522,9 +1541,16 @@ export default function PlayerScreen() {
   // for the UI layer.  Using a useEffect on channelIdx (instead of a setTimeout
   // buried in the zone onFocus closures) also handles the initial-mount focus and
   // is immune to stale-closure issues.
+  //
+  // Wrap-around switches (ch 0 → last, last → ch 0) jump to a stream URL far
+  // away in the channel list; ExoPlayer's audio-focus handoff can take longer
+  // for these transitions.  wrapAroundPendingRef signals that the delay should
+  // be extended from 600 ms to 900 ms to avoid a focus dead-zone on Fire OS.
   useEffect(() => {
     if (!Platform.isTV || !isLive) return;
-    const t = setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 600);
+    const delay = wrapAroundPendingRef.current ? 900 : 600;
+    wrapAroundPendingRef.current = false; // consume the flag
+    const t = setTimeout(() => (tvCenterRef.current as any)?.focus?.(), delay);
     return () => clearTimeout(t);
   }, [channelIdx, isLive]);
 
@@ -2459,12 +2485,17 @@ export default function PlayerScreen() {
               setTimeout(() => { navCooldownRef.current = false; }, 1400);
               const targetChannel = prevChannel;
               const targetIdx = (channelIdx - 1 + channelList.length) % channelList.length;
+              // Detect wrap-around (ch 0 → last) so switchChannel can flag the
+              // extended focus-restoration delay and suppress the early 150 ms call.
+              const isWrap = channelIdx === 0;
               showTvChannelPreview(targetChannel, 'prev', () => {
-                switchChannel(targetChannel, targetIdx);
+                switchChannel(targetChannel, targetIdx, isWrap);
                 // Belt-and-suspenders: also request focus explicitly here in addition
                 // to the useEffect[channelIdx] handler, in case the effect fires before
                 // the native layer has settled after player.replace().
-                setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 700);
+                // Use a longer delay for wrap-around switches to match the extended
+                // useEffect guard (900 ms vs 600 ms for adjacent-channel switches).
+                setTimeout(() => (tvCenterRef.current as any)?.focus?.(), isWrap ? 950 : 700);
               });
             }}
           />
@@ -2528,9 +2559,11 @@ export default function PlayerScreen() {
               setTimeout(() => { navCooldownRef.current = false; }, 1400);
               const targetChannel = nextChannel;
               const targetIdx = (channelIdx + 1) % channelList.length;
+              // Detect wrap-around (last → ch 0); switchChannel handles the flag.
+              const isWrap = channelIdx === channelList.length - 1;
               showTvChannelPreview(targetChannel, 'next', () => {
-                switchChannel(targetChannel, targetIdx);
-                setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 700);
+                switchChannel(targetChannel, targetIdx, isWrap);
+                setTimeout(() => (tvCenterRef.current as any)?.focus?.(), isWrap ? 950 : 700);
               });
             }}
           />
