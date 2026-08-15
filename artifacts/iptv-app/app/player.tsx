@@ -8,7 +8,6 @@ import {
   Modal,
   Platform,
   Pressable,
-  ScrollView,
   StatusBar,
   StyleSheet,
   Text,
@@ -2271,7 +2270,7 @@ export default function PlayerScreen() {
               No audio tracks detected yet — they appear once the stream has loaded.
             </Text>
           ) : (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+            <View style={styles.chipRow}>
               {audioTracks.map((track, idx) => {
                 const label = track.label || track.name || track.language || `Track ${idx + 1}`;
                 const isActive =
@@ -2307,7 +2306,7 @@ export default function PlayerScreen() {
                   </FocusablePressable>
                 );
               })}
-            </ScrollView>
+            </View>
           )}
         </View>
       </Modal>
@@ -2341,7 +2340,7 @@ export default function PlayerScreen() {
               No subtitle tracks detected for this stream.
             </Text>
           ) : (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+            <View style={styles.chipRow}>
               <FocusablePressable
                 ref={firstSubChipRef}
                 focusedStyle={styles.chipFocus}
@@ -2394,7 +2393,7 @@ export default function PlayerScreen() {
                   </FocusablePressable>
                 );
               })}
-            </ScrollView>
+            </View>
           )}
         </View>
       </Modal>
@@ -2416,19 +2415,16 @@ export default function PlayerScreen() {
           style={styles.settingsBackdrop}
           focusable={false}
           accessible={false}
-          onPress={() => setShowSettings(false)}
+          onPress={() => { setShowSettings(false); setTimeout(() => settingsChipRef.current?.focus(), 150); }}
         />
         <View style={[styles.settingsSheet, { paddingBottom: insets.bottom + 16 }]} accessibilityViewIsModal={true}>
           <View style={styles.settingsHandle} />
 
-          {/* Vertical scroll so audio/subtitle sections are reachable on small screens */}
-          <ScrollView
-            showsVerticalScrollIndicator={false}
-            bounces={false}
-            contentContainerStyle={{ gap: 8, paddingBottom: 4 }}
-          >
+          {/* Plain View so D-pad events are not swallowed by a ScrollView on Fire TV.
+              Both sections fit without scrolling on any supported screen size. */}
+          <View style={{ gap: 8, paddingBottom: 4 }}>
           <Text style={styles.settingsTitle}>Playback Speed</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+          <View style={styles.chipRow}>
             {SPEEDS.map((s, idx) => (
               <FocusablePressable
                 key={s}
@@ -2448,7 +2444,7 @@ export default function PlayerScreen() {
                 </Text>
               </FocusablePressable>
             ))}
-          </ScrollView>
+          </View>
 
           <Text style={[styles.settingsTitle, { marginTop: 8 }]}>Aspect Ratio</Text>
           <View style={styles.chipRow}>
@@ -2466,7 +2462,7 @@ export default function PlayerScreen() {
             ))}
           </View>
 
-          </ScrollView>
+          </View>
         </View>
       </Modal>
     </View>
