@@ -1058,12 +1058,16 @@ export default function PlayerScreen() {
       // collapse animation is skipped entirely.  Emitting first makes the
       // mini-player visible and sized so triggerCollapse can hit it.
       const { DeviceEventEmitter: DEE } = require('react-native');
+      // Emit CURRENT active channel (not stale params) so the mini-player
+      // shows the channel the user is actually watching — which may differ
+      // from the original params when they zapped channels during the session.
+      const _nowId = channelList[channelIdx]?.channelId ?? params.channelId ?? '';
       DEE.emit('live:setPlayingChannel', {
-        id: params.channelId ?? '',
-        name: params.title ?? '',
-        logo: params.logo ?? '',
-        streamUrl: params.url ?? '',
-        epgId: params.epgId ?? params.channelId ?? '',
+        id:        _nowId,
+        name:      activeTitle  ?? params.title  ?? '',
+        logo:      activeLogo   ?? params.logo   ?? '',
+        streamUrl: liveUrlRef.current || params.url || '',
+        epgId:     activeEpgId  ?? _nowId,
         groupTitle: params.groupTitle ?? '',
       });
       // Two rAFs: first lets React commit the setPlayingChannel state update;
@@ -1077,7 +1081,10 @@ export default function PlayerScreen() {
       return;
     }
     triggerCollapse(() => router.back());
-  }, [params.stopOnBack, params.groupTitle, params.channelsJson, params.fromHome, sharedPlayer, triggerCollapse, router, controlsOpacity, infoOpacity]);
+  }, [params.stopOnBack, params.groupTitle, params.channelsJson, params.fromHome,
+      sharedPlayer, triggerCollapse, router, controlsOpacity, infoOpacity,
+      // Current channel state — stale params otherwise give the wrong channel on back
+      channelList, channelIdx, activeTitle, activeLogo, activeEpgId, liveUrlRef]);
 
   /** Immediately hide the info bar — used by the Back-press dismiss flow. */
   const dismissInfoBar = useCallback(() => {
@@ -1589,33 +1596,9 @@ export default function PlayerScreen() {
     scheduleHide();
   }, [isCasting, currentTime, player, scheduleHide, seekRemote]);
 
-  // ── #357: TV remote media keys ────────────────────────────────────────────
-  // First-class media-key support in the player (short press = key-up only):
-  //   Play/Pause          → toggle playback (all modes)
-  //   Channel Up / Down   → next / previous channel (live mode only)
-  //   FF / Rewind         → ±30 s seek (VOD / catch-up mode only)
-  useTVRemote({
-    playPause: (e) => {
-      if (e.eventKeyAction !== 1 || isWeb) return;
-      togglePlay();
-    },
-    channelUp: (e) => {
-      if (e.eventKeyAction !== 1 || isWeb || !isLive) return;
-      handleNextChannel();
-    },
-    channelDown: (e) => {
-      if (e.eventKeyAction !== 1 || isWeb || !isLive) return;
-      handlePrevChannel();
-    },
-    fastForward: (e) => {
-      if (e.eventKeyAction !== 1 || isWeb || isLive) return;
-      seek(30);
-    },
-    rewind: (e) => {
-      if (e.eventKeyAction !== 1 || isWeb || isLive) return;
-      seek(-30);
-    },
-  });
+  // TV media keys are handled by the single useTVRemote call above (search
+  // "useTVRemote gates the subscription").  A second call here would create
+  // a duplicate DeviceEventEmitter subscription, firing every handler twice.
 
   // ── CC pill behaviour ────────────────────────────────────────────────────
   // • Subtitles OFF + only 1 track  → enable that track directly.

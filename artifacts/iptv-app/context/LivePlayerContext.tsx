@@ -561,6 +561,13 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
       // rail).  Fall back to the last recorded rect if the view returns 0.
       const ref = miniPlayerRef.current;
       if (!ref) {
+        // Mini-player view is not mounted — cannot animate.  Reset
+        // pendingCollapseRemountRef so useFocusEffect takes the "slow
+        // navigation" branch (setVideoKey directly) rather than waiting for
+        // onCollapseCompleteRef to be called — a callback that will never
+        // arrive in this path, leaving audio playing with no video surface.
+        pendingCollapseRemountRef.current = false;
+        isCollapsingRef.current = false;
         onDone();
         return;
       }
@@ -572,6 +579,11 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
           }
           const rect = miniRectRef.current;
           if (!rect.width || !rect.height) {
+            // Mini-player has no measurable size — same fix as the null-ref
+            // path above: clear pending flag so useFocusEffect mounts the
+            // VideoView immediately rather than waiting indefinitely.
+            pendingCollapseRemountRef.current = false;
+            isCollapsingRef.current = false;
             onDone();
             return;
           }

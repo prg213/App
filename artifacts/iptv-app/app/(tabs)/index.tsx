@@ -481,6 +481,19 @@ export default function LiveTVScreen() {
     // single-frame black while the VideoView remounts and re-binds the surface.
     flashOverlayOpacity.setValue(1);
     setVideoKey((k) => k + 1);
+    // Safety-net: ExoPlayer stays in STATE_READY when re-attaching to a new
+    // TextureView surface on Android, so the statusChange→readyToPlay event
+    // never re-fires and the flash overlay would stay at opacity 1 permanently
+    // — audio plays but the video is hidden behind the dark overlay.
+    // If readyToPlay fires first (e.g. player.replace() is called by the live-
+    // edge reload logic), it wins and cancels this timer.  If it doesn't fire
+    // within 2 s, this fallback clears the overlay so the user can see video.
+    const overlayFallback = setTimeout(() => {
+      Animated.timing(flashOverlayOpacity, {
+        toValue: 0, duration: 300, useNativeDriver: true,
+      }).start();
+    }, 2000);
+    return () => clearTimeout(overlayFallback);
   }, [flashOverlayOpacity, isCollapsingRef, collapseRestorePendingRef, pendingCollapseRemountRef, onCollapseCompleteRef]));
 
   // ── AppState tracking (#21/#31/#53) ──────────────────────────────────────
