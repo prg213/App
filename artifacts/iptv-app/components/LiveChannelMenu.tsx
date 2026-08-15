@@ -66,6 +66,34 @@ export function resetChannelMenuState(): void {
   _autoSelected      = false;
 }
 
+// ─── Test-only helpers ────────────────────────────────────────────────────────
+// These exports exist solely to let unit tests inspect and mutate module-level
+// state without needing a full component render.  They are NOT part of the
+// public API and must not be used in application code.
+
+/** @internal — test use only */
+export function _getChannelMenuStateForTest() {
+  return {
+    savedCat:          _savedCat,
+    savedSearch:       _savedSearch,
+    savedScrollOffset: _savedScrollOffset,
+    autoSelected:      _autoSelected,
+  } as const;
+}
+
+/** @internal — test use only */
+export function _setChannelMenuStateForTest(patch: {
+  savedCat?:          string;
+  savedSearch?:       string;
+  savedScrollOffset?: number;
+  autoSelected?:      boolean;
+}): void {
+  if (patch.savedCat          !== undefined) _savedCat          = patch.savedCat;
+  if (patch.savedSearch        !== undefined) _savedSearch       = patch.savedSearch;
+  if (patch.savedScrollOffset  !== undefined) _savedScrollOffset = patch.savedScrollOffset;
+  if (patch.autoSelected       !== undefined) _autoSelected      = patch.autoSelected;
+}
+
 // ─── Fixed row height — required for getItemLayout ────────────────────────────
 const CH_ROW_H = 84;
 
