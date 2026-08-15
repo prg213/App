@@ -1528,9 +1528,9 @@ function FullGuide({
 
   // Tracks the latest horizontal scroll offset so it can be restored after an
   // orientation change or split-screen resize resets the ScrollView position.
-  const gridScrollOffsetRef = useRef<number>(0);
+  const gridScrollOffsetRef = useRef<number>(_epgScrollX);
   // Tracks the latest vertical scroll offset for the same reason.
-  const gridVertOffsetRef = useRef<number>(0);
+  const gridVertOffsetRef = useRef<number>(_epgScrollY);
   // Tracks the previous window width so the orientation-change restore effect
   // can tell the difference between a real resize and the initial mount.
   const { width: windowWidth } = useWindowDimensions();
@@ -1539,9 +1539,11 @@ function FullGuide({
   // When day changes scroll horizontally to current time (today) or day start
   useEffect(() => {
     const scrollX = selectedDay === 0 ? Math.max(0, nowX - SLOT_W * 2) : 0;
-    // Keep the offset ref in sync with the programmatic scroll so that an
-    // orientation change immediately after a day change restores the right position.
+    // Keep the offset ref and module-level state in sync with the programmatic
+    // scroll so that an orientation change immediately after a day change restores
+    // the right position, and logout clears the correct value.
     gridScrollOffsetRef.current = scrollX;
+    _epgScrollX = scrollX;
     const timer = setTimeout(() => {
       gridHorizRef.current?.scrollTo({ x: scrollX, animated: false });
       timeHeaderRef.current?.scrollTo({ x: scrollX, animated: false });
@@ -1577,11 +1579,14 @@ function FullGuide({
   const onGridHorizScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const x = e.nativeEvent.contentOffset.x;
     gridScrollOffsetRef.current = x;
+    _epgScrollX = x; // keep module-level state in sync for logout reset
     timeHeaderRef.current?.scrollTo({ x, animated: false });
   }, []);
 
   const onGridVertScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    gridVertOffsetRef.current = e.nativeEvent.contentOffset.y;
+    const y = e.nativeEvent.contentOffset.y;
+    gridVertOffsetRef.current = y;
+    _epgScrollY = y; // keep module-level state in sync for logout reset
   }, []);
 
   return (
@@ -2049,6 +2054,22 @@ function normalizeEpgId(s: string): string {
     .replace(/\bnine\b/g, '9')
     // Collapse everything non-alphanumeric
     .replace(/[^a-z0-9]/g, '');
+}
+
+// ─── Module-level EPG scroll state ────────────────────────────────────────────
+// Survives tab switches (component stays mounted) but must be cleared on logout
+// so the next login always opens the guide at the current time slot.
+
+let _epgScrollX = 0;
+let _epgScrollY = 0;
+
+/**
+ * Resets the saved EPG scroll offsets to zero.
+ * Call on logout so the guide always opens at the current time on the next login.
+ */
+export function resetEpgScrollState(): void {
+  _epgScrollX = 0;
+  _epgScrollY = 0;
 }
 
 // ─── Main screen ──────────────────────────────────────────────────────────────
