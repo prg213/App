@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Animated,
   AppState,
   AppStateStatus,
@@ -361,6 +362,11 @@ export default function PlayerScreen() {
   // ── Auto-reconnect state (live streams only) ──────────────────────────────
   const MAX_RECONNECTS = 5;
   const RECONNECT_DELAY_MS = 3000;
+  // If a stream hasn't signalled readyToPlay after this many ms, surface it
+  // as an error rather than leaving the user on a permanently blank screen.
+  // Live streams get 15 s (CDN edge start-up); VOD/catchup get 20 s
+  // (larger initial segments).  Not active during reconnect/URL-resolve phases.
+  const BUFFER_TIMEOUT_MS = isLive ? 15_000 : 20_000;
   const [reconnectAttempt, setReconnectAttempt] = useState(0);
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [isResolvingUrl, setIsResolvingUrl] = useState(false); // #137: silent URL re-resolve in progress
@@ -510,6 +516,22 @@ export default function PlayerScreen() {
 
   // Keep hasErrorRef in sync with hasError state
   useEffect(() => { hasErrorRef.current = hasError; }, [hasError]);
+
+  // ── Connection timeout ───────────────────────────────────────────────────
+  // If a stream doesn't emit readyToPlay within BUFFER_TIMEOUT_MS, surface it
+  // as an error.  Without this the player shows a permanently blank screen.
+  // The effect is inactive during reconnect and URL-resolve phases; those
+  // already have their own retry timers (MAX_RECONNECTS × RECONNECT_DELAY_MS).
+  useEffect(() => {
+    if (!isBuffering || isReconnecting || isResolvingUrl || hasError || isWeb) return;
+    const t = setTimeout(() => {
+      setErrorMsg('Connection timed out');
+      setHasError(true);
+      setIsBuffering(false);
+    }, BUFFER_TIMEOUT_MS);
+    return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isBuffering, isReconnecting, isResolvingUrl, hasError, isWeb, isLive]);
 
   // #30: Network-reconnect polling for live streams.
   // While the error screen is showing, poll expo-network every 3 s.
@@ -1203,6 +1225,16 @@ export default function PlayerScreen() {
     }
   }, [showControls, isLive, isWeb, hasError]);
 
+  // TV live: keep D-pad focus on the centre zone while a channel is loading so
+  // the Back key always has a focusable target and the remote never freezes.
+  // This fires on initial mount, on channel switch, and whenever isBuffering
+  // re-enters true (e.g. after an auto-reconnect attempt).
+  useEffect(() => {
+    if (!Platform.isTV || !isLive || isWeb || !isBuffering || hasError) return;
+    const t = setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 100);
+    return () => clearTimeout(t);
+  }, [isBuffering, isLive, isWeb, hasError]);
+
   // ── Save history on exit and navigate back ────────────────────────────────
   const handleBack = useCallback(async () => {
     // Clear hide/info timers before navigating so they don't fire on an unmounted component
@@ -1667,25 +1699,33 @@ export default function PlayerScreen() {
       ) : hasError ? (
         <View style={styles.msgView}>
           <Text style={styles.msgIcon}>⚠</Text>
-          <Text style={styles.msgTitle}>Stream Error</Text>
-          {!!params.title && (
+          <Text style={styles.msgTitle}>Stream Unavailable</Text>
+          {!!(activeTitle || params.title) && (
             <Text style={[styles.msgSub, { fontFamily: 'Inter_600SemiBold', marginBottom: 2 }]} numberOfLines={2}>
-              {params.title}
+              {activeTitle || params.title}
             </Text>
           )}
-          <Text style={styles.msgSub}>Unable to load stream. Check your connection or try another channel.</Text>
+          {!!errorMsg && (
+            <Text style={[styles.msgSub, { fontSize: 12, opacity: 0.65 }]} numberOfLines={2}>
+              {errorMsg}
+            </Text>
+          )}
+          <Text style={styles.msgSub}>
+            {isLive
+              ? 'This channel is currently unavailable. Retry, switch channel, or press Back to return.'
+              : 'Unable to load stream. Check your connection and try again.'}
+          </Text>
+
+          {/* Primary: Retry */}
           <FocusablePressable
             ref={retryBtnRef}
             style={styles.actionBtn}
             onPress={() => {
               setHasError(false);
+              setErrorMsg('');
               setIsBuffering(true);
               const currentEntry = channelIdx >= 0 && channelList[channelIdx];
-              player.replace(currentEntry ? currentEntry.url : params.url);
-              player.play();
-              // TV belt-and-suspenders: once the error overlay unmounts and the
-              // video surface + tap-catcher remount, move D-pad focus to the
-              // right idle target so the user doesn't have to home in manually.
+              try { player.replace(currentEntry ? currentEntry.url : params.url); player.play(); } catch {}
               if (Platform.isTV) {
                 setTimeout(() => {
                   if (isLive) (tvCenterRef.current as any)?.focus?.();
@@ -1694,8 +1734,38 @@ export default function PlayerScreen() {
               }
             }}
           >
-            <Text style={styles.actionBtnText}>Retry</Text>
+            <Text style={styles.actionBtnText}>↺  Retry</Text>
           </FocusablePressable>
+
+          {/* Live TV: let the user skip to an adjacent channel from the error screen */}
+          {isLive && (prevChannel || nextChannel) && (
+            <View style={styles.errorChannelRow}>
+              {prevChannel ? (
+                <FocusablePressable
+                  style={styles.actionBtnSecondary}
+                  onPress={() => {
+                    const idx = (channelIdx - 1 + channelList.length) % channelList.length;
+                    switchChannel(prevChannel, idx);
+                    if (Platform.isTV) setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 400);
+                  }}
+                >
+                  <Text style={styles.actionBtnSecondaryText}>← Previous</Text>
+                </FocusablePressable>
+              ) : <View style={{ flex: 1 }} />}
+              {nextChannel ? (
+                <FocusablePressable
+                  style={styles.actionBtnSecondary}
+                  onPress={() => {
+                    const idx = (channelIdx + 1) % channelList.length;
+                    switchChannel(nextChannel, idx);
+                    if (Platform.isTV) setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 400);
+                  }}
+                >
+                  <Text style={styles.actionBtnSecondaryText}>Next →</Text>
+                </FocusablePressable>
+              ) : <View style={{ flex: 1 }} />}
+            </View>
+          )}
         </View>
       ) : videoMounted ? (
         <VideoView
@@ -1712,7 +1782,28 @@ export default function PlayerScreen() {
         />
       ) : null}
 
-      {/* Buffering — no overlay; video surface stalls silently until stream resumes */}
+      {/* ── Channel-loading overlay ────────────────────────────────────────────
+          Shown during initial load and every channel switch.  Covers the blank
+          VideoView so the user never sees a frozen/empty player surface.
+          pointerEvents="none" keeps Back and D-pad zones fully active. */}
+      {isBuffering && !isReconnecting && !isResolvingUrl && !hasError && !isWeb && (
+        <View style={styles.loadingOverlay} pointerEvents="none">
+          <View style={styles.loadingContent}>
+            {!!activeLogo && (
+              <Image
+                source={{ uri: activeLogo }}
+                style={styles.loadingLogo}
+                contentFit="contain"
+              />
+            )}
+            <ActivityIndicator size="large" color="#ffffff" />
+            <Text style={styles.loadingTitle} numberOfLines={1}>
+              {activeTitle || 'Loading…'}
+            </Text>
+            <Text style={styles.loadingSubtitle}>Connecting to stream</Text>
+          </View>
+        </View>
+      )}
 
       {/* Refreshing stream overlay — shown during silent URL re-resolve (#137) */}
       {isResolvingUrl && !isWeb && (
@@ -2931,6 +3022,28 @@ const styles = StyleSheet.create({
   // Reconnecting overlay
   reconnectOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center', gap: 14, backgroundColor: 'rgba(0,0,0,0.55)' },
   reconnectText: { fontSize: 15, color: '#fff', fontFamily: 'Inter_600SemiBold', letterSpacing: 0.2 },
+
+  // Channel-loading overlay (initial load + channel switch)
+  loadingOverlay: {
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+    justifyContent: 'center', alignItems: 'center',
+    backgroundColor: '#000',
+  },
+  loadingContent: { alignItems: 'center', gap: 16, paddingHorizontal: 40 },
+  loadingLogo: { width: 80, height: 80, borderRadius: 12 },
+  loadingTitle: { fontSize: 18, fontFamily: 'Inter_600SemiBold', color: '#fff', textAlign: 'center' },
+  loadingSubtitle: { fontSize: 14, color: 'rgba(255,255,255,0.5)', textAlign: 'center' },
+
+  // Error screen: secondary row of channel-navigation buttons
+  errorChannelRow: {
+    flexDirection: 'row', gap: 12, marginTop: 4, width: '100%', maxWidth: 320,
+  },
+  actionBtnSecondary: {
+    flex: 1, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 10,
+    paddingHorizontal: 16, paddingVertical: 12, alignItems: 'center',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)',
+  },
+  actionBtnSecondaryText: { fontSize: 14, fontFamily: 'Inter_600SemiBold', color: '#fff' },
 
   // Error / web message
   msgView: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 12, paddingHorizontal: 40 },
