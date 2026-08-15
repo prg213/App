@@ -323,7 +323,12 @@ export default function PlayerScreen() {
   );
   // Mutable ref to showInfoBar — lets switchChannel (declared before showInfoBar
   // in this file) call it without a stale closure or circular hook dependency.
-  const showInfoBarRef = useRef<(() => void) | null>(null);
+  const showInfoBarRef = useRef<((userInvoked?: boolean) => void) | null>(null);
+  // Tracks whether the OSD is currently visible because the user explicitly
+  // pressed OK (true) or because it was auto-shown on entry / channel switch
+  // (false).  Auto-shown OSD dismisses after 5 s; user-invoked OSD stays until
+  // the user explicitly closes it with OK or BACK.
+  const infoBarUserInvokedRef = useRef(false);
 
   // Wrap-around channel navigation: at the first channel LEFT wraps to the last,
   // at the last channel RIGHT wraps to the first — standard IPTV behaviour.
@@ -941,9 +946,10 @@ export default function PlayerScreen() {
     // clean and focus returns to the centre zone via the channelIdx useEffect.
     setShowControls(false);
     controlsOpacity.setValue(0);
-    // Professional IPTV: always show OSD after a channel switch so the viewer
-    // immediately sees the new channel name and programme info.
-    if (isLive) showInfoBarRef.current?.();
+    // Professional IPTV: auto-show OSD on channel switch.
+    // If the viewer has the OSD pinned open with OK (userInvoked mode), content
+    // updates automatically via state changes — don't reset their manual mode.
+    if (isLive && !infoBarUserInvokedRef.current) showInfoBarRef.current?.();
     // Reset auto-reconnect counter on manual channel switch
     if (reconnectTimerRef.current) { clearTimeout(reconnectTimerRef.current); reconnectTimerRef.current = null; }
     setReconnectAttempt(0);
@@ -1061,6 +1067,7 @@ export default function PlayerScreen() {
 
   /** Immediately hide the info bar — used by the Back-press dismiss flow. */
   const dismissInfoBar = useCallback(() => {
+    infoBarUserInvokedRef.current = false;
     if (infoTimer.current) { clearTimeout(infoTimer.current); infoTimer.current = null; }
     Animated.timing(infoOpacity, { toValue: 0, duration: 300, useNativeDriver: true }).start();
     setTimeout(() => setShowInfo(false), 320);
@@ -1304,18 +1311,22 @@ export default function PlayerScreen() {
   }, [scheduleInfoHide]);
 
   // Live TV entry:
-  // • Firestick/TV — show OSD immediately for 6 s then auto-dismiss, so the
+  // • Firestick/TV — show OSD immediately for 5 s then auto-dismiss, so the
   //   viewer always knows which channel they tuned to (professional IPTV standard).
   // • Phone/tablet — start hidden; a tap reveals it.
   useEffect(() => {
     if (!isLive) return;
     if (Platform.isTV) {
+      infoBarUserInvokedRef.current = false; // entry is always auto mode
       setShowInfo(true);
       infoOpacity.setValue(1);
       const t = setTimeout(() => {
-        Animated.timing(infoOpacity, { toValue: 0, duration: 400, useNativeDriver: true }).start();
-        setTimeout(() => setShowInfo(false), 420);
-      }, 6000);
+        // Only dismiss if the user hasn't opened the OSD manually in the meantime.
+        if (!infoBarUserInvokedRef.current) {
+          Animated.timing(infoOpacity, { toValue: 0, duration: 400, useNativeDriver: true }).start();
+          setTimeout(() => setShowInfo(false), 420);
+        }
+      }, 5000);
       infoTimer.current = t;
       return () => clearTimeout(t);
     } else {
@@ -1361,22 +1372,40 @@ export default function PlayerScreen() {
     };
   }, []);
 
-  const showInfoBar = useCallback(() => {
+  /**
+   * Show the live-TV OSD info bar.
+   *
+   * @param userInvoked  Pass `true` when the viewer explicitly pressed OK —
+   *   the bar stays on-screen until they dismiss it with OK or BACK.
+   *   Omit or pass `false` for automatic shows (entry, channel switch) —
+   *   the bar auto-dismisses after 5 s on Firestick / Android TV.
+   */
+  const showInfoBar = useCallback((userInvoked = false) => {
+    infoBarUserInvokedRef.current = userInvoked;
     setShowInfo(true);
     Animated.timing(infoOpacity, { toValue: 1, duration: 200, useNativeDriver: true }).start();
     if (!isLive) {
       // VOD / catchup: auto-hide after 3 s.
       scheduleInfoHide();
     } else if (Platform.isTV) {
-      // Firestick live: auto-dismiss after 6 s — professional IPTV standard.
-      // Each call (entry, OK press, channel switch) resets the timer.
-      if (infoTimer.current) clearTimeout(infoTimer.current);
-      infoTimer.current = setTimeout(() => {
-        Animated.timing(infoOpacity, { toValue: 0, duration: 400, useNativeDriver: true }).start();
-        setTimeout(() => setShowInfo(false), 420);
-      }, 6000);
+      if (userInvoked) {
+        // User explicitly opened the OSD — cancel any pending auto-dismiss and
+        // leave the bar visible until they close it.
+        if (infoTimer.current) { clearTimeout(infoTimer.current); infoTimer.current = null; }
+      } else {
+        // Auto-show (entry or channel switch): dismiss after 5 s.
+        // The guard inside the callback prevents dismissal if the user pressed
+        // OK between now and the timer firing (switching to manual mode).
+        if (infoTimer.current) clearTimeout(infoTimer.current);
+        infoTimer.current = setTimeout(() => {
+          if (!infoBarUserInvokedRef.current) {
+            Animated.timing(infoOpacity, { toValue: 0, duration: 400, useNativeDriver: true }).start();
+            setTimeout(() => setShowInfo(false), 420);
+          }
+        }, 5000);
+      }
     }
-    // Phone/tablet live: stays until BACK/swipe — no change.
+    // Phone/tablet live: stays until BACK/swipe — no change needed here.
   }, [infoOpacity, scheduleInfoHide, isLive]);
   // Keep the ref current so switchChannel (declared above) can call showInfoBar.
   showInfoBarRef.current = showInfoBar;
@@ -1982,7 +2011,7 @@ export default function PlayerScreen() {
                 <FocusablePressable
                   style={styles.infoOsdChip}
                   focusedStyle={styles.infoOsdChipFocused}
-                  onFocus={() => showInfoBarRef.current?.()}
+                  onFocus={() => { if (!infoBarUserInvokedRef.current) showInfoBarRef.current?.(); }}
                   onPress={() => setShowAudioPicker(true)}
                 >
                   <Text style={styles.infoOsdChipText}>
@@ -1992,7 +2021,7 @@ export default function PlayerScreen() {
                 <FocusablePressable
                   style={[styles.infoOsdChip, activeSubtitleTrack !== null && styles.infoOsdChipActive]}
                   focusedStyle={styles.infoOsdChipFocused}
-                  onFocus={() => showInfoBarRef.current?.()}
+                  onFocus={() => { if (!infoBarUserInvokedRef.current) showInfoBarRef.current?.(); }}
                   onPress={() => setShowSubPicker(true)}
                 >
                   <Text style={[styles.infoOsdChipText, activeSubtitleTrack !== null && styles.infoOsdChipTextActive]}>
@@ -2077,7 +2106,7 @@ export default function PlayerScreen() {
           <Pressable
             focusable
             style={styles.tvZoneLeft}
-            onPress={showInfo ? dismissInfoBar : showInfoBar}
+            onPress={showInfo ? dismissInfoBar : () => showInfoBar()}
             onBlur={() => setTvZoneFocused(null)}
             onFocus={() => {
               setTvZoneFocused('left');
@@ -2117,12 +2146,14 @@ export default function PlayerScreen() {
             onPress={() => {
               if (Platform.isTV) {
                 // Fire TV: OK toggles the OSD info bar.
+                // When opening via OK the bar is "user-invoked" and stays
+                // visible until the user explicitly closes it again.
                 // Audio/CC are now chips inside the info bar — the old separate
                 // controls bar is not shown on TV any more.
                 if (showInfoRef.current) {
                   dismissInfoBar();
                 } else {
-                  showInfoBar();
+                  showInfoBar(true); // user-invoked — no auto-dismiss
                 }
               } else {
                 // Phone/tablet: toggle info bar (touch path).
@@ -2136,7 +2167,7 @@ export default function PlayerScreen() {
           <Pressable
             focusable
             style={styles.tvZoneRight}
-            onPress={showInfo ? dismissInfoBar : showInfoBar}
+            onPress={showInfo ? dismissInfoBar : () => showInfoBar()}
             onBlur={() => setTvZoneFocused(null)}
             onFocus={() => {
               setTvZoneFocused('right');
