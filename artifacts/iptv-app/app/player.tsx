@@ -620,6 +620,7 @@ export default function PlayerScreen() {
   const infoOpacity = useRef(new Animated.Value(1)).current;
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const infoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const progBoundaryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const t = setInterval(() => setNowTs(Date.now()), 60_000);
@@ -644,6 +645,24 @@ export default function PlayerScreen() {
     const nxt = curIdx >= 0 ? (progs[curIdx + 1] ?? null) : null;
     return { currentProg: cur, nextProg: nxt };
   }, [epgMap, activeEpgId, nowTs]);
+
+  // Programme-boundary timer — fires exactly when the current programme ends so
+  // currentProg/nextProg update immediately without waiting for the 60 s tick.
+  // Re-runs whenever currentProg changes (channel switch, EPG refresh, or the
+  // previous boundary timer firing and bumping nowTs).
+  useEffect(() => {
+    if (progBoundaryTimerRef.current) { clearTimeout(progBoundaryTimerRef.current); progBoundaryTimerRef.current = null; }
+    if (!currentProg) return;
+    const msLeft = currentProg.end.getTime() - Date.now();
+    if (msLeft <= 0) return; // already past end; 60 s tick will handle stale slot
+    progBoundaryTimerRef.current = setTimeout(() => {
+      setNowTs(Date.now()); // bumps nowTs → useMemo recomputes → bar updates
+    }, msLeft + 1_000); // +1 s buffer ensures the next slot has definitely started
+    return () => {
+      if (progBoundaryTimerRef.current) { clearTimeout(progBoundaryTimerRef.current); progBoundaryTimerRef.current = null; }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentProg]); // re-schedules whenever the active programme object changes
 
   // ── Video player ─────────────────────────────────────────────────────────
   // For VOD/series: a local player created here (null source when live so it
@@ -2231,6 +2250,50 @@ export default function PlayerScreen() {
         </Animated.View>
       )}
 
+      {/* ── Ambient Now & Next bar ────────────────────────────────────────────
+          Always-on EPG strip at the bottom of the live player.
+          Visible whenever EPG data is available and the transient OSD is hidden.
+          When the OSD opens (showInfo=true) this bar hides — the OSD already
+          displays the same info more prominently.
+          pointerEvents="none": never blocks D-pad zones or phone gestures. */}
+      {isLive && !isWeb && !hasError && !showInfo && (currentProg || nextProg) && (
+        <View
+          style={[styles.nowNextBar, { paddingBottom: insets.bottom + 10 }]}
+          pointerEvents="none"
+        >
+          {currentProg && (
+            <>
+              <View style={styles.nowNextRow}>
+                <Text style={styles.nowNextLabel}>NOW</Text>
+                <Text style={styles.nowNextTitle} numberOfLines={1}>{currentProg.title}</Text>
+                <Text style={styles.nowNextTime}>
+                  {fmtTime(currentProg.start)}–{fmtTime(currentProg.end)}
+                </Text>
+              </View>
+              <View style={styles.nowNextProgressTrack}>
+                <View style={[styles.nowNextProgressFill, {
+                  width: `${Math.min(100, Math.max(0,
+                    (nowTs - currentProg.start.getTime()) /
+                    (currentProg.end.getTime() - currentProg.start.getTime()) * 100,
+                  ))}%` as any,
+                }]} />
+              </View>
+            </>
+          )}
+          {nextProg && (
+            <View style={styles.nowNextRow}>
+              <Text style={[styles.nowNextLabel, styles.nowNextLabelNext]}>NEXT</Text>
+              <Text style={[styles.nowNextTitle, styles.nowNextTitleNext]} numberOfLines={1}>
+                {nextProg.title}
+              </Text>
+              <Text style={[styles.nowNextTime, { color: 'rgba(255,255,255,0.35)' }]}>
+                {fmtTime(nextProg.start)}
+              </Text>
+            </View>
+          )}
+        </View>
+      )}
+
       {/* ── TV / Fire TV D-pad zones ─────────────────────────────────────────
           Three transparent full-screen strips. Android TV's focus engine moves
           focus between them when the user presses D-pad left / right.
@@ -3022,6 +3085,30 @@ const styles = StyleSheet.create({
   // Reconnecting overlay
   reconnectOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center', gap: 14, backgroundColor: 'rgba(0,0,0,0.55)' },
   reconnectText: { fontSize: 15, color: '#fff', fontFamily: 'Inter_600SemiBold', letterSpacing: 0.2 },
+
+  // Ambient Now & Next bar
+  nowNextBar: {
+    position: 'absolute', bottom: 0, left: 0, right: 0,
+    backgroundColor: 'rgba(0,0,0,0.70)',
+    paddingTop: 10,
+    paddingHorizontal: 16,
+    gap: 4,
+  },
+  nowNextRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  nowNextLabel: {
+    fontSize: 10, fontFamily: 'Inter_700Bold', color: '#3B82F6',
+    letterSpacing: 0.8, minWidth: 36,
+  },
+  nowNextLabelNext: { color: 'rgba(255,255,255,0.38)' },
+  nowNextTitle: {
+    flex: 1, fontSize: 13, fontFamily: 'Inter_600SemiBold', color: '#fff',
+  },
+  nowNextTitleNext: { color: 'rgba(255,255,255,0.5)', fontSize: 12 },
+  nowNextTime: { fontSize: 11, color: 'rgba(255,255,255,0.5)' },
+  nowNextProgressTrack: {
+    height: 2, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 1, marginVertical: 2,
+  },
+  nowNextProgressFill: { height: 2, backgroundColor: '#3B82F6', borderRadius: 1 },
 
   // Channel-loading overlay (initial load + channel switch)
   loadingOverlay: {
