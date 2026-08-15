@@ -1380,6 +1380,23 @@ export default function PlayerScreen() {
     }
   }, [controlsOpacity, scheduleHide]);
 
+  // ── TV VOD: auto-show controls on entry ─────────────────────────────────
+  // On phone the user taps the video surface to reveal controls.  On TV that
+  // gesture doesn't fire, so the scrubber / play-pause / seek buttons stay
+  // hidden until the user discovers they must press OK.  Instead, show the
+  // controls automatically the moment the player screen mounts for VOD.
+  // scheduleHide() is a no-op on TV so they stay visible indefinitely.
+  useEffect(() => {
+    if (!Platform.isTV || isLive || isWeb) return;
+    // Small delay so the VideoView and overlay children have mounted and
+    // focus on the play button (inside showVodControls) can actually fire.
+    const t = setTimeout(() => showVodControls(), 300);
+    return () => clearTimeout(t);
+    // showVodControls is stable (wrapped in useCallback); isLive / isWeb
+    // are the only values that decide whether to auto-show.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLive, isWeb]);
+
   const handleTap = useCallback(() => {
     showInfoBar();
     if (!showControls) {

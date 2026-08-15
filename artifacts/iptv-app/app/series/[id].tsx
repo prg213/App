@@ -359,6 +359,7 @@ export default function SeriesDetailScreen() {
         ref={scrollRef}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: insets.bottom + 32 }}
+        scrollEnabled={!Platform.isTV}
         refreshControl={
           // #166: Pull-to-refresh refetches series data and resets episode thumbnail errors.
           <RefreshControl

@@ -259,6 +259,7 @@ export default function MovieDetailScreen() {
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: insets.bottom + 32 }}
+        scrollEnabled={!Platform.isTV}
       >
         {/* ── Two-column section ── */}
         <View style={styles.topSection}>
