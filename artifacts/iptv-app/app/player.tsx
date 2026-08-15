@@ -1133,6 +1133,11 @@ export default function PlayerScreen() {
     if (infoTimer.current) { clearTimeout(infoTimer.current); infoTimer.current = null; }
     Animated.timing(infoOpacity, { toValue: 0, duration: 300, useNativeDriver: true }).start();
     setTimeout(() => setShowInfo(false), 320);
+    // TV: restore D-pad focus to the centre zone after the OSD fades out.
+    // Chips and buttons inside the bar unmount after 320 ms; without an
+    // explicit focus call the native view system can leave focus undefined,
+    // making OK / LEFT / RIGHT feel dead until the user presses something else.
+    if (Platform.isTV) setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 400);
   }, [infoOpacity]);
 
   // ── Show / hide the live controls bar (Audio + CC chips) via D-pad ────────
@@ -1348,8 +1353,8 @@ export default function PlayerScreen() {
     },
     // Menu / hamburger button → toggle the channel browser overlay.
     // Opening: close OSD first so the full screen is available for the menu.
-    // Closing: menu mounts/unmounts, focus restores to center zone via the
-    // existing useEffect([channelIdx]) focus mechanism.
+    // Closing: focus is restored by the useEffect([showChannelMenu]) below,
+    // which fires regardless of whether a channel was selected.
     onMenu: ({ eventKeyAction }) => {
       if (eventKeyAction !== 1 || !isLive) return;
       if (showChannelMenuRef.current) {
@@ -1481,6 +1486,22 @@ export default function PlayerScreen() {
     const t = setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 600);
     return () => clearTimeout(t);
   }, [channelIdx, isLive]);
+
+  // TV: restore D-pad focus to the centre zone whenever the channel menu
+  // closes — regardless of whether a channel was selected.
+  //
+  // The useEffect([channelIdx]) above only fires when the user picks a channel
+  // (channelIdx changes).  When the viewer presses BACK or Menu to close the
+  // browser without choosing anything, channelIdx stays the same, so the
+  // channelIdx effect never runs and focus is left wherever it was inside the
+  // now-unmounted menu.  This effect fills that gap with a single, authoritative
+  // restore that covers every close path (BACK handler, Menu-button toggle, or
+  // any future programmatic close).
+  useEffect(() => {
+    if (!Platform.isTV || !isLive || showChannelMenu) return;
+    const t = setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 150);
+    return () => clearTimeout(t);
+  }, [showChannelMenu, isLive]);
 
   // Clean up the TV preview timer on unmount so it can't fire after the
   // component has been destroyed.
@@ -2330,7 +2351,14 @@ export default function PlayerScreen() {
                 setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 50);
                 return;
               }
-              if (navCooldownRef.current) return;
+              if (navCooldownRef.current) {
+                // Previous channel switch has not settled yet.  Bounce focus
+                // back to centre so the remote always has a working target —
+                // a bare `return` leaves focus stranded on this side zone,
+                // making OK / LEFT / RIGHT feel completely dead.
+                setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 50);
+                return;
+              }
               // Claim the cooldown upfront so rapid D-pad presses during the preview are ignored
               navCooldownRef.current = true;
               setTimeout(() => { navCooldownRef.current = false; }, 1400);
@@ -2395,7 +2423,12 @@ export default function PlayerScreen() {
                 setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 50);
                 return;
               }
-              if (navCooldownRef.current) return;
+              if (navCooldownRef.current) {
+                // Same guard as the left zone: bounce to centre rather than
+                // leaving the remote stranded on this non-navigating side zone.
+                setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 50);
+                return;
+              }
               navCooldownRef.current = true;
               setTimeout(() => { navCooldownRef.current = false; }, 1400);
               const targetChannel = nextChannel;
