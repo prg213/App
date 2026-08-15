@@ -41,7 +41,11 @@ type StorageServiceShape = typeof _StorageService;
 export function makeStorageMock(
   overrides: Partial<StorageServiceShape> = {},
 ): jest.Mocked<StorageServiceShape> {
-  const base: jest.Mocked<StorageServiceShape> = {
+  // `satisfies` (TS 4.9+) gives a precise "Property X is missing" error at the
+  // declaration site rather than a generic assignability error at the return.
+  // The explicit `: jest.Mocked<StorageServiceShape>` annotation is kept too so
+  // that the inferred type of `base` stays narrowed for `{ ...base, ...overrides }`.
+  const base = {
     // ── Credentials ──────────────────────────────────────────────────────────
     saveCredentials:           jest.fn().mockResolvedValue(undefined),
     getCredentials:            jest.fn().mockResolvedValue(null),
@@ -154,7 +158,7 @@ export function makeStorageMock(
     setPrefLiveCat:            jest.fn().mockResolvedValue(undefined),
     getPrefPlaybackSpeed:      jest.fn().mockResolvedValue(null),
     setPrefPlaybackSpeed:      jest.fn().mockResolvedValue(undefined),
-  };
+  } satisfies jest.Mocked<StorageServiceShape>;
 
   return { ...base, ...overrides } as jest.Mocked<StorageServiceShape>;
 }

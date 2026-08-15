@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["jest"]
+  },
+  "files": [
+    "__tests__/helpers/storageMock.ts",
+    "__tests__/helpers/notificationsMock.ts"
+  ],
+  "include": [
+    ".expo/types/**/*.ts",
+    "expo-env.d.ts"
+  ],
+  "exclude": []
+}
