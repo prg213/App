@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   Animated,
   AppState,
   AppStateStatus,
@@ -19,8 +18,6 @@ import {
   View,
 } from 'react-native';
 import { FocusablePressable } from '@/components/FocusablePressable';
-import { LiveChannelMenu } from '@/components/LiveChannelMenu';
-import type { MenuChannelEntry } from '@/components/LiveChannelMenu';
 import * as Network from 'expo-network';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useVideoPlayer, VideoView } from 'expo-video';
@@ -310,15 +307,11 @@ export default function PlayerScreen() {
   const xmltvUrl = isXtream ? getXtreamXmltvUrl(buildCreds(credentials)) : null;
 
   // ── Channel list for prev/next navigation ────────────────────────────────
-  // Mutable state so the channel-menu can update the zap list when the viewer
-  // picks a channel from a different category (keeps prev/next consistent).
-  const [channelList, setChannelList] = useState<ChannelEntry[]>(() => {
+  const channelList = useMemo<ChannelEntry[]>(() => {
     try { return JSON.parse(params.channelsJson ?? '[]'); } catch { return []; }
-  });
+  }, [params.channelsJson]);
 
   const [channelIdx, setChannelIdx] = useState(() => parseInt(params.channelIndex ?? '-1'));
-  // Derived ID for the currently-playing channel — updates when zapping.
-  const activeChannelId = channelList[channelIdx]?.channelId ?? (params.channelId as string | undefined) ?? '';
 
   // Active channel state — updates when navigating prev/next
   const [activeTitle, setActiveTitle] = useState(params.title);
@@ -330,12 +323,7 @@ export default function PlayerScreen() {
   );
   // Mutable ref to showInfoBar — lets switchChannel (declared before showInfoBar
   // in this file) call it without a stale closure or circular hook dependency.
-  const showInfoBarRef = useRef<((userInvoked?: boolean) => void) | null>(null);
-  // Tracks whether the OSD is currently visible because the user explicitly
-  // pressed OK (true) or because it was auto-shown on entry / channel switch
-  // (false).  Auto-shown OSD dismisses after 5 s; user-invoked OSD stays until
-  // the user explicitly closes it with OK or BACK.
-  const infoBarUserInvokedRef = useRef(false);
+  const showInfoBarRef = useRef<(() => void) | null>(null);
 
   // Wrap-around channel navigation: at the first channel LEFT wraps to the last,
   // at the last channel RIGHT wraps to the first — standard IPTV behaviour.
@@ -362,11 +350,6 @@ export default function PlayerScreen() {
   // ── Auto-reconnect state (live streams only) ──────────────────────────────
   const MAX_RECONNECTS = 5;
   const RECONNECT_DELAY_MS = 3000;
-  // If a stream hasn't signalled readyToPlay after this many ms, surface it
-  // as an error rather than leaving the user on a permanently blank screen.
-  // Live streams get 15 s (CDN edge start-up); VOD/catchup get 20 s
-  // (larger initial segments).  Not active during reconnect/URL-resolve phases.
-  const BUFFER_TIMEOUT_MS = isLive ? 15_000 : 20_000;
   const [reconnectAttempt, setReconnectAttempt] = useState(0);
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [isResolvingUrl, setIsResolvingUrl] = useState(false); // #137: silent URL re-resolve in progress
@@ -388,36 +371,12 @@ export default function PlayerScreen() {
   // Ref so BackHandler closure can read showInfo without going stale
   const showInfoRef = useRef(true);
   useEffect(() => { showInfoRef.current = showInfo; }, [showInfo]);
-
-  // Picker-open refs — used by the OSD auto-dismiss timer to avoid hiding the
-  // info bar while a picker is still on screen.  Doing so would unmount the
-  // Audio / CC chips that the picker's close-path tries to re-focus, stranding
-  // D-pad focus on TV.  The useEffect syncs are placed after the showAudioPicker
-  // / showSubPicker useState declarations further below to satisfy TS TDZ rules.
-  const showAudioPickerRef = useRef(false);
-  const showSubPickerRef   = useRef(false);
-
-  // Trailing hide-timer for dismissInfoBar — stored so showInfoBar can cancel
-  // it if the user re-opens the OSD during the 320 ms fade-out window.
-  // Without this, setShowInfo(false) fires after showInfoBar already set it
-  // true, immediately collapsing the bar the user just opened.
-  const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Ref so BackHandler closure can read showControls without going stale
   const showControlsRef = useRef(false);
   useEffect(() => { showControlsRef.current = showControls; }, [showControls]);
-  // ── Channel menu overlay (TV Live TV only) ────────────────────────────────
-  const [showChannelMenu, setShowChannelMenu] = useState(false);
-  const showChannelMenuRef = useRef(false);
-  useEffect(() => { showChannelMenuRef.current = showChannelMenu; }, [showChannelMenu]);
   // Ref to block spurious onFocus channel-switch on initial TV mount
   const tvNavReadyRef = useRef(false);
   const tvCenterRef = useRef<View>(null);
-  // Set to true by the D-pad zone onFocus handlers when a wrap-around channel
-  // switch is about to fire (ch 0 → last, or last → ch 0).  Read by the
-  // useEffect([channelIdx]) below to extend the focus-restoration delay from
-  // 600 ms to 900 ms — wrap-around switches involve a larger jump in the stream
-  // URL list and can trigger a longer ExoPlayer audio-focus handoff cycle.
-  const wrapAroundPendingRef = useRef(false);
   // TV VOD focus management refs
   const tvVodIdleRef   = useRef<View>(null); // catch-all when controls are hidden
   const tvPlayBtnRef   = useRef<View>(null); // play/pause button (focused when controls appear)
@@ -448,18 +407,11 @@ export default function PlayerScreen() {
   const [showSettings, setShowSettings] = useState(false);
   const [showAudioPicker, setShowAudioPicker] = useState(false);
   const [showSubPicker, setShowSubPicker] = useState(false);
-  // Sync picker-open refs declared above (after state to satisfy TS TDZ rules).
-  useEffect(() => { showAudioPickerRef.current = showAudioPicker; }, [showAudioPicker]);
-  useEffect(() => { showSubPickerRef.current   = showSubPicker;   }, [showSubPicker]);
   // Refs to the chip buttons that open each picker — used to restore D-pad
   // focus after the picker modal closes on Firestick/Android TV.
   const audioChipRef = useRef<any>(null);
   const ccChipRef    = useRef<any>(null);
   const settingsChipRef = useRef<any>(null);
-  // OSD channel-nav buttons — D-pad left/right routes focus here when the OSD
-  // is user-invoked so the viewer can browse prev/next without zapping.
-  const prevChBtnRef = useRef<any>(null);
-  const nextChBtnRef = useRef<any>(null);
   // TV: refs for elements that get imperative focus instead of hasTVPreferredFocus
   // (hasTVPreferredFocus re-fires requestFocus on every re-render on Fire OS).
   const retryBtnRef       = useRef<any>(null);   // error-state retry button
@@ -539,22 +491,6 @@ export default function PlayerScreen() {
 
   // Keep hasErrorRef in sync with hasError state
   useEffect(() => { hasErrorRef.current = hasError; }, [hasError]);
-
-  // ── Connection timeout ───────────────────────────────────────────────────
-  // If a stream doesn't emit readyToPlay within BUFFER_TIMEOUT_MS, surface it
-  // as an error.  Without this the player shows a permanently blank screen.
-  // The effect is inactive during reconnect and URL-resolve phases; those
-  // already have their own retry timers (MAX_RECONNECTS × RECONNECT_DELAY_MS).
-  useEffect(() => {
-    if (!isBuffering || isReconnecting || isResolvingUrl || hasError || isWeb) return;
-    const t = setTimeout(() => {
-      setErrorMsg('Connection timed out');
-      setHasError(true);
-      setIsBuffering(false);
-    }, BUFFER_TIMEOUT_MS);
-    return () => clearTimeout(t);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isBuffering, isReconnecting, isResolvingUrl, hasError, isWeb, isLive]);
 
   // #30: Network-reconnect polling for live streams.
   // While the error screen is showing, poll expo-network every 3 s.
@@ -643,7 +579,6 @@ export default function PlayerScreen() {
   const infoOpacity = useRef(new Animated.Value(1)).current;
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const infoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const progBoundaryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const t = setInterval(() => setNowTs(Date.now()), 60_000);
@@ -668,24 +603,6 @@ export default function PlayerScreen() {
     const nxt = curIdx >= 0 ? (progs[curIdx + 1] ?? null) : null;
     return { currentProg: cur, nextProg: nxt };
   }, [epgMap, activeEpgId, nowTs]);
-
-  // Programme-boundary timer — fires exactly when the current programme ends so
-  // currentProg/nextProg update immediately without waiting for the 60 s tick.
-  // Re-runs whenever currentProg changes (channel switch, EPG refresh, or the
-  // previous boundary timer firing and bumping nowTs).
-  useEffect(() => {
-    if (progBoundaryTimerRef.current) { clearTimeout(progBoundaryTimerRef.current); progBoundaryTimerRef.current = null; }
-    if (!currentProg) return;
-    const msLeft = currentProg.end.getTime() - Date.now();
-    if (msLeft <= 0) return; // already past end; 60 s tick will handle stale slot
-    progBoundaryTimerRef.current = setTimeout(() => {
-      setNowTs(Date.now()); // bumps nowTs → useMemo recomputes → bar updates
-    }, msLeft + 1_000); // +1 s buffer ensures the next slot has definitely started
-    return () => {
-      if (progBoundaryTimerRef.current) { clearTimeout(progBoundaryTimerRef.current); progBoundaryTimerRef.current = null; }
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentProg]); // re-schedules whenever the active programme object changes
 
   // ── Video player ─────────────────────────────────────────────────────────
   // For VOD/series: a local player created here (null source when live so it
@@ -1006,12 +923,7 @@ export default function PlayerScreen() {
     setLastWatchedUrl(params.url);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const switchChannel = useCallback((entry: ChannelEntry, newIdx: number, isWrapAround = false) => {
-    // Signal the post-switch focus-restoration useEffect to use the extended
-    // 900 ms delay for wrap-around switches (ch 0 → last or last → ch 0).
-    // Must be set here — before player.replace() — so the flag is readable when
-    // the useEffect fires after the channelIdx state update.
-    wrapAroundPendingRef.current = isWrapAround;
+  const switchChannel = useCallback((entry: ChannelEntry, newIdx: number) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setChannelIdx(newIdx);
     setActiveTitle(entry.title);
@@ -1029,10 +941,9 @@ export default function PlayerScreen() {
     // clean and focus returns to the centre zone via the channelIdx useEffect.
     setShowControls(false);
     controlsOpacity.setValue(0);
-    // Professional IPTV: auto-show OSD on channel switch.
-    // If the viewer has the OSD pinned open with OK (userInvoked mode), content
-    // updates automatically via state changes — don't reset their manual mode.
-    if (isLive && !infoBarUserInvokedRef.current) showInfoBarRef.current?.();
+    // Professional IPTV: always show OSD after a channel switch so the viewer
+    // immediately sees the new channel name and programme info.
+    if (isLive) showInfoBarRef.current?.();
     // Reset auto-reconnect counter on manual channel switch
     if (reconnectTimerRef.current) { clearTimeout(reconnectTimerRef.current); reconnectTimerRef.current = null; }
     setReconnectAttempt(0);
@@ -1062,15 +973,7 @@ export default function PlayerScreen() {
       // fires at 600 ms.  Critical at channel boundaries where the adjacent
       // left/right focus zone becomes non-focusable immediately after the switch
       // (e.g. switching to channel 0 makes the left zone non-focusable).
-      //
-      // Wrap-around exception: when wrapAroundPendingRef is set the D-pad zone
-      // has already signalled that the useEffect will use the extended 900 ms
-      // delay.  Firing the 150 ms call here would race with ExoPlayer's longer
-      // audio-focus handoff before that guard completes, creating exactly the
-      // dead-zone this task is designed to prevent.  On the wrap path the
-      // useEffect at 900 ms (plus the 950 ms zone belt-and-suspenders) is the
-      // single authoritative focus restoration — skip the early call entirely.
-      if (Platform.isTV && isLive && !wrapAroundPendingRef.current) {
+      if (Platform.isTV && isLive) {
         setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 150);
       }
     } catch {}
@@ -1082,14 +985,14 @@ export default function PlayerScreen() {
     navCooldownRef.current = true;
     setTimeout(() => { navCooldownRef.current = false; }, 1200);
     const n = channelList.length;
-    switchChannel(prevChannel, (channelIdx - 1 + n) % n, channelIdx === 0);
+    switchChannel(prevChannel, (channelIdx - 1 + n) % n);
   }, [prevChannel, channelIdx, channelList, switchChannel]);
 
   const handleNextChannel = useCallback(() => {
     if (!nextChannel || navCooldownRef.current) return;
     navCooldownRef.current = true;
     setTimeout(() => { navCooldownRef.current = false; }, 1200);
-    switchChannel(nextChannel, (channelIdx + 1) % channelList.length, channelIdx === channelList.length - 1);
+    switchChannel(nextChannel, (channelIdx + 1) % channelList.length);
   }, [nextChannel, channelIdx, channelList, switchChannel]);
 
   // ── Animated collapse back (live TV only) ────────────────────────────────
@@ -1135,16 +1038,12 @@ export default function PlayerScreen() {
       // collapse animation is skipped entirely.  Emitting first makes the
       // mini-player visible and sized so triggerCollapse can hit it.
       const { DeviceEventEmitter: DEE } = require('react-native');
-      // Emit CURRENT active channel (not stale params) so the mini-player
-      // shows the channel the user is actually watching — which may differ
-      // from the original params when they zapped channels during the session.
-      const _nowId = channelList[channelIdx]?.channelId ?? params.channelId ?? '';
       DEE.emit('live:setPlayingChannel', {
-        id:        _nowId,
-        name:      activeTitle  ?? params.title  ?? '',
-        logo:      activeLogo   ?? params.logo   ?? '',
-        streamUrl: liveUrlRef.current || params.url || '',
-        epgId:     activeEpgId  ?? _nowId,
+        id: params.channelId ?? '',
+        name: params.title ?? '',
+        logo: params.logo ?? '',
+        streamUrl: params.url ?? '',
+        epgId: params.epgId ?? params.channelId ?? '',
         groupTitle: params.groupTitle ?? '',
       });
       // Two rAFs: first lets React commit the setPlayingChannel state update;
@@ -1158,30 +1057,13 @@ export default function PlayerScreen() {
       return;
     }
     triggerCollapse(() => router.back());
-  }, [params.stopOnBack, params.groupTitle, params.channelsJson, params.fromHome,
-      sharedPlayer, triggerCollapse, router, controlsOpacity, infoOpacity,
-      // Current channel state — stale params otherwise give the wrong channel on back
-      channelList, channelIdx, activeTitle, activeLogo, activeEpgId, liveUrlRef]);
+  }, [params.stopOnBack, params.groupTitle, params.channelsJson, params.fromHome, sharedPlayer, triggerCollapse, router, controlsOpacity, infoOpacity]);
 
   /** Immediately hide the info bar — used by the Back-press dismiss flow. */
   const dismissInfoBar = useCallback(() => {
-    infoBarUserInvokedRef.current = false;
     if (infoTimer.current) { clearTimeout(infoTimer.current); infoTimer.current = null; }
-    // Cancel any previously-scheduled trailing hide before scheduling a new one.
-    // This prevents double-scheduling if dismissInfoBar is called twice quickly.
-    if (dismissTimerRef.current) { clearTimeout(dismissTimerRef.current); dismissTimerRef.current = null; }
     Animated.timing(infoOpacity, { toValue: 0, duration: 300, useNativeDriver: true }).start();
-    // Track the trailing timer so showInfoBar can cancel it if the user
-    // re-opens the OSD during the fade window.
-    dismissTimerRef.current = setTimeout(() => {
-      dismissTimerRef.current = null;
-      setShowInfo(false);
-    }, 320);
-    // TV: restore D-pad focus to the centre zone after the OSD fades out.
-    // Chips and buttons inside the bar unmount after 320 ms; without an
-    // explicit focus call the native view system can leave focus undefined,
-    // making OK / LEFT / RIGHT feel dead until the user presses something else.
-    if (Platform.isTV) setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 400);
+    setTimeout(() => setShowInfo(false), 320);
   }, [infoOpacity]);
 
   // ── Show / hide the live controls bar (Audio + CC chips) via D-pad ────────
@@ -1210,39 +1092,17 @@ export default function PlayerScreen() {
   }, [controlsOpacity]);
 
   // ── Android hardware back button (live TV only) ───────────────────────────
-  // Contextual priority so BACK always does the most-local thing first:
-  //   1. Channel menu open         → close menu
-  //   2. Audio / CC picker open    → close picker
-  //   3. OSD info bar visible      → dismiss info bar
-  //   4. Controls bar visible      → dismiss controls bar
-  //   5. Nothing open              → collapse to mini-player
-  // Each level consumes the press (returns true); the next level only fires
-  // if the current one has nothing to close.
-  // Note: useBackHandler keeps handlerRef.current = handler on every render,
-  // so all state values (showChannelMenu, showAudioPicker, showSubPicker)
-  // are always fresh — no stale closure issues.
+  // Press 1: dismiss the controls bar if visible (Fire TV).
+  // Press 2: dismiss the info bar if visible.
+  // Press 3: collapse back to mini-player.
   useBackHandler(() => {
-    if (showChannelMenuRef.current) { setShowChannelMenu(false); return true; }
-    if (showAudioPicker) {
-      setShowAudioPicker(false);
-      // TV: the picker Modal intercepts BACK before onRequestClose fires, so
-      // the Modal's own focus-restore is never reached.  Explicitly return
-      // focus to the centre zone so the remote doesn't go silent after close.
-      if (Platform.isTV) setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 150);
-      return true;
-    }
-    if (showSubPicker) {
-      setShowSubPicker(false);
-      if (Platform.isTV) setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 150);
-      return true;
+    if (showControlsRef.current) {
+      hideLiveControls();
+      return true; // consumed — do not navigate back
     }
     if (showInfoRef.current) {
       dismissInfoBar();
-      return true;
-    }
-    if (showControlsRef.current) {
-      hideLiveControls();
-      return true;
+      return true; // consumed — do not navigate back
     }
     handleBackLive();
     return true;
@@ -1303,16 +1163,6 @@ export default function PlayerScreen() {
       return () => clearTimeout(t);
     }
   }, [showControls, isLive, isWeb, hasError]);
-
-  // TV live: keep D-pad focus on the centre zone while a channel is loading so
-  // the Back key always has a focusable target and the remote never freezes.
-  // This fires on initial mount, on channel switch, and whenever isBuffering
-  // re-enters true (e.g. after an auto-reconnect attempt).
-  useEffect(() => {
-    if (!Platform.isTV || !isLive || isWeb || !isBuffering || hasError) return;
-    const t = setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 100);
-    return () => clearTimeout(t);
-  }, [isBuffering, isLive, isWeb, hasError]);
 
   // ── Save history on exit and navigate back ────────────────────────────────
   const handleBack = useCallback(async () => {
@@ -1406,47 +1256,7 @@ export default function PlayerScreen() {
       if (eventKeyAction !== 1 || isLive) return;
       seek(-30);
     },
-    // Menu / hamburger button → toggle the channel browser overlay.
-    // Opening: close OSD first so the full screen is available for the menu.
-    // Closing: focus is restored by the useEffect([showChannelMenu]) below,
-    // which fires regardless of whether a channel was selected.
-    onMenu: ({ eventKeyAction }) => {
-      if (eventKeyAction !== 1 || !isLive) return;
-      if (showChannelMenuRef.current) {
-        setShowChannelMenu(false);
-      } else {
-        if (showInfoRef.current) dismissInfoBar();
-        setShowChannelMenu(true);
-      }
-    },
   });
-
-  // ── Channel menu: select channel + update zap list ───────────────────────
-  // Called when the viewer picks a channel from the LiveChannelMenu overlay.
-  // Updates the zap list (so prev/next navigation reflects the menu's filter)
-  // then switches the stream without leaving the player.
-  const handleMenuSelectChannel = useCallback(
-    (entry: MenuChannelEntry, idx: number, newList: MenuChannelEntry[]) => {
-      // Convert MenuChannelEntry[] → ChannelEntry[] (same shape, separate type)
-      const asEntries: ChannelEntry[] = newList.map((e) => ({
-        url: e.url,
-        title: e.title,
-        epgId: e.epgId,
-        logo: e.logo,
-        channelId: e.channelId,
-        num: e.num,
-      }));
-      setChannelList(asEntries);
-      switchChannel(asEntries[idx] ?? { url: entry.url, title: entry.title, epgId: entry.epgId }, idx);
-      setShowChannelMenu(false);
-    },
-    [switchChannel],
-  );
-
-  // Stable close handler for LiveChannelMenu — must be useCallback so the
-  // React.memo wrapper on the menu component is not defeated by a new function
-  // reference on every PlayerScreen render.
-  const handleMenuClose = useCallback(() => setShowChannelMenu(false), []);
 
   // ── Pause local playback while casting (device becomes the remote) ────────
   useEffect(() => {
@@ -1494,22 +1304,18 @@ export default function PlayerScreen() {
   }, [scheduleInfoHide]);
 
   // Live TV entry:
-  // • Firestick/TV — show OSD immediately for 5 s then auto-dismiss, so the
+  // • Firestick/TV — show OSD immediately for 6 s then auto-dismiss, so the
   //   viewer always knows which channel they tuned to (professional IPTV standard).
   // • Phone/tablet — start hidden; a tap reveals it.
   useEffect(() => {
     if (!isLive) return;
     if (Platform.isTV) {
-      infoBarUserInvokedRef.current = false; // entry is always auto mode
       setShowInfo(true);
       infoOpacity.setValue(1);
       const t = setTimeout(() => {
-        // Only dismiss if the user hasn't opened the OSD manually in the meantime.
-        if (!infoBarUserInvokedRef.current) {
-          Animated.timing(infoOpacity, { toValue: 0, duration: 400, useNativeDriver: true }).start();
-          setTimeout(() => setShowInfo(false), 420);
-        }
-      }, 5000);
+        Animated.timing(infoOpacity, { toValue: 0, duration: 400, useNativeDriver: true }).start();
+        setTimeout(() => setShowInfo(false), 420);
+      }, 6000);
       infoTimer.current = t;
       return () => clearTimeout(t);
     } else {
@@ -1541,34 +1347,11 @@ export default function PlayerScreen() {
   // for the UI layer.  Using a useEffect on channelIdx (instead of a setTimeout
   // buried in the zone onFocus closures) also handles the initial-mount focus and
   // is immune to stale-closure issues.
-  //
-  // Wrap-around switches (ch 0 → last, last → ch 0) jump to a stream URL far
-  // away in the channel list; ExoPlayer's audio-focus handoff can take longer
-  // for these transitions.  wrapAroundPendingRef signals that the delay should
-  // be extended from 600 ms to 900 ms to avoid a focus dead-zone on Fire OS.
   useEffect(() => {
     if (!Platform.isTV || !isLive) return;
-    const delay = wrapAroundPendingRef.current ? 900 : 600;
-    wrapAroundPendingRef.current = false; // consume the flag
-    const t = setTimeout(() => (tvCenterRef.current as any)?.focus?.(), delay);
+    const t = setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 600);
     return () => clearTimeout(t);
   }, [channelIdx, isLive]);
-
-  // TV: restore D-pad focus to the centre zone whenever the channel menu
-  // closes — regardless of whether a channel was selected.
-  //
-  // The useEffect([channelIdx]) above only fires when the user picks a channel
-  // (channelIdx changes).  When the viewer presses BACK or Menu to close the
-  // browser without choosing anything, channelIdx stays the same, so the
-  // channelIdx effect never runs and focus is left wherever it was inside the
-  // now-unmounted menu.  This effect fills that gap with a single, authoritative
-  // restore that covers every close path (BACK handler, Menu-button toggle, or
-  // any future programmatic close).
-  useEffect(() => {
-    if (!Platform.isTV || !isLive || showChannelMenu) return;
-    const t = setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 150);
-    return () => clearTimeout(t);
-  }, [showChannelMenu, isLive]);
 
   // Clean up the TV preview timer on unmount so it can't fire after the
   // component has been destroyed.
@@ -1578,60 +1361,22 @@ export default function PlayerScreen() {
     };
   }, []);
 
-  /**
-   * Show the live-TV OSD info bar.
-   *
-   * @param userInvoked  Pass `true` when the viewer explicitly pressed OK —
-   *   the bar stays on-screen until they dismiss it with OK or BACK.
-   *   Omit or pass `false` for automatic shows (entry, channel switch) —
-   *   the bar auto-dismisses after 5 s on Firestick / Android TV.
-   */
-  const showInfoBar = useCallback((userInvoked = false) => {
-    infoBarUserInvokedRef.current = userInvoked;
-    // Cancel any in-flight trailing hide from a recent dismiss so the bar
-    // can't vanish immediately after the user re-opens it during the 320 ms
-    // fade-out window of a previous dismissInfoBar call.
-    if (dismissTimerRef.current) { clearTimeout(dismissTimerRef.current); dismissTimerRef.current = null; }
+  const showInfoBar = useCallback(() => {
     setShowInfo(true);
     Animated.timing(infoOpacity, { toValue: 1, duration: 200, useNativeDriver: true }).start();
     if (!isLive) {
       // VOD / catchup: auto-hide after 3 s.
       scheduleInfoHide();
     } else if (Platform.isTV) {
-      if (userInvoked) {
-        // User explicitly opened the OSD — cancel any pending auto-dismiss and
-        // leave the bar visible until they close it.
-        if (infoTimer.current) { clearTimeout(infoTimer.current); infoTimer.current = null; }
-      } else {
-        // Auto-show (entry or channel switch): dismiss after 5 s.
-        // Two guards inside the callback prevent premature dismissal:
-        //   1. infoBarUserInvokedRef — user pressed OK and pinned the bar.
-        //   2. showAudioPickerRef / showSubPickerRef — a picker is open.
-        //      The Audio / CC chips that the picker's close-path re-focuses
-        //      live inside this bar.  Dismissing while a picker is on screen
-        //      unmounts those chips, causing D-pad focus to be lost on close.
-        //      When the picker eventually closes the timer is already gone, so
-        //      the bar stays visible long enough for the user to see it.
-        if (infoTimer.current) clearTimeout(infoTimer.current);
-        infoTimer.current = setTimeout(() => {
-          if (
-            !infoBarUserInvokedRef.current &&
-            !showAudioPickerRef.current &&
-            !showSubPickerRef.current
-          ) {
-            Animated.timing(infoOpacity, { toValue: 0, duration: 400, useNativeDriver: true }).start();
-            if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
-            dismissTimerRef.current = setTimeout(() => {
-              dismissTimerRef.current = null;
-              setShowInfo(false);
-            }, 420);
-            // Restore TV focus after the bar fully unmounts.
-            setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 450);
-          }
-        }, 5000);
-      }
+      // Firestick live: auto-dismiss after 6 s — professional IPTV standard.
+      // Each call (entry, OK press, channel switch) resets the timer.
+      if (infoTimer.current) clearTimeout(infoTimer.current);
+      infoTimer.current = setTimeout(() => {
+        Animated.timing(infoOpacity, { toValue: 0, duration: 400, useNativeDriver: true }).start();
+        setTimeout(() => setShowInfo(false), 420);
+      }, 6000);
     }
-    // Phone/tablet live: stays until BACK/swipe — no change needed here.
+    // Phone/tablet live: stays until BACK/swipe — no change.
   }, [infoOpacity, scheduleInfoHide, isLive]);
   // Keep the ref current so switchChannel (declared above) can call showInfoBar.
   showInfoBarRef.current = showInfoBar;
@@ -1721,10 +1466,9 @@ export default function PlayerScreen() {
       setDoubleTapSide(isLeft ? 'back' : 'forward');
       doubleTapTimer.current = setTimeout(() => setDoubleTapSide(null), 700);
     });
-  // Live TV phone/tablet — horizontal: swipe right → dismiss OSD or go back.
-  // activeOffsetX(30) lets short taps reach tapGesture; failOffsetY([-25,25])
-  // yields to the vertical channel-change gesture below for primarily-vertical
-  // swipes so the two gestures don't compete.
+  // Live TV phone/tablet: swipe right → dismiss overlay if visible, else go back.
+  // activeOffsetX(30) lets short taps through to tapGesture; failOffsetY prevents
+  // stealing vertical scrolls inside any child.
   const liveSwipeGesture = Gesture.Pan()
     .runOnJS(true)
     .activeOffsetX(30)
@@ -1736,39 +1480,7 @@ export default function PlayerScreen() {
         else { handleBackLive(); }
       }
     });
-
-  // Live TV phone/tablet — vertical: swipe UP → next channel, DOWN → prev channel.
-  //
-  // This is the touch equivalent of the Firestick D-pad LEFT/RIGHT zones and the
-  // media channel-up/down keys.  All three input methods call the same
-  // handleNextChannel / handlePrevChannel functions, which call switchChannel —
-  // one code path for every input source.
-  //
-  // failOffsetX([-30,30]) — yields to liveSwipeGesture for horizontal intent so
-  //   an angled swipe-right (e.g. iOS edge swipe) still triggers the back path.
-  // 50 px translation + 200 px/s velocity — prevents accidental channel changes
-  //   on small taps or slow drags that just happen to be slightly vertical.
-  // navCooldownRef inside handleNext/PrevChannel — shared with the TV D-pad path,
-  //   so swipe-spam and D-pad-spam are both rate-limited by the same 1 200 ms gate.
-  const liveVerticalSwipeGesture = Gesture.Pan()
-    .runOnJS(true)
-    .activeOffsetY([-40, 40])
-    .failOffsetX([-30, 30])
-    .onEnd((e) => {
-      if (!isLive || Platform.isTV) return;
-      if (Math.abs(e.translationY) < 50 || Math.abs(e.velocityY) < 200) return;
-      if (e.translationY < 0) {
-        handleNextChannel(); // swipe UP   → next channel  (mirrors TV ch-up / D-pad right)
-      } else {
-        handlePrevChannel(); // swipe DOWN → prev channel  (mirrors TV ch-down / D-pad left)
-      }
-    });
-
-  const combinedGesture = Gesture.Race(
-    liveSwipeGesture,
-    liveVerticalSwipeGesture,
-    Gesture.Exclusive(doubleTapGesture, tapGesture),
-  );
+  const combinedGesture = Gesture.Race(liveSwipeGesture, Gesture.Exclusive(doubleTapGesture, tapGesture));
 
   const togglePlay = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -1788,9 +1500,33 @@ export default function PlayerScreen() {
     scheduleHide();
   }, [isCasting, currentTime, player, scheduleHide, seekRemote]);
 
-  // TV media keys are handled by the single useTVRemote call above (search
-  // "useTVRemote gates the subscription").  A second call here would create
-  // a duplicate DeviceEventEmitter subscription, firing every handler twice.
+  // ── #357: TV remote media keys ────────────────────────────────────────────
+  // First-class media-key support in the player (short press = key-up only):
+  //   Play/Pause          → toggle playback (all modes)
+  //   Channel Up / Down   → next / previous channel (live mode only)
+  //   FF / Rewind         → ±30 s seek (VOD / catch-up mode only)
+  useTVRemote({
+    playPause: (e) => {
+      if (e.eventKeyAction !== 1 || isWeb) return;
+      togglePlay();
+    },
+    channelUp: (e) => {
+      if (e.eventKeyAction !== 1 || isWeb || !isLive) return;
+      handleNextChannel();
+    },
+    channelDown: (e) => {
+      if (e.eventKeyAction !== 1 || isWeb || !isLive) return;
+      handlePrevChannel();
+    },
+    fastForward: (e) => {
+      if (e.eventKeyAction !== 1 || isWeb || isLive) return;
+      seek(30);
+    },
+    rewind: (e) => {
+      if (e.eventKeyAction !== 1 || isWeb || isLive) return;
+      seek(-30);
+    },
+  });
 
   // ── CC pill behaviour ────────────────────────────────────────────────────
   // • Subtitles OFF + only 1 track  → enable that track directly.
@@ -1859,33 +1595,25 @@ export default function PlayerScreen() {
       ) : hasError ? (
         <View style={styles.msgView}>
           <Text style={styles.msgIcon}>⚠</Text>
-          <Text style={styles.msgTitle}>Stream Unavailable</Text>
-          {!!(activeTitle || params.title) && (
+          <Text style={styles.msgTitle}>Stream Error</Text>
+          {!!params.title && (
             <Text style={[styles.msgSub, { fontFamily: 'Inter_600SemiBold', marginBottom: 2 }]} numberOfLines={2}>
-              {activeTitle || params.title}
+              {params.title}
             </Text>
           )}
-          {!!errorMsg && (
-            <Text style={[styles.msgSub, { fontSize: 12, opacity: 0.65 }]} numberOfLines={2}>
-              {errorMsg}
-            </Text>
-          )}
-          <Text style={styles.msgSub}>
-            {isLive
-              ? 'This channel is currently unavailable. Retry, switch channel, or press Back to return.'
-              : 'Unable to load stream. Check your connection and try again.'}
-          </Text>
-
-          {/* Primary: Retry */}
+          <Text style={styles.msgSub}>Unable to load stream. Check your connection or try another channel.</Text>
           <FocusablePressable
             ref={retryBtnRef}
             style={styles.actionBtn}
             onPress={() => {
               setHasError(false);
-              setErrorMsg('');
               setIsBuffering(true);
               const currentEntry = channelIdx >= 0 && channelList[channelIdx];
-              try { player.replace(currentEntry ? currentEntry.url : params.url); player.play(); } catch {}
+              player.replace(currentEntry ? currentEntry.url : params.url);
+              player.play();
+              // TV belt-and-suspenders: once the error overlay unmounts and the
+              // video surface + tap-catcher remount, move D-pad focus to the
+              // right idle target so the user doesn't have to home in manually.
               if (Platform.isTV) {
                 setTimeout(() => {
                   if (isLive) (tvCenterRef.current as any)?.focus?.();
@@ -1894,38 +1622,8 @@ export default function PlayerScreen() {
               }
             }}
           >
-            <Text style={styles.actionBtnText}>↺  Retry</Text>
+            <Text style={styles.actionBtnText}>Retry</Text>
           </FocusablePressable>
-
-          {/* Live TV: let the user skip to an adjacent channel from the error screen */}
-          {isLive && (prevChannel || nextChannel) && (
-            <View style={styles.errorChannelRow}>
-              {prevChannel ? (
-                <FocusablePressable
-                  style={styles.actionBtnSecondary}
-                  onPress={() => {
-                    const idx = (channelIdx - 1 + channelList.length) % channelList.length;
-                    switchChannel(prevChannel, idx);
-                    if (Platform.isTV) setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 400);
-                  }}
-                >
-                  <Text style={styles.actionBtnSecondaryText}>← Previous</Text>
-                </FocusablePressable>
-              ) : <View style={{ flex: 1 }} />}
-              {nextChannel ? (
-                <FocusablePressable
-                  style={styles.actionBtnSecondary}
-                  onPress={() => {
-                    const idx = (channelIdx + 1) % channelList.length;
-                    switchChannel(nextChannel, idx);
-                    if (Platform.isTV) setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 400);
-                  }}
-                >
-                  <Text style={styles.actionBtnSecondaryText}>Next →</Text>
-                </FocusablePressable>
-              ) : <View style={{ flex: 1 }} />}
-            </View>
-          )}
         </View>
       ) : videoMounted ? (
         <VideoView
@@ -1942,29 +1640,7 @@ export default function PlayerScreen() {
         />
       ) : null}
 
-      {/* ── Channel-loading overlay ────────────────────────────────────────────
-          Shown during initial load and every channel switch.  Covers the blank
-          VideoView so the user never sees a frozen/empty player surface.
-          pointerEvents="none" keeps Back and D-pad zones fully active. */}
-      {isBuffering && !isReconnecting && !isResolvingUrl && !hasError && !isWeb && (
-        <View style={styles.loadingOverlay} pointerEvents="none">
-          <View style={styles.loadingContent}>
-            {!!activeLogo && (
-              <Image
-                source={{ uri: activeLogo }}
-                style={styles.loadingLogo}
-                contentFit="contain"
-                cachePolicy="memory-disk"
-              />
-            )}
-            <ActivityIndicator size="large" color="#ffffff" />
-            <Text style={styles.loadingTitle} numberOfLines={1}>
-              {activeTitle || 'Loading…'}
-            </Text>
-            <Text style={styles.loadingSubtitle}>Connecting to stream</Text>
-          </View>
-        </View>
-      )}
+      {/* Buffering — no overlay; video surface stalls silently until stream resumes */}
 
       {/* Refreshing stream overlay — shown during silent URL re-resolve (#137) */}
       {isResolvingUrl && !isWeb && (
@@ -2300,13 +1976,18 @@ export default function PlayerScreen() {
                 </Text>
               </>
             )}
-            {/* TV: Audio + CC chips inside the OSD so they're D-pad reachable */}
+            {/* TV: Audio + CC chips inside the OSD so they're D-pad reachable.
+                Refs are shared with the phone chips (which are never rendered on
+                TV) so that picker onRequestClose / onPress focus-restore calls
+                (audioChipRef.current?.focus() / ccChipRef.current?.focus()) land
+                here on Firestick rather than being no-ops. */}
             {Platform.isTV && (
               <>
                 <FocusablePressable
+                  ref={audioChipRef}
                   style={styles.infoOsdChip}
                   focusedStyle={styles.infoOsdChipFocused}
-                  onFocus={() => { if (!infoBarUserInvokedRef.current) showInfoBarRef.current?.(); }}
+                  onFocus={() => showInfoBarRef.current?.()}
                   onPress={() => setShowAudioPicker(true)}
                 >
                   <Text style={styles.infoOsdChipText}>
@@ -2314,9 +1995,10 @@ export default function PlayerScreen() {
                   </Text>
                 </FocusablePressable>
                 <FocusablePressable
+                  ref={ccChipRef}
                   style={[styles.infoOsdChip, activeSubtitleTrack !== null && styles.infoOsdChipActive]}
                   focusedStyle={styles.infoOsdChipFocused}
-                  onFocus={() => { if (!infoBarUserInvokedRef.current) showInfoBarRef.current?.(); }}
+                  onFocus={() => showInfoBarRef.current?.()}
                   onPress={() => setShowSubPicker(true)}
                 >
                   <Text style={[styles.infoOsdChipText, activeSubtitleTrack !== null && styles.infoOsdChipTextActive]}>
@@ -2357,17 +2039,11 @@ export default function PlayerScreen() {
             </View>
           )}
 
-          {/* Row 4: Prev / Next channel navigation.
-              Shown on all platforms (including TV) so D-pad left/right can
-              route focus here when the OSD is user-pinned open. */}
+          {/* Row 4: Prev / Next channel navigation */}
           {(prevChannel || nextChannel) && (
             <View style={styles.chNavRow}>
               {prevChannel ? (
-                <FocusablePressable
-                  ref={prevChBtnRef}
-                  style={styles.chNavBtn}
-                  onPress={handlePrevChannel}
-                >
+                <FocusablePressable style={styles.chNavBtn} onPress={handlePrevChannel}>
                   <Text style={styles.chNavArrow}>‹</Text>
                   <Text style={styles.chNavLabel} numberOfLines={1}>{prevChannel.title}</Text>
                 </FocusablePressable>
@@ -2376,11 +2052,7 @@ export default function PlayerScreen() {
               )}
 
               {nextChannel ? (
-                <FocusablePressable
-                  ref={nextChBtnRef}
-                  style={[styles.chNavBtn, styles.chNavBtnRight]}
-                  onPress={handleNextChannel}
-                >
+                <FocusablePressable style={[styles.chNavBtn, styles.chNavBtnRight]} onPress={handleNextChannel}>
                   <Text style={styles.chNavLabel} numberOfLines={1}>{nextChannel.title}</Text>
                   <Text style={styles.chNavArrow}>›</Text>
                 </FocusablePressable>
@@ -2390,50 +2062,6 @@ export default function PlayerScreen() {
             </View>
           )}
         </Animated.View>
-      )}
-
-      {/* ── Ambient Now & Next bar ────────────────────────────────────────────
-          Always-on EPG strip at the bottom of the live player.
-          Visible whenever EPG data is available and the transient OSD is hidden.
-          When the OSD opens (showInfo=true) this bar hides — the OSD already
-          displays the same info more prominently.
-          pointerEvents="none": never blocks D-pad zones or phone gestures. */}
-      {isLive && !isWeb && !hasError && !showInfo && (currentProg || nextProg) && (
-        <View
-          style={[styles.nowNextBar, { paddingBottom: insets.bottom + 10 }]}
-          pointerEvents="none"
-        >
-          {currentProg && (
-            <>
-              <View style={styles.nowNextRow}>
-                <Text style={styles.nowNextLabel}>NOW</Text>
-                <Text style={styles.nowNextTitle} numberOfLines={1}>{currentProg.title}</Text>
-                <Text style={styles.nowNextTime}>
-                  {fmtTime(currentProg.start)}–{fmtTime(currentProg.end)}
-                </Text>
-              </View>
-              <View style={styles.nowNextProgressTrack}>
-                <View style={[styles.nowNextProgressFill, {
-                  width: `${Math.min(100, Math.max(0,
-                    (nowTs - currentProg.start.getTime()) /
-                    (currentProg.end.getTime() - currentProg.start.getTime()) * 100,
-                  ))}%` as any,
-                }]} />
-              </View>
-            </>
-          )}
-          {nextProg && (
-            <View style={styles.nowNextRow}>
-              <Text style={[styles.nowNextLabel, styles.nowNextLabelNext]}>NEXT</Text>
-              <Text style={[styles.nowNextTitle, styles.nowNextTitleNext]} numberOfLines={1}>
-                {nextProg.title}
-              </Text>
-              <Text style={[styles.nowNextTime, { color: 'rgba(255,255,255,0.35)' }]}>
-                {fmtTime(nextProg.start)}
-              </Text>
-            </View>
-          )}
-        </View>
       )}
 
       {/* ── TV / Fire TV D-pad zones ─────────────────────────────────────────
@@ -2455,47 +2083,28 @@ export default function PlayerScreen() {
           <Pressable
             focusable
             style={styles.tvZoneLeft}
-            onPress={showInfo ? dismissInfoBar : () => showInfoBar()}
+            onPress={showInfo ? dismissInfoBar : showInfoBar}
             onBlur={() => setTvZoneFocused(null)}
             onFocus={() => {
               setTvZoneFocused('left');
-              // OSD is user-pinned (viewer pressed OK to open it):
-              // Route D-pad LEFT into the OSD's prev-channel button so the
-              // viewer can navigate the overlay rather than triggering a zap.
-              if (infoBarUserInvokedRef.current && showInfoRef.current) {
-                setTimeout(() => (prevChBtnRef.current ?? tvCenterRef.current)?.focus?.(), 50);
-                return;
-              }
               if (!prevChannel || !tvNavReadyRef.current) {
                 // No previous channel or nav not yet settled — immediately bounce
                 // D-pad focus to center so the remote stays responsive.
                 setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 50);
                 return;
               }
-              if (navCooldownRef.current) {
-                // Previous channel switch has not settled yet.  Bounce focus
-                // back to centre so the remote always has a working target —
-                // a bare `return` leaves focus stranded on this side zone,
-                // making OK / LEFT / RIGHT feel completely dead.
-                setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 50);
-                return;
-              }
+              if (navCooldownRef.current) return;
               // Claim the cooldown upfront so rapid D-pad presses during the preview are ignored
               navCooldownRef.current = true;
               setTimeout(() => { navCooldownRef.current = false; }, 1400);
               const targetChannel = prevChannel;
               const targetIdx = (channelIdx - 1 + channelList.length) % channelList.length;
-              // Detect wrap-around (ch 0 → last) so switchChannel can flag the
-              // extended focus-restoration delay and suppress the early 150 ms call.
-              const isWrap = channelIdx === 0;
               showTvChannelPreview(targetChannel, 'prev', () => {
-                switchChannel(targetChannel, targetIdx, isWrap);
+                switchChannel(targetChannel, targetIdx);
                 // Belt-and-suspenders: also request focus explicitly here in addition
                 // to the useEffect[channelIdx] handler, in case the effect fires before
                 // the native layer has settled after player.replace().
-                // Use a longer delay for wrap-around switches to match the extended
-                // useEffect guard (900 ms vs 600 ms for adjacent-channel switches).
-                setTimeout(() => (tvCenterRef.current as any)?.focus?.(), isWrap ? 950 : 700);
+                setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 700);
               });
             }}
           />
@@ -2514,14 +2123,12 @@ export default function PlayerScreen() {
             onPress={() => {
               if (Platform.isTV) {
                 // Fire TV: OK toggles the OSD info bar.
-                // When opening via OK the bar is "user-invoked" and stays
-                // visible until the user explicitly closes it again.
                 // Audio/CC are now chips inside the info bar — the old separate
                 // controls bar is not shown on TV any more.
                 if (showInfoRef.current) {
                   dismissInfoBar();
                 } else {
-                  showInfoBar(true); // user-invoked — no auto-dismiss
+                  showInfoBar();
                 }
               } else {
                 // Phone/tablet: toggle info bar (touch path).
@@ -2535,35 +2142,23 @@ export default function PlayerScreen() {
           <Pressable
             focusable
             style={styles.tvZoneRight}
-            onPress={showInfo ? dismissInfoBar : () => showInfoBar()}
+            onPress={showInfo ? dismissInfoBar : showInfoBar}
             onBlur={() => setTvZoneFocused(null)}
             onFocus={() => {
               setTvZoneFocused('right');
-              // OSD is user-pinned: route D-pad RIGHT to the next-channel button.
-              if (infoBarUserInvokedRef.current && showInfoRef.current) {
-                setTimeout(() => (nextChBtnRef.current ?? tvCenterRef.current)?.focus?.(), 50);
-                return;
-              }
               if (!nextChannel || !tvNavReadyRef.current) {
                 // No next channel or nav not yet settled — bounce focus to center.
                 setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 50);
                 return;
               }
-              if (navCooldownRef.current) {
-                // Same guard as the left zone: bounce to centre rather than
-                // leaving the remote stranded on this non-navigating side zone.
-                setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 50);
-                return;
-              }
+              if (navCooldownRef.current) return;
               navCooldownRef.current = true;
               setTimeout(() => { navCooldownRef.current = false; }, 1400);
               const targetChannel = nextChannel;
               const targetIdx = (channelIdx + 1) % channelList.length;
-              // Detect wrap-around (last → ch 0); switchChannel handles the flag.
-              const isWrap = channelIdx === channelList.length - 1;
               showTvChannelPreview(targetChannel, 'next', () => {
-                switchChannel(targetChannel, targetIdx, isWrap);
-                setTimeout(() => (tvCenterRef.current as any)?.focus?.(), isWrap ? 950 : 700);
+                switchChannel(targetChannel, targetIdx);
+                setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 700);
               });
             }}
           />
@@ -2656,24 +2251,18 @@ export default function PlayerScreen() {
         }}
         onRequestClose={() => {
           setShowAudioPicker(false);
-          // On TV: return to the centre zone (the chip may be unmounted if the
-          // OSD was dismissed; centre is always safe).  On mobile: chip ref.
+          // Return D-pad focus to the chip that opened this picker.
+          // On TV: ensure the OSD info bar is visible first — the 6 s auto-dismiss
+          // timer may have fired while the picker was open, unmounting the chip.
           if (Platform.isTV) {
-            setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 150);
+            showInfoBarRef.current?.();
+            setTimeout(() => audioChipRef.current?.focus(), 150);
           } else {
             setTimeout(() => audioChipRef.current?.focus(), 150);
           }
         }}
       >
-        <Pressable
-          style={styles.settingsBackdrop}
-          focusable={false}
-          accessible={false}
-          onPress={() => {
-            setShowAudioPicker(false);
-            if (Platform.isTV) setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 150);
-          }}
-        />
+        <Pressable style={styles.settingsBackdrop} focusable={false} accessible={false} onPress={() => setShowAudioPicker(false)} />
         <View style={[styles.settingsSheet, { paddingBottom: insets.bottom + 16 }]} accessibilityViewIsModal={true}>
           <View style={styles.settingsHandle} />
           <Text style={styles.settingsTitle}>Audio Track</Text>
@@ -2706,10 +2295,9 @@ export default function PlayerScreen() {
                         }
                       } catch {}
                       setShowAudioPicker(false);
-                      // TV: return to centre zone (the chip lives inside the
-                      // OSD bar which may auto-dismiss; centre is always safe).
                       if (Platform.isTV) {
-                        setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 150);
+                        showInfoBarRef.current?.();
+                        setTimeout(() => audioChipRef.current?.focus(), 150);
                       } else {
                         setTimeout(() => audioChipRef.current?.focus(), 150);
                       }
@@ -2734,22 +2322,17 @@ export default function PlayerScreen() {
         }}
         onRequestClose={() => {
           setShowSubPicker(false);
+          // On TV: re-show the OSD info bar in case the 6 s timer fired during
+          // picker interaction, then return focus to the CC chip.
           if (Platform.isTV) {
-            setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 150);
+            showInfoBarRef.current?.();
+            setTimeout(() => ccChipRef.current?.focus(), 150);
           } else {
             setTimeout(() => ccChipRef.current?.focus(), 150);
           }
         }}
       >
-        <Pressable
-          style={styles.settingsBackdrop}
-          focusable={false}
-          accessible={false}
-          onPress={() => {
-            setShowSubPicker(false);
-            if (Platform.isTV) setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 150);
-          }}
-        />
+        <Pressable style={styles.settingsBackdrop} focusable={false} accessible={false} onPress={() => setShowSubPicker(false)} />
         <View style={[styles.settingsSheet, { paddingBottom: insets.bottom + 16 }]} accessibilityViewIsModal={true}>
           <View style={styles.settingsHandle} />
           <Text style={styles.settingsTitle}>Subtitles / CC</Text>
@@ -2771,7 +2354,8 @@ export default function PlayerScreen() {
                   } catch {}
                   setShowSubPicker(false);
                   if (Platform.isTV) {
-                    setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 150);
+                    showInfoBarRef.current?.();
+                    setTimeout(() => ccChipRef.current?.focus(), 150);
                   } else {
                     setTimeout(() => ccChipRef.current?.focus(), 150);
                   }
@@ -2799,7 +2383,8 @@ export default function PlayerScreen() {
                       } catch {}
                       setShowSubPicker(false);
                       if (Platform.isTV) {
-                        setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 150);
+                        showInfoBarRef.current?.();
+                        setTimeout(() => ccChipRef.current?.focus(), 150);
                       } else {
                         setTimeout(() => ccChipRef.current?.focus(), 150);
                       }
@@ -2884,18 +2469,6 @@ export default function PlayerScreen() {
           </ScrollView>
         </View>
       </Modal>
-      {/* ── Live TV Channel Menu (TV only) ──────────────────────────────────
-          Opened by the Menu/hamburger button on the Firestick remote.
-          Renders on top of all other overlays; BACK closes it. */}
-      {showChannelMenu && Platform.isTV && isLive && !isWeb && (
-        <LiveChannelMenu
-          currentChannelId={activeChannelId}
-          epgMap={epgMap}
-          onSelectChannel={handleMenuSelectChannel}
-          onClose={handleMenuClose}
-        />
-      )}
-
     </View>
   );
 }
@@ -3284,52 +2857,6 @@ const styles = StyleSheet.create({
   // Reconnecting overlay
   reconnectOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center', gap: 14, backgroundColor: 'rgba(0,0,0,0.55)' },
   reconnectText: { fontSize: 15, color: '#fff', fontFamily: 'Inter_600SemiBold', letterSpacing: 0.2 },
-
-  // Ambient Now & Next bar
-  nowNextBar: {
-    position: 'absolute', bottom: 0, left: 0, right: 0,
-    backgroundColor: 'rgba(0,0,0,0.70)',
-    paddingTop: 10,
-    paddingHorizontal: 16,
-    gap: 4,
-  },
-  nowNextRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  nowNextLabel: {
-    fontSize: 10, fontFamily: 'Inter_700Bold', color: '#3B82F6',
-    letterSpacing: 0.8, minWidth: 36,
-  },
-  nowNextLabelNext: { color: 'rgba(255,255,255,0.38)' },
-  nowNextTitle: {
-    flex: 1, fontSize: 13, fontFamily: 'Inter_600SemiBold', color: '#fff',
-  },
-  nowNextTitleNext: { color: 'rgba(255,255,255,0.5)', fontSize: 12 },
-  nowNextTime: { fontSize: 11, color: 'rgba(255,255,255,0.5)' },
-  nowNextProgressTrack: {
-    height: 2, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 1, marginVertical: 2,
-  },
-  nowNextProgressFill: { height: 2, backgroundColor: '#3B82F6', borderRadius: 1 },
-
-  // Channel-loading overlay (initial load + channel switch)
-  loadingOverlay: {
-    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-    justifyContent: 'center', alignItems: 'center',
-    backgroundColor: '#000',
-  },
-  loadingContent: { alignItems: 'center', gap: 16, paddingHorizontal: 40 },
-  loadingLogo: { width: 80, height: 80, borderRadius: 12 },
-  loadingTitle: { fontSize: 18, fontFamily: 'Inter_600SemiBold', color: '#fff', textAlign: 'center' },
-  loadingSubtitle: { fontSize: 14, color: 'rgba(255,255,255,0.5)', textAlign: 'center' },
-
-  // Error screen: secondary row of channel-navigation buttons
-  errorChannelRow: {
-    flexDirection: 'row', gap: 12, marginTop: 4, width: '100%', maxWidth: 320,
-  },
-  actionBtnSecondary: {
-    flex: 1, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 10,
-    paddingHorizontal: 16, paddingVertical: 12, alignItems: 'center',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)',
-  },
-  actionBtnSecondaryText: { fontSize: 14, fontFamily: 'Inter_600SemiBold', color: '#fff' },
 
   // Error / web message
   msgView: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 12, paddingHorizontal: 40 },
