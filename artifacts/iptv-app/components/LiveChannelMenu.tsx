@@ -1,11 +1,18 @@
 /**
- * LiveChannelMenu — fullscreen overlay channel browser for the Live TV player.
+ * LiveChannelMenu — professional channel browser overlay for the Live TV player.
  *
- * Opens when the viewer presses the Menu/hamburger button on the Firestick
- * remote. Fully D-pad navigable: LEFT/RIGHT moves between the category column
- * and the channel list; UP/DOWN scrolls within each column; OK watches.
- *
- * The video continues playing behind the overlay.
+ * Features:
+ *   • All Channels · Recently Watched · Favourites · per-provider categories
+ *   • Channel numbers, logos, names, favourite star (★) indicators
+ *   • EPG: NOW programme + progress bar + NEXT programme per row
+ *   • Programme description (from EPG) shown as NOW subtitle
+ *   • Search within any category
+ *   • State persistence between opens (category, search text, scroll position)
+ *   • Auto-selects the current channel's category on first open; restores the
+ *     user's last chosen category on subsequent opens
+ *   • Single API call cached 5 min — never re-fetches on channel switch
+ *   • Fixed-height rows + getItemLayout for instant scroll-to-index on long lists
+ *   • Full D-pad navigation (Firestick / Android TV)
  */
 import React, {
   useCallback,
@@ -31,9 +38,43 @@ import { FocusablePressable } from '@/components/FocusablePressable';
 import { StorageService } from '@/services/storage';
 import { getXtreamLiveStreams } from '@/services/xtreamApi';
 import { fetchAndParseM3U } from '@/services/m3uParser';
-import type { Channel, EpgProgram } from '@/types';
+import type { Channel, EpgProgram, RecentChannel } from '@/types';
 
-// ─── Shared channel-entry type (same shape as player.tsx ChannelEntry) ────────
+// ─── Category sentinel IDs ─────────────────────────────────────────────────────
+const CAT_ALL    = '__all__';
+const CAT_RECENT = '__recent__';
+const CAT_FAV    = '__fav__';
+
+// ─── Module-level persistence ──────────────────────────────────────────────────
+// Survives unmount/remount (between menu opens) without prop drilling.
+// Resets on app restart.  _autoSelected gates the one-time category auto-pick.
+let _savedCat          = CAT_ALL;
+let _savedSearch       = '';
+let _savedScrollOffset = 0;
+let _autoSelected      = false;   // true once we've done the initial auto-select
+
+// ─── Fixed row height — required for getItemLayout ────────────────────────────
+const CH_ROW_H = 84;
+
+// ─── Helpers ───────────────────────────────────────────────────────────────────
+function fmtTime(d: Date): string {
+  const h = d.getHours();
+  const m = d.getMinutes();
+  return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h >= 12 ? 'pm' : 'am'}`;
+}
+
+function toMenuEntry(ch: Channel): MenuChannelEntry {
+  return {
+    url:       ch.streamUrl,
+    title:     ch.name,
+    epgId:     ch.epgId ?? ch.id,
+    logo:      ch.logo ?? '',
+    channelId: ch.id,
+    num:       ch.num,
+  };
+}
+
+// ─── Shared type (same shape as player.tsx ChannelEntry) ──────────────────────
 export type MenuChannelEntry = {
   url: string;
   title: string;
@@ -43,46 +84,19 @@ export type MenuChannelEntry = {
   num?: number;
 };
 
-// ─── Sentinel values for synthetic categories ─────────────────────────────────
-const CAT_ALL = '__all__';
-const CAT_FAV = '__fav__';
-
-// Fixed height enables FlatList.getItemLayout for fast scroll-to-index
-const CH_ROW_H = 70;
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-function fmtTime(d: Date): string {
-  const h = d.getHours();
-  const m = d.getMinutes();
-  const ap = h >= 12 ? 'pm' : 'am';
-  return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${ap}`;
-}
-
-function toMenuEntry(ch: Channel): MenuChannelEntry {
-  return {
-    url: ch.streamUrl,
-    title: ch.name,
-    epgId: ch.epgId ?? ch.id,
-    logo: ch.logo ?? '',
-    channelId: ch.id,
-    num: ch.num,
-  };
-}
-
-// ─── Props ────────────────────────────────────────────────────────────────────
+// ─── Props ─────────────────────────────────────────────────────────────────────
 export interface LiveChannelMenuProps {
   /** ID of the channel currently playing in the player. */
   currentChannelId: string;
-  /** EPG map from the player (already loaded). */
+  /** EPG map already loaded by the player — no extra fetch needed. */
   epgMap?: Map<string, EpgProgram[]>;
-  /** Current wall-clock milliseconds for NOW-programme lookup. */
+  /** Current wall-clock ms for NOW/NEXT programme lookup. */
   nowTs: number;
   /**
    * Called when the viewer picks a channel.
-   * @param entry    Simplified channel data ready for player.switchChannel.
-   * @param idx      Position in `newList` (for prev/next zapping).
-   * @param newList  Full ordered list visible in the menu (becomes the new
-   *                 zap list in the player so LEFT/RIGHT stays consistent).
+   * @param entry   Simplified entry ready for player.switchChannel.
+   * @param idx     Position in `newList`.
+   * @param newList Full ordered list visible in the menu (becomes the new zap list).
    */
   onSelectChannel: (
     entry: MenuChannelEntry,
@@ -92,25 +106,27 @@ export interface LiveChannelMenuProps {
   onClose: () => void;
 }
 
-// ─── Component ────────────────────────────────────────────────────────────────
+// ─── Component ─────────────────────────────────────────────────────────────────
 export function LiveChannelMenu({
   currentChannelId,
   epgMap,
   nowTs,
   onSelectChannel,
-  onClose,
 }: LiveChannelMenuProps) {
   const { credentials } = useAppContext();
   const isXtream = credentials?.type === 'xtream';
 
   // ── Fetch all live channels ──────────────────────────────────────────────────
+  // staleTime = 5 min: data is never re-fetched just because the user switches
+  // channels.  The same cached result is shown every time the menu opens during
+  // the same session.
   const { data: allChannels = [], isLoading } = useQuery<Channel[]>({
-    queryKey: ['live-channels-menu', credentials],
-    queryFn: async () => {
+    queryKey:  ['live-channels-menu', credentials],
+    queryFn:   async () => {
       if (!credentials) return [];
       if (isXtream) {
         return getXtreamLiveStreams({
-          host: (credentials as any).host ?? '',
+          host:     (credentials as any).host     ?? '',
           username: (credentials as any).username ?? '',
           password: (credentials as any).password ?? '',
         });
@@ -119,17 +135,24 @@ export function LiveChannelMenu({
       return result.channels;
     },
     staleTime: 5 * 60_000,
+    gcTime:    30 * 60_000,
   });
 
-  // ── Favourites ───────────────────────────────────────────────────────────────
+  // ── Favourites ────────────────────────────────────────────────────────────────
   const [favIds, setFavIds] = useState<Set<string>>(new Set());
   useEffect(() => {
-    StorageService.getFavorites().then((favs: any[]) =>
-      setFavIds(new Set(favs.map((f: any) => f.id))),
+    StorageService.getFavorites().then((favs) =>
+      setFavIds(new Set(favs.map((f) => f.id))),
     );
   }, []);
 
-  // ── Sort by channel number where available ───────────────────────────────────
+  // ── Recently watched channels ─────────────────────────────────────────────────
+  const [recentChannels, setRecentChannels] = useState<RecentChannel[]>([]);
+  useEffect(() => {
+    StorageService.getRecentChannels().then(setRecentChannels);
+  }, []);
+
+  // ── Sort by channel number where available ────────────────────────────────────
   const sorted = useMemo<Channel[]>(() => {
     const hasNums = allChannels.some((ch) => ch.num != null);
     return hasNums
@@ -137,13 +160,17 @@ export function LiveChannelMenu({
       : allChannels;
   }, [allChannels]);
 
-  // ── Derive category list from groupTitle ─────────────────────────────────────
+  // ── Category list ─────────────────────────────────────────────────────────────
   const categories = useMemo<{ id: string; label: string }[]>(() => {
-    const seen = new Set<string>();
     const list: { id: string; label: string }[] = [
-      { id: CAT_ALL, label: 'All Channels' },
-      { id: CAT_FAV, label: '★  Favourites' },
+      { id: CAT_ALL,    label: 'All Channels' },
     ];
+    if (recentChannels.length > 0) {
+      list.push({ id: CAT_RECENT, label: '🕐  Recently Watched' });
+    }
+    list.push({ id: CAT_FAV, label: '★  Favourites' });
+
+    const seen = new Set<string>();
     sorted.forEach((ch) => {
       if (ch.groupTitle && !seen.has(ch.groupTitle)) {
         seen.add(ch.groupTitle);
@@ -151,76 +178,155 @@ export function LiveChannelMenu({
       }
     });
     return list;
-  }, [sorted]);
+  }, [sorted, recentChannels.length]);
 
-  const [selectedCat, setSelectedCat] = useState(CAT_ALL);
-  const [searchText, setSearchText] = useState('');
+  // ── Persisted state ───────────────────────────────────────────────────────────
+  const [selectedCat, _setSelectedCat] = useState(_savedCat);
+  const [searchText,  _setSearchText]  = useState(_savedSearch);
 
-  // ── Filtered channel list ────────────────────────────────────────────────────
-  const filtered = useMemo<Channel[]>(() => {
-    let list = sorted;
-    if (selectedCat === CAT_FAV) {
-      list = list.filter((ch) => favIds.has(ch.id));
-    } else if (selectedCat !== CAT_ALL) {
-      list = list.filter((ch) => ch.groupTitle === selectedCat);
+  const setSelectedCat = useCallback((cat: string) => {
+    _savedCat          = cat;
+    _savedScrollOffset = 0; // scroll resets whenever the category changes
+    _setSelectedCat(cat);
+  }, []);
+
+  const setSearchText = useCallback((text: string) => {
+    _savedSearch = text;
+    _setSearchText(text);
+  }, []);
+
+  // ── Auto-select current channel's category on first open ──────────────────────
+  // If the viewer has no saved preference (CAT_ALL), pick the category that
+  // contains the currently-playing channel so it's immediately visible.
+  // _autoSelected ensures this only runs once per session; subsequent opens
+  // restore the viewer's last manually-chosen category instead.
+  useEffect(() => {
+    if (isLoading || _autoSelected) return;
+    _autoSelected = true;
+
+    // Restore saved category if it's something specific the user chose.
+    if (_savedCat !== CAT_ALL) return;
+
+    const currentCh = sorted.find((ch) => ch.id === currentChannelId);
+    if (currentCh?.groupTitle) {
+      setSelectedCat(currentCh.groupTitle);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoading]);
+
+  // Guard: if the saved category no longer exists (e.g. different provider),
+  // fall back to All Channels so the list is never empty.
+  useEffect(() => {
+    if (isLoading || categories.length === 0) return;
+    if (!categories.some((c) => c.id === selectedCat)) {
+      setSelectedCat(CAT_ALL);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoading, categories]);
+
+  // ── Filtered channel list ─────────────────────────────────────────────────────
+  const filtered = useMemo<Channel[]>(() => {
+    let list: Channel[];
+
+    if (selectedCat === CAT_RECENT) {
+      // Recently watched in watchedAt order (most recent first).
+      // Match against sorted for up-to-date logo/name/num; fall back to stored
+      // data for channels that have since been removed from the provider list.
+      const byId = new Map(sorted.map((ch) => [ch.id, ch]));
+      list = recentChannels
+        .map((rc) => byId.get(rc.id) ?? ({
+          id:         rc.id,
+          name:       rc.name,
+          logo:       rc.logo,
+          groupTitle: rc.groupTitle,
+          streamUrl:  rc.streamUrl,
+          epgId:      rc.epgId,
+        } as Channel))
+        .filter(Boolean) as Channel[];
+    } else if (selectedCat === CAT_FAV) {
+      list = sorted.filter((ch) => favIds.has(ch.id));
+    } else if (selectedCat !== CAT_ALL) {
+      list = sorted.filter((ch) => ch.groupTitle === selectedCat);
+    } else {
+      list = sorted;
+    }
+
     if (searchText.trim()) {
       const q = searchText.trim().toLowerCase();
       list = list.filter((ch) => ch.name.toLowerCase().includes(q));
     }
+
     return list;
-  }, [sorted, selectedCat, favIds, searchText]);
+  }, [sorted, selectedCat, favIds, recentChannels, searchText]);
 
   const filteredEntries = useMemo<MenuChannelEntry[]>(
     () => filtered.map(toMenuEntry),
     [filtered],
   );
 
-  // ── Channel list ref + scroll helpers ────────────────────────────────────────
-  const listRef = useRef<FlatList<Channel>>(null);
+  // ── EPG: NOW + NEXT for a given channel ──────────────────────────────────────
+  const getNowNext = useCallback(
+    (ch: Channel): { now: EpgProgram | null; next: EpgProgram | null } => {
+      if (!epgMap) return { now: null, next: null };
+      const progs = epgMap.get(ch.epgId ?? ch.id) ?? [];
+      const idx = progs.findIndex(
+        (p) => p.start.getTime() <= nowTs && nowTs < p.end.getTime(),
+      );
+      return {
+        now:  idx >= 0 ? progs[idx]     ?? null : null,
+        next: idx >= 0 ? progs[idx + 1] ?? null : null,
+      };
+    },
+    [epgMap, nowTs],
+  );
+
+  // ── List ref + scroll management ──────────────────────────────────────────────
+  const listRef        = useRef<FlatList<Channel>>(null);
   const currentItemRef = useRef<any>(null);
 
   const scrollToCurrent = useCallback(() => {
     const idx = filtered.findIndex((ch) => ch.id === currentChannelId);
-    if (idx < 0) return;
-    listRef.current?.scrollToIndex({ index: idx, animated: false, viewPosition: 0.3 });
+    if (idx >= 0) {
+      listRef.current?.scrollToIndex({ index: idx, animated: false, viewPosition: 0.3 });
+    }
   }, [filtered, currentChannelId]);
 
-  // Scroll + focus current channel item on first load
+  // On initial data load: restore saved scroll offset or scroll to current channel.
   useEffect(() => {
     if (isLoading) return;
     const t = setTimeout(() => {
-      scrollToCurrent();
+      if (_savedScrollOffset > 0) {
+        listRef.current?.scrollToOffset({ offset: _savedScrollOffset, animated: false });
+      } else {
+        scrollToCurrent();
+      }
       if (Platform.isTV) {
-        setTimeout(() => (currentItemRef.current as any)?.focus?.(), 80);
+        setTimeout(() => (currentItemRef.current as any)?.focus?.(), 100);
       }
     }, 180);
     return () => clearTimeout(t);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoading]);
 
-  // Re-scroll when category/search changes
+  // When category or search changes: reset offset and scroll to current channel.
   useEffect(() => {
-    scrollToCurrent();
-  }, [scrollToCurrent]);
+    _savedScrollOffset = 0;
+    const t = setTimeout(() => scrollToCurrent(), 60);
+    return () => clearTimeout(t);
+  }, [selectedCat, searchText, scrollToCurrent]);
 
-  // ── EPG helper ───────────────────────────────────────────────────────────────
-  const getNow = useCallback(
-    (ch: Channel): EpgProgram | null => {
-      if (!epgMap) return null;
-      const progs = epgMap.get(ch.epgId ?? ch.id) ?? [];
-      return progs.find((p) => p.start.getTime() <= nowTs && nowTs < p.end.getTime()) ?? null;
-    },
-    [epgMap, nowTs],
-  );
+  // Persist scroll position as the viewer browses the list.
+  const onScroll = useCallback((e: any) => {
+    _savedScrollOffset = e.nativeEvent.contentOffset.y;
+  }, []);
 
-  // ── Fade-in on mount ─────────────────────────────────────────────────────────
+  // ── Fade-in on mount ──────────────────────────────────────────────────────────
   const fadeAnim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    Animated.timing(fadeAnim, { toValue: 1, duration: 200, useNativeDriver: true }).start();
+    Animated.timing(fadeAnim, { toValue: 1, duration: 180, useNativeDriver: true }).start();
   }, [fadeAnim]);
 
-  // ─── Category renderer ────────────────────────────────────────────────────────
+  // ─── Category row ─────────────────────────────────────────────────────────────
   const renderCategory = useCallback(
     ({ item }: { item: { id: string; label: string } }) => {
       const active = selectedCat === item.id;
@@ -231,23 +337,34 @@ export function LiveChannelMenu({
           onPress={() => setSelectedCat(item.id)}
         >
           {active && <View style={styles.catActiveBar} />}
-          <Text style={[styles.catLabel, active && styles.catLabelActive]} numberOfLines={2}>
+          <Text
+            style={[styles.catLabel, active && styles.catLabelActive]}
+            numberOfLines={2}
+          >
             {item.label}
           </Text>
         </FocusablePressable>
       );
     },
-    [selectedCat],
+    [selectedCat, setSelectedCat],
   );
 
-  // ─── Channel renderer ─────────────────────────────────────────────────────────
+  // ─── Channel row ──────────────────────────────────────────────────────────────
   const renderChannel = useCallback(
     ({ item: ch }: { item: Channel }) => {
-      const isCurrent = ch.id === currentChannelId;
-      const now = getNow(ch);
+      const isCurrent  = ch.id === currentChannelId;
+      const isFav      = favIds.has(ch.id);
+      const { now, next } = getNowNext(ch);
+
+      const progressPct = now
+        ? Math.min(100, Math.max(0,
+            (nowTs - now.start.getTime()) /
+            (now.end.getTime() - now.start.getTime()) * 100,
+          ))
+        : 0;
+
       return (
         <FocusablePressable
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           ref={isCurrent ? (currentItemRef as any) : undefined}
           style={[styles.chRow, isCurrent && styles.chRowCurrent]}
           focusedStyle={styles.chRowFocused}
@@ -256,22 +373,35 @@ export function LiveChannelMenu({
             onSelectChannel(toMenuEntry(ch), Math.max(0, idx), filteredEntries);
           }}
         >
+          {/* Active-channel left accent */}
           {isCurrent && <View style={styles.chCurrentBar} />}
 
           {/* Logo */}
           {ch.logo ? (
-            <Image source={{ uri: ch.logo }} style={styles.chLogo} contentFit="contain" cachePolicy="memory-disk" />
+            <Image
+              source={{ uri: ch.logo }}
+              style={styles.chLogo}
+              contentFit="contain"
+              cachePolicy="memory-disk"
+            />
           ) : (
             <View style={[styles.chLogo, styles.chLogoFallback]}>
-              <Text style={styles.chLogoLetter}>{(ch.name[0] ?? '?').toUpperCase()}</Text>
+              <Text style={styles.chLogoLetter}>
+                {(ch.name[0] ?? '?').toUpperCase()}
+              </Text>
             </View>
           )}
 
-          {/* Info */}
+          {/* Info column */}
           <View style={styles.chInfo}>
+
+            {/* Row 1: number · name · ★ · LIVE badge */}
             <View style={styles.chNameRow}>
-              {ch.num != null && <Text style={styles.chNum}>{ch.num}</Text>}
+              {ch.num != null && (
+                <Text style={styles.chNum}>{ch.num}</Text>
+              )}
               <Text style={styles.chName} numberOfLines={1}>{ch.name}</Text>
+              {isFav && <Text style={styles.chFavStar}>★</Text>}
               {isCurrent && (
                 <View style={styles.liveBadge}>
                   <View style={styles.liveDot} />
@@ -279,26 +409,62 @@ export function LiveChannelMenu({
                 </View>
               )}
             </View>
-            <Text style={styles.chNow} numberOfLines={1}>
-              {now
-                ? `${now.title}  ·  ${fmtTime(now.start)} – ${fmtTime(now.end)}`
-                : 'No programme info'}
-            </Text>
+
+            {/* Rows 2–4: EPG (NOW + progress + NEXT), or a soft placeholder */}
+            {now ? (
+              <>
+                {/* NOW: title + time range */}
+                <Text style={styles.chNowRow} numberOfLines={1}>
+                  <Text style={styles.epgLabelNow}>NOW  </Text>
+                  <Text style={styles.chNowTitle}>{now.title}</Text>
+                  <Text style={styles.chNowTime}>  {fmtTime(now.start)}–{fmtTime(now.end)}</Text>
+                </Text>
+
+                {/* Programme description (first line only, when available) */}
+                {!!now.description && (
+                  <Text style={styles.chNowDesc} numberOfLines={1}>
+                    {now.description}
+                  </Text>
+                )}
+
+                {/* Progress bar */}
+                <View style={styles.chProgTrack}>
+                  <View
+                    style={[styles.chProgFill, { width: `${progressPct}%` as any }]}
+                  />
+                </View>
+
+                {/* NEXT programme */}
+                {next && (
+                  <Text style={styles.chNextRow} numberOfLines={1}>
+                    <Text style={styles.epgLabelNext}>NEXT  </Text>
+                    <Text style={styles.chNextTitle}>{next.title}</Text>
+                    <Text style={styles.chNextTime}>  {fmtTime(next.start)}</Text>
+                  </Text>
+                )}
+              </>
+            ) : (
+              <Text style={styles.chNoEpg}>No programme data</Text>
+            )}
           </View>
         </FocusablePressable>
       );
     },
-    [currentChannelId, getNow, filteredEntries, onSelectChannel],
+    [currentChannelId, favIds, getNowNext, nowTs, filteredEntries, onSelectChannel],
   );
 
   const getItemLayout = useCallback(
-    (_: unknown, index: number) => ({ length: CH_ROW_H, offset: CH_ROW_H * index, index }),
+    (_: unknown, index: number) => ({
+      length: CH_ROW_H,
+      offset: CH_ROW_H * index,
+      index,
+    }),
     [],
   );
 
   const catLabel = categories.find((c) => c.id === selectedCat)?.label ?? 'Channels';
 
-  // ─── Render ───────────────────────────────────────────────────────────────────
+  // ─── Render ────────────────────────────────────────────────────────────────────
   return (
     <Animated.View style={[styles.overlay, { opacity: fadeAnim }]}>
       <View style={styles.panels}>
@@ -353,12 +519,27 @@ export function LiveChannelMenu({
           {/* Channel list */}
           {isLoading ? (
             <View style={styles.placeholder}>
-              <ActivityIndicator color="#00d4ff" size="large" />
+              <ActivityIndicator color={ACCENT} size="large" />
               <Text style={styles.placeholderText}>Loading channels…</Text>
             </View>
           ) : filtered.length === 0 ? (
             <View style={styles.placeholder}>
-              <Text style={styles.placeholderText}>No channels found</Text>
+              <Text style={styles.placeholderIcon}>
+                {selectedCat === CAT_FAV
+                  ? '★'
+                  : selectedCat === CAT_RECENT
+                  ? '🕐'
+                  : '📺'}
+              </Text>
+              <Text style={styles.placeholderText}>
+                {selectedCat === CAT_FAV
+                  ? 'No favourite channels yet'
+                  : selectedCat === CAT_RECENT
+                  ? 'No recently watched channels'
+                  : searchText.trim()
+                  ? 'No channels match your search'
+                  : 'No channels in this category'}
+              </Text>
             </View>
           ) : (
             <FlatList
@@ -369,11 +550,18 @@ export function LiveChannelMenu({
               getItemLayout={getItemLayout}
               showsVerticalScrollIndicator={false}
               windowSize={5}
-              maxToRenderPerBatch={15}
-              initialNumToRender={20}
+              maxToRenderPerBatch={12}
+              initialNumToRender={16}
+              onScroll={onScroll}
+              scrollEventThrottle={100}
               onScrollToIndexFailed={({ index }) => {
                 setTimeout(
-                  () => listRef.current?.scrollToIndex({ index, animated: false, viewPosition: 0.3 }),
+                  () =>
+                    listRef.current?.scrollToIndex({
+                      index,
+                      animated: false,
+                      viewPosition: 0.3,
+                    }),
                   300,
                 );
               }}
@@ -382,19 +570,19 @@ export function LiveChannelMenu({
         </View>
       </View>
 
-      {/* Keyboard hint */}
+      {/* Remote hint footer */}
       <View style={styles.footer}>
         <Text style={styles.footerHint}>
-          ◀ BACK — close menu     ·     OK — watch channel     ·     MENU — toggle
+          ◀ BACK — close menu  ·  OK — watch channel  ·  MENU — toggle
         </Text>
       </View>
     </Animated.View>
   );
 }
 
-// ─── Styles ───────────────────────────────────────────────────────────────────
-const ACCENT = '#00d4ff';
-const PANEL_BG = 'rgba(8, 8, 20, 0.97)';
+// ─── Styles ────────────────────────────────────────────────────────────────────
+const ACCENT    = '#00d4ff';
+const PANEL_BG  = 'rgba(8, 8, 20, 0.97)';
 
 const styles = StyleSheet.create({
   overlay: {
@@ -403,10 +591,7 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
     zIndex: 200,
   },
-  panels: {
-    flex: 1,
-    flexDirection: 'row',
-  },
+  panels: { flex: 1, flexDirection: 'row' },
 
   // ─ Category panel
   catPanel: {
@@ -429,10 +614,12 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     letterSpacing: 1.5,
+    flex: 1,
   },
   chCount: {
     color: 'rgba(255,255,255,0.35)',
     fontSize: 11,
+    marginLeft: 8,
   },
   catRow: {
     flexDirection: 'row',
@@ -440,7 +627,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
     minHeight: 48,
-    borderRadius: 0,
   },
   catRowActive: {
     backgroundColor: 'rgba(0,212,255,0.1)',
@@ -453,9 +639,7 @@ const styles = StyleSheet.create({
   },
   catActiveBar: {
     position: 'absolute',
-    left: 0,
-    top: 6,
-    bottom: 6,
+    left: 0, top: 8, bottom: 8,
     width: 3,
     backgroundColor: ACCENT,
     borderRadius: 2,
@@ -467,7 +651,7 @@ const styles = StyleSheet.create({
     paddingLeft: 6,
   },
   catLabelActive: {
-    color: '#ffffff',
+    color: '#fff',
     fontWeight: '600',
   },
 
@@ -513,6 +697,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     height: CH_ROW_H,
     paddingHorizontal: 14,
+    paddingVertical: 8,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255,255,255,0.05)',
   },
@@ -527,40 +712,56 @@ const styles = StyleSheet.create({
   },
   chCurrentBar: {
     position: 'absolute',
-    left: 0,
-    top: 8,
-    bottom: 8,
+    left: 0, top: 8, bottom: 8,
     width: 3,
     backgroundColor: ACCENT,
     borderRadius: 2,
   },
+
+  // Logo
   chLogo: {
-    width: 48,
-    height: 34,
-    borderRadius: 4,
-    marginRight: 12,
+    width: 52,
+    height: 46,
+    borderRadius: 6,
+    marginRight: 14,
     flexShrink: 0,
   },
   chLogoFallback: {
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: 'rgba(255,255,255,0.08)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  chLogoLetter: { color: 'rgba(255,255,255,0.7)', fontSize: 16, fontWeight: '700' },
-  chInfo: { flex: 1 },
-  chNameRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 3 },
+  chLogoLetter: {
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: 20,
+    fontWeight: '700',
+  },
+
+  // Info column
+  chInfo: { flex: 1, justifyContent: 'center', gap: 1 },
+
+  // Name row
+  chNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginBottom: 2,
+  },
   chNum: {
-    color: 'rgba(255,255,255,0.4)',
-    fontSize: 12,
-    fontWeight: '600',
-    marginRight: 6,
-    minWidth: 28,
+    color: 'rgba(255,255,255,0.35)',
+    fontSize: 11,
+    fontWeight: '700',
+    minWidth: 24,
   },
   chName: {
+    flex: 1,
     color: '#fff',
     fontSize: 14,
     fontWeight: '600',
-    flex: 1,
+  },
+  chFavStar: {
+    color: '#facc15',
+    fontSize: 13,
   },
   liveBadge: {
     flexDirection: 'row',
@@ -569,28 +770,73 @@ const styles = StyleSheet.create({
     borderRadius: 3,
     paddingHorizontal: 5,
     paddingVertical: 2,
-    marginLeft: 8,
   },
   liveDot: {
-    width: 5,
-    height: 5,
+    width: 5, height: 5,
     borderRadius: 3,
     backgroundColor: '#fff',
     marginRight: 4,
   },
-  liveLabel: { color: '#fff', fontSize: 9, fontWeight: '800', letterSpacing: 0.5 },
-  chNow: { color: 'rgba(255,255,255,0.45)', fontSize: 12 },
+  liveLabel: {
+    color: '#fff',
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+
+  // EPG rows
+  chNowRow: { lineHeight: 15 },
+  epgLabelNow: {
+    color: ACCENT,
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+  },
+  chNowTitle: { color: 'rgba(255,255,255,0.8)', fontSize: 11, fontWeight: '600' },
+  chNowTime:  { color: 'rgba(255,255,255,0.38)', fontSize: 10 },
+  chNowDesc:  { color: 'rgba(255,255,255,0.35)', fontSize: 10, lineHeight: 13 },
+
+  // Progress bar
+  chProgTrack: {
+    height: 3,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderRadius: 2,
+    marginVertical: 2,
+  },
+  chProgFill: {
+    height: 3,
+    backgroundColor: ACCENT,
+    borderRadius: 2,
+  },
+
+  // Next row
+  chNextRow: { lineHeight: 14 },
+  epgLabelNext: {
+    color: 'rgba(255,255,255,0.28)',
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+  },
+  chNextTitle: { color: 'rgba(255,255,255,0.45)', fontSize: 11 },
+  chNextTime:  { color: 'rgba(255,255,255,0.25)', fontSize: 10 },
+
+  chNoEpg: {
+    color: 'rgba(255,255,255,0.2)',
+    fontSize: 11,
+    fontStyle: 'italic',
+  },
 
   // ─ Placeholder / loading
   placeholder: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 16,
+    gap: 14,
   },
+  placeholderIcon: { fontSize: 36, opacity: 0.25 },
   placeholderText: { color: 'rgba(255,255,255,0.4)', fontSize: 14 },
 
-  // ─ Footer hint
+  // ─ Footer
   footer: {
     paddingVertical: 10,
     alignItems: 'center',
@@ -598,7 +844,7 @@ const styles = StyleSheet.create({
     borderTopColor: 'rgba(255,255,255,0.06)',
   },
   footerHint: {
-    color: 'rgba(255,255,255,0.3)',
+    color: 'rgba(255,255,255,0.28)',
     fontSize: 11,
     letterSpacing: 0.5,
   },
