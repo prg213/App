@@ -417,6 +417,10 @@ export default function PlayerScreen() {
   const audioChipRef = useRef<any>(null);
   const ccChipRef    = useRef<any>(null);
   const settingsChipRef = useRef<any>(null);
+  // OSD channel-nav buttons — D-pad left/right routes focus here when the OSD
+  // is user-invoked so the viewer can browse prev/next without zapping.
+  const prevChBtnRef = useRef<any>(null);
+  const nextChBtnRef = useRef<any>(null);
   // TV: refs for elements that get imperative focus instead of hasTVPreferredFocus
   // (hasTVPreferredFocus re-fires requestFocus on every re-render on Fire OS).
   const retryBtnRef       = useRef<any>(null);   // error-state retry button
@@ -1099,17 +1103,25 @@ export default function PlayerScreen() {
   }, [controlsOpacity]);
 
   // ── Android hardware back button (live TV only) ───────────────────────────
-  // Press 1: dismiss the controls bar if visible (Fire TV).
-  // Press 2: dismiss the info bar if visible.
-  // Press 3: collapse back to mini-player.
+  // Contextual priority so BACK always does the most-local thing first:
+  //   1. Close open picker modals (Audio / CC) — most local overlay
+  //   2. Dismiss the OSD info bar if user-invoked and visible
+  //   3. Dismiss the controls bar if visible (non-TV path)
+  //   4. Collapse back to mini-player / previous Live TV screen
+  // Each level returns true to consume the press; the next level only fires
+  // if the current one has nothing to close.
+  // Note: useBackHandler keeps handlerRef.current = handler on every render,
+  // so state values (showAudioPicker, showSubPicker) are always fresh.
   useBackHandler(() => {
-    if (showControlsRef.current) {
-      hideLiveControls();
-      return true; // consumed — do not navigate back
-    }
+    if (showAudioPicker) { setShowAudioPicker(false); return true; }
+    if (showSubPicker)   { setShowSubPicker(false);   return true; }
     if (showInfoRef.current) {
       dismissInfoBar();
-      return true; // consumed — do not navigate back
+      return true;
+    }
+    if (showControlsRef.current) {
+      hideLiveControls();
+      return true;
     }
     handleBackLive();
     return true;
@@ -2062,11 +2074,17 @@ export default function PlayerScreen() {
             </View>
           )}
 
-          {/* Row 4: Prev / Next channel navigation */}
+          {/* Row 4: Prev / Next channel navigation.
+              Shown on all platforms (including TV) so D-pad left/right can
+              route focus here when the OSD is user-pinned open. */}
           {(prevChannel || nextChannel) && (
             <View style={styles.chNavRow}>
               {prevChannel ? (
-                <FocusablePressable style={styles.chNavBtn} onPress={handlePrevChannel}>
+                <FocusablePressable
+                  ref={prevChBtnRef}
+                  style={styles.chNavBtn}
+                  onPress={handlePrevChannel}
+                >
                   <Text style={styles.chNavArrow}>‹</Text>
                   <Text style={styles.chNavLabel} numberOfLines={1}>{prevChannel.title}</Text>
                 </FocusablePressable>
@@ -2075,7 +2093,11 @@ export default function PlayerScreen() {
               )}
 
               {nextChannel ? (
-                <FocusablePressable style={[styles.chNavBtn, styles.chNavBtnRight]} onPress={handleNextChannel}>
+                <FocusablePressable
+                  ref={nextChBtnRef}
+                  style={[styles.chNavBtn, styles.chNavBtnRight]}
+                  onPress={handleNextChannel}
+                >
                   <Text style={styles.chNavLabel} numberOfLines={1}>{nextChannel.title}</Text>
                   <Text style={styles.chNavArrow}>›</Text>
                 </FocusablePressable>
@@ -2110,6 +2132,13 @@ export default function PlayerScreen() {
             onBlur={() => setTvZoneFocused(null)}
             onFocus={() => {
               setTvZoneFocused('left');
+              // OSD is user-pinned (viewer pressed OK to open it):
+              // Route D-pad LEFT into the OSD's prev-channel button so the
+              // viewer can navigate the overlay rather than triggering a zap.
+              if (infoBarUserInvokedRef.current && showInfoRef.current) {
+                setTimeout(() => (prevChBtnRef.current ?? tvCenterRef.current)?.focus?.(), 50);
+                return;
+              }
               if (!prevChannel || !tvNavReadyRef.current) {
                 // No previous channel or nav not yet settled — immediately bounce
                 // D-pad focus to center so the remote stays responsive.
@@ -2171,6 +2200,11 @@ export default function PlayerScreen() {
             onBlur={() => setTvZoneFocused(null)}
             onFocus={() => {
               setTvZoneFocused('right');
+              // OSD is user-pinned: route D-pad RIGHT to the next-channel button.
+              if (infoBarUserInvokedRef.current && showInfoRef.current) {
+                setTimeout(() => (nextChBtnRef.current ?? tvCenterRef.current)?.focus?.(), 50);
+                return;
+              }
               if (!nextChannel || !tvNavReadyRef.current) {
                 // No next channel or nav not yet settled — bounce focus to center.
                 setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 50);
