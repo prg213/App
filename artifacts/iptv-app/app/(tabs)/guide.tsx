@@ -2079,6 +2079,24 @@ function normalizeEpgId(s: string): string {
 //   reset for day-switches within a session.  No additional action is required here
 //   for the TV vertical or horizontal reset.
 
+// COLD-START SAFETY NOTE (phone / tablet path)
+// ─────────────────────────────────────────────
+// These are plain JS module-level variables — they live exclusively in the
+// Metro JS runtime heap and are NEVER written to AsyncStorage or any other
+// form of persistent storage.  When the user force-quits the app and
+// relaunches (a "cold-start"), the JS runtime is torn down and restarted from
+// scratch, so both variables are always initialised to 0 by the time the
+// GuideScreen first renders.  No explicit reset is needed on cold-start.
+//
+// The resetEpgScrollState() call inside doLogout() handles the *soft-logout*
+// path (user taps "Sign out" without force-quitting): the app stays in memory,
+// so the module variables survive; resetEpgScrollState() zeroes them so the
+// next login opens the guide at the current time slot rather than a stale
+// position from the previous session.
+//
+// To keep this guarantee intact, do NOT pass _epgScrollX or _epgScrollY
+// (or any derived key) to AsyncStorage.setItem / multiSet.  The CI guard
+// script scripts/check-epg-scroll-not-persisted.sh enforces this automatically.
 let _epgScrollX = 0;
 let _epgScrollY = 0;
 
@@ -2086,8 +2104,11 @@ let _epgScrollY = 0;
  * Resets the saved EPG scroll offsets to zero (phone / tablet ScrollView path).
  * Call on logout so the guide always opens at the current time on the next login.
  *
+ * Cold-start: no action needed — the JS runtime always initialises these module
+ * variables to 0 on launch (see the block comment above).
+ *
  * TV / Firestick: reset is handled automatically by component lifecycle — see the
- * block comment above.  This function only needs to clear the module-level
+ * block comment further above.  This function only needs to clear the module-level
  * _epgScrollX / _epgScrollY that are used by the non-TV ScrollView path.
  */
 export function resetEpgScrollState(): void {
