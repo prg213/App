@@ -216,6 +216,18 @@ export function TVLiveLayout({
   const renderChannel: ListRenderItem<Channel> = useCallback(({ item, index }) => {
     const nowProg = nowPlayingMap.get(item.epgId ?? item.id) ?? nowPlayingMap.get(item.id);
     const isHighlighted = highlightedChId === item.id;
+    const isPlaying = selectedChannel?.id === item.id;
+    // EPG progress for this channel's currently-airing programme
+    const epgProgs = epgMap?.get(item.epgId ?? item.id) ?? [];
+    const currentEpgProg = epgProgs.find(
+      (p) => p.start.getTime() <= nowTs && nowTs < p.end.getTime(),
+    );
+    const epgPct = currentEpgProg
+      ? Math.min(100, Math.max(0,
+          (nowTs - currentEpgProg.start.getTime()) /
+          (currentEpgProg.end.getTime() - currentEpgProg.start.getTime()) * 100,
+        ))
+      : null;
     return (
       <FocusablePressable
         ref={(node: View | null) => {
@@ -242,6 +254,15 @@ export function TVLiveLayout({
           setHighlightedChId(item.id);
         }}
       >
+        {/* Channel number */}
+        {item.num != null && (
+          <Text
+            style={[styles.chNum, { color: isHighlighted ? FOCUS_BORDER : colors.mutedForeground }]}
+            numberOfLines={1}
+          >
+            {item.num}
+          </Text>
+        )}
         {item.logo ? (
           <Image source={{ uri: item.logo }} style={styles.chLogo} resizeMode="contain" />
         ) : (
@@ -250,18 +271,33 @@ export function TVLiveLayout({
           </View>
         )}
         <View style={styles.chTextWrap}>
-          <Text style={[styles.chName, { color: colors.foreground }]} numberOfLines={1}>
-            {item.name}
-          </Text>
+          <View style={styles.chNameRow}>
+            <Text style={[styles.chName, { color: colors.foreground }]} numberOfLines={1}>
+              {item.name}
+            </Text>
+            {/* LIVE badge on the currently-playing channel */}
+            {isPlaying && (
+              <View style={styles.liveBadge}>
+                <View style={styles.liveDot} />
+                <Text style={styles.liveBadgeText}>LIVE</Text>
+              </View>
+            )}
+          </View>
           {nowProg ? (
             <Text style={[styles.chNow, { color: colors.mutedForeground }]} numberOfLines={1}>
               {nowProg}
             </Text>
           ) : null}
+          {/* EPG progress bar — how far through the current programme */}
+          {epgPct !== null && (
+            <View style={styles.chEpgBarBg}>
+              <View style={[styles.chEpgBarFill, { width: `${epgPct}%` as any }]} />
+            </View>
+          )}
         </View>
       </FocusablePressable>
     );
-  }, [highlightedChId, nowPlayingMap, colors, handleChFocus, onChannelSelect]);
+  }, [highlightedChId, nowPlayingMap, selectedChannel, epgMap, nowTs, colors, handleChFocus, onChannelSelect]);
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -363,20 +399,27 @@ export function TVLiveLayout({
                 </View>
               )}
 
-              <View style={styles.videoHintBar}>
-                <Text style={styles.videoHintText}>▶  OK to go full screen</Text>
-              </View>
             </FocusablePressable>
 
-            {/* Channel name + current programme info bar */}
+            {/* Channel name + current programme + progress bar */}
             <View style={[styles.infoBar, { backgroundColor: colors.card, borderTopColor: colors.border }]}>
               <Text style={[styles.infoChannelName, { color: colors.foreground }]} numberOfLines={1}>
                 {selectedChannel.name}
               </Text>
               {currentProg ? (
-                <Text style={[styles.infoProgName, { color: colors.mutedForeground }]} numberOfLines={1}>
-                  {fmtTime(currentProg.start)}–{fmtTime(currentProg.end)}  {currentProg.title}
-                </Text>
+                <>
+                  <Text style={[styles.infoProgName, { color: colors.mutedForeground }]} numberOfLines={1}>
+                    {fmtTime(currentProg.start)}–{fmtTime(currentProg.end)}  {currentProg.title}
+                  </Text>
+                  <View style={styles.previewProgBarBg}>
+                    <View style={[styles.previewProgBarFill, {
+                      width: `${Math.min(100, Math.max(0,
+                        (nowTs - currentProg.start.getTime()) /
+                        (currentProg.end.getTime() - currentProg.start.getTime()) * 100,
+                      ))}%` as any,
+                    }]} />
+                  </View>
+                </>
               ) : null}
             </View>
 
@@ -594,23 +637,6 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_500Medium',
   },
 
-  videoHintBar: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    alignItems: 'center',
-  },
-
-  videoHintText: {
-    color: 'rgba(255,255,255,0.7)',
-    fontSize: 11,
-    fontFamily: 'Inter_400Regular',
-  },
-
   infoBar: {
     paddingHorizontal: 12,
     paddingVertical: 8,
@@ -703,6 +729,76 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 12,
     fontFamily: 'Inter_400Regular',
+  },
+
+  // ── Channel number ──
+  chNum: {
+    fontSize: 11,
+    fontFamily: 'Inter_600SemiBold',
+    width: 26,
+    textAlign: 'right',
+    flexShrink: 0,
+    marginRight: 2,
+  },
+
+  // ── Channel name row (name + LIVE badge) ──
+  chNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flex: 1,
+  },
+
+  // ── LIVE badge on the currently-playing channel row ──
+  liveBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: '#EF4444',
+    borderRadius: 3,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    flexShrink: 0,
+  },
+  liveDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#fff',
+  },
+  liveBadgeText: {
+    color: '#fff',
+    fontSize: 9,
+    fontFamily: 'Inter_600SemiBold',
+    letterSpacing: 0.5,
+  },
+
+  // ── EPG progress bar on channel rows ──
+  chEpgBarBg: {
+    height: 2,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    borderRadius: 1,
+    marginTop: 4,
+    overflow: 'hidden',
+  },
+  chEpgBarFill: {
+    height: 2,
+    backgroundColor: '#00D4FF',
+    borderRadius: 1,
+  },
+
+  // ── Programme progress bar in the preview info panel ──
+  previewProgBarBg: {
+    height: 2,
+    backgroundColor: 'rgba(0,0,0,0.12)',
+    borderRadius: 1,
+    marginTop: 4,
+    overflow: 'hidden',
+  },
+  previewProgBarFill: {
+    height: 2,
+    backgroundColor: '#3B82F6',
+    borderRadius: 1,
   },
 
   // ── Focus ring (shared) ──

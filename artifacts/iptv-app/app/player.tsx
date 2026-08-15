@@ -47,7 +47,7 @@ const FITS = [
   { value: 'fill' as const, label: 'Stretch' },
 ];
 
-type ChannelEntry = { url: string; title: string; epgId: string; logo?: string; channelId?: string };
+type ChannelEntry = { url: string; title: string; epgId: string; logo?: string; channelId?: string; num?: number };
 
 function buildCreds(c: ReturnType<typeof useAppContext>['credentials']) {
   return { host: c!.host!, username: c!.username!, password: c!.password! };
@@ -317,6 +317,13 @@ export default function PlayerScreen() {
   const [activeTitle, setActiveTitle] = useState(params.title);
   const [activeLogo, setActiveLogo] = useState<string>(params.logo as string ?? '');
   const [activeEpgId, setActiveEpgId] = useState(params.epgId ?? '');
+  // Channel number shown in the fullscreen OSD — updates on every channel switch.
+  const [activeChannelNum, setActiveChannelNum] = useState<number | undefined>(
+    () => channelList[parseInt(params.channelIndex ?? '-1', 10)]?.num,
+  );
+  // Mutable ref to showInfoBar — lets switchChannel (declared before showInfoBar
+  // in this file) call it without a stale closure or circular hook dependency.
+  const showInfoBarRef = useRef<(() => void) | null>(null);
 
   const prevChannel = channelList.length > 0 && channelIdx > 0 ? channelList[channelIdx - 1] : null;
   const nextChannel = channelList.length > 0 && channelIdx < channelList.length - 1 ? channelList[channelIdx + 1] : null;
@@ -379,6 +386,8 @@ export default function PlayerScreen() {
   // Shown for ~1 s when the user presses D-pad left/right so they can see
   // which channel is coming before the stream actually switches.
   const [tvPreviewChannel, setTvPreviewChannel] = useState<ChannelEntry | null>(null);
+  /** Current EPG programme airing on the preview channel — shown on the zap card. */
+  const [tvPreviewNowProg, setTvPreviewNowProg] = useState<EpgProgram | null>(null);
   // Tracks which TV navigation zone (left / center / right) currently holds
   // D-pad focus so we can show a visible directional indicator.
   const [tvZoneFocused, setTvZoneFocused] = useState<'left' | 'center' | 'right' | null>(null);
@@ -916,6 +925,7 @@ export default function PlayerScreen() {
     setActiveTitle(entry.title);
     setActiveLogo(entry.logo ?? '');
     setActiveEpgId(entry.epgId);
+    setActiveChannelNum(entry.num);
     setActiveUrl(entry.url);   // keeps cast hook in sync with the new stream
     // Notify the Live TV tab so its mini-player title/logo stay in sync
     { const { DeviceEventEmitter } = require('react-native'); DeviceEventEmitter.emit('channel:switched', { url: entry.url, logo: entry.logo ?? '', title: entry.title }); }
@@ -927,6 +937,9 @@ export default function PlayerScreen() {
     // clean and focus returns to the centre zone via the channelIdx useEffect.
     setShowControls(false);
     controlsOpacity.setValue(0);
+    // Professional IPTV: always show OSD after a channel switch so the viewer
+    // immediately sees the new channel name and programme info.
+    if (isLive) showInfoBarRef.current?.();
     // Reset auto-reconnect counter on manual channel switch
     if (reconnectTimerRef.current) { clearTimeout(reconnectTimerRef.current); reconnectTimerRef.current = null; }
     setReconnectAttempt(0);
@@ -1285,15 +1298,26 @@ export default function PlayerScreen() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scheduleInfoHide]);
 
-  // Live TV (all platforms): start with the info bar hidden so the stream opens
-  // clean.  On TV the user presses OK to reveal it; on phone/tablet a tap shows
-  // it.  BACK / swipe-right dismisses it.  (showInfo defaults to true, so we
-  // need this effect to immediately zero it out on Live TV screens.)
+  // Live TV entry:
+  // • Firestick/TV — show OSD immediately for 6 s then auto-dismiss, so the
+  //   viewer always knows which channel they tuned to (professional IPTV standard).
+  // • Phone/tablet — start hidden; a tap reveals it.
   useEffect(() => {
     if (!isLive) return;
-    if (infoTimer.current) { clearTimeout(infoTimer.current); infoTimer.current = null; }
-    setShowInfo(false);
-    infoOpacity.setValue(0);
+    if (Platform.isTV) {
+      setShowInfo(true);
+      infoOpacity.setValue(1);
+      const t = setTimeout(() => {
+        Animated.timing(infoOpacity, { toValue: 0, duration: 400, useNativeDriver: true }).start();
+        setTimeout(() => setShowInfo(false), 420);
+      }, 6000);
+      infoTimer.current = t;
+      return () => clearTimeout(t);
+    } else {
+      if (infoTimer.current) { clearTimeout(infoTimer.current); infoTimer.current = null; }
+      setShowInfo(false);
+      infoOpacity.setValue(0);
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -1335,35 +1359,50 @@ export default function PlayerScreen() {
   const showInfoBar = useCallback(() => {
     setShowInfo(true);
     Animated.timing(infoOpacity, { toValue: 1, duration: 200, useNativeDriver: true }).start();
-    // Live TV (any platform): overlay stays until BACK/swipe — no auto-hide.
     if (!isLive) {
+      // VOD / catchup: auto-hide after 3 s.
       scheduleInfoHide();
+    } else if (Platform.isTV) {
+      // Firestick live: auto-dismiss after 6 s — professional IPTV standard.
+      // Each call (entry, OK press, channel switch) resets the timer.
+      if (infoTimer.current) clearTimeout(infoTimer.current);
+      infoTimer.current = setTimeout(() => {
+        Animated.timing(infoOpacity, { toValue: 0, duration: 400, useNativeDriver: true }).start();
+        setTimeout(() => setShowInfo(false), 420);
+      }, 6000);
     }
+    // Phone/tablet live: stays until BACK/swipe — no change.
   }, [infoOpacity, scheduleInfoHide, isLive]);
+  // Keep the ref current so switchChannel (declared above) can call showInfoBar.
+  showInfoBarRef.current = showInfoBar;
 
-  // Show the TV channel-switch preview overlay, then call onCommit after ~1 s.
+  // Show the TV channel-switch preview overlay, then call onCommit after 700 ms.
   // Only relevant on TV (Platform.isTV) — phone/tablet paths never call this.
   const showTvChannelPreview = useCallback((
     channel: ChannelEntry,
     dir: 'prev' | 'next',
     onCommit: () => void,
   ) => {
-    // Cancel any already-running preview timer
     if (tvPreviewTimerRef.current) { clearTimeout(tvPreviewTimerRef.current); tvPreviewTimerRef.current = null; }
+    // Look up the currently-airing EPG programme for the preview channel so we
+    // can show programme title and progress on the zap card.
+    const epgProgs = epgMap?.get(channel.epgId) ?? [];
+    const nowProg = epgProgs.find((p) => p.start.getTime() <= nowTs && nowTs < p.end.getTime()) ?? null;
     setTvPreviewChannel(channel);
     setTvPreviewDir(dir);
-    // Fade in quickly
+    setTvPreviewNowProg(nowProg);
     tvPreviewOpacity.setValue(0);
     Animated.timing(tvPreviewOpacity, { toValue: 1, duration: 150, useNativeDriver: true }).start();
-    // After 1 s fade out and commit the channel switch
+    // 700 ms preview before committing — professional IPTV standard (was 1 000 ms).
     tvPreviewTimerRef.current = setTimeout(() => {
       Animated.timing(tvPreviewOpacity, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => {
         setTvPreviewChannel(null);
         setTvPreviewDir(null);
+        setTvPreviewNowProg(null);
         onCommit();
       });
-    }, 1000);
-  }, [tvPreviewOpacity]);
+    }, 700);
+  }, [tvPreviewOpacity, epgMap, nowTs]);
 
   // ── Show VOD controls from TV remote (OK on idle catcher) ───────────────
   // Mirrors handleTap but designed for the D-pad: no showInfoBar (live-only),
@@ -1847,8 +1886,9 @@ export default function PlayerScreen() {
         </Animated.View>
       )}
 
-      {/* Back button + Cast button + Audio + CC for Live */}
-      {showControls && !isWeb && isLive && (
+      {/* Back button + Cast button + Audio + CC for Live — phone/tablet only.
+          On TV these chips live inside the OSD info bar; no separate bar needed. */}
+      {showControls && !isWeb && isLive && !Platform.isTV && (
         <Animated.View
           style={{ opacity: controlsOpacity, position: 'absolute', top: insets.top + 8, left: 0, right: 0, flexDirection: 'row', gap: 8, alignItems: 'center', paddingHorizontal: 16 }}
           pointerEvents="box-none"
@@ -1891,8 +1931,11 @@ export default function PlayerScreen() {
           style={[styles.infoBar, { paddingBottom: insets.bottom + 8, opacity: infoOpacity }]}
           pointerEvents="box-none"
         >
-          {/* Single compact row: LIVE pill + casting pill + channel name + NOW prog + time + back */}
+          {/* Single compact row: channel num + LIVE pill + logo + name + NOW + Audio/CC (TV) + back */}
           <View style={styles.infoTop}>
+            {activeChannelNum != null && (
+              <Text style={styles.infoChannelNum}>{activeChannelNum}</Text>
+            )}
             <View style={styles.livePill}>
               <View style={styles.liveDot} />
               <Text style={styles.liveText}>LIVE</Text>
@@ -1904,7 +1947,7 @@ export default function PlayerScreen() {
                 </Text>
               </View>
             )}
-            {activeSubtitleTrack !== null && (
+            {activeSubtitleTrack !== null && !Platform.isTV && (
               <View style={styles.ccActiveBadge}>
                 <Text style={styles.ccActiveBadgeText}>{ccLabel}</Text>
               </View>
@@ -1928,10 +1971,49 @@ export default function PlayerScreen() {
                 </Text>
               </>
             )}
+            {/* TV: Audio + CC chips inside the OSD so they're D-pad reachable */}
+            {Platform.isTV && (
+              <>
+                <FocusablePressable
+                  style={styles.infoOsdChip}
+                  focusedStyle={styles.infoOsdChipFocused}
+                  onFocus={() => showInfoBarRef.current?.()}
+                  onPress={() => setShowAudioPicker(true)}
+                >
+                  <Text style={styles.infoOsdChipText}>
+                    🎵 {activeAudioTrack?.label || activeAudioTrack?.language || 'Audio'}
+                  </Text>
+                </FocusablePressable>
+                <FocusablePressable
+                  style={[styles.infoOsdChip, activeSubtitleTrack !== null && styles.infoOsdChipActive]}
+                  focusedStyle={styles.infoOsdChipFocused}
+                  onFocus={() => showInfoBarRef.current?.()}
+                  onPress={() => setShowSubPicker(true)}
+                >
+                  <Text style={[styles.infoOsdChipText, activeSubtitleTrack !== null && styles.infoOsdChipTextActive]}>
+                    CC {activeSubtitleTrack ? `· ${(activeSubtitleTrack.language || '').toUpperCase()}` : ''}
+                  </Text>
+                </FocusablePressable>
+              </>
+            )}
             <FocusablePressable onPress={handleBackLive} style={styles.backBtnSmall}>
               <Text style={styles.backIcon}>←</Text>
             </FocusablePressable>
           </View>
+
+          {/* Programme progress bar — thin bar showing how far through the current show */}
+          {currentProg && (
+            <View style={styles.infoProgBarRow}>
+              <View style={styles.infoProgBarBg}>
+                <View style={[styles.infoProgBarFill, {
+                  width: `${Math.min(100, Math.max(0,
+                    (nowTs - currentProg.start.getTime()) /
+                    (currentProg.end.getTime() - currentProg.start.getTime()) * 100,
+                  ))}%` as any,
+                }]} />
+              </View>
+            </View>
+          )}
 
           {/* NEXT row — dimmed, compact */}
           {nextProg && (
@@ -2029,17 +2111,16 @@ export default function PlayerScreen() {
             onFocus={() => setTvZoneFocused('center')}
             onPress={() => {
               if (Platform.isTV) {
-                // On Fire TV: OK toggles info bar + controls overlay together.
-                // If either is visible, dismiss both so the next OK starts clean.
-                if (showControlsRef.current || showInfoRef.current) {
-                  hideLiveControls();
-                  if (showInfoRef.current) dismissInfoBar();
+                // Fire TV: OK toggles the OSD info bar.
+                // Audio/CC are now chips inside the info bar — the old separate
+                // controls bar is not shown on TV any more.
+                if (showInfoRef.current) {
+                  dismissInfoBar();
                 } else {
                   showInfoBar();
-                  showLiveControls();
                 }
               } else {
-                // On phone/tablet: just toggle the info bar (touch path).
+                // Phone/tablet: toggle info bar (touch path).
                 if (showInfo) { dismissInfoBar(); } else { showInfoBar(); }
               }
             }}
@@ -2099,7 +2180,7 @@ export default function PlayerScreen() {
           Only rendered on TV (Platform.isTV check is in the condition above). */}
       {Platform.isTV && isLive && !hasError && !isWeb && tvPreviewChannel && (
         <Animated.View
-          style={[styles.tvChannelPreview, { bottom: insets.bottom + 16, opacity: tvPreviewOpacity }]}
+          style={[styles.tvChannelPreview, { bottom: insets.bottom + 20, opacity: tvPreviewOpacity }]}
           pointerEvents="none"
         >
           <Text style={styles.tvPreviewArrow}>{tvPreviewDir === 'prev' ? '‹' : '›'}</Text>
@@ -2111,7 +2192,28 @@ export default function PlayerScreen() {
               cachePolicy="memory-disk"
             />
           )}
-          <Text style={styles.tvPreviewTitle} numberOfLines={1}>{tvPreviewChannel.title}</Text>
+          {/* Channel name + programme info column */}
+          <View style={styles.tvPreviewInfo}>
+            <View style={styles.tvPreviewChRow}>
+              {tvPreviewChannel.num != null && (
+                <Text style={styles.tvPreviewNum}>{tvPreviewChannel.num}</Text>
+              )}
+              <Text style={styles.tvPreviewTitle} numberOfLines={1}>{tvPreviewChannel.title}</Text>
+            </View>
+            {tvPreviewNowProg && (
+              <>
+                <Text style={styles.tvPreviewProgTitle} numberOfLines={1}>{tvPreviewNowProg.title}</Text>
+                <View style={styles.tvPreviewProgBg}>
+                  <View style={[styles.tvPreviewProgFill, {
+                    width: `${Math.min(100, Math.max(0,
+                      (nowTs - tvPreviewNowProg.start.getTime()) /
+                      (tvPreviewNowProg.end.getTime() - tvPreviewNowProg.start.getTime()) * 100,
+                    ))}%` as any,
+                  }]} />
+                </View>
+              </>
+            )}
+          </View>
         </Animated.View>
       )}
 
@@ -2783,12 +2885,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,
-    backgroundColor: 'rgba(0,0,0,0.80)',
+    backgroundColor: 'rgba(0,0,0,0.85)',
     borderRadius: 14,
     paddingHorizontal: 22,
     paddingVertical: 16,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.12)',
+    borderColor: 'rgba(255,255,255,0.15)',
   },
   tvPreviewArrow: {
     fontSize: 32,
@@ -2797,15 +2899,101 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   tvPreviewLogo: {
-    width: 52,
-    height: 36,
+    width: 56,
+    height: 38,
+    flexShrink: 0,
+  },
+  tvPreviewInfo: {
+    flex: 1,
+    gap: 4,
+  },
+  tvPreviewChRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 8,
+  },
+  tvPreviewNum: {
+    fontSize: 17,
+    fontFamily: 'Inter_600SemiBold',
+    color: 'rgba(255,255,255,0.50)',
     flexShrink: 0,
   },
   tvPreviewTitle: {
     flex: 1,
-    fontSize: 24,
+    fontSize: 22,
     fontFamily: 'Inter_700Bold',
     color: '#fff',
     letterSpacing: 0.2,
+  },
+  tvPreviewProgTitle: {
+    fontSize: 15,
+    fontFamily: 'Inter_400Regular',
+    color: 'rgba(255,255,255,0.65)',
+  },
+  tvPreviewProgBg: {
+    height: 3,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderRadius: 2,
+    overflow: 'hidden',
+    marginTop: 2,
+  },
+  tvPreviewProgFill: {
+    height: 3,
+    backgroundColor: '#00D4FF',
+    borderRadius: 2,
+  },
+
+  // ── OSD info bar — channel number ──
+  infoChannelNum: {
+    fontSize: 15,
+    fontFamily: 'Inter_700Bold',
+    color: 'rgba(255,255,255,0.55)',
+    marginRight: 4,
+    flexShrink: 0,
+  },
+
+  // ── OSD info bar — Audio/CC chips (TV only, inside the info bar) ──
+  infoOsdChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.18)',
+    flexShrink: 0,
+  },
+  infoOsdChipFocused: {
+    backgroundColor: 'rgba(0,212,255,0.20)',
+    borderColor: '#00D4FF',
+  },
+  infoOsdChipActive: {
+    backgroundColor: 'rgba(0,212,255,0.18)',
+    borderColor: '#00D4FF',
+  },
+  infoOsdChipText: {
+    color: '#fff',
+    fontSize: 12,
+    fontFamily: 'Inter_500Medium',
+  },
+  infoOsdChipTextActive: {
+    color: '#00D4FF',
+  },
+
+  // ── OSD info bar — programme progress bar ──
+  infoProgBarRow: {
+    paddingHorizontal: 16,
+    paddingTop: 4,
+    paddingBottom: 2,
+  },
+  infoProgBarBg: {
+    height: 3,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  infoProgBarFill: {
+    height: 3,
+    backgroundColor: '#00D4FF',
+    borderRadius: 2,
   },
 });

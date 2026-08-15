@@ -1084,6 +1084,7 @@ export default function LiveTVScreen() {
       epgId: ch.epgId ?? ch.id,
       logo: ch.logo ?? '',
       channelId: ch.id,
+      num: ch.num,
     }));
     const idx = channels.findIndex((ch) => ch.id === selectedChannel.id);
 
@@ -1119,6 +1120,7 @@ export default function LiveTVScreen() {
       epgId: c.epgId ?? c.id,
       logo: c.logo ?? '',
       channelId: c.id,
+      num: c.num,
     }));
     const idx = channels.findIndex((c) => c.id === ch.id);
 
