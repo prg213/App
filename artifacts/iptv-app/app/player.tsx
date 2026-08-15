@@ -530,7 +530,7 @@ export default function PlayerScreen() {
       }
     });
     return () => sub.remove();
-  }, [isLive, isWeb]); // eslint-disable-line react-hooks/exhaustive-deps — player declared after these effects; closure always has the current instance
+  }, [isLive, isWeb]); // eslint-disable-line react-hooks/exhaustive-deps -- player declared after these effects; closure always has the current instance
 
   // Keep hasErrorRef in sync with hasError state
   useEffect(() => { hasErrorRef.current = hasError; }, [hasError]);
@@ -584,7 +584,7 @@ export default function PlayerScreen() {
     }, 3000);
 
     return () => clearInterval(poll);
-  }, [isLive, isWeb, hasError, isReconnecting]); // eslint-disable-line react-hooks/exhaustive-deps — player declared after these effects; closure always has the current instance
+  }, [isLive, isWeb, hasError, isReconnecting]); // eslint-disable-line react-hooks/exhaustive-deps -- player declared after these effects; closure always has the current instance
 
   // #131: Always-current credentials ref so the async re-resolve closure reads
   // the latest value even though the statusChange listener is set up once.
@@ -622,7 +622,7 @@ export default function PlayerScreen() {
       try { player.replace(activeUrlRef.current); player.play(); } catch {}
     }, 10_000);
     return () => clearInterval(t);
-  }, [isLive, hasError, isWeb]); // eslint-disable-line react-hooks/exhaustive-deps — player declared after these effects; closure always has the current instance
+  }, [isLive, hasError, isWeb]); // eslint-disable-line react-hooks/exhaustive-deps -- player declared after these effects; closure always has the current instance
 
   // Refs so interval / unmount callbacks can read latest values without stale closures
   const currentTimeRef = useRef(0);

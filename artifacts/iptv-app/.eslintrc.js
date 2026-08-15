@@ -26,6 +26,7 @@
  *     pnpm add -D --filter @workspace/iptv-app eslint @typescript-eslint/parser
  *
  *   Then run:  pnpm --filter @workspace/iptv-app exec eslint .
+ *   Or via the npm script:  pnpm --filter @workspace/iptv-app run lint
  */
 
 module.exports = {
@@ -36,6 +37,12 @@ module.exports = {
     sourceType: 'module',
     ecmaFeatures: { jsx: true },
   },
+  // Plugins are declared so that inline eslint-disable comments referencing
+  // their rules (e.g. react-hooks/exhaustive-deps, @typescript-eslint/no-unused-vars)
+  // are recognised and don't produce "Definition for rule not found" errors.
+  // The rules themselves are not enabled here — this config's sole purpose is
+  // the AsyncStorage write ban below.
+  plugins: ['react-hooks', '@typescript-eslint'],
   overrides: [
     {
       // Apply the ban to every app source file EXCEPT services/storage.ts,
