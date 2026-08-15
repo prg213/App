@@ -18,6 +18,8 @@ import {
   View,
 } from 'react-native';
 import { FocusablePressable } from '@/components/FocusablePressable';
+import { LiveChannelMenu } from '@/components/LiveChannelMenu';
+import type { MenuChannelEntry } from '@/components/LiveChannelMenu';
 import * as Network from 'expo-network';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useVideoPlayer, VideoView } from 'expo-video';
@@ -307,11 +309,15 @@ export default function PlayerScreen() {
   const xmltvUrl = isXtream ? getXtreamXmltvUrl(buildCreds(credentials)) : null;
 
   // ── Channel list for prev/next navigation ────────────────────────────────
-  const channelList = useMemo<ChannelEntry[]>(() => {
+  // Mutable state so the channel-menu can update the zap list when the viewer
+  // picks a channel from a different category (keeps prev/next consistent).
+  const [channelList, setChannelList] = useState<ChannelEntry[]>(() => {
     try { return JSON.parse(params.channelsJson ?? '[]'); } catch { return []; }
-  }, [params.channelsJson]);
+  });
 
   const [channelIdx, setChannelIdx] = useState(() => parseInt(params.channelIndex ?? '-1'));
+  // Derived ID for the currently-playing channel — updates when zapping.
+  const activeChannelId = channelList[channelIdx]?.channelId ?? (params.channelId as string | undefined) ?? '';
 
   // Active channel state — updates when navigating prev/next
   const [activeTitle, setActiveTitle] = useState(params.title);
@@ -379,6 +385,10 @@ export default function PlayerScreen() {
   // Ref so BackHandler closure can read showControls without going stale
   const showControlsRef = useRef(false);
   useEffect(() => { showControlsRef.current = showControls; }, [showControls]);
+  // ── Channel menu overlay (TV Live TV only) ────────────────────────────────
+  const [showChannelMenu, setShowChannelMenu] = useState(false);
+  const showChannelMenuRef = useRef(false);
+  useEffect(() => { showChannelMenuRef.current = showChannelMenu; }, [showChannelMenu]);
   // Ref to block spurious onFocus channel-switch on initial TV mount
   const tvNavReadyRef = useRef(false);
   const tvCenterRef = useRef<View>(null);
@@ -1104,15 +1114,18 @@ export default function PlayerScreen() {
 
   // ── Android hardware back button (live TV only) ───────────────────────────
   // Contextual priority so BACK always does the most-local thing first:
-  //   1. Close open picker modals (Audio / CC) — most local overlay
-  //   2. Dismiss the OSD info bar if user-invoked and visible
-  //   3. Dismiss the controls bar if visible (non-TV path)
-  //   4. Collapse back to mini-player / previous Live TV screen
-  // Each level returns true to consume the press; the next level only fires
+  //   1. Channel menu open         → close menu
+  //   2. Audio / CC picker open    → close picker
+  //   3. OSD info bar visible      → dismiss info bar
+  //   4. Controls bar visible      → dismiss controls bar
+  //   5. Nothing open              → collapse to mini-player
+  // Each level consumes the press (returns true); the next level only fires
   // if the current one has nothing to close.
   // Note: useBackHandler keeps handlerRef.current = handler on every render,
-  // so state values (showAudioPicker, showSubPicker) are always fresh.
+  // so all state values (showChannelMenu, showAudioPicker, showSubPicker)
+  // are always fresh — no stale closure issues.
   useBackHandler(() => {
+    if (showChannelMenuRef.current) { setShowChannelMenu(false); return true; }
     if (showAudioPicker) { setShowAudioPicker(false); return true; }
     if (showSubPicker)   { setShowSubPicker(false);   return true; }
     if (showInfoRef.current) {
@@ -1275,7 +1288,42 @@ export default function PlayerScreen() {
       if (eventKeyAction !== 1 || isLive) return;
       seek(-30);
     },
+    // Menu / hamburger button → toggle the channel browser overlay.
+    // Opening: close OSD first so the full screen is available for the menu.
+    // Closing: menu mounts/unmounts, focus restores to center zone via the
+    // existing useEffect([channelIdx]) focus mechanism.
+    onMenu: ({ eventKeyAction }) => {
+      if (eventKeyAction !== 1 || !isLive) return;
+      if (showChannelMenuRef.current) {
+        setShowChannelMenu(false);
+      } else {
+        if (showInfoRef.current) dismissInfoBar();
+        setShowChannelMenu(true);
+      }
+    },
   });
+
+  // ── Channel menu: select channel + update zap list ───────────────────────
+  // Called when the viewer picks a channel from the LiveChannelMenu overlay.
+  // Updates the zap list (so prev/next navigation reflects the menu's filter)
+  // then switches the stream without leaving the player.
+  const handleMenuSelectChannel = useCallback(
+    (entry: MenuChannelEntry, idx: number, newList: MenuChannelEntry[]) => {
+      // Convert MenuChannelEntry[] → ChannelEntry[] (same shape, separate type)
+      const asEntries: ChannelEntry[] = newList.map((e) => ({
+        url: e.url,
+        title: e.title,
+        epgId: e.epgId,
+        logo: e.logo,
+        channelId: e.channelId,
+        num: e.num,
+      }));
+      setChannelList(asEntries);
+      switchChannel(asEntries[idx] ?? { url: entry.url, title: entry.title, epgId: entry.epgId }, idx);
+      setShowChannelMenu(false);
+    },
+    [switchChannel],
+  );
 
   // ── Pause local playback while casting (device becomes the remote) ────────
   useEffect(() => {
@@ -2499,6 +2547,19 @@ export default function PlayerScreen() {
           </ScrollView>
         </View>
       </Modal>
+      {/* ── Live TV Channel Menu (TV only) ──────────────────────────────────
+          Opened by the Menu/hamburger button on the Firestick remote.
+          Renders on top of all other overlays; BACK closes it. */}
+      {showChannelMenu && Platform.isTV && isLive && !isWeb && (
+        <LiveChannelMenu
+          currentChannelId={activeChannelId}
+          epgMap={epgMap}
+          nowTs={Date.now()}
+          onSelectChannel={handleMenuSelectChannel}
+          onClose={() => setShowChannelMenu(false)}
+        />
+      )}
+
     </View>
   );
 }
