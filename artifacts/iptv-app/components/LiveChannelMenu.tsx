@@ -53,6 +53,19 @@ let _savedSearch       = '';
 let _savedScrollOffset = 0;
 let _autoSelected      = false;   // true once we've done the initial auto-select
 
+/**
+ * Resets all module-level channel browser state to its initial defaults.
+ * Must be called on logout / account switch so the next login behaves as if
+ * the browser was opened for the first time (auto-selects the current
+ * channel's category, no stale search text or scroll offset).
+ */
+export function resetChannelMenuState(): void {
+  _savedCat          = CAT_ALL;
+  _savedSearch       = '';
+  _savedScrollOffset = 0;
+  _autoSelected      = false;
+}
+
 // ─── Fixed row height — required for getItemLayout ────────────────────────────
 const CH_ROW_H = 84;
 

@@ -5,6 +5,7 @@ import { StorageService } from '@/services/storage';
 import { clearTmdbTrailerCache } from '@/services/tmdb';
 import { clearReminderRefreshCache } from '@/services/reminderUrlCache';
 import { resetSessionPushFailures } from '@/services/favoritesSync';
+import { resetChannelMenuState } from '@/components/LiveChannelMenu';
 import type { Credentials } from '@/types';
 
 export type LogoutReason = 'deactivated' | null;
@@ -100,6 +101,7 @@ export function AppContextProvider({ children }: { children: React.ReactNode }) 
     clearTmdbTrailerCache();
     clearReminderRefreshCache(); // #126: reset backfill gate so fresh credentials always get a new URL check
     resetSessionPushFailures(); // #23: new login gets a clean failure counter
+    resetChannelMenuState(); // #390: clear stale category/search/scroll so next login auto-selects fresh
     setCredentials(null);
     setIsActivated(false);
     isActivatedRef.current = false;
