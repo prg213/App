@@ -388,6 +388,20 @@ export default function PlayerScreen() {
   // Ref so BackHandler closure can read showInfo without going stale
   const showInfoRef = useRef(true);
   useEffect(() => { showInfoRef.current = showInfo; }, [showInfo]);
+
+  // Picker-open refs — used by the OSD auto-dismiss timer to avoid hiding the
+  // info bar while a picker is still on screen.  Doing so would unmount the
+  // Audio / CC chips that the picker's close-path tries to re-focus, stranding
+  // D-pad focus on TV.  The useEffect syncs are placed after the showAudioPicker
+  // / showSubPicker useState declarations further below to satisfy TS TDZ rules.
+  const showAudioPickerRef = useRef(false);
+  const showSubPickerRef   = useRef(false);
+
+  // Trailing hide-timer for dismissInfoBar — stored so showInfoBar can cancel
+  // it if the user re-opens the OSD during the 320 ms fade-out window.
+  // Without this, setShowInfo(false) fires after showInfoBar already set it
+  // true, immediately collapsing the bar the user just opened.
+  const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Ref so BackHandler closure can read showControls without going stale
   const showControlsRef = useRef(false);
   useEffect(() => { showControlsRef.current = showControls; }, [showControls]);
@@ -428,6 +442,9 @@ export default function PlayerScreen() {
   const [showSettings, setShowSettings] = useState(false);
   const [showAudioPicker, setShowAudioPicker] = useState(false);
   const [showSubPicker, setShowSubPicker] = useState(false);
+  // Sync picker-open refs declared above (after state to satisfy TS TDZ rules).
+  useEffect(() => { showAudioPickerRef.current = showAudioPicker; }, [showAudioPicker]);
+  useEffect(() => { showSubPickerRef.current   = showSubPicker;   }, [showSubPicker]);
   // Refs to the chip buttons that open each picker — used to restore D-pad
   // focus after the picker modal closes on Firestick/Android TV.
   const audioChipRef = useRef<any>(null);
@@ -1131,8 +1148,16 @@ export default function PlayerScreen() {
   const dismissInfoBar = useCallback(() => {
     infoBarUserInvokedRef.current = false;
     if (infoTimer.current) { clearTimeout(infoTimer.current); infoTimer.current = null; }
+    // Cancel any previously-scheduled trailing hide before scheduling a new one.
+    // This prevents double-scheduling if dismissInfoBar is called twice quickly.
+    if (dismissTimerRef.current) { clearTimeout(dismissTimerRef.current); dismissTimerRef.current = null; }
     Animated.timing(infoOpacity, { toValue: 0, duration: 300, useNativeDriver: true }).start();
-    setTimeout(() => setShowInfo(false), 320);
+    // Track the trailing timer so showInfoBar can cancel it if the user
+    // re-opens the OSD during the fade window.
+    dismissTimerRef.current = setTimeout(() => {
+      dismissTimerRef.current = null;
+      setShowInfo(false);
+    }, 320);
     // TV: restore D-pad focus to the centre zone after the OSD fades out.
     // Chips and buttons inside the bar unmount after 320 ms; without an
     // explicit focus call the native view system can leave focus undefined,
@@ -1179,8 +1204,19 @@ export default function PlayerScreen() {
   // are always fresh — no stale closure issues.
   useBackHandler(() => {
     if (showChannelMenuRef.current) { setShowChannelMenu(false); return true; }
-    if (showAudioPicker) { setShowAudioPicker(false); return true; }
-    if (showSubPicker)   { setShowSubPicker(false);   return true; }
+    if (showAudioPicker) {
+      setShowAudioPicker(false);
+      // TV: the picker Modal intercepts BACK before onRequestClose fires, so
+      // the Modal's own focus-restore is never reached.  Explicitly return
+      // focus to the centre zone so the remote doesn't go silent after close.
+      if (Platform.isTV) setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 150);
+      return true;
+    }
+    if (showSubPicker) {
+      setShowSubPicker(false);
+      if (Platform.isTV) setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 150);
+      return true;
+    }
     if (showInfoRef.current) {
       dismissInfoBar();
       return true;
@@ -1526,6 +1562,10 @@ export default function PlayerScreen() {
    */
   const showInfoBar = useCallback((userInvoked = false) => {
     infoBarUserInvokedRef.current = userInvoked;
+    // Cancel any in-flight trailing hide from a recent dismiss so the bar
+    // can't vanish immediately after the user re-opens it during the 320 ms
+    // fade-out window of a previous dismissInfoBar call.
+    if (dismissTimerRef.current) { clearTimeout(dismissTimerRef.current); dismissTimerRef.current = null; }
     setShowInfo(true);
     Animated.timing(infoOpacity, { toValue: 1, duration: 200, useNativeDriver: true }).start();
     if (!isLive) {
@@ -1538,13 +1578,29 @@ export default function PlayerScreen() {
         if (infoTimer.current) { clearTimeout(infoTimer.current); infoTimer.current = null; }
       } else {
         // Auto-show (entry or channel switch): dismiss after 5 s.
-        // The guard inside the callback prevents dismissal if the user pressed
-        // OK between now and the timer firing (switching to manual mode).
+        // Two guards inside the callback prevent premature dismissal:
+        //   1. infoBarUserInvokedRef — user pressed OK and pinned the bar.
+        //   2. showAudioPickerRef / showSubPickerRef — a picker is open.
+        //      The Audio / CC chips that the picker's close-path re-focuses
+        //      live inside this bar.  Dismissing while a picker is on screen
+        //      unmounts those chips, causing D-pad focus to be lost on close.
+        //      When the picker eventually closes the timer is already gone, so
+        //      the bar stays visible long enough for the user to see it.
         if (infoTimer.current) clearTimeout(infoTimer.current);
         infoTimer.current = setTimeout(() => {
-          if (!infoBarUserInvokedRef.current) {
+          if (
+            !infoBarUserInvokedRef.current &&
+            !showAudioPickerRef.current &&
+            !showSubPickerRef.current
+          ) {
             Animated.timing(infoOpacity, { toValue: 0, duration: 400, useNativeDriver: true }).start();
-            setTimeout(() => setShowInfo(false), 420);
+            if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
+            dismissTimerRef.current = setTimeout(() => {
+              dismissTimerRef.current = null;
+              setShowInfo(false);
+            }, 420);
+            // Restore TV focus after the bar fully unmounts.
+            setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 450);
           }
         }, 5000);
       }
@@ -2567,11 +2623,24 @@ export default function PlayerScreen() {
         }}
         onRequestClose={() => {
           setShowAudioPicker(false);
-          // Return D-pad focus to the chip that opened this picker
-          setTimeout(() => audioChipRef.current?.focus(), 150);
+          // On TV: return to the centre zone (the chip may be unmounted if the
+          // OSD was dismissed; centre is always safe).  On mobile: chip ref.
+          if (Platform.isTV) {
+            setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 150);
+          } else {
+            setTimeout(() => audioChipRef.current?.focus(), 150);
+          }
         }}
       >
-        <Pressable style={styles.settingsBackdrop} focusable={false} accessible={false} onPress={() => setShowAudioPicker(false)} />
+        <Pressable
+          style={styles.settingsBackdrop}
+          focusable={false}
+          accessible={false}
+          onPress={() => {
+            setShowAudioPicker(false);
+            if (Platform.isTV) setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 150);
+          }}
+        />
         <View style={[styles.settingsSheet, { paddingBottom: insets.bottom + 16 }]} accessibilityViewIsModal={true}>
           <View style={styles.settingsHandle} />
           <Text style={styles.settingsTitle}>Audio Track</Text>
@@ -2604,7 +2673,13 @@ export default function PlayerScreen() {
                         }
                       } catch {}
                       setShowAudioPicker(false);
-                      setTimeout(() => audioChipRef.current?.focus(), 150);
+                      // TV: return to centre zone (the chip lives inside the
+                      // OSD bar which may auto-dismiss; centre is always safe).
+                      if (Platform.isTV) {
+                        setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 150);
+                      } else {
+                        setTimeout(() => audioChipRef.current?.focus(), 150);
+                      }
                     }}
                   >
                     <Text style={[styles.chipText, isActive && styles.chipTextActive]}>{label}</Text>
@@ -2626,10 +2701,22 @@ export default function PlayerScreen() {
         }}
         onRequestClose={() => {
           setShowSubPicker(false);
-          setTimeout(() => ccChipRef.current?.focus(), 150);
+          if (Platform.isTV) {
+            setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 150);
+          } else {
+            setTimeout(() => ccChipRef.current?.focus(), 150);
+          }
         }}
       >
-        <Pressable style={styles.settingsBackdrop} focusable={false} accessible={false} onPress={() => setShowSubPicker(false)} />
+        <Pressable
+          style={styles.settingsBackdrop}
+          focusable={false}
+          accessible={false}
+          onPress={() => {
+            setShowSubPicker(false);
+            if (Platform.isTV) setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 150);
+          }}
+        />
         <View style={[styles.settingsSheet, { paddingBottom: insets.bottom + 16 }]} accessibilityViewIsModal={true}>
           <View style={styles.settingsHandle} />
           <Text style={styles.settingsTitle}>Subtitles / CC</Text>
@@ -2650,7 +2737,11 @@ export default function PlayerScreen() {
                     StorageService.clearPrefSubtitleLang().catch(() => {});
                   } catch {}
                   setShowSubPicker(false);
-                  setTimeout(() => ccChipRef.current?.focus(), 150);
+                  if (Platform.isTV) {
+                    setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 150);
+                  } else {
+                    setTimeout(() => ccChipRef.current?.focus(), 150);
+                  }
                 }}
               >
                 <Text style={[styles.chipText, activeSubtitleTrack === null && styles.chipTextActive]}>Off</Text>
@@ -2674,7 +2765,11 @@ export default function PlayerScreen() {
                         if (track.language) StorageService.setPrefSubtitleLang(track.language).catch(() => {});
                       } catch {}
                       setShowSubPicker(false);
-                      setTimeout(() => ccChipRef.current?.focus(), 150);
+                      if (Platform.isTV) {
+                        setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 150);
+                      } else {
+                        setTimeout(() => ccChipRef.current?.focus(), 150);
+                      }
                     }}
                   >
                     <Text style={[styles.chipText, isActive && styles.chipTextActive]}>{label}</Text>
