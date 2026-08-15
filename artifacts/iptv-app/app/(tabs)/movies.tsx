@@ -159,11 +159,7 @@ export default function MoviesScreen() {
 
   // Persist sort order across sessions
   useEffect(() => {
-    import('@react-native-async-storage/async-storage').then(({ default: AS }) =>
-      AS.getItem('@pref_movie_sort').then((v) => {
-        if (v === 'name' || v === 'rating' || v === 'newest') setSortOrder(v as 'newest' | 'name' | 'rating');
-      })
-    );
+    StorageService.getPrefMovieSort().then((v) => { if (v) setSortOrder(v); });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -245,9 +241,7 @@ export default function MoviesScreen() {
       const next = s === 'newest' ? 'name' : s === 'name' ? 'rating' : 'newest';
       const label = next === 'newest' ? 'Newest first' : next === 'name' ? 'Name A–Z' : 'Top rated';
       setSortToast(label);
-      import('@react-native-async-storage/async-storage').then(({ default: AS }) =>
-        AS.setItem('@pref_movie_sort', next)
-      );
+      StorageService.setPrefMovieSort(next).catch(() => {});
       return next;
     });
   }, []);

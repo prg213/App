@@ -144,6 +144,16 @@ export function makeStorageMock(
     addRecentSearch:           jest.fn().mockResolvedValue(undefined),
     clearRecentSearches:       jest.fn().mockResolvedValue(undefined),
     removeRecentSearch:        jest.fn().mockResolvedValue(undefined),
+
+    // ── UI preferences (device-scoped, not cleared on logout) ────────────────
+    getPrefMovieSort:          jest.fn().mockResolvedValue(null),
+    setPrefMovieSort:          jest.fn().mockResolvedValue(undefined),
+    getPrefSeriesSort:         jest.fn().mockResolvedValue(null),
+    setPrefSeriesSort:         jest.fn().mockResolvedValue(undefined),
+    getPrefLiveCat:            jest.fn().mockResolvedValue(null),
+    setPrefLiveCat:            jest.fn().mockResolvedValue(undefined),
+    getPrefPlaybackSpeed:      jest.fn().mockResolvedValue(null),
+    setPrefPlaybackSpeed:      jest.fn().mockResolvedValue(undefined),
   };
 
   return { ...base, ...overrides } as jest.Mocked<StorageServiceShape>;

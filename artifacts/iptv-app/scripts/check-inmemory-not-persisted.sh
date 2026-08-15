@@ -49,7 +49,8 @@ echo "=== Self-test: verifying detector catches all known violation categories =
 # Capture the detector's output (it should exit 1 on the fixture)
 FIXTURE_OUTPUT=$(python3 "${PY}" --scan-dir "${FIXTURE_DIR}" 2>&1 || true)
 
-# The 7 expected category labels (must match the keys in FORBIDDEN dict)
+# The 7 forbidden-identifier categories (must match the keys in FORBIDDEN dict).
+# These are verified in both Phase A (direct inline) and Phase B (pre-computed).
 EXPECTED_CATEGORIES=(
   "EPG scroll offsets"
   "EPG filter state"
@@ -58,6 +59,12 @@ EXPECTED_CATEGORIES=(
   "Zap-list/channel index"
   "In-memory caches"
   "Session push-failure counter"
+)
+
+# Dynamic-key detection is a structural check (not a FORBIDDEN identifier
+# match), so it only applies to Phase A (no pre-computed-variable variant).
+DYNAMIC_KEY_CATEGORIES=(
+  "Dynamic-key writes"
 )
 
 SELFTEST_FAILED=0
@@ -86,10 +93,22 @@ for cat in "${EXPECTED_CATEGORIES[@]}"; do
   fi
 done
 
+# ── Phase C: dynamic-key detection (Phase A only — no precomputed variant) ──
+echo ""
+echo "Phase C — dynamic-key violation detection:"
+for cat in "${DYNAMIC_KEY_CATEGORIES[@]}"; do
+  if echo "${FIXTURE_OUTPUT}" | grep -qF "[${cat}]"; then
+    echo "  ✓ ${cat}"
+  else
+    echo "  ✗ MISSING: ${cat}"
+    SELFTEST_FAILED=1
+  fi
+done
+
 if [[ "${SELFTEST_FAILED}" -eq 1 ]]; then
   echo ""
   echo "SELF-TEST FAILED: one or more violation categories were not detected"
-  echo "  (direct or pre-computed) in the fixture: ${FIXTURE_DIR}"
+  echo "  in the fixture: ${FIXTURE_DIR}"
   echo "  The detector is broken — fix check-inmemory-not-persisted.py and"
   echo "  update the fixture before trusting the guard for real source scans."
   echo ""
@@ -107,7 +126,8 @@ if python3 "${PY}" --scan-dir "${FIXTURE_DIR}" > /dev/null 2>&1; then
 fi
 
 echo ""
-echo "Self-test passed — all 7 categories detected (direct + pre-computed)."
+echo "Self-test passed — all 8 categories detected (7 forbidden-identifier"
+echo "  categories in Phase A + Phase B; Dynamic-key writes in Phase C)."
 echo ""
 
 # ---------------------------------------------------------------------------

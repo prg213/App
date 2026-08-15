@@ -485,12 +485,7 @@ export default function PlayerScreen() {
   useEffect(() => {
     StorageService.getPrefAudioLanguage().then(setPrefAudioLang).catch(() => {});
     StorageService.getPrefSubtitleLang().then(setPrefSubtitleLang).catch(() => {}); // #43
-    import('@react-native-async-storage/async-storage').then(({ default: AS }) =>
-      AS.getItem('@pref_playback_speed').then((v) => {
-        const n = v ? parseFloat(v) : NaN;
-        if (!isNaN(n) && n > 0) setSpeed(n);
-      })
-    ).catch(() => {});
+    StorageService.getPrefPlaybackSpeed().then((v) => { if (v !== null) setSpeed(v); }).catch(() => {});
   }, []);
 
   // ── AppState — background suppression (#31) + foreground retry (#30) ─────
@@ -1126,9 +1121,7 @@ export default function PlayerScreen() {
     // channelsJson so prev/next navigation (#350) can coexist with the Back
     // handoff when both params are present.
     if (params.groupTitle && (params.fromHome === 'true' || !params.channelsJson)) {
-      import('@react-native-async-storage/async-storage').then(({ default: AS }) => {
-        AS.setItem('@pref_live_cat', params.groupTitle!).catch(() => {});
-      });
+      StorageService.setPrefLiveCat(params.groupTitle!).catch(() => {});
       // Tell the Live TV tab to show this channel in the mini-player BEFORE
       // triggerCollapse runs.  The mini-player has display:none when
       // playingChannel is null, so measureInWindow returns zeros and the
@@ -2863,9 +2856,7 @@ export default function PlayerScreen() {
                 onPress={() => {
                   setSpeed(s);
                   player.playbackRate = s;
-                  import('@react-native-async-storage/async-storage').then(({ default: AS }) =>
-                    AS.setItem('@pref_playback_speed', String(s))
-                  ).catch(() => {});
+                  StorageService.setPrefPlaybackSpeed(s).catch(() => {});
                 }}
               >
                 <Text style={[styles.chipText, speed === s && styles.chipTextActive]}>

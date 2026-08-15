@@ -43,6 +43,18 @@ export const KEYS = {
   PENDING_PUSH_SERIES: 'sv_pending_push_series',
 };
 
+// Device-scoped UI preferences — intentionally NOT cleared on logout so the
+// app feels familiar on re-login (sort order, last category, playback speed).
+// Kept separate from KEYS so clearCredentials.test.ts does not require them
+// to be wiped; they are verified by their own typed wrappers in StorageService.
+// Uses @pref_* namespace (not sv_*) to make the non-user-data intent obvious.
+export const DEVICE_PREF_KEYS = {
+  PREF_MOVIE_SORT: '@pref_movie_sort',
+  PREF_SERIES_SORT: '@pref_series_sort',
+  PREF_LIVE_CAT: '@pref_live_cat',
+  PREF_PLAYBACK_SPEED: '@pref_playback_speed',
+};
+
 export const StorageService = {
   // ── Credentials (SecureStore) ──────────────────────────────────────────────
 
@@ -600,5 +612,53 @@ export const StorageService = {
       const existing = await this.getRecentSearches();
       await AsyncStorage.setItem(KEYS.RECENT_SEARCHES, JSON.stringify(existing.filter((s) => s !== query)));
     } catch {}
+  },
+
+  // ── UI preferences (AsyncStorage — NOT cleared on logout) ─────────────────
+  // Device-scoped preferences (sort order, last category, playback speed).
+  // These intentionally survive logout so the app feels familiar on re-login.
+  // They are NOT included in clearCredentials and use the @pref_* key prefix.
+
+  async getPrefMovieSort(): Promise<'newest' | 'name' | 'rating' | null> {
+    try {
+      const v = await AsyncStorage.getItem(DEVICE_PREF_KEYS.PREF_MOVIE_SORT);
+      return v === 'name' || v === 'rating' || v === 'newest' ? v : null;
+    } catch { return null; }
+  },
+
+  async setPrefMovieSort(sort: 'newest' | 'name' | 'rating'): Promise<void> {
+    await AsyncStorage.setItem(DEVICE_PREF_KEYS.PREF_MOVIE_SORT, sort);
+  },
+
+  async getPrefSeriesSort(): Promise<'newest' | 'name' | 'rating' | null> {
+    try {
+      const v = await AsyncStorage.getItem(DEVICE_PREF_KEYS.PREF_SERIES_SORT);
+      return v === 'name' || v === 'rating' || v === 'newest' ? v : null;
+    } catch { return null; }
+  },
+
+  async setPrefSeriesSort(sort: 'newest' | 'name' | 'rating'): Promise<void> {
+    await AsyncStorage.setItem(DEVICE_PREF_KEYS.PREF_SERIES_SORT, sort);
+  },
+
+  async getPrefLiveCat(): Promise<string | null> {
+    try { return await AsyncStorage.getItem(DEVICE_PREF_KEYS.PREF_LIVE_CAT); }
+    catch { return null; }
+  },
+
+  async setPrefLiveCat(cat: string): Promise<void> {
+    await AsyncStorage.setItem(DEVICE_PREF_KEYS.PREF_LIVE_CAT, cat);
+  },
+
+  async getPrefPlaybackSpeed(): Promise<number | null> {
+    try {
+      const v = await AsyncStorage.getItem(DEVICE_PREF_KEYS.PREF_PLAYBACK_SPEED);
+      const n = v ? parseFloat(v) : NaN;
+      return !isNaN(n) && n > 0 ? n : null;
+    } catch { return null; }
+  },
+
+  async setPrefPlaybackSpeed(speed: number): Promise<void> {
+    await AsyncStorage.setItem(DEVICE_PREF_KEYS.PREF_PLAYBACK_SPEED, String(speed));
   },
 };

@@ -229,3 +229,85 @@ async function sessionFail_precomputed() {
   const val = String(_sessionPushFail);
   await AS.setItem('fail_count', val);
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DYNAMIC-KEY DETECTION (Pass 3 — structural key check)
+//
+// The following cases confirm that the guard detects AsyncStorage writes
+// where the key argument is NOT a plain string literal.  A dynamic key
+// (template literal, variable, concatenation …) cannot be matched against
+// the in-memory-only catalogue, so such writes are flagged for manual review.
+//
+// Category label: "Dynamic-key writes"
+// NOTE: there is no pre-computed-variable variant for this check — the
+//       issue is the key argument itself, not the value.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ── 8a. Template-literal key — setItem (canonical AsyncStorage) ──────────
+// Category label: "Dynamic-key writes"
+
+async function dynamicKey_template_setItem() {
+  const suffix = 'favorites';
+  // The key is a template literal — the guard cannot verify it maps to a
+  // permitted KEYS entry.
+  await AsyncStorage.setItem(`sv_${suffix}`, JSON.stringify([]));
+}
+
+// ── 8b. Variable key — setItem (AS alias) ────────────────────────────────
+// Category label: "Dynamic-key writes"
+
+async function dynamicKey_variable_setItem() {
+  const key = 'sv_favorites';
+  // The key is a plain identifier — the guard cannot look it up in FORBIDDEN.
+  await AS.setItem(key, JSON.stringify([]));
+}
+
+// ── 8c. Variable-built array — multiSet (AS alias) ───────────────────────
+// Category label: "Dynamic-key writes"
+
+async function dynamicKey_variable_multiSet() {
+  const pairs: [string, string][] = [['sv_favorites', '[]']];
+  // The whole array is a variable — key positions are opaque.
+  await AS.multiSet(pairs);
+}
+
+// ── 8d. Inline array with variable key — multiSet ────────────────────────
+// Category label: "Dynamic-key writes"
+
+async function dynamicKey_inline_variable_key_multiSet() {
+  const key = 'sv_favorites';
+  // Inline array but the key element is a variable — must be flagged.
+  await AsyncStorage.multiSet([[key, '[]']]);
+}
+
+// ── 8e. Function-call result passed to multiSet ───────────────────────────
+// Category label: "Dynamic-key writes"
+
+declare function makePairs(): [string, string][];
+
+async function dynamicKey_functioncall_multiSet() {
+  // Function-call result — key positions completely opaque.
+  await AS.multiSet(makePairs());
+}
+
+// ── 8f. Concatenation expression as setItem key ───────────────────────────
+// Category label: "Dynamic-key writes"
+//
+// This exercises the strict _is_string_literal check: the argument starts and
+// ends with a quote character but is NOT a single literal.  A naive endpoint-
+// only check would falsely classify this as safe.
+
+async function dynamicKey_concat_setItem() {
+  const userId = 'abc';
+  // The key is a string-concatenation expression, not a literal.
+  await AsyncStorage.setItem('sv_pref_' + userId + '_data', 'value');
+}
+
+// ── 8g. Concatenation expression as key inside a multiSet pair ────────────
+// Category label: "Dynamic-key writes"
+
+async function dynamicKey_concat_multiSet_pair() {
+  const userId = 'abc';
+  // The key inside the inline pair is a concatenation — not a literal.
+  await AS.multiSet([['sv_pref_' + userId, 'value']]);
+}

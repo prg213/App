@@ -303,6 +303,224 @@ def _extract_rhs(src: str, start: int) -> str:
     return src[start:i]
 
 
+def _extract_first_arg(body: str) -> str:
+    """
+    Given a call body starting with '(' (as returned by extract_call_body),
+    return the text of the first argument, stripped of leading/trailing
+    whitespace.  Handles nested brackets, strings, template literals, and
+    comments so that the first top-level comma terminates collection.
+    """
+    i = 1  # skip the opening '('
+    while i < len(body) and body[i] in " \t\n\r":
+        i += 1
+    start = i
+    depth = 0
+    while i < len(body):
+        c = body[i]
+        if c in ('"', "'"):
+            i = _skip_string(body, i)
+            continue
+        if c == "`":
+            i = _skip_template(body, i)
+            continue
+        if c == "/" and i + 1 < len(body):
+            if body[i + 1] == "/":
+                i = _skip_line_comment(body, i)
+                continue
+            if body[i + 1] == "*":
+                i = _skip_block_comment(body, i)
+                continue
+        if c in ("(", "[", "{"):
+            depth += 1
+        elif c in (")", "]", "}"):
+            if depth == 0:
+                return body[start:i].strip()
+            depth -= 1
+        elif c == "," and depth == 0:
+            return body[start:i].strip()
+        i += 1
+    return body[start:].strip()
+
+
+def _is_string_literal(text: str) -> bool:
+    """
+    True iff *text* is exactly one plain single- or double-quoted string literal.
+
+    Validates the entire content — not just the endpoints — so expressions like
+    ``'prefix-' + variable + '-suffix'`` (which start and end with a quote but
+    are not a single literal) are correctly rejected.  Backslash escapes inside
+    the literal are handled so that ``'it\\'s fine'`` does not confuse the
+    closing-quote detection.
+    """
+    t = text.strip()
+    if len(t) < 2:
+        return False
+    q = t[0]
+    if q not in ('"', "'"):
+        return False
+    i = 1
+    while i < len(t):
+        c = t[i]
+        if c == "\\":
+            i += 2  # skip escaped character
+            continue
+        if c == q:
+            # The closing quote must be the very last character
+            return i == len(t) - 1
+        i += 1
+    return False  # no closing quote found — malformed literal
+
+
+def _extract_array_body(src: str, bracket_start: int) -> str:
+    """
+    Given *src* and the index of an opening '[', return the full text from
+    that '[' to its matching ']' (inclusive), respecting strings, templates,
+    nested brackets, and comments.
+    """
+    depth = 0
+    i = bracket_start
+    while i < len(src):
+        c = src[i]
+        if c in ('"', "'"):
+            i = _skip_string(src, i)
+            continue
+        if c == "`":
+            i = _skip_template(src, i)
+            continue
+        if c == "/" and i + 1 < len(src):
+            if src[i + 1] == "/":
+                i = _skip_line_comment(src, i)
+                continue
+            if src[i + 1] == "*":
+                i = _skip_block_comment(src, i)
+                continue
+        if c in ("(", "[", "{"):
+            depth += 1
+        elif c in (")", "]", "}"):
+            depth -= 1
+            if depth == 0:
+                return src[bracket_start : i + 1]
+        i += 1
+    return src[bracket_start:]
+
+
+def _first_element_of_array(body: str) -> str:
+    """
+    Given a '[...]' body, return the text of the first element (stripped).
+    Handles nested structures, strings, templates, and comments.
+    """
+    i = 1  # skip opening '['
+    while i < len(body) and body[i] in " \t\n\r":
+        i += 1
+    start = i
+    depth = 0
+    while i < len(body):
+        c = body[i]
+        if c in ('"', "'"):
+            i = _skip_string(body, i)
+            continue
+        if c == "`":
+            i = _skip_template(body, i)
+            continue
+        if c == "/" and i + 1 < len(body):
+            if body[i + 1] == "/":
+                i = _skip_line_comment(body, i)
+                continue
+            if body[i + 1] == "*":
+                i = _skip_block_comment(body, i)
+                continue
+        if c in ("(", "[", "{"):
+            depth += 1
+        elif c in (")", "]", "}"):
+            if depth == 0:
+                return body[start:i].strip()
+            depth -= 1
+        elif c == "," and depth == 0:
+            return body[start:i].strip()
+        i += 1
+    return body[start:].strip()
+
+
+def check_dynamic_key(method: str, body: str) -> "str | None":
+    """
+    Inspect an AsyncStorage write call for a dynamic (non-literal) key.
+
+    ``setItem`` / ``mergeItem``:
+        The key is the first positional argument.  A plain single- or
+        double-quoted literal is safe; anything else (template literal,
+        variable, concatenation, computed expression …) is flagged.
+
+    ``multiSet`` / ``multiMerge``:
+        The argument must be an inline array of ``[key, value]`` pairs.
+        Every key must be a plain string literal.  The following are flagged:
+        * Non-array argument (variable, function call, spread, …) →
+          key positions are opaque and cannot be verified.
+        * Spread elements inside the outer array (``[...x, [k, v]]``).
+        * Any pair whose first element is not a plain string literal
+          (template literal, variable, expression, …).
+
+    Returns a short problem description, or ``None`` when the call is safe.
+    """
+    if method in ("setItem", "mergeItem"):
+        key_arg = _extract_first_arg(body)
+        if not key_arg:
+            return None  # malformed — other checks will catch it
+        if _is_string_literal(key_arg):
+            return None  # safe: plain quoted literal
+        snippet = key_arg[:80].replace("\n", " ")
+        if key_arg.lstrip().startswith("`"):
+            return f"template-literal key: {snippet}"
+        return f"non-literal key expression: {snippet}"
+
+    elif method in ("multiSet", "multiMerge"):
+        arr_arg = _extract_first_arg(body)
+        if not arr_arg:
+            return None
+        stripped = arr_arg.strip()
+
+        # Not an inline array literal → key positions are opaque
+        if not stripped.startswith("["):
+            snippet = stripped[:80]
+            return (
+                f"non-array argument to {method} — "
+                f"key positions unverifiable: {snippet}"
+            )
+
+        # Walk the outer array and validate each inner [key, value] pair
+        i = 1  # skip opening '['
+        while i < len(stripped):
+            c = stripped[i]
+            if c in " \t\n\r":
+                i += 1
+                continue
+            if c == "]":
+                break  # end of outer array
+            if c == ",":
+                i += 1
+                continue
+            # Spread operator → opaque
+            if stripped[i : i + 3] == "...":
+                return f"spread element in {method} array — key positions unverifiable"
+            # Each element must be a '[key, value]' sub-array
+            if c != "[":
+                snippet = stripped[i : i + 40].replace("\n", " ")
+                return f"non-pair element in {method} array: {snippet}"
+
+            pair_text = _extract_array_body(stripped, i)
+            key_text = _first_element_of_array(pair_text)
+            if not _is_string_literal(key_text):
+                snippet = key_text[:80].replace("\n", " ")
+                if key_text.lstrip().startswith("`"):
+                    return f"template-literal key in {method} pair: {snippet}"
+                return f"non-literal key in {method} pair: {snippet}"
+
+            i += len(pair_text)
+
+        return None
+
+    return None
+
+
 def find_precomputed_violations(
     src: str,
     call_body: str,
@@ -474,6 +692,33 @@ def main() -> int:
                     f"  RHS   : {display_rhs}\n"
                 )
                 reported_categories.add(category)
+
+            # ── Pass 3: dynamic-key detection ────────────────────────────────
+            # Flag any write call whose key argument is not a plain string
+            # literal.  A template literal (`sv_${name}`) or a variable
+            # cannot be verified against the in-memory-only catalogue, so
+            # the guard would silently miss a violation.  All writes must
+            # use literal keys (or go through StorageService's typed
+            # wrappers, which enforce this at the call site).
+            #
+            # services/storage.ts is excluded: it IS the authorised
+            # direct-write location.  Its writes use KEYS.XYZ property
+            # lookups — compile-time string constants — which are safe but
+            # would otherwise look like "non-literal key expressions".
+            _is_storage_ts = relpath.replace("\\", "/").endswith("services/storage.ts")
+            if not _is_storage_ts:
+                dynamic_issue = check_dynamic_key(method, body)
+                if dynamic_issue:
+                    display = body.replace("\n", " ").strip()
+                    if len(display) > 300:
+                        display = display[:297] + "..."
+                    failures.append(
+                        f"  [Dynamic-key writes]\n"
+                        f"  File  : {relpath}:{lnum}\n"
+                        f"  Call  : {m.group().split('(')[0]}(...)\n"
+                        f"  Issue : {dynamic_issue}\n"
+                        f"  Body  : {display}\n"
+                    )
 
     if failures:
         print("ERROR: In-memory-only identifiers found inside AsyncStorage write calls.")

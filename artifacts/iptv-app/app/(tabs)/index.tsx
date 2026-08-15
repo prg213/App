@@ -289,9 +289,7 @@ export default function LiveTVScreen() {
   // navigates back here after a recently-watched channel it re-reads the pref
   // that the player wrote (groupTitle → @pref_live_cat) before navigating.
   useFocusEffect(useCallback(() => {
-    import('@react-native-async-storage/async-storage').then(({ default: AS }) =>
-      AS.getItem('@pref_live_cat').then((v) => { if (v) setSelectedCatId(v); })
-    );
+    StorageService.getPrefLiveCat().then((v) => { if (v) setSelectedCatId(v); });
   }, []));
   const [catSearch, setCatSearch] = useState('');
   const [channelFilter, setChannelFilter] = useState('');
@@ -446,9 +444,7 @@ export default function LiveTVScreen() {
         // selectedCatId key, so this is always the correct value to write.
         if (ch.groupTitle) {
           setSelectedCatId(ch.groupTitle);
-          import('@react-native-async-storage/async-storage').then(
-            ({ default: AS }) => AS.setItem('@pref_live_cat', ch.groupTitle)
-          );
+          StorageService.setPrefLiveCat(ch.groupTitle).catch(() => {});
         }
         requestAnimationFrame(() => {
           setVideoKey((k) => k + 1);
@@ -1049,9 +1045,7 @@ export default function LiveTVScreen() {
   // ── Handlers ──────────────────────────────────────────────────────────────
 
   const handleSelectCat = useCallback((catId: string) => {
-    import('@react-native-async-storage/async-storage').then(({ default: AS }) =>
-      AS.setItem('@pref_live_cat', catId)
-    );
+    StorageService.setPrefLiveCat(catId).catch(() => {});
     Haptics.selectionAsync();
     setSelectedCatId(catId);
     setSelectedChannel(null);
