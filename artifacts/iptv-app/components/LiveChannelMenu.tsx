@@ -154,6 +154,7 @@ function LiveChannelMenuImpl({
   currentChannelId,
   epgMap,
   onSelectChannel,
+  onClose,
 }: LiveChannelMenuProps) {
   const { credentials } = useAppContext();
   const isXtream = credentials?.type === 'xtream';
@@ -560,6 +561,18 @@ function LiveChannelMenuImpl({
             {!isLoading && (
               <Text style={styles.chCount}>{filtered.length} channels</Text>
             )}
+            {/* Close button — visible on phone; TV users press BACK */}
+            {!Platform.isTV && (
+              <FocusablePressable
+                style={styles.closeBtn}
+                focusedStyle={styles.closeBtnFocused}
+                onPress={onClose}
+                accessibilityLabel="Close channel browser"
+                accessibilityRole="button"
+              >
+                <Text style={styles.closeBtnText}>✕</Text>
+              </FocusablePressable>
+            )}
           </View>
 
           {/* Search bar */}
@@ -640,10 +653,12 @@ function LiveChannelMenuImpl({
         </View>
       </View>
 
-      {/* Remote hint footer */}
+      {/* Hint footer */}
       <View style={styles.footer}>
         <Text style={styles.footerHint}>
-          ◀ BACK — close menu  ·  OK — watch channel  ·  MENU — toggle
+          {Platform.isTV
+            ? '◀ BACK — close menu  ·  OK — watch channel  ·  MENU — toggle'
+            : 'Tap a channel to switch  ·  press Back to close'}
         </Text>
       </View>
     </Animated.View>
@@ -766,6 +781,21 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.3)',
   },
   clearBtnText: { color: 'rgba(255,255,255,0.5)', fontSize: 12 },
+
+  // ─ Phone close button (top-right of channel panel header)
+  closeBtn: {
+    marginLeft: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+  },
+  closeBtnFocused: {
+    backgroundColor: 'rgba(255,255,255,0.22)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.35)',
+  },
+  closeBtnText: { color: '#fff', fontSize: 14, fontFamily: 'Inter_600SemiBold' },
 
   // ─ Channel rows
   chRow: {
