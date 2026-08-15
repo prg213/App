@@ -9,3 +9,4 @@
 - [TV focus restoration pattern](tv-focus-restoration.md) — forwardRef+onFocus on cards, refMap per screen, useFocusEffect restores; useEffect(wasOpen) pattern for modal openers in settings.
 - [TV input & navigation system](tv-input-system.md) — useBackHandler/useTVRemote/useFocusRestore hooks; which screens migrated; player media keys; scheduleHide no-op on TV.
 - [TV input hooks convention](tv-input-hooks.md) — screens must use shared useBackHandler/useTVRemote/useFocusRestore hooks, never hand-rolled BackHandler/onHWKeyEvent listeners; hooks accept both `playPause` and `onPlayPause` handler names.
+- [Live TV OSD architecture](live-tv-osd.md) — showInfoBarRef pattern for cross-hook call; OSD 6s auto-dismiss on TV; Audio/CC chips inside info bar on TV; zap preview has EPG data via epgMap lookup; TVLiveLayout renderChannel has EPG progress bars + LIVE badge.

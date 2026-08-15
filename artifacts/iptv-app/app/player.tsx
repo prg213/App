@@ -325,8 +325,12 @@ export default function PlayerScreen() {
   // in this file) call it without a stale closure or circular hook dependency.
   const showInfoBarRef = useRef<(() => void) | null>(null);
 
-  const prevChannel = channelList.length > 0 && channelIdx > 0 ? channelList[channelIdx - 1] : null;
-  const nextChannel = channelList.length > 0 && channelIdx < channelList.length - 1 ? channelList[channelIdx + 1] : null;
+  // Wrap-around channel navigation: at the first channel LEFT wraps to the last,
+  // at the last channel RIGHT wraps to the first — standard IPTV behaviour.
+  // Both are null only when the list has 0 or 1 entries (no valid zap target).
+  const _chN = channelList.length;
+  const prevChannel = _chN > 1 ? channelList[(channelIdx - 1 + _chN) % _chN] : null;
+  const nextChannel = _chN > 1 ? channelList[(channelIdx + 1) % _chN] : null;
 
   // ── Cast (AirPlay on iOS / Chromecast on Android) ─────────────────────────
   const {
@@ -980,15 +984,16 @@ export default function PlayerScreen() {
     if (!prevChannel || navCooldownRef.current) return;
     navCooldownRef.current = true;
     setTimeout(() => { navCooldownRef.current = false; }, 1200);
-    switchChannel(prevChannel, channelIdx - 1);
-  }, [prevChannel, channelIdx, switchChannel]);
+    const n = channelList.length;
+    switchChannel(prevChannel, (channelIdx - 1 + n) % n);
+  }, [prevChannel, channelIdx, channelList, switchChannel]);
 
   const handleNextChannel = useCallback(() => {
     if (!nextChannel || navCooldownRef.current) return;
     navCooldownRef.current = true;
     setTimeout(() => { navCooldownRef.current = false; }, 1200);
-    switchChannel(nextChannel, channelIdx + 1);
-  }, [nextChannel, channelIdx, switchChannel]);
+    switchChannel(nextChannel, (channelIdx + 1) % channelList.length);
+  }, [nextChannel, channelIdx, channelList, switchChannel]);
 
   // ── Animated collapse back (live TV only) ────────────────────────────────
   // Plays the reverse mini-player animation before navigating back so the
@@ -2087,7 +2092,7 @@ export default function PlayerScreen() {
               navCooldownRef.current = true;
               setTimeout(() => { navCooldownRef.current = false; }, 1400);
               const targetChannel = prevChannel;
-              const targetIdx = channelIdx - 1;
+              const targetIdx = (channelIdx - 1 + channelList.length) % channelList.length;
               showTvChannelPreview(targetChannel, 'prev', () => {
                 switchChannel(targetChannel, targetIdx);
                 // Belt-and-suspenders: also request focus explicitly here in addition
@@ -2144,7 +2149,7 @@ export default function PlayerScreen() {
               navCooldownRef.current = true;
               setTimeout(() => { navCooldownRef.current = false; }, 1400);
               const targetChannel = nextChannel;
-              const targetIdx = channelIdx + 1;
+              const targetIdx = (channelIdx + 1) % channelList.length;
               showTvChannelPreview(targetChannel, 'next', () => {
                 switchChannel(targetChannel, targetIdx);
                 setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 700);

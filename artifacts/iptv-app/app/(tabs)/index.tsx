@@ -1077,8 +1077,14 @@ export default function LiveTVScreen() {
     goingToPlayerRef.current = true;
     // Shared player keeps streaming — no pause needed before going fullscreen.
 
-    // Build a lean channel list for prev/next navigation in fullscreen
-    const chList = channels.map((ch) => ({
+    // Sort by channel number when the provider assigns them so that D-pad
+    // LEFT/RIGHT and Ch Up/Down follow the numeric order the viewer expects.
+    // When no channels have numbers the existing provider order is preserved.
+    const hasNums = channels.some((ch) => ch.num != null);
+    const orderedChannels = hasNums
+      ? [...channels].sort((a, b) => (a.num ?? Infinity) - (b.num ?? Infinity))
+      : channels;
+    const chList = orderedChannels.map((ch) => ({
       url: ch.streamUrl,
       title: ch.name,
       epgId: ch.epgId ?? ch.id,
@@ -1086,7 +1092,8 @@ export default function LiveTVScreen() {
       channelId: ch.id,
       num: ch.num,
     }));
-    const idx = channels.findIndex((ch) => ch.id === selectedChannel.id);
+    // Index must be from the sorted list, not the original array.
+    const idx = chList.findIndex((c) => c.channelId === selectedChannel.id);
 
     const navigate = () => router.push({
       pathname: '/player',
@@ -1114,7 +1121,11 @@ export default function LiveTVScreen() {
     // Update the right-panel EPG to show this channel's guide
     setSelectedChannel(ch);
 
-    const chList = channels.map((c) => ({
+    const hasNums = channels.some((c) => c.num != null);
+    const orderedChannels = hasNums
+      ? [...channels].sort((a, b) => (a.num ?? Infinity) - (b.num ?? Infinity))
+      : channels;
+    const chList = orderedChannels.map((c) => ({
       url: c.streamUrl,
       title: c.name,
       epgId: c.epgId ?? c.id,
@@ -1122,7 +1133,7 @@ export default function LiveTVScreen() {
       channelId: c.id,
       num: c.num,
     }));
-    const idx = channels.findIndex((c) => c.id === ch.id);
+    const idx = chList.findIndex((c) => c.channelId === ch.id);
 
     const navigate = () => router.push({
       pathname: '/player',
@@ -1257,14 +1268,19 @@ export default function LiveTVScreen() {
   const handleTVWatch = useCallback(() => {
     if (!selectedChannel) return;
     goingToPlayerRef.current = true;
-    const chList = channels.map((ch) => ({
+    const hasNums = channels.some((ch) => ch.num != null);
+    const orderedChannels = hasNums
+      ? [...channels].sort((a, b) => (a.num ?? Infinity) - (b.num ?? Infinity))
+      : channels;
+    const chList = orderedChannels.map((ch) => ({
       url: ch.streamUrl,
       title: ch.name,
       epgId: ch.epgId ?? ch.id,
       logo: ch.logo ?? '',
       channelId: ch.id,
+      num: ch.num,
     }));
-    const idx = channels.findIndex((ch) => ch.id === selectedChannel.id);
+    const idx = chList.findIndex((c) => c.channelId === selectedChannel.id);
     router.push({
       pathname: '/player',
       params: {
