@@ -384,6 +384,12 @@ export default function PlayerScreen() {
   const tvSeekFwdRef   = useRef<View>(null); // hidden D-pad-right bounce target → seek +10 s
   const tvSeek30BackRef = useRef<View>(null); // visible −30 s button — wired nextFocusDown→scrubber
   const tvSeek30FwdRef  = useRef<View>(null); // visible +30 s button — wired nextFocusDown→scrubber
+  // Tracks whether the focusable scrubber anchor currently holds D-pad focus.
+  // Used by the useTVRemote left/right fallback: if nextFocusLeft/Right routing
+  // didn't reach the invisible bounce targets, onHWKeyEvent fires instead and
+  // we seek directly from here (avoiding double-seek when bounce DOES fire, since
+  // the anchor loses focus before onHWKeyEvent is dispatched in that case).
+  const isScrubberFocusedRef = useRef(false);
 
   // ── TV channel-switch preview overlay ────────────────────────────────────
   // Shown for ~1 s when the user presses D-pad left/right so they can see
@@ -1255,6 +1261,22 @@ export default function PlayerScreen() {
       if (eventKeyAction !== 1 || isLive) return;
       seek(-30);
     },
+    // ── D-pad scrubber fallback ───────────────────────────────────────────
+    // When nextFocusLeft/nextFocusRight routing to the invisible bounce
+    // targets works, the anchor LOSES focus before onHWKeyEvent fires, so
+    // isScrubberFocusedRef.current is false and these handlers are no-ops.
+    // When routing fails (focus stays on anchor), these catch the key and
+    // seek directly — no double-seek risk.
+    left: ({ eventKeyAction }) => {
+      if (eventKeyAction !== 1 || isLive || isWeb) return;
+      if (!isScrubberFocusedRef.current) return;
+      seek(-10);
+    },
+    right: ({ eventKeyAction }) => {
+      if (eventKeyAction !== 1 || isLive || isWeb) return;
+      if (!isScrubberFocusedRef.current) return;
+      seek(+10);
+    },
   });
 
   // ── Pause local playback while casting (device becomes the remote) ────────
@@ -1862,6 +1884,8 @@ export default function PlayerScreen() {
                 style={[styles.tvScrubAnchor, { bottom: insets.bottom + 12 }]}
                 focusedStyle={styles.tvScrubAnchorFocused}
                 onPress={() => { /* OK on scrubber: no-op; LEFT/RIGHT seek via bounce targets */ }}
+                onFocus={() => { isScrubberFocusedRef.current = true; }}
+                onBlur={() => { isScrubberFocusedRef.current = false; }}
               >
                 <View style={styles.tvScrubRail}>
                   <View style={[styles.tvScrubFill, { width: `${Math.max(0, Math.min(100, progress))}%` as any }]} />

@@ -34,6 +34,20 @@ export interface TVRemoteHandlers {
   /** Menu key. */
   menu?: (e: TVRemoteKeyEvent) => void;
   onMenu?: (e: TVRemoteKeyEvent) => void;
+  /**
+   * D-pad direction keys. These fire via onHWKeyEvent and serve as a
+   * fallback when native spatial-navigation routing doesn't reach the
+   * intended focus target (e.g. invisible bounce Pressables on the scrubber).
+   * The spatial engine normally consumes D-pad events before onHWKeyEvent,
+   * but if focus is trapped on an element with no nextFocus* wired the key
+   * falls through here.
+   */
+  left?: (e: TVRemoteKeyEvent) => void;
+  right?: (e: TVRemoteKeyEvent) => void;
+  up?: (e: TVRemoteKeyEvent) => void;
+  down?: (e: TVRemoteKeyEvent) => void;
+  /** D-pad centre / OK / Select key. */
+  select?: (e: TVRemoteKeyEvent) => void;
 }
 
 /** Alias kept for callers that import the upstream name. */
@@ -71,6 +85,12 @@ export function useTVRemote(handlers: TVRemoteHandlers) {
           case 'fastForward': h.fastForward?.(e); h.onFastForward?.(e); break;
           case 'rewind':      h.rewind?.(e);      h.onRewind?.(e);      break;
           case 'menu':        h.menu?.(e);        h.onMenu?.(e);        break;
+          // D-pad direction fallbacks (fire when spatial routing doesn't consume them)
+          case 'left':        h.left?.(e);        break;
+          case 'right':       h.right?.(e);       break;
+          case 'up':          h.up?.(e);          break;
+          case 'down':        h.down?.(e);        break;
+          case 'select':      h.select?.(e);      break;
         }
       },
     );
