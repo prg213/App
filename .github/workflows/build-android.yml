@@ -36,6 +36,9 @@ jobs:
       - name: EPG scroll guard
         run: bash artifacts/iptv-app/scripts/check-epg-scroll-not-persisted.sh
 
+      - name: In-memory state guard
+        run: bash artifacts/iptv-app/scripts/check-inmemory-not-persisted.sh
+
       - name: Expo prebuild
         working-directory: artifacts/iptv-app
         run: npx expo prebuild --platform android --no-install --clean
