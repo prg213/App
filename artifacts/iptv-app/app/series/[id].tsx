@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  FlatList,
   Image,
   Modal,
   Platform,
@@ -56,7 +57,13 @@ function MetaRow({
       <View style={{ flex: 1 }}>
         <Text
           style={[mStyles.value, { color: colors.foreground }]}
-          numberOfLines={expandable && !expanded && isLong ? 2 : undefined}
+          // TV (#364): cap even the expanded state so a huge plot can never
+          // push the fixed action strip / episode list off screen.
+          numberOfLines={
+            expandable && isLong
+              ? (expanded ? (Platform.isTV ? 8 : undefined) : 2)
+              : undefined
+          }
         >
           {value}
         </Text>
@@ -109,6 +116,8 @@ export default function SeriesDetailScreen() {
   // A companion state counter is bumped when the ref is set to trigger a re-render.
   const tmdbPosterRef = useRef<string | null>(null);
   const scrollRef = useRef<import('react-native').ScrollView>(null);
+  // #364: TV renders episodes/cast in a FlatList; used for scroll-to-top on season switch.
+  const tvListRef = useRef<FlatList<any>>(null);
   const [, forceUpdateForPoster] = useState(0);
   // Incremented whenever the series-info query delivers fresh data so that
   // episode thumbnails which previously errored get a clean remount and retry.
@@ -318,6 +327,127 @@ export default function SeriesDetailScreen() {
   // Cast list for Cast tab
   const castList = cast ? cast.split(',').map((c) => c.trim()).filter(Boolean) : [];
 
+  // ── Shared render helpers (used by both the phone ScrollView layout and the
+  //    TV fixed-header + FlatList layout, #364) ──
+  const renderEpisodeRow = (ep: Episode) => {
+    const hist = episodeHistory[ep.streamId];
+    const histProgress = hist?.position && hist?.duration ? hist.position / hist.duration : 0;
+    const epRating = ep.info?.rating ? parseFloat(ep.info.rating) : 0;
+    return (
+      <FocusablePressable
+        key={ep.id}
+        focusable
+        ref={(node: View | null) => {
+          if (node) epRefMap.current.set(ep.id, node);
+          else epRefMap.current.delete(ep.id);
+        }}
+        onFocus={() => {
+          const node = epRefMap.current.get(ep.id);
+          if (node) lastFocusedEpRef.current = node;
+        }}
+        style={(focused) => [styles.epRow, { borderColor: focused ? '#00E5FF' : 'rgba(255,255,255,0.1)' }]}
+        onPress={() => {
+          // On TV, pressing OK resumes from saved position when available
+          // (same destination as the Resume pill, avoiding a nested-focusable trap).
+          const savedPos = hist?.position && hist.position > 5 ? hist.position : undefined;
+          handlePlayEpisode(ep, savedPos);
+        }}
+      >
+        {/* Thumbnail — key includes thumbResetKey so a data refetch
+            causes a clean remount, letting previously-errored URLs retry. */}
+        <ThumbnailWithFallback
+          key={`ep-thumb-${ep.id}-${thumbResetKey}`}
+          uri={ep.info?.cover}
+          fallbackUri={displayCover}
+          style={styles.epThumb}
+          showPlayOverlay
+        />
+
+        {/* Info */}
+        <View style={styles.epInfo}>
+          <Text style={[styles.epTitle, { color: '#fff' }]} numberOfLines={2}>
+            {`S${String(activeSeason?.seasonNumber ?? 1).padStart(2, '0')}E${String(ep.episodeNum).padStart(2, '0')} · ${ep.title}`}
+          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 2 }}>
+            {epRating > 0 && (
+              <Text style={{ fontSize: 10, color: '#F59E0B', letterSpacing: 1 }}>
+                {'★'.repeat(Math.round(epRating / 2))}{'☆'.repeat(5 - Math.round(epRating / 2))}
+              </Text>
+            )}
+            {ep.info?.duration ? (
+              <View style={[styles.durationBadge, { backgroundColor: 'rgba(255,255,255,0.1)' }]}>
+                <Text style={{ fontSize: 11, fontFamily: 'Inter_500Medium', color: 'rgba(255,255,255,0.55)' }}>
+                  {ep.info.duration}
+                </Text>
+              </View>
+            ) : null}
+          </View>
+          {ep.info?.plot ? (
+            <Text style={{ fontSize: 12, fontFamily: 'Inter_400Regular', color: 'rgba(255,255,255,0.45)', lineHeight: 17, marginTop: 3 }} numberOfLines={2}>
+              {ep.info.plot}
+            </Text>
+          ) : null}
+          {histProgress > 0.02 && (
+            <View style={[styles.progressRail, { backgroundColor: 'rgba(255,255,255,0.1)' }]}>
+              <View style={[styles.progressFill, { width: `${Math.min(100, histProgress * 100)}%` as any }]} />
+            </View>
+          )}
+        </View>
+
+        {/* Resume — touch users tap this to resume; on TV the outer
+            row's onPress already resumes, so focusable={false}
+            prevents a nested-focusable D-pad trap. */}
+        {hist?.position && hist.position > 5 ? (
+          <FocusablePressable
+            focusable={false}
+            style={(focused) => [styles.resumeBtn, { borderColor: focused ? '#00E5FF' : colors.primary }]}
+            onPress={() => handlePlayEpisode(ep, hist.position)}
+          >
+            <Text style={[styles.resumeLabel, { color: colors.primary }]}>Resume</Text>
+          </FocusablePressable>
+        ) : null}
+      </FocusablePressable>
+    );
+  };
+
+  const renderCastRow = (name: string, idx: number) => (
+    // On TV each cast row is focusable so the D-pad can walk (and the FlatList
+    // auto-scroll) through long cast lists; on touch it stays a plain row.
+    <FocusablePressable
+      key={idx}
+      focusable={Platform.isTV}
+      onPress={() => {}}
+      style={(focused) => [
+        styles.castRow,
+        { borderBottomColor: 'rgba(255,255,255,0.06)' },
+        Platform.isTV && focused && { backgroundColor: 'rgba(0,229,255,0.08)', borderRadius: 8 },
+      ]}
+    >
+      <View style={styles.castAvatar}>
+        <Text style={{ fontSize: 15 }}>👤</Text>
+      </View>
+      <Text style={{ fontSize: 14, fontFamily: 'Inter_400Regular', color: '#fff', flex: 1 }}>{name}</Text>
+    </FocusablePressable>
+  );
+
+  const emptyEpisodes = (
+    <View style={{ alignItems: 'center', paddingVertical: 48, gap: 8 }}>
+      <Text style={{ fontSize: 32 }}>📭</Text>
+      <Text style={{ color: 'rgba(255,255,255,0.55)', fontSize: 14, fontFamily: 'Inter_500Medium' }}>
+        No episodes available
+      </Text>
+      <Text style={{ color: 'rgba(255,255,255,0.3)', fontSize: 12, fontFamily: 'Inter_400Regular', textAlign: 'center', paddingHorizontal: 24 }}>
+        The provider hasn't listed any episodes for this season.
+      </Text>
+    </View>
+  );
+
+  const noCast = (
+    <Text style={{ color: 'rgba(255,255,255,0.35)', textAlign: 'center', marginTop: 24, fontFamily: 'Inter_400Regular' }}>
+      No cast information available
+    </Text>
+  );
+
   return (
     <View style={[styles.root, { backgroundColor: '#0A0A0F' }]}>
       {/* Faint blurred background */}
@@ -355,10 +485,16 @@ export default function SeriesDetailScreen() {
         </FocusablePressable>
       </View>
 
+      {/* #364 TV layout: this ScrollView never scrolls on TV (scrollEnabled
+          false) so flexGrow:0 turns it into a fixed header area (poster +
+          metadata + action strip + tabs); the episode/cast content is rendered
+          in a FlatList below it, which handles D-pad focus + auto-scroll
+          natively so long lists are never cut off. */}
       <ScrollView
         ref={scrollRef}
+        style={Platform.isTV ? { flexGrow: 0, flexShrink: 0 } : undefined}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: insets.bottom + 32 }}
+        contentContainerStyle={{ paddingBottom: Platform.isTV ? 0 : insets.bottom + 32 }}
         scrollEnabled={!Platform.isTV}
         refreshControl={
           // #166: Pull-to-refresh refetches series data and resets episode thumbnail errors.
@@ -505,129 +641,54 @@ export default function SeriesDetailScreen() {
           })}
         </View>
 
-        {/* ── Episodes tab ── */}
-        {activeTab === 'episodes' && (
+        {/* ── Episodes tab (touch devices — TV uses the FlatList below) ── */}
+        {!Platform.isTV && activeTab === 'episodes' && (
           <View style={{ paddingHorizontal: 14, paddingTop: 12, gap: 10 }}>
             {isLoading ? (
               <ActivityIndicator color={colors.primary} style={{ marginTop: 24 }} />
             ) : seasons.length === 0 || (activeSeason && activeSeason.episodes.length === 0) ? (
-              <View style={{ alignItems: 'center', paddingVertical: 48, gap: 8 }}>
-                <Text style={{ fontSize: 32 }}>📭</Text>
-                <Text style={{ color: 'rgba(255,255,255,0.55)', fontSize: 14, fontFamily: 'Inter_500Medium' }}>
-                  No episodes available
-                </Text>
-                <Text style={{ color: 'rgba(255,255,255,0.3)', fontSize: 12, fontFamily: 'Inter_400Regular', textAlign: 'center', paddingHorizontal: 24 }}>
-                  The provider hasn't listed any episodes for this season.
-                </Text>
-              </View>
+              emptyEpisodes
             ) : (
-              activeSeason?.episodes.map((ep) => {
-                const hist = episodeHistory[ep.streamId];
-                const histProgress = hist?.position && hist?.duration ? hist.position / hist.duration : 0;
-                const epRating = ep.info?.rating ? parseFloat(ep.info.rating) : 0;
-                return (
-                  <FocusablePressable
-                    key={ep.id}
-                    focusable
-                    ref={(node: View | null) => {
-                      if (node) epRefMap.current.set(ep.id, node);
-                      else epRefMap.current.delete(ep.id);
-                    }}
-                    onFocus={() => {
-                      const node = epRefMap.current.get(ep.id);
-                      if (node) lastFocusedEpRef.current = node;
-                    }}
-                    style={(focused) => [styles.epRow, { borderColor: focused ? '#00E5FF' : 'rgba(255,255,255,0.1)' }]}
-                    onPress={() => {
-                      // On TV, pressing OK resumes from saved position when available
-                      // (same destination as the Resume pill, avoiding a nested-focusable trap).
-                      const savedPos = hist?.position && hist.position > 5 ? hist.position : undefined;
-                      handlePlayEpisode(ep, savedPos);
-                    }}
-                  >
-                    {/* Thumbnail — key includes thumbResetKey so a data refetch
-                        causes a clean remount, letting previously-errored URLs retry. */}
-                    <ThumbnailWithFallback
-                      key={`ep-thumb-${ep.id}-${thumbResetKey}`}
-                      uri={ep.info?.cover}
-                      fallbackUri={displayCover}
-                      style={styles.epThumb}
-                      showPlayOverlay
-                    />
-
-                    {/* Info */}
-                    <View style={styles.epInfo}>
-                      <Text style={[styles.epTitle, { color: '#fff' }]} numberOfLines={2}>
-                        {`S${String(activeSeason.seasonNumber).padStart(2, '0')}E${String(ep.episodeNum).padStart(2, '0')} · ${ep.title}`}
-                      </Text>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 2 }}>
-                        {epRating > 0 && (
-                          <Text style={{ fontSize: 10, color: '#F59E0B', letterSpacing: 1 }}>
-                            {'★'.repeat(Math.round(epRating / 2))}{'☆'.repeat(5 - Math.round(epRating / 2))}
-                          </Text>
-                        )}
-                        {ep.info?.duration ? (
-                          <View style={[styles.durationBadge, { backgroundColor: 'rgba(255,255,255,0.1)' }]}>
-                            <Text style={{ fontSize: 11, fontFamily: 'Inter_500Medium', color: 'rgba(255,255,255,0.55)' }}>
-                              {ep.info.duration}
-                            </Text>
-                          </View>
-                        ) : null}
-                      </View>
-                      {ep.info?.plot ? (
-                        <Text style={{ fontSize: 12, fontFamily: 'Inter_400Regular', color: 'rgba(255,255,255,0.45)', lineHeight: 17, marginTop: 3 }} numberOfLines={2}>
-                          {ep.info.plot}
-                        </Text>
-                      ) : null}
-                      {histProgress > 0.02 && (
-                        <View style={[styles.progressRail, { backgroundColor: 'rgba(255,255,255,0.1)' }]}>
-                          <View style={[styles.progressFill, { width: `${Math.min(100, histProgress * 100)}%` as any }]} />
-                        </View>
-                      )}
-                    </View>
-
-                    {/* Resume — touch users tap this to resume; on TV the outer
-                        row's onPress already resumes, so focusable={false}
-                        prevents a nested-focusable D-pad trap. */}
-                    {hist?.position && hist.position > 5 ? (
-                      <FocusablePressable
-                        focusable={false}
-                        style={(focused) => [styles.resumeBtn, { borderColor: focused ? '#00E5FF' : colors.primary }]}
-                        onPress={() => handlePlayEpisode(ep, hist.position)}
-                      >
-                        <Text style={[styles.resumeLabel, { color: colors.primary }]}>Resume</Text>
-                      </FocusablePressable>
-                    ) : null}
-                  </FocusablePressable>
-                );
-              })
+              activeSeason?.episodes.map(renderEpisodeRow)
             )}
           </View>
         )}
 
-        {/* ── Cast tab ── */}
-        {activeTab === 'cast' && (
+        {/* ── Cast tab (touch devices — TV uses the FlatList below) ── */}
+        {!Platform.isTV && activeTab === 'cast' && (
           <View style={{ paddingHorizontal: 14, paddingTop: 12 }}>
-            {castList.length === 0 ? (
-              <Text style={{ color: 'rgba(255,255,255,0.35)', textAlign: 'center', marginTop: 24, fontFamily: 'Inter_400Regular' }}>
-                No cast information available
-              </Text>
-            ) : (
-              castList.map((name, idx) => (
-                <View
-                  key={idx}
-                  style={[styles.castRow, { borderBottomColor: 'rgba(255,255,255,0.06)' }]}
-                >
-                  <View style={styles.castAvatar}>
-                    <Text style={{ fontSize: 15 }}>👤</Text>
-                  </View>
-                  <Text style={{ fontSize: 14, fontFamily: 'Inter_400Regular', color: '#fff', flex: 1 }}>{name}</Text>
-                </View>
-              ))
-            )}
+            {castList.length === 0 ? noCast : castList.map(renderCastRow)}
           </View>
         )}
       </ScrollView>
+
+      {/* ── #364 TV: episodes/cast in a FlatList so D-pad focus auto-scrolls
+             long lists instead of them being cut off ── */}
+      {Platform.isTV && activeTab === 'episodes' && (
+        <FlatList
+          ref={tvListRef}
+          style={{ flex: 1 }}
+          data={activeSeason?.episodes ?? []}
+          keyExtractor={(ep) => String(ep.id)}
+          renderItem={({ item }) => renderEpisodeRow(item)}
+          contentContainerStyle={{ paddingHorizontal: 14, paddingTop: 12, gap: 10, paddingBottom: insets.bottom + 24 }}
+          ListEmptyComponent={
+            isLoading
+              ? <ActivityIndicator color={colors.primary} style={{ marginTop: 24 }} />
+              : emptyEpisodes
+          }
+        />
+      )}
+      {Platform.isTV && activeTab === 'cast' && (
+        <FlatList
+          style={{ flex: 1 }}
+          data={castList}
+          keyExtractor={(name, idx) => `${idx}-${name}`}
+          renderItem={({ item, index }) => renderCastRow(item, index)}
+          contentContainerStyle={{ paddingHorizontal: 14, paddingTop: 12, paddingBottom: insets.bottom + 24 }}
+          ListEmptyComponent={noCast}
+        />
+      )}
 
       {/* Season picker modal */}
       <Modal
@@ -663,6 +724,10 @@ export default function SeriesDetailScreen() {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                 // Scroll episode list back to top when user switches seasons
                 scrollRef.current?.scrollTo({ y: 0, animated: false });
+                // #364 TV: the episode list is a separate FlatList on TV.
+                if (Platform.isTV && (seasons[idx]?.episodes.length ?? 0) > 0) {
+                  tvListRef.current?.scrollToOffset({ offset: 0, animated: false });
+                }
                 // TV: restore focus to the opener after dismissing.
                 if (Platform.isTV) setTimeout(() => (seasonPickerOpenerRef.current as any)?.focus?.(), 150);
               }}

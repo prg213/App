@@ -66,7 +66,13 @@ function MetaRow({
           <>
             <Text
               style={[mStyles.value, { color: colors.foreground }]}
-              numberOfLines={expandable && !expanded && isLong ? 2 : undefined}
+              // TV (#364): cap even the expanded state so a huge plot can never
+              // push the action buttons off a non-scrolling screen.
+              numberOfLines={
+                expandable && isLong
+                  ? (expanded ? (Platform.isTV ? 8 : undefined) : 2)
+                  : undefined
+              }
             >
               {value}
             </Text>
@@ -79,6 +85,26 @@ function MetaRow({
         )}
       </View>
     </View>
+  );
+}
+
+// #364: TV renders details in a fixed, non-scrolling layout so the action
+// buttons are always on screen; touch devices keep the ScrollView.
+function DetailsContainer({
+  isTV, bottomPadding, children,
+}: {
+  isTV: boolean; bottomPadding: number; children: React.ReactNode;
+}) {
+  if (isTV) {
+    return <View style={{ flex: 1, paddingBottom: bottomPadding }}>{children}</View>;
+  }
+  return (
+    <ScrollView
+      showsVerticalScrollIndicator={false}
+      contentContainerStyle={{ paddingBottom: bottomPadding }}
+    >
+      {children}
+    </ScrollView>
   );
 }
 
@@ -256,10 +282,13 @@ export default function MovieDetailScreen() {
         </FocusablePressable>
       </View>
 
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: insets.bottom + 32 }}
-        scrollEnabled={!Platform.isTV}
+      {/* #364: On TV the content is a fixed (non-scrolling) layout — the meta
+          column caps its expanded text so nothing can overflow, and the action
+          buttons stay in a persistent strip that is always reachable. On touch
+          devices the original ScrollView behaviour is kept. */}
+      <DetailsContainer
+        isTV={Platform.isTV}
+        bottomPadding={insets.bottom + 32}
       >
         {/* ── Two-column section ── */}
         <View style={styles.topSection}>
@@ -356,7 +385,7 @@ export default function MovieDetailScreen() {
             </Text>
           </FocusablePressable>
         </View>
-      </ScrollView>
+      </DetailsContainer>
 
       <Modal
         visible={showPinGate}
