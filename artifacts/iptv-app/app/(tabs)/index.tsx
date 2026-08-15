@@ -911,8 +911,11 @@ export default function LiveTVScreen() {
   // useEffect dep array ever hits a temporal dead zone.
   const filteredChannels: Channel[] = useMemo(() => {
     const q = normaliseStr(channelFilter.trim());
-    if (!q) return channels;
-    return channels.filter((ch) => normaliseStr(ch.name).includes(q));
+    const list = q
+      ? channels.filter((ch) => normaliseStr(ch.name).includes(q))
+      : channels;
+    const hasNums = list.some((ch) => ch.num != null);
+    return hasNums ? [...list].sort((a, b) => (a.num ?? 0) - (b.num ?? 0)) : list;
   }, [channels, channelFilter]);
 
   // Scroll back to top whenever the filter changes so the first match is visible
