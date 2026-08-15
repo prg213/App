@@ -13,6 +13,7 @@ import {
   type View as RNView,
 } from 'react-native';
 import { sidebarNav } from '@/lib/sidebarNav';
+import { useRouter } from 'expo-router';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { Tabs } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -246,16 +247,25 @@ function Sidebar({ state, descriptors, navigation }: BottomTabBarProps) {
 }
 
 export default function TabLayout() {
+  const router = useRouter();
+
   // Global catch-all: if no screen BackHandler consumed the press, move focus
   // to the sidebar instead of letting Android exit the app.
   // Fires LAST (LIFO) so per-screen handlers always get first pick.
+  //
+  // IMPORTANT: yield to React Navigation when there is a Stack screen on top
+  // of the tab navigator (e.g. Settings → Blocked Channels, Watch History).
+  // Returning false lets React Navigation's own BackHandler pop the Stack.
+  // Without this check, pressing BACK in those sub-screens would focus the
+  // sidebar instead of returning the user to Settings — the "main BACK defect".
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (router.canGoBack()) return false; // Stack has a screen to pop — let it
       sidebarNav.focus();
-      return true; // always consume — never exit via Back from tab navigation
+      return true; // nothing to pop — prevent Android from exiting the app
     });
     return () => sub.remove();
-  }, []);
+  }, [router]);
 
   return (
     <Tabs

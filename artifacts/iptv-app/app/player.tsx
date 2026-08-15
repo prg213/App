@@ -379,6 +379,9 @@ export default function PlayerScreen() {
   // Shown for ~1 s when the user presses D-pad left/right so they can see
   // which channel is coming before the stream actually switches.
   const [tvPreviewChannel, setTvPreviewChannel] = useState<ChannelEntry | null>(null);
+  // Tracks which TV navigation zone (left / center / right) currently holds
+  // D-pad focus so we can show a visible directional indicator.
+  const [tvZoneFocused, setTvZoneFocused] = useState<'left' | 'center' | 'right' | null>(null);
   const [tvPreviewDir, setTvPreviewDir] = useState<'prev' | 'next' | null>(null);
   const tvPreviewOpacity = useRef(new Animated.Value(0)).current;
   const tvPreviewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1971,7 +1974,9 @@ export default function PlayerScreen() {
             focusable
             style={styles.tvZoneLeft}
             onPress={showInfo ? dismissInfoBar : showInfoBar}
+            onBlur={() => setTvZoneFocused(null)}
             onFocus={() => {
+              setTvZoneFocused('left');
               if (!prevChannel || !tvNavReadyRef.current) {
                 // No previous channel or nav not yet settled — immediately bounce
                 // D-pad focus to center so the remote stays responsive.
@@ -2003,6 +2008,8 @@ export default function PlayerScreen() {
             ref={tvCenterRef as any}
             focusable
             style={styles.tvZoneCenter}
+            onBlur={() => setTvZoneFocused(null)}
+            onFocus={() => setTvZoneFocused('center')}
             onPress={() => {
               if (Platform.isTV) {
                 // On Fire TV: OK toggles info bar + controls overlay together.
@@ -2027,7 +2034,9 @@ export default function PlayerScreen() {
             focusable
             style={styles.tvZoneRight}
             onPress={showInfo ? dismissInfoBar : showInfoBar}
+            onBlur={() => setTvZoneFocused(null)}
             onFocus={() => {
+              setTvZoneFocused('right');
               if (!nextChannel || !tvNavReadyRef.current) {
                 // No next channel or nav not yet settled — bounce focus to center.
                 setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 50);
@@ -2044,6 +2053,25 @@ export default function PlayerScreen() {
               });
             }}
           />
+          {/* ── TV zone focus indicators ─────────────────────────────────────
+              Visible only when D-pad focus is on a navigation zone so the user
+              always knows where the remote cursor is while no overlay is shown.
+              pointerEvents="none" so they never intercept touch/D-pad events. */}
+          {tvZoneFocused === 'left' && (
+            <View style={styles.tvZoneFocusLeft} pointerEvents="none">
+              <Text style={styles.tvZoneFocusArrow}>‹</Text>
+            </View>
+          )}
+          {tvZoneFocused === 'center' && (
+            <View style={styles.tvZoneFocusCenter} pointerEvents="none">
+              <View style={styles.tvZoneFocusDot} />
+            </View>
+          )}
+          {tvZoneFocused === 'right' && (
+            <View style={styles.tvZoneFocusRight} pointerEvents="none">
+              <Text style={styles.tvZoneFocusArrow}>›</Text>
+            </View>
+          )}
         </View>
       )}
 
@@ -2097,8 +2125,8 @@ export default function PlayerScreen() {
           setTimeout(() => audioChipRef.current?.focus(), 150);
         }}
       >
-        <Pressable style={styles.settingsBackdrop} focusable={false} onPress={() => setShowAudioPicker(false)} />
-        <View style={[styles.settingsSheet, { paddingBottom: insets.bottom + 16 }]}>
+        <Pressable style={styles.settingsBackdrop} focusable={false} accessible={false} onPress={() => setShowAudioPicker(false)} />
+        <View style={[styles.settingsSheet, { paddingBottom: insets.bottom + 16 }]} accessibilityViewIsModal={true}>
           <View style={styles.settingsHandle} />
           <Text style={styles.settingsTitle}>Audio Track</Text>
           {audioTracks.length === 0 ? (
@@ -2155,8 +2183,8 @@ export default function PlayerScreen() {
           setTimeout(() => ccChipRef.current?.focus(), 150);
         }}
       >
-        <Pressable style={styles.settingsBackdrop} focusable={false} onPress={() => setShowSubPicker(false)} />
-        <View style={[styles.settingsSheet, { paddingBottom: insets.bottom + 16 }]}>
+        <Pressable style={styles.settingsBackdrop} focusable={false} accessible={false} onPress={() => setShowSubPicker(false)} />
+        <View style={[styles.settingsSheet, { paddingBottom: insets.bottom + 16 }]} accessibilityViewIsModal={true}>
           <View style={styles.settingsHandle} />
           <Text style={styles.settingsTitle}>Subtitles / CC</Text>
           {subtitleTracks.length === 0 ? (
@@ -2228,9 +2256,10 @@ export default function PlayerScreen() {
         <Pressable
           style={styles.settingsBackdrop}
           focusable={false}
+          accessible={false}
           onPress={() => setShowSettings(false)}
         />
-        <View style={[styles.settingsSheet, { paddingBottom: insets.bottom + 16 }]}>
+        <View style={[styles.settingsSheet, { paddingBottom: insets.bottom + 16 }]} accessibilityViewIsModal={true}>
           <View style={styles.settingsHandle} />
 
           {/* Vertical scroll so audio/subtitle sections are reachable on small screens */}
@@ -2690,6 +2719,43 @@ const styles = StyleSheet.create({
   tvZoneRight: {
     position: 'absolute', top: 0, bottom: 0,
     right: 0, width: '30%',
+  },
+  // ── TV zone focus indicators — shown when D-pad focus is on a navigation zone ──
+  // Semi-transparent pill at the edge of the screen so the user always knows
+  // where the remote cursor is even when the info bar is hidden.
+  tvZoneFocusLeft: {
+    position: 'absolute', top: 0, bottom: 0, left: 0, width: '30%',
+    justifyContent: 'center', alignItems: 'flex-start',
+    paddingLeft: 20,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderRightWidth: 0,
+    borderLeftWidth: 3,
+    borderLeftColor: 'rgba(0,212,255,0.7)',
+  },
+  tvZoneFocusCenter: {
+    position: 'absolute', top: 0, bottom: 0, left: '30%', right: '30%',
+    justifyContent: 'center', alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: 0,
+    borderTopWidth: 3,
+    borderTopColor: 'rgba(0,212,255,0.5)',
+  },
+  tvZoneFocusRight: {
+    position: 'absolute', top: 0, bottom: 0, right: 0, width: '30%',
+    justifyContent: 'center', alignItems: 'flex-end',
+    paddingRight: 20,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderRightWidth: 3,
+    borderRightColor: 'rgba(0,212,255,0.7)',
+  },
+  tvZoneFocusArrow: {
+    color: 'rgba(0,212,255,0.9)',
+    fontSize: 48,
+    fontWeight: '200',
+  },
+  tvZoneFocusDot: {
+    width: 8, height: 8, borderRadius: 4,
+    backgroundColor: 'rgba(0,212,255,0.7)',
   },
 
   // ── TV channel-switch preview overlay ──
