@@ -1131,8 +1131,13 @@ export default function LiveTVScreen() {
    *  full channel list is passed for prev/next navigation. */
   const handleWatchChannel = useCallback((ch: Channel, cardRef?: React.RefObject<View | null>) => {
     goingToPlayerRef.current = true;
-    // Update the right-panel EPG to show this channel's guide
+    // Update the right-panel EPG and make the mini-player container visible.
+    // setPlayingChannel is required because the mini-player div has display:none
+    // when playingChannel is null — without it triggerCollapse's measureInWindow
+    // returns a zero rect and the collapse animation is skipped entirely,
+    // leaving the player attached to a 0×0 surface → audio only, no video.
     setSelectedChannel(ch);
+    setPlayingChannel(ch);
 
     const hasNums = channels.some((c) => c.num != null);
     const orderedChannels = hasNums
@@ -1303,7 +1308,9 @@ export default function LiveTVScreen() {
         logo: selectedChannel.logo ?? '',
         epgId: selectedChannel.epgId ?? selectedChannel.id,
         channelId: selectedChannel.id,
-        stopOnBack: 'true',
+        // No stopOnBack — the normal triggerCollapse path handles the return
+        // so the player is never paused and the TV video panel remounts cleanly
+        // via onCollapseCompleteRef → setVideoKey, matching the phone flow.
         channelsJson: JSON.stringify(chList),
         channelIndex: String(idx),
       },
