@@ -973,6 +973,15 @@ export default function LiveTVScreen() {
     [channelEpg, nowTs],
   );
 
+  // Current programme for the playing channel in the mini-player.
+  // Uses playingChannel (not selectedChannel) so the info bar stays correct
+  // when the user browses other channels after the mini-player is already open.
+  const miniPlayerProg = useMemo(() => {
+    if (!playingChannel || !epgMap) return null;
+    const progs = epgMap.get(playingChannel.epgId ?? playingChannel.id) ?? [];
+    return progs.find((p) => p.start.getTime() <= nowTs && nowTs < p.end.getTime()) ?? null;
+  }, [playingChannel, epgMap, nowTs]);
+
   // ── Mini-guide reminder state ─────────────────────────────────────────────
   const [miniReminderIds, setMiniReminderIds] = useState<Set<string>>(new Set());
   // #249: track which EPG future row currently has D-pad focus so the bell icon
@@ -1636,7 +1645,7 @@ export default function LiveTVScreen() {
           </FocusablePressable>
         )}
 
-        {/* Channel info bar — logo + name + now-playing EPG title below the mini-player */}
+        {/* Channel info bar — logo + name + now-playing EPG title + progress bar below the mini-player */}
         {playingChannel && (
           <View style={[styles.chInfoBar, { borderBottomColor: colors.border }]}>
             <View style={[styles.chInfoLogo, { backgroundColor: colors.secondary }]}>
@@ -1652,7 +1661,33 @@ export default function LiveTVScreen() {
               <Text style={[styles.chInfoName, { color: colors.foreground }]} numberOfLines={1}>
                 {playingChannel.name}
               </Text>
-              {(() => {
+              {miniPlayerProg ? (
+                <>
+                  <Text style={[styles.chInfoNow, { color: colors.primary }]} numberOfLines={1}>
+                    ▶ {miniPlayerProg.title}
+                  </Text>
+                  {/* Progress bar — shows how far through the current programme the viewer is.
+                      Reuses the same epgProgressWrap/epgProgressBar styles used in the EPG list. */}
+                  {(() => {
+                    const total = miniPlayerProg.end.getTime() - miniPlayerProg.start.getTime();
+                    const elapsed = Math.max(0, nowTs - miniPlayerProg.start.getTime());
+                    const pct = total > 0 ? Math.min(1, elapsed / total) : 0;
+                    const minsLeft = Math.max(0, Math.round((miniPlayerProg.end.getTime() - nowTs) / 60_000));
+                    return (
+                      <View style={styles.miniProgWrap}>
+                        <View style={[styles.epgProgressWrap, { flex: 1, marginTop: 0 }]}>
+                          <View style={[styles.epgProgressBar, { width: `${Math.round(pct * 100)}%` as any }]} />
+                        </View>
+                        <Text style={[styles.miniProgTimeLeft, { color: colors.mutedForeground }]}>
+                          {minsLeft > 0 ? `${minsLeft}m` : '< 1m'}
+                        </Text>
+                      </View>
+                    );
+                  })()}
+                </>
+              ) : (() => {
+                // Fall back to the title-only string from nowPlayingMap when full
+                // programme data is not yet available (e.g. EPG still loading).
                 const nowTitle = nowPlayingMap.get(playingChannel.epgId ?? playingChannel.id);
                 return nowTitle ? (
                   <Text style={[styles.chInfoNow, { color: colors.primary }]} numberOfLines={1}>
@@ -2076,6 +2111,10 @@ const styles = StyleSheet.create({
   epgProgressWrap: { marginTop: 3, marginBottom: 2, height: 3, borderRadius: 2, backgroundColor: 'rgba(59,130,246,0.15)', overflow: 'hidden' as const },
   epgProgressBar: { height: 3, borderRadius: 2, backgroundColor: '#3B82F6' },
   epgTimeLeft: { fontSize: 9, fontFamily: 'Inter_400Regular', marginTop: 2 },
+
+  // Mini-player info bar — progress row (bar + time remaining side by side)
+  miniProgWrap: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3 },
+  miniProgTimeLeft: { fontSize: 9, fontFamily: 'Inter_400Regular', flexShrink: 0 },
 
   noSel: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 },
   noSelTitle: { fontSize: 16, fontFamily: 'Inter_700Bold', marginBottom: 6 },
