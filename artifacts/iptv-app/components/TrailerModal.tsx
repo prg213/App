@@ -3,7 +3,6 @@ import {
   Animated,
   AppState,
   ActivityIndicator,
-  Linking,
   Modal,
   Platform,
   StyleSheet,
@@ -159,6 +158,17 @@ export function TrailerModal({ videoIds, onClose, openerRef }: Props) {
   const [idx, setIdx] = useState(0);
   const [webviewLoading, setWebviewLoading] = useState(true);
   const [allFailed, setAllFailed] = useState(false);
+  /**
+   * When every iframe candidate fails (embedding disabled), we fall back to
+   * loading the mobile YouTube page directly in the WebView instead of
+   * launching an external app.  This:
+   *   1. Plays videos that block embedding — the m.youtube.com site has no
+   *      such restriction.
+   *   2. Keeps the user inside the IPTV app so BACK closes the modal and
+   *      returns to StreamVault, instead of exiting to the Firestick homescreen.
+   * null = iframe embed path;  string = direct m.youtube.com URI fallback.
+   */
+  const [fallbackUri, setFallbackUri] = useState<string | null>(null);
   const [showUnmute, setShowUnmute] = useState(false);
   const unmuteFade = useRef(new Animated.Value(1)).current;
   const unmuteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -181,6 +191,7 @@ export function TrailerModal({ videoIds, onClose, openerRef }: Props) {
     setIdx(0);
     setWebviewLoading(true);
     setAllFailed(false);
+    setFallbackUri(null);
     dismissUnmute();
     webviewKey.current += 1;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -247,7 +258,12 @@ export function TrailerModal({ videoIds, onClose, openerRef }: Props) {
     return () => sub.remove();
   }, []);
 
-  // Advance to the next candidate; mark allFailed when the last one errors.
+  // Advance to the next candidate.
+  // When all iframe embeds are exhausted, fall back to loading the mobile
+  // YouTube page (m.youtube.com) directly in the WebView — this plays videos
+  // that have embedding disabled AND keeps the user inside the app so BACK
+  // returns to StreamVault instead of the Firestick homescreen.
+  // Only reach setAllFailed when there is genuinely no YouTube ID at all.
   const advance = () => {
     const ids = Array.isArray(videoIds) ? videoIds : [];
     dismissUnmute();
@@ -256,7 +272,18 @@ export function TrailerModal({ videoIds, onClose, openerRef }: Props) {
       setWebviewLoading(true);
       webviewKey.current += 1;
     } else {
-      setAllFailed(true);
+      const firstYtId = ids.find(isVideoId);
+      if (firstYtId) {
+        // All iframe candidates failed — load the video on m.youtube.com instead.
+        // The mobile site has no embedding restriction, plays in the WebView,
+        // and keeps BACK working correctly on Firestick.
+        setFallbackUri(`https://m.youtube.com/watch?v=${firstYtId}`);
+        setWebviewLoading(true);
+        webviewKey.current += 1;
+      } else {
+        // No YouTube ID available at all — show the generic error screen.
+        setAllFailed(true);
+      }
     }
   };
 
@@ -302,34 +329,56 @@ export function TrailerModal({ videoIds, onClose, openerRef }: Props) {
           </FocusablePressable>
         </View>
 
-        {/* ── Loading / error states ── */}
+        {/* ── Loading / error / player states ── */}
         {isFetching ? (
           <View style={styles.loaderFull}>
             <ActivityIndicator size="large" color="#3B82F6" />
             <Text style={styles.loaderText}>Finding trailer…</Text>
           </View>
+        ) : fallbackUri ? (
+          /* ── Fallback: load m.youtube.com directly in the WebView ──────────
+             Reached when YouTube's iframe API rejects all embed candidates
+             (error 150/152 — embedding disabled by the uploader).
+             Loading the mobile YouTube page instead of launching an external
+             app means:
+               • BACK closes this modal and returns to StreamVault — not the
+                 Firestick homescreen.
+               • The video actually plays (no embed restriction on the real site).
+               • Touch / D-pad controls work inside the WebView as normal. */
+          <>
+            {webviewLoading && (
+              <View style={styles.loaderOverlay}>
+                <ActivityIndicator size="large" color="#3B82F6" />
+              </View>
+            )}
+            <WebView
+              ref={webviewRef}
+              key={webviewKey.current}
+              source={{ uri: fallbackUri }}
+              style={styles.webview}
+              onLoadEnd={handleWebViewLoadEnd}
+              allowsFullscreenVideo
+              allowsInlineMediaPlayback
+              mediaPlaybackRequiresUserAction={false}
+              javaScriptEnabled
+              domStorageEnabled
+              originWhitelist={['*']}
+              mixedContentMode="always"
+              // m.youtube.com sends postMessage events in a different format;
+              // we do not attach onMessage so the iframe-API handlers don't fire.
+            />
+          </>
         ) : allFailed || !current ? (
+          /* ── No YouTube ID at all (provider-only trailer with no fallback) ── */
           <View style={styles.loaderFull}>
             <Text style={{ fontSize: 40, marginBottom: 12 }}>🎬</Text>
-            <Text style={styles.loaderText}>Trailer can't be embedded</Text>
+            <Text style={styles.loaderText}>No trailer available</Text>
             <Text style={[styles.loaderText, { fontSize: 12, marginTop: 4, opacity: 0.5, textAlign: 'center', paddingHorizontal: 32 }]}>
-              YouTube has disabled embedding for this video.{'\n'}Watch it directly in YouTube instead.
+              No playable trailer was found for this title.
             </Text>
-            {/* First YT candidate — always try to offer a direct link */}
-            {(() => {
-              const firstYtId = (Array.isArray(videoIds) ? videoIds : []).find(isVideoId);
-              if (!firstYtId) return null;
-              return (
-                <FocusablePressable
-                  style={styles.ytBtn}
-                  onPress={() => Linking.openURL(`https://www.youtube.com/watch?v=${firstYtId}`)}
-                >
-                  <Text style={styles.ytBtnText}>▶  Open in YouTube</Text>
-                </FocusablePressable>
-              );
-            })()}
           </View>
         ) : (
+          /* ── Primary path: YouTube iframe API embed ── */
           <>
             {webviewLoading && (
               <View style={styles.loaderOverlay}>
