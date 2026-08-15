@@ -338,6 +338,11 @@ const TVEpgRow = React.memo(function TVEpgRow({
   // null = no user scroll recorded yet for this day (use initialIdx instead).
   // A saved value of 0 is valid (user explicitly scrolled back to the left edge)
   // and must be restored faithfully, so we need null as a distinct sentinel.
+  //
+  // Logout reset: when the user logs out the entire tab navigator unmounts, which
+  // unmounts every TVEpgRow.  On re-login new instances are created and useRef
+  // initialises this to null, so the mount effect always scrolls to initialIdx
+  // (the current/upcoming programme).  No explicit logout-time reset is required.
   const scrollOffsetRef = useRef<number | null>(null);
   // Detect window width changes (landscape ↔ portrait, split-screen resize).
   const { width: windowWidth } = useWindowDimensions();
@@ -2059,13 +2064,31 @@ function normalizeEpgId(s: string): string {
 // ─── Module-level EPG scroll state ────────────────────────────────────────────
 // Survives tab switches (component stays mounted) but must be cleared on logout
 // so the next login always opens the guide at the current time slot.
+//
+// TV / Firestick path note:
+//   _epgScrollX / _epgScrollY are only used by the phone/tablet ScrollView path
+//   (FullGuide's gridHorizRef / gridVertRef).  The TV path uses a FlatList for
+//   vertical scrolling — no module-level Y offset is needed because the FlatList
+//   always starts at the top on a fresh mount, and D-pad focus drives subsequent
+//   scrolling.  Each TVEpgRow tracks its own horizontal position via scrollOffsetRef
+//   (a useRef<number | null>(null)) which is initialised to null on every mount.
+//   Because logout navigates away from the tab screen (router.replace('/activation'))
+//   all TVEpgRow instances unmount; on re-login they remount with scrollOffsetRef
+//   null, so the mount effect correctly scrolls each row to initialIdx (the current
+//   or upcoming programme).  The dayStartMs effect inside TVEpgRow provides the same
+//   reset for day-switches within a session.  No additional action is required here
+//   for the TV vertical or horizontal reset.
 
 let _epgScrollX = 0;
 let _epgScrollY = 0;
 
 /**
- * Resets the saved EPG scroll offsets to zero.
+ * Resets the saved EPG scroll offsets to zero (phone / tablet ScrollView path).
  * Call on logout so the guide always opens at the current time on the next login.
+ *
+ * TV / Firestick: reset is handled automatically by component lifecycle — see the
+ * block comment above.  This function only needs to clear the module-level
+ * _epgScrollX / _epgScrollY that are used by the non-TV ScrollView path.
  */
 export function resetEpgScrollState(): void {
   _epgScrollX = 0;
