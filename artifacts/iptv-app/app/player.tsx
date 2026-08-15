@@ -1388,6 +1388,11 @@ export default function PlayerScreen() {
     [switchChannel],
   );
 
+  // Stable close handler for LiveChannelMenu — must be useCallback so the
+  // React.memo wrapper on the menu component is not defeated by a new function
+  // reference on every PlayerScreen render.
+  const handleMenuClose = useCallback(() => setShowChannelMenu(false), []);
+
   // ── Pause local playback while casting (device becomes the remote) ────────
   useEffect(() => {
     if (isCasting && !isWeb) {
@@ -1867,6 +1872,7 @@ export default function PlayerScreen() {
                 source={{ uri: activeLogo }}
                 style={styles.loadingLogo}
                 contentFit="contain"
+                cachePolicy="memory-disk"
               />
             )}
             <ActivityIndicator size="large" color="#ffffff" />
@@ -2757,9 +2763,8 @@ export default function PlayerScreen() {
         <LiveChannelMenu
           currentChannelId={activeChannelId}
           epgMap={epgMap}
-          nowTs={Date.now()}
           onSelectChannel={handleMenuSelectChannel}
-          onClose={() => setShowChannelMenu(false)}
+          onClose={handleMenuClose}
         />
       )}
 

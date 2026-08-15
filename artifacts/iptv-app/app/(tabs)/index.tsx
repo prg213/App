@@ -799,22 +799,49 @@ export default function LiveTVScreen() {
 
   const isFavsSelected = selectedCatId === FAVS_CAT_ID;
 
-  const { data: fetchedChannels = [], isLoading: channelsLoading, isRefetching, refetch } = useQuery<Channel[]>({
-    queryKey: ['live-channels', selectedCatId, credentials],
+  // M3U always downloads the complete playlist regardless of which category is
+  // selected — the per-category key caused a fresh network round-trip on every
+  // category switch because each entry was a distinct cache slot.  Using the
+  // shared ['live-channels-all'] key fetches once and filters client-side via
+  // `select`, matching the key used by LiveChannelMenu and blocked-channels so
+  // all three screens share a single cached payload with no duplicate requests.
+  //
+  // Xtream supports server-side category filtering so its per-category key is
+  // kept — each category may genuinely differ in what the provider returns.
+  //
+  // refetchOnWindowFocus/Mount: false — staleTime handles freshness; focus
+  // events on Firestick must not trigger provider API calls mid-zap.
+  const isXtreamProvider = credentials?.type === 'xtream';
+
+  const selectChannelsByCategory = useCallback(
+    (data: Channel[]) =>
+      selectedCatId === ALL_CAT_ID
+        ? data
+        : data.filter((c) => c.groupTitle === selectedCatId),
+    [selectedCatId],
+  );
+
+  const { data: fetchedChannels = [], isLoading: channelsLoading, isRefetching, refetch } = useQuery<Channel[], Error, Channel[]>({
+    queryKey: isXtreamProvider
+      ? ['live-channels', selectedCatId, credentials]
+      : ['live-channels-all', credentials],
     queryFn: async () => {
       if (!credentials) return [];
-      if (credentials.type === 'xtream') {
+      if (isXtreamProvider) {
         const catId = selectedCatId === ALL_CAT_ID ? undefined : selectedCatId;
         return getXtreamLiveStreams(buildCreds(credentials), catId);
       }
       if (credentials.m3uUrl) {
         const { channels: all } = await fetchAndParseM3U(credentials.m3uUrl);
-        return selectedCatId === ALL_CAT_ID ? all : all.filter((c) => c.groupTitle === selectedCatId);
+        return all; // return all — category filtering is done by `select` below
       }
       return [];
     },
+    select: isXtreamProvider ? undefined : selectChannelsByCategory,
     enabled: !!credentials && !isFavsSelected,
     staleTime: 5 * 60_000,
+    refetchOnWindowFocus: false,
+    refetchOnMount:       false,
   });
 
   // Task #11: remove blocked channel IDs that no longer exist in the full channel

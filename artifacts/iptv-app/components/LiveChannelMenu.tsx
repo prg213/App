@@ -90,8 +90,6 @@ export interface LiveChannelMenuProps {
   currentChannelId: string;
   /** EPG map already loaded by the player — no extra fetch needed. */
   epgMap?: Map<string, EpgProgram[]>;
-  /** Current wall-clock ms for NOW/NEXT programme lookup. */
-  nowTs: number;
   /**
    * Called when the viewer picks a channel.
    * @param entry   Simplified entry ready for player.switchChannel.
@@ -107,22 +105,36 @@ export interface LiveChannelMenuProps {
 }
 
 // ─── Component ─────────────────────────────────────────────────────────────────
-export function LiveChannelMenu({
+// Internal implementation — exported as a memoised wrapper below so the
+// channel browser only re-renders when its own props change, not on every
+// PlayerScreen state update (buffering, reconnect, OSD visibility, etc.).
+function LiveChannelMenuImpl({
   currentChannelId,
   epgMap,
-  nowTs,
   onSelectChannel,
 }: LiveChannelMenuProps) {
   const { credentials } = useAppContext();
   const isXtream = credentials?.type === 'xtream';
 
+  // ── Internal clock for EPG NOW/NEXT rows ─────────────────────────────────────
+  // Managed here instead of receiving a `nowTs` prop so this component's render
+  // cycle is completely decoupled from PlayerScreen.  The interval only runs
+  // while the menu is mounted (i.e. visible) — zero overhead when it's closed.
+  const [nowTs, setNowTs] = useState(Date.now);
+  useEffect(() => {
+    const t = setInterval(() => setNowTs(Date.now()), 60_000);
+    return () => clearInterval(t);
+  }, []);
+
   // ── Fetch all live channels ──────────────────────────────────────────────────
-  // staleTime = 5 min: data is never re-fetched just because the user switches
-  // channels.  The same cached result is shown every time the menu opens during
-  // the same session.
+  // Key matches ['live-channels-all', credentials] used by other screens so all
+  // components share a single cache entry — no duplicate network requests when
+  // the menu opens after the Live TV tab has already loaded the channel list.
+  // refetchOnWindowFocus/Mount: false — staleTime governs freshness; focus
+  // events on Firestick must never trigger additional API calls.
   const { data: allChannels = [], isLoading } = useQuery<Channel[]>({
-    queryKey:  ['live-channels-menu', credentials],
-    queryFn:   async () => {
+    queryKey:            ['live-channels-all', credentials],
+    queryFn:             async () => {
       if (!credentials) return [];
       if (isXtream) {
         return getXtreamLiveStreams({
@@ -134,8 +146,10 @@ export function LiveChannelMenu({
       const result = await fetchAndParseM3U((credentials as any).m3uUrl ?? '');
       return result.channels;
     },
-    staleTime: 5 * 60_000,
-    gcTime:    30 * 60_000,
+    staleTime:           5 * 60_000,
+    gcTime:              30 * 60_000,
+    refetchOnWindowFocus: false,
+    refetchOnMount:      false,
   });
 
   // ── Favourites ────────────────────────────────────────────────────────────────
@@ -579,6 +593,12 @@ export function LiveChannelMenu({
     </Animated.View>
   );
 }
+
+// Memoised export: PlayerScreen re-renders frequently during channel zapping
+// (buffering, reconnect, OSD state, etc.).  Wrapping in React.memo means the
+// channel browser only reconciles when currentChannelId, epgMap, or the
+// callback references actually change — keeping the Firestick UI responsive.
+export const LiveChannelMenu = React.memo(LiveChannelMenuImpl);
 
 // ─── Styles ────────────────────────────────────────────────────────────────────
 const ACCENT    = '#00d4ff';

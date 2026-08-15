@@ -45,7 +45,17 @@ setupNotifications();
 
 const queryClient = new QueryClient({
   defaultOptions: {
-    queries: { retry: 1, staleTime: 2 * 60_000 },
+    queries: {
+      retry: 1,
+      staleTime: 2 * 60_000,
+      // Firestick / Android TV: the OS fires focus-change events whenever an
+      // overlay opens, a modal appears, or the app returns from the system
+      // launcher.  Without this flag every active query refetches on each of
+      // those events — hammering the IPTV provider API and causing the UI to
+      // re-render during channel zapping.  Freshness is governed by staleTime
+      // per query; window-focus refetches add nothing for an IPTV app.
+      refetchOnWindowFocus: false,
+    },
   },
 });
 
