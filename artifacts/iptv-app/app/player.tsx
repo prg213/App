@@ -1899,7 +1899,7 @@ export default function PlayerScreen() {
           )}
           <Text style={styles.msgSub}>
             {isLive
-              ? 'This channel is currently unavailable. Retry, switch channel, or press Back to return.'
+              ? `This channel is currently unavailable. Retry, switch channel, or tap ${Platform.isTV ? 'Back' : '←'} to return.`
               : 'Unable to load stream. Check your connection and try again.'}
           </Text>
 
@@ -2638,6 +2638,22 @@ export default function PlayerScreen() {
         </Animated.View>
       )}
 
+      {/* Always-visible back button for live TV on phones.
+          All swipe gestures (left/right/up/down) are bound to channel zapping,
+          so users need a permanent tap target to exit the player without having
+          to first tap to reveal the OSD.  Hidden when the OSD controls bar is
+          already showing its own back button to avoid a visual duplicate. */}
+      {isLive && !isWeb && !Platform.isTV && !showControls && (
+        <TouchableOpacity
+          style={[styles.liveExitBtn, { top: insets.top + 8 }]}
+          onPress={handleBackLive}
+          activeOpacity={0.7}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Text style={styles.backIcon}>←</Text>
+        </TouchableOpacity>
+      )}
+
       {/* Web back button */}
       {isWeb && (
         <TouchableOpacity
@@ -2970,6 +2986,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: 'rgba(0,0,0,0.5)',
     borderRadius: 20,
+  },
+  /** Always-visible exit button on the live player (phone/tablet).
+   *  Slightly translucent so it doesn't dominate the picture, but
+   *  always present so users never have to tap just to find the back button. */
+  liveExitBtn: {
+    position: 'absolute',
+    left: 16,
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    borderRadius: 20,
+    opacity: 0.75,
+    zIndex: 10,
   },
   backBtnSmall: {
     width: 36,
