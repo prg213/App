@@ -174,3 +174,56 @@ describe('fetchAndParseXmltv — truncation guard', () => {
     expect(result.has('new-ch0')).toBe(true);
   });
 });
+
+// ── Startup empty-result guard ────────────────────────────────────────────────
+//
+// Task #432: when the app launches fresh (no in-memory previous map) and the
+// XMLTV download is empty or corrupt, the function must THROW so react-query
+// retries rather than caching an empty map and blanking the guide.
+
+describe('fetchAndParseXmltv — startup empty-result guard', () => {
+  beforeEach(() => jest.spyOn(Date, 'now').mockReturnValue(FIXED_NOW_MS));
+  afterEach(() => jest.restoreAllMocks());
+
+  it('throws when the fresh result has zero channels and no previous map is provided', async () => {
+    const xml = '<tv></tv>'; // no programmes
+    mockFetch(xml);
+
+    await expect(fetchAndParseXmltv('http://example.com/epg.xml')).rejects.toThrow('[EPG]');
+  });
+
+  it('throws when the fresh result has zero channels and an empty previous map is provided', async () => {
+    const xml = '<tv></tv>';
+    mockFetch(xml);
+
+    const emptyPrev = new Map<string, EpgProgram[]>();
+    await expect(
+      fetchAndParseXmltv('http://example.com/epg.xml', undefined, emptyPrev),
+    ).rejects.toThrow('[EPG]');
+  });
+
+  it('does NOT throw when a healthy previous map exists (existing guard handles it)', async () => {
+    // With a healthy previous map the existing shrink-ratio guard fires first
+    // and returns the previous data — the startup throw must not interfere.
+    const prev = buildPreviousMap(20);
+    const xml = '<tv></tv>'; // zero channels → below 25 % threshold
+    mockFetch(xml);
+
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const result = await fetchAndParseXmltv('http://example.com/epg.xml', undefined, prev);
+
+    // Returns previous data, does not throw
+    expect(result).toBe(prev);
+    expect(result.size).toBe(20);
+    warnSpy.mockRestore();
+  });
+
+  it('returns healthy data normally when no previous map is provided', async () => {
+    // Normal first-launch with a valid XMLTV feed — must not throw.
+    const xml = xmltvDoc(...Array.from({ length: 10 }, (_, i) => inWindowProg(`ch${i}`)));
+    mockFetch(xml);
+
+    const result = await fetchAndParseXmltv('http://example.com/epg.xml');
+    expect(result.size).toBe(10);
+  });
+});

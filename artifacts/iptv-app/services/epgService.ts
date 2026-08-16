@@ -167,9 +167,16 @@ export async function fetchAndParseXmltv(
   const newMap = await parseXmltvAsync(xml, signal);
 
   // Guard against a corrupt or truncated download silently wiping the guide.
-  // If the previous map was healthy and the new result is suspiciously small
-  // (less than 25 % of the previous channel count), discard the new result
-  // and keep the existing data instead.
+  // Two separate cases:
+  //
+  // 1. A healthy previous map is available (mid-session refresh): if the new
+  //    result is suspiciously small (less than 25 % of the previous channel
+  //    count), discard it and keep the existing data instead.
+  //
+  // 2. No usable previous map (app startup / first fetch): the shrink guard
+  //    cannot fire because there is nothing to compare against.  If the result
+  //    is completely empty, throw so react-query retries the fetch rather than
+  //    caching an empty map and blanking the guide for the entire session.
   if (previousMap && previousMap.size > 0) {
     const prevSize = previousMap.size;
     const newSize  = newMap.size;
@@ -184,6 +191,12 @@ export async function fetchAndParseXmltv(
       );
       return previousMap;
     }
+  } else if (newMap.size === 0) {
+    // No healthy fallback and the download produced zero channels — treat this
+    // as a fetch error so react-query retries instead of caching an empty map.
+    throw new Error(
+      '[EPG] XMLTV result contained zero channels — download may be corrupt or truncated. Retrying.',
+    );
   }
 
   return newMap;
