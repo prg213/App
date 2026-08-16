@@ -32,7 +32,7 @@ import {
 import { TVTextInput } from '@/components/TVTextInput';
 import * as Haptics from 'expo-haptics';
 import { Toast } from '@/components/Toast';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
@@ -2170,10 +2170,14 @@ export default function GuideScreen() {
 
   const xmltvUrl = creds ? getXtreamXmltvUrl(creds) : null;
 
+  const queryClient = useQueryClient();
   const { data: epgMap, isLoading: epgLoading, error: epgError, refetch: refetchEpg } =
     useQuery<Map<string, EpgProgram[]>>({
       queryKey: ['xmltv-epg', credentials],
-      queryFn: ({ signal }) => fetchAndParseXmltv(xmltvUrl!, signal),
+      queryFn: ({ signal }) => {
+        const previous = queryClient.getQueryData<Map<string, EpgProgram[]>>(['xmltv-epg', credentials]);
+        return fetchAndParseXmltv(xmltvUrl!, signal, previous);
+      },
       enabled: !!xmltvUrl,
       staleTime: 30 * 60_000,
       gcTime: 60 * 60_000,

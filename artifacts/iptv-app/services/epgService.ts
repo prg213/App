@@ -145,9 +145,18 @@ export async function parseXmltvAsync(
 
 // ─── Fetch + Parse ─────────────────────────────────────────────────────────
 
+/**
+ * Minimum fraction of the previous channel count that a fresh XMLTV result
+ * must contain before it is accepted.  A parse result with fewer channels
+ * than  (previousSize × XMLTV_SHRINK_RATIO) is treated as a corrupted /
+ * truncated download and discarded in favour of the previous data.
+ */
+const XMLTV_SHRINK_RATIO = 0.25;
+
 export async function fetchAndParseXmltv(
   url: string,
   signal?: AbortSignal,
+  previousMap?: Map<string, EpgProgram[]>,
 ): Promise<Map<string, EpgProgram[]>> {
   const res = await fetch(url, {
     signal,
@@ -155,7 +164,29 @@ export async function fetchAndParseXmltv(
   });
   if (!res.ok) throw new Error(`XMLTV fetch failed: ${res.status} ${res.statusText}`);
   const xml = await res.text();
-  return parseXmltvAsync(xml, signal);
+  const newMap = await parseXmltvAsync(xml, signal);
+
+  // Guard against a corrupt or truncated download silently wiping the guide.
+  // If the previous map was healthy and the new result is suspiciously small
+  // (less than 25 % of the previous channel count), discard the new result
+  // and keep the existing data instead.
+  if (previousMap && previousMap.size > 0) {
+    const prevSize = previousMap.size;
+    const newSize  = newMap.size;
+    const minAcceptable = Math.ceil(prevSize * XMLTV_SHRINK_RATIO);
+
+    if (newSize < minAcceptable) {
+      console.warn(
+        `[EPG] Discarding suspiciously small XMLTV result: ` +
+        `${newSize} channel(s) parsed (previous: ${prevSize}, ` +
+        `minimum acceptable: ${minAcceptable}). ` +
+        `Preserving previous EPG data.`,
+      );
+      return previousMap;
+    }
+  }
+
+  return newMap;
 }
 
 // ─── Base64 decoder (Xtream Codes encodes EPG titles/desc) ─────────────────

@@ -28,7 +28,7 @@ import { useLivePlayer } from '@/context/LivePlayerContext';
 import type { AudioTrack, SubtitleTrack } from 'expo-video';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
 import { useAppContext } from '@/context/AppContext';
 import { StorageService } from '@/services/storage';
@@ -646,9 +646,13 @@ export default function PlayerScreen() {
   }, []);
 
   // ── EPG ──────────────────────────────────────────────────────────────────
+  const queryClient = useQueryClient();
   const { data: epgMap } = useQuery<Map<string, EpgProgram[]>>({
     queryKey: ['xmltv-epg', credentials],
-    queryFn: ({ signal }) => fetchAndParseXmltv(xmltvUrl!, signal),
+    queryFn: ({ signal }) => {
+      const previous = queryClient.getQueryData<Map<string, EpgProgram[]>>(['xmltv-epg', credentials]);
+      return fetchAndParseXmltv(xmltvUrl!, signal, previous);
+    },
     enabled: !!xmltvUrl && isLive,
     staleTime: 30 * 60_000,
     gcTime: 60 * 60_000,

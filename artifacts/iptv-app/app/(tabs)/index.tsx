@@ -37,7 +37,7 @@ import {
 import { DraggableFavList } from '@/components/DraggableFavList';
 import { VideoView } from 'expo-video';
 import { useLivePlayer } from '@/context/LivePlayerContext';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter, useFocusEffect } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -934,9 +934,13 @@ export default function LiveTVScreen() {
     } catch (_) {}
   }, [selectedChannel?.id, filteredChannels]);
 
+  const queryClient = useQueryClient();
   const { data: epgMap } = useQuery<Map<string, EpgProgram[]>>({
     queryKey: ['xmltv-epg', credentials],
-    queryFn: ({ signal }) => fetchAndParseXmltv(xmltvUrl!, signal),
+    queryFn: ({ signal }) => {
+      const previous = queryClient.getQueryData<Map<string, EpgProgram[]>>(['xmltv-epg', credentials]);
+      return fetchAndParseXmltv(xmltvUrl!, signal, previous);
+    },
     enabled: !!xmltvUrl,
     staleTime: 30 * 60_000,
     gcTime: 60 * 60_000,
