@@ -425,3 +425,119 @@ describe('parseXmltvAsync — CDATA and entity decoding', () => {
     expect(result.get('ch1')?.[0].title).toBe('Multiline Show');
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('parseXmltvAsync — timezone offset handling', () => {
+  beforeEach(() => jest.spyOn(Date, 'now').mockReturnValue(FIXED_NOW_MS));
+  afterEach(() => jest.restoreAllMocks());
+
+  /**
+   * Build an XMLTV timestamp from a UTC Date expressed in a given timezone.
+   * tzOffsetMinutes is the offset east of UTC (positive = ahead of UTC).
+   * tzSuffix is the raw string appended, e.g. "+0100" or "-0500".
+   */
+  function toXmltvDateWithTz(utcDate: Date, tzOffsetMinutes: number, tzSuffix: string): string {
+    const localMs = utcDate.getTime() + tzOffsetMinutes * 60_000;
+    const local = new Date(localMs);
+    const pad = (n: number, len = 2): string => String(n).padStart(len, '0');
+    return (
+      `${pad(local.getUTCFullYear(), 4)}` +
+      `${pad(local.getUTCMonth() + 1)}` +
+      `${pad(local.getUTCDate())}` +
+      `${pad(local.getUTCHours())}` +
+      `${pad(local.getUTCMinutes())}` +
+      `${pad(local.getUTCSeconds())}` +
+      ` ${tzSuffix}`
+    );
+  }
+
+  it('correctly converts a +0100 offset: local 19:00+01 → 18:00 UTC', async () => {
+    // Target UTC: 2024-07-26T18:00:00Z — inside the window (now=12:00, window=-2h to +3d)
+    const targetUtc = new Date('2024-07-26T18:00:00Z');
+    const xmltvStart = toXmltvDateWithTz(targetUtc, 60, '+0100'); // local = 19:00
+    const xmltvStop  = toXmltvDateWithTz(new Date(targetUtc.getTime() + 30 * 60_000), 60, '+0100');
+
+    const xml = `<tv><programme start="${xmltvStart}" stop="${xmltvStop}" channel="ch1"><title>TZ+1 Show</title></programme></tv>`;
+    const result = await parseXmltvAsync(xml);
+
+    expect(result.size).toBe(1);
+    const prog = result.get('ch1')![0];
+    expect(prog.start.getTime()).toBe(targetUtc.getTime());
+  });
+
+  it('correctly converts a -0500 offset: local 13:00-05 → 18:00 UTC', async () => {
+    // Target UTC: 2024-07-26T18:00:00Z
+    const targetUtc = new Date('2024-07-26T18:00:00Z');
+    const xmltvStart = toXmltvDateWithTz(targetUtc, -300, '-0500'); // local = 13:00
+    const xmltvStop  = toXmltvDateWithTz(new Date(targetUtc.getTime() + 30 * 60_000), -300, '-0500');
+
+    const xml = `<tv><programme start="${xmltvStart}" stop="${xmltvStop}" channel="ch1"><title>TZ-5 Show</title></programme></tv>`;
+    const result = await parseXmltvAsync(xml);
+
+    expect(result.size).toBe(1);
+    const prog = result.get('ch1')![0];
+    expect(prog.start.getTime()).toBe(targetUtc.getTime());
+  });
+
+  it('correctly converts a half-hour +0530 offset: local 23:30+05:30 → 18:00 UTC', async () => {
+    // Target UTC: 2024-07-26T18:00:00Z
+    const targetUtc = new Date('2024-07-26T18:00:00Z');
+    const offsetMin = 5 * 60 + 30; // 330 minutes
+    const xmltvStart = toXmltvDateWithTz(targetUtc, offsetMin, '+0530'); // local = 23:30
+    const xmltvStop  = toXmltvDateWithTz(new Date(targetUtc.getTime() + 30 * 60_000), offsetMin, '+0530');
+
+    const xml = `<tv><programme start="${xmltvStart}" stop="${xmltvStop}" channel="ch1"><title>TZ+5:30 Show</title></programme></tv>`;
+    const result = await parseXmltvAsync(xml);
+
+    expect(result.size).toBe(1);
+    const prog = result.get('ch1')![0];
+    expect(prog.start.getTime()).toBe(targetUtc.getTime());
+  });
+
+  it('applies the time-window filter after offset conversion, not before', async () => {
+    // UTC start = now+2h (inside window).
+    // Expressed as +0300: local digits = now+5h, which would appear far in the future
+    // if the filter mistakenly compared raw digits against the window before subtracting.
+    const utcStart = new Date(FIXED_NOW_MS + 2 * 60 * 60_000);
+    const utcStop  = new Date(FIXED_NOW_MS + 3 * 60 * 60_000);
+
+    const xmltvStart = toXmltvDateWithTz(utcStart, 180, '+0300');
+    const xmltvStop  = toXmltvDateWithTz(utcStop,  180, '+0300');
+
+    const xml = `<tv><programme start="${xmltvStart}" stop="${xmltvStop}" channel="ch1"><title>Offset Window Show</title></programme></tv>`;
+    const result = await parseXmltvAsync(xml);
+
+    // Correctly converted → inside window → must be included
+    expect(result.size).toBe(1);
+    const prog = result.get('ch1')![0];
+    expect(prog.start.getTime()).toBe(utcStart.getTime());
+  });
+
+  it('excludes a programme that is outside the window only after the offset is applied', async () => {
+    // UTC target: now-3h = 09:00 UTC — before the window open (now-2h = 10:00).
+    // With +0200 the local digits are 11:00, which look inside the window on their own.
+    const utcStart = new Date(FIXED_NOW_MS - 3 * 60 * 60_000);
+    const utcStop  = new Date(FIXED_NOW_MS - 2 * 60 * 60_000 - 1); // just before window open
+
+    const xmltvStart = toXmltvDateWithTz(utcStart, 120, '+0200'); // local = 11:00
+    const xmltvStop  = toXmltvDateWithTz(utcStop,  120, '+0200');
+
+    const xml = `<tv><programme start="${xmltvStart}" stop="${xmltvStop}" channel="ch1"><title>Out Of Window After Offset</title></programme></tv>`;
+    const result = await parseXmltvAsync(xml);
+
+    // After offset conversion end < windowStart → excluded
+    expect(result.size).toBe(0);
+  });
+
+  it('a +0000 (UTC) offset produces the same UTC times as no timezone suffix', async () => {
+    const withUtcTz = toXmltvDateWithTz(IN_WIN_START, 0, '+0000');
+    const withoutTz = toXmltvDate(IN_WIN_START); // appends ' +0000'
+
+    const xmlWith    = `<tv><programme start="${withUtcTz}" stop="${toXmltvDateWithTz(IN_WIN_STOP, 0, '+0000')}" channel="ch1"><title>A</title></programme></tv>`;
+    const xmlWithout = `<tv><programme start="${withoutTz}" stop="${toXmltvDate(IN_WIN_STOP)}" channel="ch1"><title>A</title></programme></tv>`;
+
+    const [r1, r2] = await Promise.all([parseXmltvAsync(xmlWith), parseXmltvAsync(xmlWithout)]);
+    expect(r1.get('ch1')![0].start.getTime()).toBe(r2.get('ch1')![0].start.getTime());
+  });
+});
