@@ -96,7 +96,7 @@ function instrumentStorageOrder(log: CallLog) {
     store[key] = value;
   });
 
-  multiRemove.mockImplementation(async (keys: string[]) => {
+  multiRemove.mockImplementation(async (keys: readonly string[]) => {
     log.push('clearCredentials');
     keys.forEach((k) => delete store[k]);
   });

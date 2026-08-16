@@ -34,7 +34,8 @@ jest.mock('react-native', () => {
     React.createElement('ActivityIndicator', props);
 
   // Minimal Animated that runs callbacks synchronously so act() drains them.
-  const makeAnim = () => ({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const makeAnim: () => any = () => ({
     setValue: jest.fn(),
     interpolate: jest.fn(() => makeAnim()),
     addListener: jest.fn(() => 'id'),

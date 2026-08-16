@@ -185,12 +185,12 @@ describe('rescheduleRemindersForLeadTime', () => {
     // Past reminder must appear unchanged
     const savedPast = saved.find((r: any) => r.id === 'past');
     expect(savedPast).toBeDefined();
-    expect(savedPast.notificationId).toBe('old-past');
+    expect(savedPast!.notificationId).toBe('old-past');
 
     // Future reminder must have the new ID
     const savedFuture = saved.find((r: any) => r.id === 'fut');
     expect(savedFuture).toBeDefined();
-    expect(savedFuture.notificationId).toBe('new-fut');
+    expect(savedFuture!.notificationId).toBe('new-fut');
 
     // cancel should only have been called for the future reminder
     expect(cancel).toHaveBeenCalledTimes(1);
