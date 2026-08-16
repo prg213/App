@@ -22,3 +22,8 @@ description: Professional IPTV OSD patterns in player.tsx and TVLiveLayout.tsx �
 2. The 6 s timer is in BOTH the mount useEffect (entry) and `showInfoBar` (manual toggle / channel switch).
 3. Don't add a new separate overlay for Audio/CC on TV — they belong inside the info bar.
 4. `tvPreviewNowProg` state must be cleared (`setTvPreviewNowProg(null)`) in the fade-out callback of `showTvChannelPreview`.
+
+## Bottom OSD unified (Aug 2026)
+- Prev/next channel nav cards removed from the info bar — the minimal NOW/NEXT strip is the only bottom menu; refs/styles (chNav*, prevChBtnRef/nextChBtnRef) deleted.
+- Zapping inputs: TV D-pad UP=next / DOWN=prev via useTVRemote onHWKeyEvent fallback (guarded vs channel menu, pickers, user-pinned OSD); touch swipe LEFT=next / RIGHT=prev (swipe-right no longer dismisses OSD/goes back — back is via visible button); vertical swipe zap kept.
+- First-channel-never-loads fix: tab loader writes liveUrlRef before replaceAsync commits, so fullscreen mount can see URL equality while player status is 'idle'/'error' — in that case force player.replace(url)+play() instead of just play().
