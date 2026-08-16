@@ -19,7 +19,7 @@ config.resolver.blockList = [
 config.resolver.resolveRequest = function (ctx, moduleName, platform) {
   if (moduleName === '@workspace/api-client-react') {
     return {
-      filePath: path.resolve(__dirname, 'eas-stubs/api-client-react.js'),
+      filePath: path.resolve(__dirname, 'eas-stubs/api-client-react.ts'),
       type: 'sourceFile',
     };
   }
