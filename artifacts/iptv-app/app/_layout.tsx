@@ -89,7 +89,7 @@ function RootLayoutNav() {
       // the last active tab (e.g. Live TV).  Always reset to Home so the app
       // never opens on a content tab without the user choosing it.
       hasNavigatedHomeRef.current = true;
-      if (segments[1] !== 'home') {
+      if ((segments as string[])[1] !== 'home') {
         router.replace('/(tabs)/home');
       }
     }

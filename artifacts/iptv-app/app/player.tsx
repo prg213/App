@@ -689,7 +689,7 @@ export default function PlayerScreen() {
     p.loop = false;
     // Disable scrubbing mode for catch-up — timeshift streams don't support
     // seek via currentTime; we use a wall-clock timer instead.
-    p.scrubbingModeOptions = { isEnabled: !isCatchup };
+    p.scrubbingModeOptions = { scrubbingModeEnabled: !isCatchup };
     if (!isWeb) p.play();
   });
 

@@ -14,7 +14,6 @@ import {
 } from 'react-native';
 import { sidebarNav } from '@/lib/sidebarNav';
 import { useRouter } from 'expo-router';
-import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { Tabs } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppContext } from '@/context/AppContext';
@@ -169,7 +168,18 @@ function NavItem({
   );
 }
 
-function Sidebar({ state, descriptors, navigation }: BottomTabBarProps) {
+// Minimal local shape of the tab-bar props expo-router passes to `tabBar`.
+// Typed locally instead of importing BottomTabBarProps from
+// '@react-navigation/bottom-tabs': that package is a transitive dependency of
+// expo-router and is not hoisted in CI's pnpm install, so the import fails
+// typecheck there.
+type SidebarProps = {
+  state: { index: number; routes: Array<{ key: string; name: string }> };
+  descriptors: Record<string, any>;
+  navigation: any;
+};
+
+function Sidebar({ state, descriptors, navigation }: SidebarProps) {
   const insets = useSafeAreaInsets();
   const serverStatus = useServerStatus();
   const upcomingReminderCount = useUpcomingReminderCount();

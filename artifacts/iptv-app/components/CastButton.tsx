@@ -22,7 +22,7 @@ export default function CastButton({ wrapStyle }: Props) {
 
   return (
     <View style={[styles.btn, wrapStyle]}>
-      <VideoAirPlayButton style={styles.airplay} tintColor="#fff" activeTintColor="#8B5CF6" />
+      <VideoAirPlayButton style={styles.airplay} tint="#fff" activeTint="#8B5CF6" />
     </View>
   );
 }
