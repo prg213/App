@@ -456,10 +456,6 @@ export default function PlayerScreen() {
   const audioChipRef = useRef<any>(null);
   const ccChipRef    = useRef<any>(null);
   const settingsChipRef = useRef<any>(null);
-  // OSD channel-nav buttons — D-pad left/right routes focus here when the OSD
-  // is user-invoked so the viewer can browse prev/next without zapping.
-  const prevChBtnRef = useRef<any>(null);
-  const nextChBtnRef = useRef<any>(null);
   // TV: refs for elements that get imperative focus instead of hasTVPreferredFocus
   // (hasTVPreferredFocus re-fires requestFocus on every re-render on Fire OS).
   const retryBtnRef       = useRef<any>(null);   // error-state retry button
@@ -718,7 +714,21 @@ export default function PlayerScreen() {
       // #138: always allow a fresh stale-URL re-resolve attempt when entering
       // fullscreen, even if the URL matches (stream may already be failing).
       didResolveStaleUrlRef.current = false;
-      try { if (!player.playing) player.play(); } catch {}
+      // First-channel bug: the tab's loader writes liveUrlRef BEFORE its async
+      // replaceAsync commits, so on the very first watch this branch can run
+      // while the shared player has no source loaded yet ('idle') or a failed
+      // one ('error'). In that state play() alone does nothing — force a
+      // synchronous replace so the stream always starts. When the stream is
+      // already loading/playing (mini-player expand) we leave it untouched.
+      try {
+        const st = (player as any).status;
+        if (!player.playing && (st === 'idle' || st === 'error')) {
+          player.replace(params.url);
+          player.play();
+        } else if (!player.playing) {
+          player.play();
+        }
+      } catch {}
     } else {
       liveUrlRef.current = params.url;
       try { player.replace(params.url); player.play(); } catch {}
@@ -1395,6 +1405,23 @@ export default function PlayerScreen() {
       if (eventKeyAction !== 1 || !isLive) return;
       handlePrevChannel();
     },
+    // D-pad UP/DOWN → channel zap on live TV. These fire through the
+    // onHWKeyEvent fallback when the spatial engine has no focus target
+    // above/below the centre zone. Guarded so they never zap while an
+    // overlay (channel menu, audio/CC picker, pinned OSD) is open —
+    // those surfaces own the D-pad while visible.
+    up: ({ eventKeyAction }) => {
+      if (eventKeyAction !== 1 || !isLive) return;
+      if (showChannelMenuRef.current || showAudioPickerRef.current || showSubPickerRef.current) return;
+      if (infoBarUserInvokedRef.current && showInfoRef.current) return;
+      handleNextChannel();
+    },
+    down: ({ eventKeyAction }) => {
+      if (eventKeyAction !== 1 || !isLive) return;
+      if (showChannelMenuRef.current || showAudioPickerRef.current || showSubPickerRef.current) return;
+      if (infoBarUserInvokedRef.current && showInfoRef.current) return;
+      handlePrevChannel();
+    },
     onFastForward: ({ eventKeyAction }) => {
       if (eventKeyAction !== 1 || isLive) return;
       seek(30);
@@ -1718,19 +1745,22 @@ export default function PlayerScreen() {
       setDoubleTapSide(isLeft ? 'back' : 'forward');
       doubleTapTimer.current = setTimeout(() => setDoubleTapSide(null), 700);
     });
-  // Live TV phone/tablet — horizontal: swipe right → dismiss OSD or go back.
-  // activeOffsetX(30) lets short taps reach tapGesture; failOffsetY([-25,25])
+  // Live TV phone/tablet — horizontal: swipe LEFT → next channel,
+  // swipe RIGHT → previous channel (like flipping through pages).
+  // activeOffsetX(±30) lets short taps reach tapGesture; failOffsetY([-25,25])
   // yields to the vertical channel-change gesture below for primarily-vertical
   // swipes so the two gestures don't compete.
   const liveSwipeGesture = Gesture.Pan()
     .runOnJS(true)
-    .activeOffsetX(30)
+    .activeOffsetX([-30, 30])
     .failOffsetY([-25, 25])
     .onEnd((e) => {
       if (!isLive || Platform.isTV) return;
-      if (e.translationX > 60 && e.velocityX > 0) {
-        if (showInfoRef.current) { dismissInfoBar(); }
-        else { handleBackLive(); }
+      if (Math.abs(e.translationX) < 60 || Math.abs(e.velocityX) < 200) return;
+      if (e.translationX < 0) {
+        handleNextChannel(); // swipe LEFT  → next channel
+      } else {
+        handlePrevChannel(); // swipe RIGHT → previous channel
       }
     });
 
@@ -2364,38 +2394,6 @@ export default function PlayerScreen() {
             </View>
           )}
 
-          {/* Row 4: Prev / Next channel navigation.
-              Shown on all platforms (including TV) so D-pad left/right can
-              route focus here when the OSD is user-pinned open. */}
-          {(prevChannel || nextChannel) && (
-            <View style={styles.chNavRow}>
-              {prevChannel ? (
-                <FocusablePressable
-                  ref={prevChBtnRef}
-                  style={styles.chNavBtn}
-                  onPress={handlePrevChannel}
-                >
-                  <Text style={styles.chNavArrow}>‹</Text>
-                  <Text style={styles.chNavLabel} numberOfLines={1}>{prevChannel.title}</Text>
-                </FocusablePressable>
-              ) : (
-                <View style={styles.chNavPlaceholder} />
-              )}
-
-              {nextChannel ? (
-                <FocusablePressable
-                  ref={nextChBtnRef}
-                  style={[styles.chNavBtn, styles.chNavBtnRight]}
-                  onPress={handleNextChannel}
-                >
-                  <Text style={styles.chNavLabel} numberOfLines={1}>{nextChannel.title}</Text>
-                  <Text style={styles.chNavArrow}>›</Text>
-                </FocusablePressable>
-              ) : (
-                <View style={styles.chNavPlaceholder} />
-              )}
-            </View>
-          )}
         </Animated.View>
       )}
 
@@ -2467,10 +2465,10 @@ export default function PlayerScreen() {
             onFocus={() => {
               setTvZoneFocused('left');
               // OSD is user-pinned (viewer pressed OK to open it):
-              // Route D-pad LEFT into the OSD's prev-channel button so the
-              // viewer can navigate the overlay rather than triggering a zap.
+              // keep focus on the centre zone — the nav cards were removed,
+              // so LEFT must not zap while the viewer is reading the overlay.
               if (infoBarUserInvokedRef.current && showInfoRef.current) {
-                setTimeout(() => (prevChBtnRef.current ?? tvCenterRef.current)?.focus?.(), 50);
+                setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 50);
                 return;
               }
               if (!prevChannel || !tvNavReadyRef.current) {
@@ -2546,9 +2544,9 @@ export default function PlayerScreen() {
             onBlur={() => setTvZoneFocused(null)}
             onFocus={() => {
               setTvZoneFocused('right');
-              // OSD is user-pinned: route D-pad RIGHT to the next-channel button.
+              // OSD is user-pinned: keep focus on the centre zone (nav cards removed).
               if (infoBarUserInvokedRef.current && showInfoRef.current) {
-                setTimeout(() => (nextChBtnRef.current ?? tvCenterRef.current)?.focus?.(), 50);
+                setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 50);
                 return;
               }
               if (!nextChannel || !tvNavReadyRef.current) {
@@ -3093,43 +3091,6 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.6)',
     flexShrink: 0,
   },
-
-  // ── Prev / Next channel navigation ──
-  chNavRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 8,
-    paddingTop: 8,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: 'rgba(255,255,255,0.15)',
-    gap: 12,
-  },
-  chNavBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  chNavBtnRight: {
-    justifyContent: 'flex-end',
-  },
-  chNavArrow: {
-    fontSize: 22,
-    color: '#fff',
-    lineHeight: 24,
-    flexShrink: 0,
-  },
-  chNavLabel: {
-    flex: 1,
-    fontSize: 12,
-    fontFamily: 'Inter_500Medium',
-    color: 'rgba(255,255,255,0.85)',
-  },
-  chNavPlaceholder: { flex: 1 },
 
   // ── Settings tray ──
   settingsBackdrop: {
