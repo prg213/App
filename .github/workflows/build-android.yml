@@ -45,6 +45,9 @@ jobs:
       - name: Typecheck
         run: pnpm --filter @workspace/iptv-app run typecheck
 
+      - name: Typecheck tests
+        run: pnpm --filter @workspace/iptv-app run typecheck:tests
+
       - name: Expo prebuild
         working-directory: artifacts/iptv-app
         run: npx expo prebuild --platform android --no-install --clean
