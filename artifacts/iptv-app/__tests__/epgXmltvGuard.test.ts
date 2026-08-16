@@ -227,3 +227,82 @@ describe('fetchAndParseXmltv — startup empty-result guard', () => {
     expect(result.size).toBe(10);
   });
 });
+
+// ── Startup small-but-non-zero result (partial download) ──────────────────────
+//
+// Task #435: a partially-truncated XMLTV feed may download successfully (HTTP
+// 200, non-empty body) yet only parse to 1–2 channels.  On first launch there
+// is no previousMap to compare against, so the shrink-ratio guard cannot fire
+// and the empty-result guard (newMap.size === 0) also does not apply.
+//
+// Current behaviour: the small result is ACCEPTED and cached for the session.
+// This is a known gap — a minimum absolute channel count guard could be added
+// in the future to reject such results and force a retry (see XMLTV_MIN_CHANNELS
+// constant proposal in the service).  These tests pin the current behaviour so
+// any future change to the acceptance policy is intentional and explicit.
+
+describe('fetchAndParseXmltv — startup small-but-non-zero result (partial download)', () => {
+  beforeEach(() => jest.spyOn(Date, 'now').mockReturnValue(FIXED_NOW_MS));
+  afterEach(() => jest.restoreAllMocks());
+
+  it('currently ACCEPTS a single-channel result on first launch (no previous map)', async () => {
+    // A partially-truncated download that only parsed 1 channel.
+    // Without a previousMap there is no baseline to compare against, so the
+    // shrink-ratio guard cannot fire.  The result is cached as-is.
+    // NOTE: this is the known gap documented by task #435.  A future
+    // XMLTV_MIN_CHANNELS guard would change this to a throw/retry.
+    const xml = xmltvDoc(inWindowProg('ch0'));
+    mockFetch(xml);
+
+    const result = await fetchAndParseXmltv('http://example.com/epg.xml');
+    expect(result.size).toBe(1);
+  });
+
+  it('currently ACCEPTS a two-channel result on first launch (no previous map)', async () => {
+    // Same scenario with 2 channels — still below any reasonable minimum but
+    // currently accepted because there is no previous baseline.
+    const xml = xmltvDoc(inWindowProg('ch0'), inWindowProg('ch1'));
+    mockFetch(xml);
+
+    const result = await fetchAndParseXmltv('http://example.com/epg.xml');
+    expect(result.size).toBe(2);
+  });
+
+  it('currently ACCEPTS a small result when previousMap is empty (same gap)', async () => {
+    // An explicit but empty previousMap is treated the same as no map —
+    // the shrink-ratio guard requires previousMap.size > 0 to activate.
+    const emptyPrev = new Map<string, EpgProgram[]>();
+    const xml = xmltvDoc(inWindowProg('ch0'));
+    mockFetch(xml);
+
+    const result = await fetchAndParseXmltv('http://example.com/epg.xml', undefined, emptyPrev);
+    expect(result.size).toBe(1);
+  });
+
+  it('does NOT treat a small-but-non-zero startup result as zero (no throw)', async () => {
+    // The startup empty-result guard only fires on newMap.size === 0.
+    // A result with even a single channel must not cause an unintended throw.
+    const xml = xmltvDoc(inWindowProg('ch0'));
+    mockFetch(xml);
+
+    await expect(fetchAndParseXmltv('http://example.com/epg.xml')).resolves.toBeDefined();
+  });
+
+  it('the shrink-ratio guard DOES protect mid-session refreshes with the same tiny result', async () => {
+    // Once a healthy session is established (previousMap has real data), a
+    // subsequent partial download that yields only 1 channel is correctly
+    // discarded by the 25 % shrink-ratio guard.  This confirms the gap is
+    // limited to the very first fetch.
+    const prev = buildPreviousMap(20); // 20 channels previously
+    const xml = xmltvDoc(inWindowProg('ch0')); // 1 channel — well below 25 %
+    mockFetch(xml);
+
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const result = await fetchAndParseXmltv('http://example.com/epg.xml', undefined, prev);
+
+    expect(result).toBe(prev);    // previous data preserved
+    expect(result.size).toBe(20);
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('[EPG]'));
+    warnSpy.mockRestore();
+  });
+});
