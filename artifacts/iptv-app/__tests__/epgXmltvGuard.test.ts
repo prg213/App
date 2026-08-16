@@ -83,13 +83,14 @@ describe('fetchAndParseXmltv — truncation guard', () => {
   });
 
   it('returns a healthy result when the previous map is empty', async () => {
-    // Previous map exists but is empty — guard does not apply
-    const xml = xmltvDoc(inWindowProg('ch0'), inWindowProg('ch1'));
+    // Previous map exists but is empty — shrink-ratio guard does not apply,
+    // but startup min-channels guard does.  Use a healthy count (≥ XMLTV_MIN_CHANNELS).
+    const xml = xmltvDoc(...Array.from({ length: 5 }, (_, i) => inWindowProg(`ch${i}`)));
     mockFetch(xml);
 
     const prev = new Map<string, EpgProgram[]>();
     const result = await fetchAndParseXmltv('http://example.com/epg.xml', undefined, prev);
-    expect(result.size).toBe(2);
+    expect(result.size).toBe(5);
   });
 
   it('accepts a result that is exactly at the 25 % threshold', async () => {
@@ -230,69 +231,65 @@ describe('fetchAndParseXmltv — startup empty-result guard', () => {
 
 // ── Startup small-but-non-zero result (partial download) ──────────────────────
 //
-// Task #435: a partially-truncated XMLTV feed may download successfully (HTTP
+// Task #436: a partially-truncated XMLTV feed may download successfully (HTTP
 // 200, non-empty body) yet only parse to 1–2 channels.  On first launch there
-// is no previousMap to compare against, so the shrink-ratio guard cannot fire
-// and the empty-result guard (newMap.size === 0) also does not apply.
+// is no previousMap to compare against, so the shrink-ratio guard cannot fire.
 //
-// Current behaviour: the small result is ACCEPTED and cached for the session.
-// This is a known gap — a minimum absolute channel count guard could be added
-// in the future to reject such results and force a retry (see XMLTV_MIN_CHANNELS
-// constant proposal in the service).  These tests pin the current behaviour so
-// any future change to the acceptance policy is intentional and explicit.
+// The XMLTV_MIN_CHANNELS absolute floor now closes this gap: when the result
+// is non-zero but below the minimum channel count AND there is no healthy
+// previous map to fall back on, fetchAndParseXmltv throws so react-query
+// retries rather than caching a near-empty result all session.
 
 describe('fetchAndParseXmltv — startup small-but-non-zero result (partial download)', () => {
   beforeEach(() => jest.spyOn(Date, 'now').mockReturnValue(FIXED_NOW_MS));
   afterEach(() => jest.restoreAllMocks());
 
-  it('currently ACCEPTS a single-channel result on first launch (no previous map)', async () => {
+  it('now REJECTS a single-channel result on first launch (no previous map)', async () => {
     // A partially-truncated download that only parsed 1 channel.
-    // Without a previousMap there is no baseline to compare against, so the
-    // shrink-ratio guard cannot fire.  The result is cached as-is.
-    // NOTE: this is the known gap documented by task #435.  A future
-    // XMLTV_MIN_CHANNELS guard would change this to a throw/retry.
+    // Previously accepted (task #435 gap); now the XMLTV_MIN_CHANNELS guard
+    // fires and throws so react-query retries.
     const xml = xmltvDoc(inWindowProg('ch0'));
     mockFetch(xml);
 
-    const result = await fetchAndParseXmltv('http://example.com/epg.xml');
-    expect(result.size).toBe(1);
+    await expect(fetchAndParseXmltv('http://example.com/epg.xml')).rejects.toThrow('[EPG]');
   });
 
-  it('currently ACCEPTS a two-channel result on first launch (no previous map)', async () => {
-    // Same scenario with 2 channels — still below any reasonable minimum but
-    // currently accepted because there is no previous baseline.
+  it('now REJECTS a two-channel result on first launch (no previous map)', async () => {
+    // Same scenario with 2 channels — still below XMLTV_MIN_CHANNELS (3),
+    // so the guard throws and forces a retry.
     const xml = xmltvDoc(inWindowProg('ch0'), inWindowProg('ch1'));
     mockFetch(xml);
 
-    const result = await fetchAndParseXmltv('http://example.com/epg.xml');
-    expect(result.size).toBe(2);
+    await expect(fetchAndParseXmltv('http://example.com/epg.xml')).rejects.toThrow('[EPG]');
   });
 
-  it('currently ACCEPTS a small result when previousMap is empty (same gap)', async () => {
+  it('now REJECTS a small result when previousMap is empty (same floor applies)', async () => {
     // An explicit but empty previousMap is treated the same as no map —
-    // the shrink-ratio guard requires previousMap.size > 0 to activate.
+    // the shrink-ratio guard requires previousMap.size > 0 to activate,
+    // but the XMLTV_MIN_CHANNELS floor still applies.
     const emptyPrev = new Map<string, EpgProgram[]>();
     const xml = xmltvDoc(inWindowProg('ch0'));
     mockFetch(xml);
 
-    const result = await fetchAndParseXmltv('http://example.com/epg.xml', undefined, emptyPrev);
-    expect(result.size).toBe(1);
+    await expect(
+      fetchAndParseXmltv('http://example.com/epg.xml', undefined, emptyPrev),
+    ).rejects.toThrow('[EPG]');
   });
 
-  it('does NOT treat a small-but-non-zero startup result as zero (no throw)', async () => {
-    // The startup empty-result guard only fires on newMap.size === 0.
-    // A result with even a single channel must not cause an unintended throw.
-    const xml = xmltvDoc(inWindowProg('ch0'));
+  it('accepts a result that is exactly at the XMLTV_MIN_CHANNELS floor on first launch', async () => {
+    // 3 channels (= XMLTV_MIN_CHANNELS) must resolve, not throw.
+    const xml = xmltvDoc(inWindowProg('ch0'), inWindowProg('ch1'), inWindowProg('ch2'));
     mockFetch(xml);
 
-    await expect(fetchAndParseXmltv('http://example.com/epg.xml')).resolves.toBeDefined();
+    const result = await fetchAndParseXmltv('http://example.com/epg.xml');
+    expect(result.size).toBe(3);
   });
 
   it('the shrink-ratio guard DOES protect mid-session refreshes with the same tiny result', async () => {
     // Once a healthy session is established (previousMap has real data), a
     // subsequent partial download that yields only 1 channel is correctly
-    // discarded by the 25 % shrink-ratio guard.  This confirms the gap is
-    // limited to the very first fetch.
+    // discarded by the 25 % shrink-ratio guard — the min-channels floor does
+    // not interfere because the shrink-ratio branch runs first.
     const prev = buildPreviousMap(20); // 20 channels previously
     const xml = xmltvDoc(inWindowProg('ch0')); // 1 channel — well below 25 %
     mockFetch(xml);

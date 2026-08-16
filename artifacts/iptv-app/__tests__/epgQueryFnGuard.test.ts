@@ -136,38 +136,49 @@ describe('EPG queryFn guard — QueryClient integration (guide.tsx / index.tsx p
   // ── 1. First fetch: cache is empty ─────────────────────────────────────────
   //
   // getQueryData returns undefined → fetchAndParseXmltv receives no previous
-  // map → guard is bypassed → any result (even tiny) is accepted and stored.
+  // map → the startup guard applies.  Results with fewer than XMLTV_MIN_CHANNELS
+  // (3) channels are rejected (throw → react-query retries); results at or above
+  // the floor are accepted and stored.
 
-  it('first fetch — empty cache — accepts any size result and stores it', async () => {
+  it('first fetch — empty cache — rejects a tiny two-channel result and leaves cache empty', async () => {
     const { queryClient, runQuery } = makeQueryClient();
 
-    // Two channels — would be blocked on re-fetch if the cache held 20+.
-    // On first load with no cached data the guard must not fire.
+    // Two channels — below XMLTV_MIN_CHANNELS (3) — must be rejected on first load.
     mockFetch(xmltvDoc(inWindowProg('ch0'), inWindowProg('ch1')));
 
-    const result = await runQuery();
+    await expect(runQuery()).rejects.toThrow('[EPG]');
 
-    expect(result.size).toBe(2);
-    expect(result.has('ch0')).toBe(true);
-
-    // QueryClient cache is populated after the first fetch
-    const cached = queryClient.getQueryData<Map<string, EpgProgram[]>>(EPG_QUERY_KEY);
-    expect(cached).toBe(result);            // same object reference
-    expect(cached!.size).toBe(2);
+    // Cache must remain empty — no tiny map should have been stored
+    expect(queryClient.getQueryData(EPG_QUERY_KEY)).toBeUndefined();
   });
 
-  it('first fetch — empty cache — even a single-channel result is accepted', async () => {
+  it('first fetch — empty cache — rejects a single-channel result and leaves cache empty', async () => {
     const { queryClient, runQuery } = makeQueryClient();
 
+    // One channel — well below XMLTV_MIN_CHANNELS (3) — must throw.
     mockFetch(xmltvDoc(inWindowProg('only-channel')));
+
+    await expect(runQuery()).rejects.toThrow('[EPG]');
+
+    // Cache must remain empty
+    expect(queryClient.getQueryData(EPG_QUERY_KEY)).toBeUndefined();
+  });
+
+  it('first fetch — empty cache — accepts a result exactly at XMLTV_MIN_CHANNELS and caches it', async () => {
+    const { queryClient, runQuery } = makeQueryClient();
+
+    // Three channels — exactly at the minimum floor — must resolve and be cached.
+    mockFetch(xmltvDoc(inWindowProg('ch0'), inWindowProg('ch1'), inWindowProg('ch2')));
 
     const result = await runQuery();
 
-    expect(result.size).toBe(1);
-    expect(result.has('only-channel')).toBe(true);
+    expect(result.size).toBe(3);
+    expect(result.has('ch0')).toBe(true);
 
-    // Cached
-    expect(queryClient.getQueryData<Map<string, EpgProgram[]>>(EPG_QUERY_KEY)).toBe(result);
+    // QueryClient cache is populated after the first successful fetch
+    const cached = queryClient.getQueryData<Map<string, EpgProgram[]>>(EPG_QUERY_KEY);
+    expect(cached).toBe(result);            // same object reference
+    expect(cached!.size).toBe(3);
   });
 
   // ── 2. Re-fetch: previous map in cache; tiny result is blocked ─────────────

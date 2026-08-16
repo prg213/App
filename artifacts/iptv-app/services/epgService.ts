@@ -153,6 +153,18 @@ export async function parseXmltvAsync(
  */
 const XMLTV_SHRINK_RATIO = 0.25;
 
+/**
+ * Absolute minimum number of channels a first-launch XMLTV result must
+ * contain to be accepted.  If the fresh result falls below this floor and
+ * no healthy previous map is available to fall back on, the function throws
+ * so react-query retries instead of caching a near-empty map and blanking
+ * the guide for the entire session.
+ *
+ * A value of 3 means a partially-truncated download that only parses 1–2
+ * channels is treated as a failed fetch rather than a valid result.
+ */
+const XMLTV_MIN_CHANNELS = 3;
+
 export async function fetchAndParseXmltv(
   url: string,
   signal?: AbortSignal,
@@ -191,11 +203,14 @@ export async function fetchAndParseXmltv(
       );
       return previousMap;
     }
-  } else if (newMap.size === 0) {
-    // No healthy fallback and the download produced zero channels — treat this
-    // as a fetch error so react-query retries instead of caching an empty map.
+  } else if (newMap.size < XMLTV_MIN_CHANNELS) {
+    // No healthy fallback and the download produced fewer channels than the
+    // minimum acceptable floor (zero OR a suspiciously small non-zero count
+    // from a partial/truncated download).  Throw so react-query retries
+    // instead of caching a near-empty map and blanking the guide all session.
     throw new Error(
-      '[EPG] XMLTV result contained zero channels — download may be corrupt or truncated. Retrying.',
+      `[EPG] XMLTV result contained only ${newMap.size} channel(s) ` +
+      `(minimum: ${XMLTV_MIN_CHANNELS}) — download may be corrupt or truncated. Retrying.`,
     );
   }
 
