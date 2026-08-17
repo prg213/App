@@ -39,7 +39,7 @@ const LATEST_N = 30;
 
 // ─── Movie banner card ────────────────────────────────────────────────────────
 
-const MovieBanner = React.memo(function MovieBanner({
+const MovieBanner = React.memo(React.forwardRef(function MovieBanner({
   movie,
   colors,
   onPress,
@@ -47,13 +47,14 @@ const MovieBanner = React.memo(function MovieBanner({
   movie: Movie;
   colors: ReturnType<typeof useColors>;
   onPress: () => void;
-}) {
+}, ref: React.Ref<View>) {
   return (
     // bannerOuter: dimensions + borderRadius for the focus ring — NO overflow:hidden.
     // bannerClip: absoluteFill inner view owns overflow:hidden + borderRadius so the
     // image is clipped correctly.  Keeping both on the same element triggers a Fire OS
     // bug where adding borderWidth on focus collapses the clip rect and hides the image.
     <FocusablePressable
+      ref={ref}
       style={styles.bannerOuter}
       focusedStyle={styles.bannerFocused}
       onPress={onPress}
@@ -84,7 +85,7 @@ const MovieBanner = React.memo(function MovieBanner({
       </View>
     </FocusablePressable>
   );
-});
+}));
 
 // ─── Series banner card ───────────────────────────────────────────────────────
 
@@ -183,9 +184,9 @@ export default function HomeScreen() {
 
   // ── TV: first-content ref ─────────────────────────────────────────────────
   // On Fire TV / Android TV, the D-pad remote needs an explicit focus target
-  // when the Home tab loads.  This ref is attached to the hero banner (or the
-  // top-most visible card for M3U users).  useFocusEffect calls .focus() every
-  // time the Home tab becomes the active screen.
+  // when the Home tab loads.  This ref is attached to the first Latest Movies
+  // card.  useFocusEffect calls .focus() every time the Home tab becomes the
+  // active screen.
   const firstItemRef = useRef<View>(null);
 
   // ── Watch history (for Continue Watching rail) ─────────────────────────────
@@ -283,9 +284,6 @@ export default function HomeScreen() {
         .slice(0, LATEST_N),
     [allSeries],
   );
-
-  // Featured hero — first movie with cover
-  const hero = latestMovies[0] ?? null;
 
   const handleMoviePress = useCallback((movie: Movie) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -421,8 +419,15 @@ export default function HomeScreen() {
     );
   }, [colors, handleHistoryItemPress, movieProgressMap, seriesProgressMap]);
 
-  const renderMovie = useCallback(({ item }: { item: Movie }) => (
-    <MovieBanner movie={item} colors={colors} onPress={() => handleMoviePress(item)} />
+  const renderMovie = useCallback(({ item, index }: { item: Movie; index: number }) => (
+    // First movie card carries the TV focus ref now that the hero banner is
+    // gone — the D-pad needs an initial focus target when Home becomes active.
+    <MovieBanner
+      ref={index === 0 ? firstItemRef : undefined}
+      movie={item}
+      colors={colors}
+      onPress={() => handleMoviePress(item)}
+    />
   ), [colors, handleMoviePress]);
 
   const renderSeries = useCallback(({ item }: { item: Series }) => (
@@ -453,50 +458,12 @@ export default function HomeScreen() {
   return (
     <ScrollView
       style={[styles.root, { backgroundColor: colors.background }]}
-      contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
+      contentContainerStyle={{ paddingTop: insets.top + 8, paddingBottom: insets.bottom + 24 }}
       showsVerticalScrollIndicator={false}
     >
-      {/* ── Hero banner ── */}
-      {hero && (
-        <FocusablePressable
-          ref={firstItemRef}
-          style={[styles.hero, { marginTop: insets.top }]}
-          focusedStyle={styles.heroFocused}
-          onPress={() => handleMoviePress(hero)}
-        >
-          {hero.cover && (
-            <Image source={{ uri: hero.cover }} style={StyleSheet.absoluteFill} resizeMode="cover" />
-          )}
-          <LinearGradient
-            colors={['transparent', 'rgba(0,0,0,0.3)', 'rgba(0,0,0,0.92)']}
-            style={StyleSheet.absoluteFill}
-          />
-          <View style={styles.heroContent}>
-            <View style={styles.heroMeta}>
-              {hero.genre ? (
-                <View style={[styles.genrePill, { borderColor: 'rgba(255,255,255,0.3)' }]}>
-                  <Text style={styles.genrePillText}>{hero.genre.split('/')[0].trim()}</Text>
-                </View>
-              ) : null}
-              {hero.rating ? (
-                <View style={styles.ratingBadge}>
-                  <Text style={styles.ratingText}>★ {parseFloat(hero.rating).toFixed(1)}</Text>
-                </View>
-              ) : null}
-              {hero.releaseDate ? (
-                <Text style={styles.heroYear}>{hero.releaseDate.slice(0, 4)}</Text>
-              ) : null}
-            </View>
-            <Text style={styles.heroTitle} numberOfLines={2}>{hero.name}</Text>
-            {hero.plot ? (
-              <Text style={styles.heroPlt} numberOfLines={2}>{hero.plot}</Text>
-            ) : null}
-            <View style={styles.heroBtn}>
-              <Text style={styles.heroBtnText}>▶  Watch Now</Text>
-            </View>
-          </View>
-        </FocusablePressable>
-      )}
+      {/* Hero "featured movie" banner removed per user request — Home now
+          starts directly with the Recently Watched rail. The TV D-pad focus
+          ref moved to the first Latest Movies card. */}
 
       {/* ── Recently Watched Channels ── */}
       {/* #229: live-channel jump-back rail; hides itself when list is empty */}
@@ -579,43 +546,6 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1 },
 
-  // ── Hero ──
-  hero: {
-    width: '100%',
-    height: 220,
-    position: 'relative',
-    overflow: 'hidden',
-    borderRadius: 0,
-  },
-  heroContent: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    padding: 18,
-    gap: 6,
-  },
-  heroMeta: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
-  genrePill: {
-    borderWidth: 1,
-    borderRadius: 99,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-  },
-  genrePillText: { fontSize: 10, color: 'rgba(255,255,255,0.8)', fontFamily: 'Inter_500Medium' },
-  heroYear: { fontSize: 11, color: 'rgba(255,255,255,0.6)', fontFamily: 'Inter_400Regular' },
-  heroTitle: { fontSize: 22, fontFamily: 'Inter_700Bold', color: '#fff', lineHeight: 26 },
-  heroPlt: { fontSize: 11, color: 'rgba(255,255,255,0.65)', fontFamily: 'Inter_400Regular', lineHeight: 16 },
-  heroBtn: {
-    alignSelf: 'flex-start',
-    backgroundColor: '#3B82F6',
-    borderRadius: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    marginTop: 4,
-  },
-  heroBtnText: { color: '#fff', fontSize: 13, fontFamily: 'Inter_600SemiBold' },
-
   // ── Sections ──
   section: { marginTop: 24 },
   sectionHeader: { paddingHorizontal: 16, marginBottom: 12, gap: 2 },
@@ -628,7 +558,6 @@ const styles = StyleSheet.create({
   bannerList: { paddingHorizontal: 16, gap: 10 },
 
   // ── TV focus ──
-  heroFocused: { borderWidth: 3, borderColor: '#00E5FF' },
   // bannerFocused goes on the OUTER Pressable (no overflow:hidden there).
   // Fire OS bug: overflow:hidden + borderRadius + borderWidth on the same
   // ReactViewGroup collapses the clip rect when borderWidth is added, making
