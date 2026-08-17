@@ -222,10 +222,17 @@ function LiveChannelMenuImpl({
     refetchOnWindowFocus: false,
     refetchOnMount:       false,
   });
-  const categoryNameMap = useMemo(
-    () => new Map(rawCategories.map((c) => [c.id, c.name])),
-    [rawCategories],
-  );
+  const categoryNameMap = useMemo(() => {
+    // Defensive: providers can return malformed category payloads (null rows,
+    // numeric ids). Never let bad data crash the menu.
+    const map = new Map<string, string>();
+    if (Array.isArray(rawCategories)) {
+      for (const c of rawCategories) {
+        if (c && c.id != null && c.name != null) map.set(String(c.id), String(c.name));
+      }
+    }
+    return map;
+  }, [rawCategories]);
 
   // ── Favourites ────────────────────────────────────────────────────────────────
   const [favIds, setFavIds] = useState<Set<string>>(new Set());
@@ -267,7 +274,9 @@ function LiveChannelMenuImpl({
         seen.add(ch.groupTitle);
         // Keep the raw groupTitle as the id (selection/filtering is keyed on
         // it) but display the resolved category name when we have one.
-        list.push({ id: ch.groupTitle, label: categoryNameMap.get(ch.groupTitle) ?? ch.groupTitle });
+        // String() guards against providers returning numeric ids/names —
+        // non-string values would crash string ops (search, toLowerCase).
+        list.push({ id: ch.groupTitle, label: String(categoryNameMap.get(String(ch.groupTitle)) ?? ch.groupTitle) });
       }
     });
     return list;
@@ -703,7 +712,30 @@ function LiveChannelMenuImpl({
 // (buffering, reconnect, OSD state, etc.).  Wrapping in React.memo means the
 // channel browser only reconciles when currentChannelId, epgMap, or the
 // callback references actually change — keeping the Firestick UI responsive.
-export const LiveChannelMenu = React.memo(LiveChannelMenuImpl);
+const MemoLiveChannelMenu = React.memo(LiveChannelMenuImpl);
+
+// Error boundary: a JS error anywhere inside the channel browser (malformed
+// provider data, unexpected EPG shape, etc.) must close the overlay and keep
+// the stream playing — in a release build an uncaught render error kills the
+// entire app. onClose is called from componentDidCatch so PlayerScreen
+// unmounts the menu; the boundary renders nothing in the error state.
+class LiveChannelMenuBoundary extends React.Component<
+  LiveChannelMenuProps,
+  { hasError: boolean }
+> {
+  state = { hasError: false };
+  static getDerivedStateFromError() { return { hasError: true }; }
+  componentDidCatch(error: unknown) {
+    console.warn('[LiveChannelMenu] crashed — closing overlay:', error);
+    try { this.props.onClose(); } catch {}
+  }
+  render() {
+    if (this.state.hasError) return null;
+    return <MemoLiveChannelMenu {...this.props} />;
+  }
+}
+
+export const LiveChannelMenu = LiveChannelMenuBoundary;
 
 // ─── Styles ────────────────────────────────────────────────────────────────────
 const ACCENT    = '#00d4ff';

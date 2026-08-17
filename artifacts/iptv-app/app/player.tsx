@@ -2430,49 +2430,10 @@ export default function PlayerScreen() {
         </Animated.View>
       )}
 
-      {/* ── Ambient Now & Next bar ────────────────────────────────────────────
-          Always-on EPG strip at the bottom of the live player.
-          Visible whenever EPG data is available and the transient OSD is hidden.
-          When the OSD opens (showInfo=true) this bar hides — the OSD already
-          displays the same info more prominently.
-          pointerEvents="none": never blocks D-pad zones or phone gestures. */}
-      {isLive && !isWeb && !hasError && !showInfo && (currentProg || nextProg) && (
-        <View
-          style={[styles.nowNextBar, { paddingBottom: insets.bottom + 10 }]}
-          pointerEvents="none"
-        >
-          {currentProg && (
-            <>
-              <View style={styles.nowNextRow}>
-                <Text style={styles.nowNextLabel}>NOW</Text>
-                <Text style={styles.nowNextTitle} numberOfLines={1}>{currentProg.title}</Text>
-                <Text style={styles.nowNextTime}>
-                  {fmtTime(currentProg.start)}–{fmtTime(currentProg.end)}
-                </Text>
-              </View>
-              <View style={styles.nowNextProgressTrack}>
-                <View style={[styles.nowNextProgressFill, {
-                  width: `${Math.min(100, Math.max(0,
-                    (nowTs - currentProg.start.getTime()) /
-                    (currentProg.end.getTime() - currentProg.start.getTime()) * 100,
-                  ))}%` as any,
-                }]} />
-              </View>
-            </>
-          )}
-          {nextProg && (
-            <View style={styles.nowNextRow}>
-              <Text style={[styles.nowNextLabel, styles.nowNextLabelNext]}>NEXT</Text>
-              <Text style={[styles.nowNextTitle, styles.nowNextTitleNext]} numberOfLines={1}>
-                {nextProg.title}
-              </Text>
-              <Text style={[styles.nowNextTime, { color: 'rgba(255,255,255,0.35)' }]}>
-                {fmtTime(nextProg.start)}
-              </Text>
-            </View>
-          )}
-        </View>
-      )}
+      {/* Ambient Now & Next strip REMOVED — the full OSD info bar is now the
+          single bottom overlay for the live player. The ambient strip's
+          "mutually exclusive" render condition (!showInfo) overlapped with the
+          OSD's 300 ms fade-out, so users saw two stacked bottom overlays. */}
 
       {/* ── TV / Fire TV D-pad zones ─────────────────────────────────────────
           Three transparent full-screen strips. Android TV's focus engine moves
@@ -3529,56 +3490,4 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.5)',
   },
 
-  // ── Now/Next ambient bar (shown when OSD is hidden) ───────────────────────
-  nowNextBar: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    paddingHorizontal: 16,
-    paddingTop: 8,
-    backgroundColor: 'linear-gradient(transparent, rgba(0,0,0,0.7))' as any,
-    gap: 4,
-  },
-  nowNextRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  nowNextLabel: {
-    fontSize: 11,
-    fontFamily: 'Inter_700Bold',
-    color: '#00D4FF',
-    letterSpacing: 0.5,
-    minWidth: 34,
-  },
-  nowNextLabelNext: {
-    color: 'rgba(255,255,255,0.4)',
-  },
-  nowNextTitle: {
-    flex: 1,
-    fontSize: 12,
-    fontFamily: 'Inter_500Medium',
-    color: '#fff',
-  },
-  nowNextTitleNext: {
-    color: 'rgba(255,255,255,0.45)',
-  },
-  nowNextTime: {
-    fontSize: 11,
-    fontFamily: 'Inter_400Regular',
-    color: 'rgba(255,255,255,0.55)',
-  },
-  nowNextProgressTrack: {
-    height: 2,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    borderRadius: 1,
-    overflow: 'hidden',
-    marginVertical: 2,
-  },
-  nowNextProgressFill: {
-    height: 2,
-    backgroundColor: '#00D4FF',
-    borderRadius: 1,
-  },
 });
