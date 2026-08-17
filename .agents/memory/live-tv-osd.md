@@ -36,3 +36,7 @@ The "mutually exclusive" ambient strip (!showInfo) overlapped the OSD's 300ms fa
 
 ## OSD hide focus-safety (Aug 2026)
 - When the OSD bar hides while a chip inside it holds D-pad focus, Fire OS spatially reassigns focus BEFORE any explicit focus() call — it can land on a side zap zone and change channel on its own. Fixes: focus tvCenterRef immediately at fade start (before unmount) + backstop after; osdHiddenAtRef timestamp makes side zones bounce (not zap) within 800 ms of a bar hide.
+
+## Channel-browser open crash (Aug 2026)
+- Rule: never issue focus() at the player layer (tvCenterRef etc.) while the channel browser is open or opening — competing focus commands across the two layers hard-crashed Fire OS release builds when the menu appeared. Set showChannelMenuRef.current = true BEFORE dismissInfoBar() in every menu-open path, and gate all deferred OSD focus restores on that ref.
+- Rule: any code inside a bare setTimeout (focus, scrollToIndex/scrollToOffset) must be try/catch-wrapped — timer exceptions bypass ErrorBoundaries and kill release builds.
