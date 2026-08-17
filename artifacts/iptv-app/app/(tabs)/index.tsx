@@ -50,6 +50,7 @@ import {
   getXtreamLiveCategories,
   getXtreamLiveStreams,
   getXtreamXmltvUrl,
+  getXtreamCatchupUrls,
 } from '@/services/xtreamApi';
 import { fetchAndParseM3U } from '@/services/m3uParser';
 import { fetchAndParseXmltv } from '@/services/epgService';
@@ -1356,6 +1357,43 @@ export default function LiveTVScreen() {
     });
   }, [selectedChannel, channels, router]);
 
+  // ── TV: play a past mini-guide programme directly (skip CatchupSheet) ─────
+  // Converts an EpgProgram (which has JS Date fields) into the same catch-up
+  // URL params that CatchupSheet uses, then navigates straight to the player.
+  const handleTVCatchupProg = useCallback((prog: EpgProgram) => {
+    if (!selectedChannel || !creds) return;
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const d = prog.start;
+    const serverStart =
+      `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ` +
+      `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    const startTimestamp = Math.floor(prog.start.getTime() / 1000);
+    const durationMinutes = Math.max(
+      1,
+      Math.ceil((prog.end.getTime() - prog.start.getTime()) / 60_000),
+    );
+    const urls = getXtreamCatchupUrls(
+      creds,
+      selectedChannel.id,
+      serverStart,
+      durationMinutes,
+      startTimestamp,
+    );
+    router.push({
+      pathname: '/player',
+      params: {
+        url: urls[0],
+        title: `${prog.title} — ${selectedChannel.name}`,
+        type: 'catchup',
+        logo: selectedChannel.logo ?? '',
+        knownDuration: String(durationMinutes * 60),
+        catchupStreamId: selectedChannel.id,
+        catchupServerStart: serverStart,
+        catchupStartTimestamp: String(startTimestamp),
+      },
+    });
+  }, [selectedChannel, creds, router]);
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   // On Fire TV / Android TV use the 3-panel D-pad layout.
@@ -1374,7 +1412,7 @@ export default function LiveTVScreen() {
           onChannelSelect={handleSelectChannel}
           onWatchFullscreen={handleTVWatch}
           onOpenCatchup={() => { setCatchupInitialProg(null); setShowCatchup(true); }}
-          onOpenCatchupProg={(prog) => { setCatchupInitialProg(prog); setShowCatchup(true); }}
+          onOpenCatchupProg={handleTVCatchupProg}
           nowPlayingMap={nowPlayingMap}
           colors={colors}
           insets={insets}

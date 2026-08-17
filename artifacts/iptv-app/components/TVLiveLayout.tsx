@@ -157,13 +157,22 @@ export function TVLiveLayout({
     } catch (_) {}
   }, [selectedChannel?.id, channels]);
 
-  // EPG for the currently playing channel (panel 3 mini-guide)
+  // EPG for the currently playing channel (panel 3 mini-guide).
+  // Include up to 2 recently-ended programmes before the current one so that
+  // past rows are present in the list and can be pressed for catch-up on TV.
   const channelEpg = useMemo(() => {
     if (!selectedChannel || !epgMap) return [];
     const key = selectedChannel.epgId ?? selectedChannel.id;
     const progs = epgMap.get(key) ?? [];
+    // Index of the first programme that hasn't fully ended yet (current or future)
     const nowIdx = progs.findIndex((p) => p.end.getTime() > nowTs);
-    return nowIdx >= 0 ? progs.slice(nowIdx, nowIdx + 10) : progs.slice(0, 10);
+    if (nowIdx < 0) {
+      // All programmes have ended — show the last 10 (all past, all catchupPlayable)
+      return progs.slice(Math.max(0, progs.length - 10));
+    }
+    // Start 2 slots before the current programme so recently-aired shows appear
+    const startIdx = Math.max(0, nowIdx - 2);
+    return progs.slice(startIdx, startIdx + 10);
   }, [selectedChannel, epgMap, nowTs]);
 
   const currentProg = useMemo(
