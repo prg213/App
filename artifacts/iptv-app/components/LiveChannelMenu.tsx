@@ -36,9 +36,9 @@ import { useQuery } from '@tanstack/react-query';
 import { useAppContext } from '@/context/AppContext';
 import { FocusablePressable } from '@/components/FocusablePressable';
 import { StorageService } from '@/services/storage';
-import { getXtreamLiveStreams } from '@/services/xtreamApi';
+import { getXtreamLiveStreams, getXtreamLiveCategories } from '@/services/xtreamApi';
 import { fetchAndParseM3U } from '@/services/m3uParser';
-import type { Channel, EpgProgram, RecentChannel } from '@/types';
+import type { Category, Channel, EpgProgram, RecentChannel } from '@/types';
 
 // ─── Category sentinel IDs ─────────────────────────────────────────────────────
 const CAT_ALL    = '__all__';
@@ -195,6 +195,38 @@ function LiveChannelMenuImpl({
     refetchOnMount:      false,
   });
 
+  // ── Category names ───────────────────────────────────────────────────────────
+  // Xtream channels carry a raw category_id in groupTitle (e.g. "204"), so the
+  // sidebar must resolve IDs to display names via get_live_categories. Shares
+  // the ['live-categories', credentials] cache key with the Live TV tab, so
+  // this is normally served straight from cache with no extra network call.
+  const { data: rawCategories = [] } = useQuery<Category[]>({
+    queryKey: ['live-categories', credentials],
+    queryFn: async () => {
+      if (!credentials) return [];
+      if (isXtream) {
+        return getXtreamLiveCategories({
+          host:     (credentials as any).host     ?? '',
+          username: (credentials as any).username ?? '',
+          password: (credentials as any).password ?? '',
+        });
+      }
+      if ((credentials as any).m3uUrl) {
+        return (await fetchAndParseM3U((credentials as any).m3uUrl)).categories;
+      }
+      return [];
+    },
+    enabled:              !!credentials,
+    staleTime:            5 * 60_000,
+    gcTime:               30 * 60_000,
+    refetchOnWindowFocus: false,
+    refetchOnMount:       false,
+  });
+  const categoryNameMap = useMemo(
+    () => new Map(rawCategories.map((c) => [c.id, c.name])),
+    [rawCategories],
+  );
+
   // ── Favourites ────────────────────────────────────────────────────────────────
   const [favIds, setFavIds] = useState<Set<string>>(new Set());
   const favLoadedRef = useRef(false);
@@ -233,11 +265,13 @@ function LiveChannelMenuImpl({
     sorted.forEach((ch) => {
       if (ch.groupTitle && !seen.has(ch.groupTitle)) {
         seen.add(ch.groupTitle);
-        list.push({ id: ch.groupTitle, label: ch.groupTitle });
+        // Keep the raw groupTitle as the id (selection/filtering is keyed on
+        // it) but display the resolved category name when we have one.
+        list.push({ id: ch.groupTitle, label: categoryNameMap.get(ch.groupTitle) ?? ch.groupTitle });
       }
     });
     return list;
-  }, [sorted, recentChannels.length]);
+  }, [sorted, recentChannels.length, categoryNameMap]);
 
   // ── Persisted state ───────────────────────────────────────────────────────────
   const [selectedCat, _setSelectedCat] = useState(_savedCat);
