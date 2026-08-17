@@ -1,5 +1,6 @@
-import React, { forwardRef, useState } from 'react';
+import React, { forwardRef, useEffect, useRef, useState } from 'react';
 import {
+  Platform,
   Pressable,
   StyleSheet,
   View,
@@ -60,6 +61,34 @@ export const FocusablePressable = forwardRef<View, FocusablePressableProps>(
     ref,
   ) {
     const [focused, setFocused] = useState(false);
+    const innerRef = useRef<View | null>(null);
+
+    // Fire OS reliability: declarative nextFocus* props on Pressable are not
+    // always honoured by the native focus engine (same quirk as the player
+    // scrubber, which had to wire its seek targets imperatively).  Re-apply
+    // any provided handles via setNativeProps after mount/update so the
+    // native view definitely carries them.
+    const { nextFocusUp, nextFocusDown, nextFocusLeft, nextFocusRight } = props;
+    useEffect(() => {
+      if (!Platform.isTV) return;
+      const patch: Record<string, number> = {};
+      if (typeof nextFocusUp === 'number')    patch.nextFocusUp    = nextFocusUp;
+      if (typeof nextFocusDown === 'number')  patch.nextFocusDown  = nextFocusDown;
+      if (typeof nextFocusLeft === 'number')  patch.nextFocusLeft  = nextFocusLeft;
+      if (typeof nextFocusRight === 'number') patch.nextFocusRight = nextFocusRight;
+      if (Object.keys(patch).length === 0) return;
+      // Small delay so the native view is attached before patching.
+      const t = setTimeout(() => {
+        (innerRef.current as any)?.setNativeProps?.(patch);
+      }, 100);
+      return () => clearTimeout(t);
+    }, [nextFocusUp, nextFocusDown, nextFocusLeft, nextFocusRight]);
+
+    const setRefs = (node: View | null) => {
+      innerRef.current = node;
+      if (typeof ref === 'function') ref(node);
+      else if (ref) (ref as React.MutableRefObject<View | null>).current = node;
+    };
 
     const resolvedStyle: StyleProp<ViewStyle> = typeof style === 'function'
       ? style(focused)
@@ -70,7 +99,7 @@ export const FocusablePressable = forwardRef<View, FocusablePressableProps>(
 
     return (
       <Pressable
-        ref={ref}
+        ref={setRefs}
         focusable
         accessible
         {...props}

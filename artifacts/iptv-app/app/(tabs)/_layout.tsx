@@ -194,7 +194,21 @@ function Sidebar({ state, descriptors, navigation }: SidebarProps) {
   // D-pad remote lands directly on the first Home item rather than on the
   // sidebar nav item (which would require an extra RIGHT press to enter content).
   useEffect(() => {
-    sidebarNav.focus = () => { (firstNavRef.current as any)?.focus?.(); };
+    sidebarNav.focus = () => {
+      const node = firstNavRef.current as any;
+      // Belt-and-suspenders on Fire OS: ref.focus() can silently no-op on
+      // some views, while toggling hasTVPreferredFocus via setNativeProps
+      // forces a native requestFocus (the pattern proven in the player).
+      node?.focus?.();
+      if (Platform.isTV) {
+        try { node?.setNativeProps?.({ hasTVPreferredFocus: true }); } catch {}
+        // Clear the flag shortly after so future re-renders/focus changes
+        // aren't hijacked by a stale preferred-focus marker.
+        setTimeout(() => {
+          try { node?.setNativeProps?.({ hasTVPreferredFocus: false }); } catch {}
+        }, 250);
+      }
+    };
     // Publish the first nav item's native handle so screens can pin their
     // first card's nextFocusLeft to the sidebar (LEFT → nav menu on TV).
     if (Platform.isTV) {
