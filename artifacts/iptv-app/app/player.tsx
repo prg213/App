@@ -687,9 +687,11 @@ export default function PlayerScreen() {
   // doesn't waste resources).
   const localPlayer = useVideoPlayer(isLive || isWeb ? null : params.url, (p) => {
     p.loop = false;
-    // Disable scrubbing mode for catch-up — timeshift streams don't support
-    // seek via currentTime; we use a wall-clock timer instead.
-    p.scrubbingModeOptions = { scrubbingModeEnabled: !isCatchup };
+    // NOTE: do NOT set scrubbingModeOptions.scrubbingModeEnabled here. On
+    // Android, enabling scrubbing mode SUPPRESSES playback (it's designed to
+    // be toggled on only while the user drags a seek bar, then off again).
+    // A previous line here enabled it permanently, which silently blocked
+    // VOD/series autoplay. Default (false) gives normal playback.
     if (!isWeb) p.play();
   });
 
