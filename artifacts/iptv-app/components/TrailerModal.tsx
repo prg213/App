@@ -169,6 +169,13 @@ export function TrailerModal({ videoIds, onClose, openerRef }: Props) {
    * null = iframe embed path;  string = direct m.youtube.com URI fallback.
    */
   const [fallbackUri, setFallbackUri] = useState<string | null>(null);
+  /**
+   * True once the embedded player posts 'yt-ready' (it can actually play).
+   * Until then the WebView is kept invisible behind the spinner so YouTube's
+   * own error screen (150/152 embedding disabled) never flashes on screen
+   * before we advance to the next candidate / m.youtube.com fallback.
+   */
+  const [playerReady, setPlayerReady] = useState(false);
   const [showUnmute, setShowUnmute] = useState(false);
   const unmuteFade = useRef(new Animated.Value(1)).current;
   const unmuteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -192,6 +199,7 @@ export function TrailerModal({ videoIds, onClose, openerRef }: Props) {
     setWebviewLoading(true);
     setAllFailed(false);
     setFallbackUri(null);
+    setPlayerReady(false);
     dismissUnmute();
     webviewKey.current += 1;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -216,6 +224,14 @@ export function TrailerModal({ videoIds, onClose, openerRef }: Props) {
       }).start(() => setShowUnmute(false));
     }, 3000);
   };
+
+  // Safety net: if 'yt-ready' never arrives (network hiccup, iframe API
+  // blocked) reveal the WebView after 8 s anyway rather than spinning forever.
+  useEffect(() => {
+    if (playerReady || fallbackUri || !Array.isArray(videoIds)) return;
+    const t = setTimeout(() => setPlayerReady(true), 8000);
+    return () => clearTimeout(t);
+  }, [playerReady, fallbackUri, videoIds, idx]);
 
   // Clean up timer on unmount
   useEffect(() => {
@@ -267,6 +283,7 @@ export function TrailerModal({ videoIds, onClose, openerRef }: Props) {
   const advance = () => {
     const ids = Array.isArray(videoIds) ? videoIds : [];
     dismissUnmute();
+    setPlayerReady(false);
     if (idx < ids.length - 1) {
       setIdx((i) => i + 1);
       setWebviewLoading(true);
@@ -290,7 +307,7 @@ export function TrailerModal({ videoIds, onClose, openerRef }: Props) {
   const handleMessage = (e: WebViewMessageEvent) => {
     try {
       const data = JSON.parse(e.nativeEvent.data);
-      if (data.type === 'yt-ready') showUnmutePill();
+      if (data.type === 'yt-ready') { setPlayerReady(true); showUnmutePill(); }
       if (data.type === 'yt-error') advance();
     } catch (_) {}
   };
@@ -378,9 +395,12 @@ export function TrailerModal({ videoIds, onClose, openerRef }: Props) {
             </Text>
           </View>
         ) : (
-          /* ── Primary path: YouTube iframe API embed ── */
+          /* ── Primary path: YouTube iframe API embed ──
+             The WebView stays invisible until the player posts 'yt-ready' so
+             YouTube's own error screen (embedding disabled) never flashes
+             before we advance to the fallback. */
           <>
-            {webviewLoading && (
+            {(webviewLoading || !playerReady) && (
               <View style={styles.loaderOverlay}>
                 <ActivityIndicator size="large" color="#3B82F6" />
               </View>
@@ -389,7 +409,7 @@ export function TrailerModal({ videoIds, onClose, openerRef }: Props) {
               ref={webviewRef}
               key={webviewKey.current}
               source={{ html, baseUrl: 'https://www.youtube.com' }}
-              style={styles.webview}
+              style={[styles.webview, !playerReady && { opacity: 0 }]}
               onLoadEnd={handleWebViewLoadEnd}
               onMessage={handleMessage}
               allowsFullscreenVideo
