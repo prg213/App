@@ -46,6 +46,7 @@ import {
   scheduleReminderNotification,
 } from '@/services/notifications';
 import type { Channel, EpgProgram, Reminder } from '@/types';
+import { requestTvFocus } from '@/lib/tvFocus';
 import { normaliseStr } from '@/utils/normalise';
 import {
   getEpgFavFilterActive,
@@ -985,9 +986,19 @@ function ProgramModal({ program, channel, onClose, onWatch, colors }: {
   const watchBtnRef = React.useRef<View>(null);
   React.useEffect(() => {
     if (!Platform.isTV) return;
-    const t = setTimeout(() => {
-      ((isNow ? watchBtnRef : closeBtnRef).current as any)?.focus?.();
-    }, 80);
+    // Fire OS: bare ref.focus() can silently no-op, leaving the D-pad unable
+    // to select anything inside the modal.  Use the forced-focus helper and
+    // retry a few times — the Modal's native window can take a moment to
+    // accept focus after it animates in.
+    let attempts = 0;
+    let t: ReturnType<typeof setTimeout>;
+    const tryFocus = () => {
+      const target = (isNow ? watchBtnRef : closeBtnRef).current
+        ?? closeBtnRef.current;
+      if (target) requestTvFocus(target);
+      if (++attempts < 5) t = setTimeout(tryFocus, 200);
+    };
+    t = setTimeout(tryFocus, 120);
     return () => clearTimeout(t);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
