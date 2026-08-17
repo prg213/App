@@ -26,6 +26,7 @@ import {
   getXtreamCatchupUrls,
 } from '@/services/xtreamApi';
 import type { CatchupProgram, Category, Channel } from '@/types';
+import { sidebarNav } from '@/lib/sidebarNav';
 
 function buildCreds(c: ReturnType<typeof useAppContext>['credentials']) {
   return { host: c?.host ?? '', username: c?.username ?? '', password: c?.password ?? '' };
@@ -64,7 +65,8 @@ const CategoryRow = React.memo(React.forwardRef<View, {
   isSelected: boolean;
   colors: ReturnType<typeof useColors>;
   onPress: () => void;
-}>(function CategoryRow({ cat, isSelected, colors, onPress }, ref) {
+  nextFocusLeft?: number | null;
+}>(function CategoryRow({ cat, isSelected, colors, onPress, nextFocusLeft }, ref) {
   return (
     <FocusablePressable
       ref={ref}
@@ -72,6 +74,7 @@ const CategoryRow = React.memo(React.forwardRef<View, {
         styles.catRow,
         isSelected ? { backgroundColor: '#3B82F6' } : { borderBottomColor: colors.border },
       ]}
+      nextFocusLeft={nextFocusLeft}
       onPress={onPress}
     >
       <Text
@@ -163,6 +166,7 @@ export default function CatchupScreen() {
   useBackHandler(() => {
     if (selectedChannel) { setSelectedChannel(null); return true; }
     if (selectedCatId !== ALL_CAT_ID) { setSelectedCatId(ALL_CAT_ID); return true; }
+    if (Platform.isTV) { sidebarNav.focus(); return true; }
     return false;
   });
 
@@ -353,6 +357,8 @@ export default function CatchupScreen() {
       cat={item}
       isSelected={item.id === selectedCatId}
       colors={colors}
+      // TV: LEFT on the first category item returns D-pad focus to the sidebar.
+      nextFocusLeft={Platform.isTV && index === 0 ? sidebarNav.handle : undefined}
       onPress={() => handleSelectCat(item.id)}
     />
   ), [selectedCatId, colors, handleSelectCat]);

@@ -31,6 +31,7 @@ import { fetchRemoteFavourites, pushRemoteSeries, mergeFavourites, recordPushFai
 import type { Series, Category, FavoriteSeries, WatchHistoryEntry } from '@/types';
 import { normaliseStr } from '@/utils/normalise';
 import { buildSeriesProgressMap } from '@/utils/progressMap';
+import { sidebarNav } from '@/lib/sidebarNav';
 
 const ALL_CAT_ID = '__all';
 const FAVS_CAT_ID = '__favs';
@@ -200,10 +201,11 @@ export default function SeriesScreen() {
     return sortedSeries;
   }, [isFavsSelected, isRecentSelected, favSeries, watchHistory, sortedSeries]);
 
-  // Hardware BACK: pop through filter state before the global handler focuses the sidebar.
+  // Hardware BACK: pop through filter state, then return D-pad focus to the sidebar.
   useBackHandler(() => {
     if (search) { setSearch(''); return true; }
     if (selectedCat !== ALL_CAT_ID) { setSelectedCat(ALL_CAT_ID); return true; }
+    if (Platform.isTV) { sidebarNav.focus(); return true; }
     return false;
   });
 
@@ -355,6 +357,7 @@ export default function SeriesScreen() {
                   styles.catItem,
                   active && { backgroundColor: 'rgba(59,130,246,0.15)' },
                 ]}
+                nextFocusLeft={Platform.isTV && index === 0 ? sidebarNav.handle : undefined}
                 onPress={() => setSelectedCat(item.id)}
               >
                 {active && <View style={styles.catPip} />}

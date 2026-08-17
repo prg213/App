@@ -48,6 +48,7 @@ import {
 import type { Channel, EpgProgram, Reminder } from '@/types';
 import { requestTvFocus } from '@/lib/tvFocus';
 import { normaliseStr } from '@/utils/normalise';
+import { sidebarNav } from '@/lib/sidebarNav';
 import {
   getEpgFavFilterActive,
   getEpgSelectedCat,
@@ -1439,6 +1440,13 @@ function CategoryGrid({
               wireTimers.current.delete(index);
               if (layoutGenRef.current !== gen) return;
               wireCard(index);
+              // TV: LEFT on the very first category card returns D-pad focus to
+              // the sidebar nav.  Wired here (not in a useEffect) so it fires
+              // exactly when this card's native node is ready — reliable even on
+              // slow/async EPG loads where a parent useEffect would fire too early.
+              if (index === 0) {
+                r.setNativeProps({ nextFocusLeft: sidebarNav.handle });
+              }
             }, TV_WIRE_DELAY_MS);
             wireTimers.current.set(index, t);
           } else {
@@ -2375,7 +2383,11 @@ export default function GuideScreen() {
   // useBackHandler (useFocusEffect) ensures this only fires while the Guide
   // tab is focused — not while the user is on any other tab.
   useBackHandler(() => {
-    if (!selectedCat) return false; // no category open — let sidebar handler run
+    if (!selectedCat) {
+      // No local state to dismiss — return D-pad focus to the sidebar nav on TV.
+      if (Platform.isTV) { sidebarNav.focus(); return true; }
+      return false;
+    }
     setSelectedCat(null);
     if (Platform.isTV) setTimeout(() => (firstCatCardRef.current as any)?.focus?.(), 350);
     return true;

@@ -32,6 +32,7 @@ import {
 import { fetchAndParseM3U } from '@/services/m3uParser';
 import type { Channel, Movie, Series, WatchHistoryEntry } from '@/types';
 import { normaliseStr } from '@/utils/normalise';
+import { sidebarNav } from '@/lib/sidebarNav';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -239,9 +240,10 @@ export default function SearchScreen() {
   const [query, setQuery] = useState('');
   const [searchType, setSearchType] = useState<SearchType>('all');
 
-  // Hardware BACK: clear search query first, then fall through to sidebar.
+  // Hardware BACK: clear search query first, then return D-pad focus to the sidebar.
   useBackHandler(() => {
     if (query) { setQuery(''); return true; }
+    if (Platform.isTV) { sidebarNav.focus(); return true; }
     return false;
   });
   const [trailerLoading, setTrailerLoading] = useState(false);
@@ -749,6 +751,7 @@ export default function SearchScreen() {
                   { borderColor: active ? colors.primary : colors.border,
                     backgroundColor: active ? 'rgba(59,130,246,0.15)' : colors.secondary },
                 ]}
+                nextFocusLeft={Platform.isTV && index === 0 ? sidebarNav.handle : undefined}
                 onPress={() => handleSearchTypeChange(t.id)}
               >
                 <Text style={styles.pillIcon}>{t.icon}</Text>

@@ -32,6 +32,7 @@ import { fetchRemoteFavourites, pushRemoteMovies, mergeFavourites, recordPushFai
 import type { Movie, Category, FavoriteMovie, WatchHistoryEntry } from '@/types';
 import { normaliseStr } from '@/utils/normalise';
 import { buildMovieProgressMap } from '@/utils/progressMap';
+import { sidebarNav } from '@/lib/sidebarNav';
 
 const ALL_CAT_ID = '__all';
 const FAVS_CAT_ID = '__favs';
@@ -206,10 +207,11 @@ export default function MoviesScreen() {
   const [sortToast, setSortToast] = useState<string | null>(null);
   const [showScrollTop, setShowScrollTop] = useState(false);
 
-  // Hardware BACK: pop through filter state before the global handler focuses the sidebar.
+  // Hardware BACK: pop through filter state, then return D-pad focus to the sidebar.
   useBackHandler(() => {
     if (search) { setSearch(''); return true; }
     if (selectedCat !== ALL_CAT_ID) { setSelectedCat(ALL_CAT_ID); return true; }
+    if (Platform.isTV) { sidebarNav.focus(); return true; }
     return false;
   });
 
@@ -364,6 +366,7 @@ export default function MoviesScreen() {
                   styles.catItem,
                   active && { backgroundColor: 'rgba(59,130,246,0.15)' },
                 ]}
+                nextFocusLeft={Platform.isTV && index === 0 ? sidebarNav.handle : undefined}
                 onPress={() => setSelectedCat(item.id)}
               >
                 {active && <View style={styles.catPip} />}
