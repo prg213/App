@@ -439,6 +439,7 @@ export default function PlayerScreen() {
   const tvVodIdleRef   = useRef<View>(null); // catch-all when controls are hidden
   const tvPlayBtnRef   = useRef<View>(null); // play/pause button (focused when controls appear)
   const tvScrubAnchorRef = useRef<View>(null); // focusable scrubber progress bar
+  const [tvScrubFocused, setTvScrubFocused] = useState(false); // drives the thumb's focused style
   const tvSeekBackRef  = useRef<View>(null); // hidden D-pad-left  bounce target → seek −10 s
   const tvSeekFwdRef   = useRef<View>(null); // hidden D-pad-right bounce target → seek +10 s
   const tvSeek30BackRef = useRef<View>(null); // visible −30 s button — wired nextFocusDown→scrubber
@@ -2354,9 +2355,24 @@ export default function PlayerScreen() {
                 style={[styles.tvScrubAnchor, { bottom: insets.bottom + 48 }]}
                 focusedStyle={styles.tvScrubAnchorFocused}
                 onPress={() => { /* OK on scrubber: no-op; LEFT/RIGHT seek via bounce targets */ }}
+                onFocus={() => setTvScrubFocused(true)}
+                onBlur={() => setTvScrubFocused(false)}
               >
-                <View style={styles.tvScrubRail}>
-                  <View style={[styles.tvScrubFill, { width: `${Math.max(0, Math.min(100, progress))}%` as any }]} />
+                <View style={styles.tvScrubRailWrap}>
+                  <View style={styles.tvScrubRail}>
+                    <View style={[styles.tvScrubFill, { width: `${Math.max(0, Math.min(100, progress))}%` as any }]} />
+                  </View>
+                  {/* Round thumb — mirrors the phone scrubber's drag handle so
+                      the seek position is visible; grows + glows when the bar
+                      is selected with the D-pad. */}
+                  <View
+                    pointerEvents="none"
+                    style={[
+                      styles.tvScrubThumb,
+                      tvScrubFocused && styles.tvScrubThumbFocused,
+                      { left: `${Math.max(0, Math.min(100, progress))}%` as any },
+                    ]}
+                  />
                 </View>
                 <View style={styles.tvScrubTimes}>
                   <Text style={styles.tvScrubTimeText}>{fmtSecs(currentTime)}</Text>
@@ -3086,6 +3102,28 @@ const styles = StyleSheet.create({
   tvScrubAnchorFocused: {
     borderColor: '#00E5FF',
     backgroundColor: 'rgba(0,229,255,0.08)',
+  },
+  tvScrubRailWrap: {
+    justifyContent: 'center',
+    height: 20,
+  },
+  tvScrubThumb: {
+    position: 'absolute',
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    marginLeft: -7,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 2,
+    borderColor: 'rgba(0,0,0,0.4)',
+  },
+  tvScrubThumbFocused: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    marginLeft: -9,
+    backgroundColor: '#00E5FF',
+    borderColor: '#FFFFFF',
   },
   tvScrubRail: {
     height: 4,
