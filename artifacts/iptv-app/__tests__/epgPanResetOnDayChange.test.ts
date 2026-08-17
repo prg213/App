@@ -1,11 +1,18 @@
 /**
- * Task 457 — Grid pan position resets when the user switches days.
+ * Tasks 457 & 460 — Grid pan position resets only on day changes, not on
+ * category switches.
  *
  * `currentGridPanMs` is a module-level variable shared by all TVEpgRow
  * instances.  It persists across renders, so when the user switches to a
  * different day the old pan time must be cleared.  Otherwise newly mounted
  * rows for the new day apply the stale offset — which maps to a completely
  * different cell (or no cell) in the new day's programme data.
+ *
+ * A parallel risk: if the reset also fires on category changes (due to
+ * component remounts or state interactions) the user's pan position would be
+ * lost when they filter by category, which is unwanted.  The tests in section
+ * 4 confirm the reset is strictly gated on dayStartMs, not on any
+ * category-related state such as selectedCat or categoryIds.
  *
  * These tests use source-text inspection of guide.tsx so they remain fast
  * and environment-free (no React Native renderer required).
@@ -74,5 +81,98 @@ describe('TVEpgRow — mount effect falls through to initialIdx when currentGrid
     expect(savedIdx).toBeGreaterThan(-1);
     expect(panIdx).toBeGreaterThan(-1);
     expect(savedIdx).toBeLessThan(panIdx);
+  });
+});
+
+// ── 4. Category switches must NOT reset the pan position ──────────────────
+//
+// These tests confirm that the `currentGridPanMs = null` reset in FullGuide
+// and the `scrollOffsetRef.current = null` reset in TVEpgRow are both gated
+// solely on dayStartMs.  If category-related identifiers appeared in either
+// dependency array the user's pan position would be silently discarded
+// whenever they filter by a different category — which is wrong.
+
+describe('FullGuide — currentGridPanMs reset is NOT triggered by category changes', () => {
+  // There are two `currentGridPanMs = null` assignments in guide.tsx:
+  //   (A) the unmount cleanup:   `useEffect(() => () => { currentGridPanMs = null; }, []);`
+  //   (B) the day-change reset:  `useEffect(() => {\n    currentGridPanMs = null;\n  }, [dayStartMs]);`
+  //
+  // We must inspect assignment (B) — the one with dayStartMs in its dep
+  // array.  The distinguishing trait: (B) has a newline between `null;` and
+  // the closing `},` whereas (A) keeps everything on one line.  The regex
+  // below requires that newline, so it matches only (B).
+
+  function extractPanResetDepArray(source: string): string {
+    // Match: `currentGridPanMs = null;` followed by optional whitespace then
+    // a newline, then optional whitespace, then `}, [<deps>]`.
+    // The \n anchor skips the same-line unmount cleanup and lands on the
+    // multi-line day-change reset.
+    const match = source.match(
+      /currentGridPanMs\s*=\s*null;\s*\n\s*\},\s*\[([^\]]*)\]/,
+    );
+    return match ? match[1] : '';
+  }
+
+  it('the day-change pan-reset useEffect is present (newline form)', () => {
+    // Sanity-check: the extraction must find the block.  If this fails, the
+    // assignment or formatting changed and all dep-array tests are moot.
+    expect(extractPanResetDepArray(src)).not.toBe('');
+  });
+
+  it('dependency array of the pan-reset useEffect contains dayStartMs', () => {
+    const deps = extractPanResetDepArray(src);
+    expect(deps).toMatch(/dayStartMs/);
+  });
+
+  it('dependency array of the pan-reset useEffect does not contain selectedCat', () => {
+    const deps = extractPanResetDepArray(src);
+    expect(deps).not.toMatch(/selectedCat/);
+  });
+
+  it('dependency array of the pan-reset useEffect does not contain categoryIds', () => {
+    const deps = extractPanResetDepArray(src);
+    expect(deps).not.toMatch(/categoryIds/);
+  });
+
+  it('dependency array of the pan-reset useEffect does not contain categoryNameMap', () => {
+    const deps = extractPanResetDepArray(src);
+    expect(deps).not.toMatch(/categoryNameMap/);
+  });
+});
+
+describe('TVEpgRow — scrollOffsetRef reset is NOT triggered by category changes', () => {
+  // There is one `scrollOffsetRef.current = null` in guide.tsx (TVEpgRow,
+  // day-change reset).  We use the same newline-anchored pattern for
+  // consistency and to stay robust if a same-line cleanup is ever added.
+
+  function extractScrollResetDepArray(source: string): string {
+    const match = source.match(
+      /scrollOffsetRef\.current\s*=\s*null;\s*\n\s*\},\s*\[([^\]]*)\]/,
+    );
+    return match ? match[1] : '';
+  }
+
+  it('the day-change scrollOffsetRef-reset useEffect is present (newline form)', () => {
+    expect(extractScrollResetDepArray(src)).not.toBe('');
+  });
+
+  it('dependency array of the scrollOffsetRef-reset useEffect contains dayStartMs', () => {
+    const deps = extractScrollResetDepArray(src);
+    expect(deps).toMatch(/dayStartMs/);
+  });
+
+  it('dependency array of the scrollOffsetRef-reset useEffect does not contain selectedCat', () => {
+    const deps = extractScrollResetDepArray(src);
+    expect(deps).not.toMatch(/selectedCat/);
+  });
+
+  it('dependency array of the scrollOffsetRef-reset useEffect does not contain categoryIds', () => {
+    const deps = extractScrollResetDepArray(src);
+    expect(deps).not.toMatch(/categoryIds/);
+  });
+
+  it('dependency array of the scrollOffsetRef-reset useEffect does not contain categoryNameMap', () => {
+    const deps = extractScrollResetDepArray(src);
+    expect(deps).not.toMatch(/categoryNameMap/);
   });
 });
