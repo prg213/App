@@ -45,11 +45,15 @@ describe('FullGuide — currentGridPanMs reset on day change', () => {
 
 describe('FullGuide — reset placement relative to dayStartMs declaration', () => {
   it('dayStartMs is declared before the reset useEffect', () => {
-    const declIdx  = src.indexOf('const dayStartMs = useMemo');
-    const resetIdx = src.indexOf('currentGridPanMs = null');
+    const declIdx = src.indexOf('const dayStartMs = useMemo');
+    // Find the day-change reset specifically (multi-line form with [dayStartMs]
+    // dep array) rather than the first currentGridPanMs = null, which is the
+    // unmount cleanup earlier in the file.
+    const match = src.match(/currentGridPanMs\s*=\s*null;\s*\n\s*\},\s*\[\s*dayStartMs\s*\]/);
+    const resetIdx = match ? src.indexOf(match[0]) : -1;
     expect(declIdx).toBeGreaterThan(-1);
     expect(resetIdx).toBeGreaterThan(-1);
-    // The reset must come AFTER the dayStartMs declaration.
+    // The day-change reset useEffect must come AFTER the dayStartMs declaration.
     expect(resetIdx).toBeGreaterThan(declIdx);
   });
 

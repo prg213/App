@@ -28,6 +28,8 @@ jest.mock('react-native', () => {
     React.createElement('Text', rest, children);
   const TouchableOpacity = ({ children, onPress, hitSlop, activeOpacity, disabled, ...rest }: any) =>
     React.createElement('TouchableOpacity', { ...rest, onClick: onPress, 'data-disabled': disabled }, children);
+  const Pressable = ({ children, onPress, hitSlop, ...rest }: any) =>
+    React.createElement('Pressable', { ...rest, onClick: onPress }, typeof children === 'function' ? children(false) : children);
   const ScrollView = ({ children, contentContainerStyle, showsVerticalScrollIndicator, ...rest }: any) =>
     React.createElement('ScrollView', rest, children);
   const ActivityIndicator = (props: any) =>
@@ -63,6 +65,7 @@ jest.mock('react-native', () => {
     View,
     Text,
     TouchableOpacity,
+    Pressable,
     ScrollView,
     ActivityIndicator,
     Animated,

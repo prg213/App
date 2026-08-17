@@ -53,6 +53,30 @@ jest.mock('@/services/reminderUrlCache', () => ({
   clearReminderRefreshCache: jest.fn(),
 }));
 
+// AppContext imports resetChannelMenuState from LiveChannelMenu; the real
+// LiveChannelMenu transitively depends on expo-image and react-native UI
+// primitives that are not available in the node test environment.  Stub it
+// out so AppContextProvider can be imported and rendered cleanly.
+jest.mock('@/components/LiveChannelMenu', () => ({
+  resetChannelMenuState: jest.fn(),
+  LiveChannelMenu: () => null,
+}));
+
+// epgScrollState / epgFilterState are imported by AppContext for reset on logout.
+jest.mock('@/services/epgScrollState', () => ({
+  resetEpgScrollState: jest.fn(),
+}));
+
+jest.mock('@/services/epgFilterState', () => ({
+  resetEpgFilterState: jest.fn(),
+  getEpgFavFilterActive: jest.fn(() => false),
+  setEpgFavFilterActive: jest.fn(),
+}));
+
+jest.mock('@/services/favoritesSync', () => ({
+  resetSessionPushFailures: jest.fn(),
+}));
+
 // ── Imports (after mocks) ──────────────────────────────────────────────────────
 
 import React, { useRef } from 'react';

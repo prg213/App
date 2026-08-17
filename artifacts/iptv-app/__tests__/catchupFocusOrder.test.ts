@@ -100,24 +100,19 @@ describe('CatchupSheet — close button TV focus (#259)', () => {
     expect(src).toMatch(/hasTVPreferredFocus/);
   });
 
-  it('hasTVPreferredFocus is on the close button FocusablePressable, not a programme row', () => {
-    // There may be multiple hasTVPreferredFocus occurrences (e.g. the
-    // day-change effect also uses it via setNativeProps).  We need at least
-    // one occurrence whose ±300-char window overlaps the close button markup.
-    const closeButtonPattern = /onClose|✕|closeIcon|closeTouchable/;
-    let searchFrom = 0;
-    let foundCloseButton = false;
-    while (true) {
-      const idx = src.indexOf('hasTVPreferredFocus', searchFrom);
-      if (idx === -1) break;
-      const window = src.slice(Math.max(0, idx - 300), idx + 300);
-      if (closeButtonPattern.test(window)) {
-        foundCloseButton = true;
-        break;
-      }
-      searchFrom = idx + 1;
-    }
-    expect(foundCloseButton).toBe(true);
+  it('the close button carries closeBtnRef so focus can be moved to it programmatically as the TV fallback', () => {
+    // The close button FocusablePressable must have ref={closeBtnRef} so the
+    // onShow / day-change callbacks can call .focus() on it when there are no
+    // playable rows to land on — preventing D-pad focus from being lost.
+    const closeFpIdx = src.indexOf('ref={closeBtnRef}');
+    expect(closeFpIdx).toBeGreaterThan(-1);
+    // Confirm the ref sits on the close-button element (✕ or closeTouchable
+    // within 500 chars of the ref prop).
+    const win = src.slice(Math.max(0, closeFpIdx - 100), closeFpIdx + 500);
+    expect(win).toMatch(/onClose|closeTouchable|closeIcon|✕/);
+    // Also confirm .focus() (or ?.focus?.() optional-chain form) is called on
+    // closeBtnRef so focus routing works on Fire OS.
+    expect(src).toMatch(/closeBtnRef\.current[\s\S]{0,80}focus\??\.\??\(\)/);
   });
 });
 
@@ -152,9 +147,9 @@ describe('CatchupSheet — nextFocusDown anti-wrap guard (#270)', () => {
   });
 
   it('attaches firstDayPillRef to the first day-strip pill (i === 0)', () => {
-    // Matches: ref={i === 0 ? firstDayPillRef : undefined}
-    // or similar expressions assigning the ref only for index 0.
-    expect(src).toMatch(/i\s*===\s*0.*firstDayPillRef|firstDayPillRef.*i\s*===\s*0/);
+    // Matches: `if (i === 0) { ... firstDayPillRef ... }` or inline ternary.
+    // Uses [\s\S] instead of . so the check spans across newlines.
+    expect(src).toMatch(/i\s*===\s*0[\s\S]{0,80}firstDayPillRef|firstDayPillRef[\s\S]{0,80}i\s*===\s*0/);
   });
 
   it('uses setNativeProps with nextFocusDown on the last playable row to prevent wrap', () => {
@@ -192,11 +187,13 @@ describe('CatchupSheet — day-switch focus (#282)', () => {
     expect(src).toMatch(/dayChangedRef/);
   });
 
-  it('sets hasTVPreferredFocus via setNativeProps in the day-change effect', () => {
+  it('calls .focus() on firstPlayableRowRef in the day-change effect to move TV focus', () => {
     // After selectedDay changes, the effect programmatically moves focus by
-    // calling setNativeProps({ hasTVPreferredFocus: true }) on the target.
-    // This is the only reliable way to imperatively transfer TV focus in RN.
-    expect(src).toMatch(/setNativeProps\(\s*\{\s*hasTVPreferredFocus\s*:\s*true/);
+    // calling .focus() on firstPlayableRowRef.current — the modern RN API for
+    // imperatively routing TV/D-pad focus (equivalent to setNativeProps with
+    // hasTVPreferredFocus: true but cleaner and more reliable on Fire OS).
+    // Source may use the optional-chaining form ?.focus?.() .
+    expect(src).toMatch(/firstPlayableRowRef\.current[\s\S]{0,80}focus\??\.\??\(\)/);
   });
 
   it('falls back to firstDayPillRef when there are no playable rows for the new day', () => {
@@ -222,18 +219,21 @@ describe('CatchupSheet — day-switch focus (#282)', () => {
     expect(src).toMatch(/i\s*===\s*firstPlayableIndex[\s\S]{0,120}firstPlayableRowRef|firstPlayableRowRef[\s\S]{0,120}i\s*===\s*firstPlayableIndex/);
   });
 
-  it('sets hasTVPreferredFocus on the first playable row via the prop on initial render', () => {
-    // On first open hasTVPreferredFocus={Platform.isTV && i === firstPlayableIndex}
-    // gives the TV focus engine a static hint so focus lands on the first
-    // playable row without any imperative call.
-    expect(src).toMatch(/hasTVPreferredFocus=\{Platform\.isTV\s*&&\s*i\s*===\s*firstPlayableIndex/);
+  it('focuses the first playable row in the onShow handler so focus lands correctly on initial open', () => {
+    // On first open the Modal.onShow callback calls .focus() on
+    // firstPlayableRowRef.current (or falls back to closeBtnRef) so TV focus
+    // lands on the first playable row without requiring hasTVPreferredFocus props.
+    // This is more reliable than a static prop because onShow fires after the
+    // native modal animation completes and all nodes are mounted.
+    expect(src).toMatch(/onShow[\s\S]{0,400}firstPlayableRowRef/);
   });
 
   it('uses a setTimeout delay in the day-change effect to let the list re-render before focusing', () => {
     // Without a short delay the new programme rows may not yet be mounted,
-    // so setNativeProps would target a stale or unmounted node.
+    // so .focus() would target a stale or unmounted node.
     // The effect must schedule focus via setTimeout (any positive delay is fine).
-    expect(src).toMatch(/setTimeout[\s\S]{0,200}hasTVPreferredFocus/);
+    // Source may use .focus() or the optional-chaining form ?.focus?.()
+    expect(src).toMatch(/setTimeout[\s\S]{0,200}focus\?\.\(\)|setTimeout[\s\S]{0,200}focus\(\)/);
   });
 
   it('sets focusPlacedOnDayPillRef when falling back to the day pill due to loading', () => {
