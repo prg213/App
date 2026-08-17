@@ -138,6 +138,16 @@ describe('FullGuide — currentGridPanMs reset is NOT triggered by category chan
     const deps = extractPanResetDepArray(src);
     expect(deps).not.toMatch(/categoryNameMap/);
   });
+
+  it('dependency array of the pan-reset useEffect does not contain favFilterActive', () => {
+    const deps = extractPanResetDepArray(src);
+    expect(deps).not.toMatch(/favFilterActive/);
+  });
+
+  it('dependency array of the pan-reset useEffect does not contain epgFavFilterActive', () => {
+    const deps = extractPanResetDepArray(src);
+    expect(deps).not.toMatch(/epgFavFilterActive/);
+  });
 });
 
 describe('TVEpgRow — scrollOffsetRef reset is NOT triggered by category changes', () => {
@@ -174,5 +184,52 @@ describe('TVEpgRow — scrollOffsetRef reset is NOT triggered by category change
   it('dependency array of the scrollOffsetRef-reset useEffect does not contain categoryNameMap', () => {
     const deps = extractScrollResetDepArray(src);
     expect(deps).not.toMatch(/categoryNameMap/);
+  });
+
+  it('dependency array of the scrollOffsetRef-reset useEffect does not contain favFilterActive', () => {
+    const deps = extractScrollResetDepArray(src);
+    expect(deps).not.toMatch(/favFilterActive/);
+  });
+
+  it('dependency array of the scrollOffsetRef-reset useEffect does not contain epgFavFilterActive', () => {
+    const deps = extractScrollResetDepArray(src);
+    expect(deps).not.toMatch(/epgFavFilterActive/);
+  });
+});
+
+// ── 5. The TVEpgGrid unmount cleanup uses an empty dep array ───────────────
+//
+// `useEffect(() => () => { currentGridPanMs = null; }, [])` in FullGuide/TVEpgGrid
+// clears the module-level pan variable only when the entire grid unmounts —
+// not when a filter toggle causes a re-render inside it.  An empty dep array
+// `[]` is the source-code guarantee of that.  If favFilterActive or any other
+// state crept into that array the cleanup would fire on every toggle, wiping
+// the pan position the user just set.
+
+describe('TVEpgGrid unmount cleanup — empty dep array guarantees no filter-toggle side-effect', () => {
+  it('the unmount-cleanup useEffect exists with an empty dependency array', () => {
+    // The cleanup form is:  useEffect(() => () => { currentGridPanMs = null; }, [])
+    // The empty `[]` means it registers only at mount and cleans up only at unmount.
+    expect(src).toMatch(
+      /useEffect\s*\(\s*\(\s*\)\s*=>\s*\(\s*\)\s*=>\s*\{\s*currentGridPanMs\s*=\s*null;\s*\}\s*,\s*\[\s*\]\s*\)/,
+    );
+  });
+
+  it('favFilterActive does not appear in the unmount-cleanup dep array', () => {
+    // Extract the dep array of the inline-cleanup form specifically.
+    // Pattern: `useEffect(() => () => { currentGridPanMs = null; }, [<deps>])`
+    const match = src.match(
+      /useEffect\s*\(\s*\(\s*\)\s*=>\s*\(\s*\)\s*=>\s*\{\s*currentGridPanMs\s*=\s*null;\s*\}\s*,\s*\[([^\]]*)\]\s*\)/,
+    );
+    const deps = match ? match[1] : '';
+    expect(deps).not.toMatch(/favFilterActive/);
+  });
+
+  it('epgFavFilterActive does not appear in the unmount-cleanup dep array', () => {
+    const match = src.match(
+      /useEffect\s*\(\s*\(\s*\)\s*=>\s*\(\s*\)\s*=>\s*\{\s*currentGridPanMs\s*=\s*null;\s*\}\s*,\s*\[([^\]]*)\]\s*\)/,
+    );
+    const deps = match ? match[1] : '';
+    expect(deps).not.toMatch(/epgFavFilterActive/);
   });
 });
