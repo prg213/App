@@ -1122,6 +1122,12 @@ export default function PlayerScreen() {
   }, [isLive, liveUrlRef, player, setLastWatchedUrl]);
 
   const navCooldownRef = useRef(false);
+  // Timestamp of the moment the OSD info bar was hidden/unmounted.  When the
+  // bar's focused chip unmounts, Fire OS spatially reassigns focus BEFORE our
+  // explicit centre-focus call lands — and it can pick a side zap zone, which
+  // switched channel "on its own" a few seconds after opening a channel.  The
+  // side zones bounce (instead of zapping) for a short window after this time.
+  const osdHiddenAtRef = useRef(0);
   const handlePrevChannel = useCallback(() => {
     if (!prevChannel || navCooldownRef.current) return;
     navCooldownRef.current = true;
@@ -1218,13 +1224,16 @@ export default function PlayerScreen() {
     // re-opens the OSD during the fade window.
     dismissTimerRef.current = setTimeout(() => {
       dismissTimerRef.current = null;
+      osdHiddenAtRef.current = Date.now();
       setShowInfo(false);
     }, 320);
-    // TV: restore D-pad focus to the centre zone after the OSD fades out.
-    // Chips and buttons inside the bar unmount after 320 ms; without an
-    // explicit focus call the native view system can leave focus undefined,
-    // making OK / LEFT / RIGHT feel dead until the user presses something else.
-    if (Platform.isTV) setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 400);
+    // TV: restore D-pad focus to the centre zone BEFORE the OSD unmounts
+    // (unmounting a focused chip lets Fire OS spatially reassign focus, which
+    // can land on a zap zone and change channel), and again after as a backstop.
+    if (Platform.isTV) {
+      (tvCenterRef.current as any)?.focus?.();
+      setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 400);
+    }
   }, [infoOpacity]);
 
   // ── Show / hide the live controls bar (Audio + CC chips) via D-pad ────────
@@ -1724,9 +1733,14 @@ export default function PlayerScreen() {
             if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
             dismissTimerRef.current = setTimeout(() => {
               dismissTimerRef.current = null;
+              osdHiddenAtRef.current = Date.now();
               setShowInfo(false);
             }, 420);
-            // Restore TV focus after the bar fully unmounts.
+            // Move TV focus to the centre zone BEFORE the bar unmounts — if a
+            // chip inside the bar holds focus when it unmounts, Fire OS
+            // spatially reassigns focus and can land on a side zap zone,
+            // switching channel "on its own".  Backstop call after unmount too.
+            (tvCenterRef.current as any)?.focus?.();
             setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 450);
           }
         }, 5000);
@@ -2543,6 +2557,12 @@ export default function PlayerScreen() {
                 setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 50);
                 return;
               }
+              // Focus arrived here from the OSD bar unmounting (spatial
+              // reassignment), not a deliberate LEFT press — bounce, don't zap.
+              if (Date.now() - osdHiddenAtRef.current < 800) {
+                setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 50);
+                return;
+              }
               if (!prevChannel || !tvNavReadyRef.current) {
                 // No previous channel or nav not yet settled — immediately bounce
                 // D-pad focus to center so the remote stays responsive.
@@ -2618,6 +2638,12 @@ export default function PlayerScreen() {
               setTvZoneFocused('right');
               // OSD is user-pinned: keep focus on the centre zone (nav cards removed).
               if (infoBarUserInvokedRef.current && showInfoRef.current) {
+                setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 50);
+                return;
+              }
+              // Focus arrived here from the OSD bar unmounting (spatial
+              // reassignment), not a deliberate RIGHT press — bounce, don't zap.
+              if (Date.now() - osdHiddenAtRef.current < 800) {
                 setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 50);
                 return;
               }
