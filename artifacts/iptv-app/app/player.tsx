@@ -1234,9 +1234,17 @@ export default function PlayerScreen() {
     // TV: restore D-pad focus to the centre zone BEFORE the OSD unmounts
     // (unmounting a focused chip lets Fire OS spatially reassign focus, which
     // can land on a zap zone and change channel), and again after as a backstop.
-    if (Platform.isTV) {
-      (tvCenterRef.current as any)?.focus?.();
-      setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 400);
+    // NEVER touch player-zone focus while the channel browser is open (or
+    // about to open — Menu press dismisses the OSD right before mounting it):
+    // competing focus commands across the two layers crashed the app on
+    // Fire OS when the menu opened. All calls guarded — an exception inside
+    // a bare setTimeout bypasses every ErrorBoundary and kills a release build.
+    if (Platform.isTV && !showChannelMenuRef.current) {
+      try { (tvCenterRef.current as any)?.focus?.(); } catch {}
+      setTimeout(() => {
+        if (showChannelMenuRef.current) return;
+        try { (tvCenterRef.current as any)?.focus?.(); } catch {}
+      }, 400);
     }
   }, [infoOpacity]);
 
@@ -1488,6 +1496,11 @@ export default function PlayerScreen() {
       if (showChannelMenuRef.current) {
         setShowChannelMenu(false);
       } else {
+        // Mark the menu as open BEFORE dismissing the OSD so every focus
+        // path inside dismissInfoBar sees showChannelMenuRef=true and stays
+        // away from the player layer (competing focus commands crashed the
+        // app on Fire OS when the browser opened).
+        showChannelMenuRef.current = true;
         if (showInfoRef.current) dismissInfoBar();
         setShowChannelMenu(true);
       }
@@ -1744,8 +1757,17 @@ export default function PlayerScreen() {
             // chip inside the bar holds focus when it unmounts, Fire OS
             // spatially reassigns focus and can land on a side zap zone,
             // switching channel "on its own".  Backstop call after unmount too.
-            (tvCenterRef.current as any)?.focus?.();
-            setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 450);
+            // Skip entirely while the channel browser is open: focus commands
+            // aimed at the player layer while the overlay owns the D-pad
+            // crashed the app on Fire OS.  try/catch because a throw inside
+            // this bare timer bypasses ErrorBoundaries and kills the app.
+            if (!showChannelMenuRef.current) {
+              try { (tvCenterRef.current as any)?.focus?.(); } catch {}
+              setTimeout(() => {
+                if (showChannelMenuRef.current) return;
+                try { (tvCenterRef.current as any)?.focus?.(); } catch {}
+              }, 450);
+            }
           }
         }, 5000);
       }
@@ -2376,6 +2398,7 @@ export default function PlayerScreen() {
           <FocusablePressable
             style={styles.trackPill}
             onPress={() => {
+              showChannelMenuRef.current = true; // before OSD dismiss — see onMenu
               if (showInfoRef.current) dismissInfoBar();
               setShowChannelMenu(true);
             }}
@@ -2463,6 +2486,7 @@ export default function PlayerScreen() {
                   focusedStyle={styles.infoOsdChipFocused}
                   onFocus={() => { if (!infoBarUserInvokedRef.current) showInfoBarRef.current?.(); }}
                   onPress={() => {
+                    showChannelMenuRef.current = true; // before OSD dismiss — see onMenu
                     if (showInfoRef.current) dismissInfoBar();
                     setShowChannelMenu(true);
                   }}

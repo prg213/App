@@ -414,7 +414,11 @@ function LiveChannelMenuImpl({
   const scrollToCurrent = useCallback(() => {
     const idx = filtered.findIndex((ch) => ch.id === currentChannelId);
     if (idx >= 0) {
-      listRef.current?.scrollToIndex({ index: idx, animated: false, viewPosition: 0.3 });
+      // try/catch: this runs inside bare setTimeout callbacks — an exception
+      // there bypasses the ErrorBoundary and hard-crashes a release build.
+      try {
+        listRef.current?.scrollToIndex({ index: idx, animated: false, viewPosition: 0.3 });
+      } catch {}
     }
   }, [filtered, currentChannelId]);
 
@@ -423,7 +427,7 @@ function LiveChannelMenuImpl({
     if (isLoading) return;
     const t = setTimeout(() => {
       if (_savedScrollOffset > 0) {
-        listRef.current?.scrollToOffset({ offset: _savedScrollOffset, animated: false });
+        try { listRef.current?.scrollToOffset({ offset: _savedScrollOffset, animated: false }); } catch {}
       } else {
         scrollToCurrent();
       }
