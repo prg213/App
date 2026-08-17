@@ -397,6 +397,11 @@ function LiveChannelMenuImpl({
   // ── List ref + scroll management ──────────────────────────────────────────────
   const listRef        = useRef<FlatList<Channel>>(null);
   const currentItemRef = useRef<any>(null);
+  // Fallback focus targets so D-pad focus ALWAYS enters the overlay on TV,
+  // even when the currently-playing channel's row isn't rendered (different
+  // category active on open, virtualization, slow layout).
+  const firstItemRef   = useRef<any>(null);
+  const firstCatRef    = useRef<any>(null);
 
   const scrollToCurrent = useCallback(() => {
     const idx = filtered.findIndex((ch) => ch.id === currentChannelId);
@@ -414,11 +419,30 @@ function LiveChannelMenuImpl({
       } else {
         scrollToCurrent();
       }
-      if (Platform.isTV) {
-        setTimeout(() => (currentItemRef.current as any)?.focus?.(), 100);
-      }
     }, 180);
     return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoading]);
+
+  // TV: hand D-pad focus INTO the overlay once it's ready.  The menu is an
+  // absolutely-positioned View (not a Modal), so native focus stays on the
+  // player's zones behind it unless we move it here explicitly — which made
+  // the remote appear completely dead inside the menu.  Retry with fallbacks:
+  // current channel row → first channel row → first category row.
+  useEffect(() => {
+    if (!Platform.isTV || isLoading) return;
+    let attempts = 0;
+    let timer: ReturnType<typeof setTimeout>;
+    const tryFocus = () => {
+      const target =
+        currentItemRef.current ?? firstItemRef.current ?? firstCatRef.current;
+      if (target?.focus) {
+        try { target.focus(); return; } catch (_) {}
+      }
+      if (++attempts < 10) timer = setTimeout(tryFocus, 120);
+    };
+    timer = setTimeout(tryFocus, 300);
+    return () => clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoading]);
 
@@ -442,10 +466,11 @@ function LiveChannelMenuImpl({
 
   // ─── Category row ─────────────────────────────────────────────────────────────
   const renderCategory = useCallback(
-    ({ item }: { item: { id: string; label: string } }) => {
+    ({ item, index }: { item: { id: string; label: string }; index: number }) => {
       const active = selectedCat === item.id;
       return (
         <FocusablePressable
+          ref={index === 0 ? (firstCatRef as any) : undefined}
           style={[styles.catRow, active && styles.catRowActive]}
           focusedStyle={styles.catRowFocused}
           onPress={() => setSelectedCat(item.id)}
@@ -465,7 +490,7 @@ function LiveChannelMenuImpl({
 
   // ─── Channel row ──────────────────────────────────────────────────────────────
   const renderChannel = useCallback(
-    ({ item: ch }: { item: Channel }) => {
+    ({ item: ch, index }: { item: Channel; index: number }) => {
       const isCurrent  = ch.id === currentChannelId;
       const isFav      = favIds.has(ch.id);
       const { now, next } = getNowNext(ch);
@@ -479,7 +504,7 @@ function LiveChannelMenuImpl({
 
       return (
         <FocusablePressable
-          ref={isCurrent ? (currentItemRef as any) : undefined}
+          ref={isCurrent ? (currentItemRef as any) : index === 0 ? (firstItemRef as any) : undefined}
           style={[styles.chRow, isCurrent && styles.chRowCurrent]}
           focusedStyle={styles.chRowFocused}
           onPress={() => {
