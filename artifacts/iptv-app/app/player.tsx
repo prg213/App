@@ -2379,9 +2379,20 @@ export default function PlayerScreen() {
                 </Text>
               </>
             )}
-            {/* TV: Audio + CC chips inside the OSD so they're D-pad reachable */}
+            {/* TV: Channels + Audio + CC chips inside the OSD so they're D-pad reachable */}
             {Platform.isTV && (
               <>
+                <FocusablePressable
+                  style={styles.infoOsdChip}
+                  focusedStyle={styles.infoOsdChipFocused}
+                  onFocus={() => { if (!infoBarUserInvokedRef.current) showInfoBarRef.current?.(); }}
+                  onPress={() => {
+                    if (showInfoRef.current) dismissInfoBar();
+                    setShowChannelMenu(true);
+                  }}
+                >
+                  <Text style={styles.infoOsdChipText}>≡ Channels</Text>
+                </FocusablePressable>
                 <FocusablePressable
                   style={styles.infoOsdChip}
                   focusedStyle={styles.infoOsdChipFocused}
