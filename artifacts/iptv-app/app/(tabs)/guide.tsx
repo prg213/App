@@ -292,7 +292,7 @@ interface TVProgItem {
 const TVEpgRow = React.memo(function TVEpgRow({
   channel, programs, dayStartMs, now, isToday, isFirst, colors, reminderIds,
   onProgramPress, onWatchChannel, firstChannelRef, lastFocusedProgRef,
-  jumpToNowRef, rowIndex, allChannelRefs, isFav, onFavPress,
+  jumpToNowRef, rowIndex, allChannelRefs, allProgRows, isFav, onFavPress,
 }: {
   channel: Channel;
   programs: EpgProgram[];
@@ -329,9 +329,17 @@ const TVEpgRow = React.memo(function TVEpgRow({
   /**
    * Shared Map (owned by FullGuide) from row-index → channel-cell View.
    * Every TVEpgRow writes its channel-cell ref into this map on mount.
-   * Programme-cell onFocus reads adjacent-row entries to set nextFocusUp/Down.
+   * Programme-cell onFocus reads adjacent-row entries as a FALLBACK target
+   * for nextFocusUp/Down when no programme cell can be resolved.
    */
   allChannelRefs: React.RefObject<Map<number, View | null>>;
+  /**
+   * Shared Map (owned by FullGuide) from row-index → that row's programme
+   * items + cell refs.  Programme-cell onFocus uses it to wire UP/DOWN to the
+   * programme airing at the same time in the adjacent row (falling back to
+   * the channel cell only when that cell isn't mounted).
+   */
+  allProgRows: React.RefObject<Map<number, { items: TVProgItem[]; refs: Map<number, View | null> }>>;
   /** Whether this channel is currently favourited. */
   isFav?: boolean;
   /** Called when the user presses OK on the heart zone. */
@@ -356,6 +364,36 @@ const TVEpgRow = React.memo(function TVEpgRow({
   // initialises this to null, so the mount effect always scrolls to initialIdx
   // (the current/upcoming programme).  No explicit logout-time reset is required.
   const scrollOffsetRef = useRef<number | null>(null);
+
+  // ── Synchronized horizontal panning (TV) ──────────────────────────────────
+  // When one row scrolls (D-pad RIGHT pushing the focused cell into view),
+  // every other row pans to the same TIME.  Time-based (not raw pixels)
+  // because minimum cell widths distort the pixel↔time mapping per row.
+  // syncApplyingRef suppresses re-broadcast while a row applies a remote
+  // offset (or any other programmatic scroll), preventing feedback loops.
+  const syncApplyingRef = useRef(false);
+  const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Trailing-debounce timer for broadcasts: one emit per pan (80 ms after the
+  // last scroll event) instead of one per frame, so a D-pad pan across N rows
+  // costs N scroll commands total rather than hundreds per second.
+  const emitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Offset a sync apply is expected to land at — its own onScroll echo is
+  // matched against this (not just a wall-clock timer) to end suppression.
+  const expectedOffsetRef = useRef<number | null>(null);
+
+  // Mark the start of ANY programmatic scroll (mount restore, jump-to-now,
+  // jumpToTime, sync apply) so its onScroll echo is never rebroadcast as a
+  // user pan.  Declared before the effects below that use it.
+  const beginProgrammaticScroll = useCallback((expectedOffset: number | null, settleMs: number) => {
+    syncApplyingRef.current = true;
+    expectedOffsetRef.current = expectedOffset;
+    if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+    // Backstop: clear even if the echo never arrives (e.g. already at offset).
+    syncTimerRef.current = setTimeout(() => {
+      syncApplyingRef.current = false;
+      expectedOffsetRef.current = null;
+    }, settleMs);
+  }, []);
   // Detect window width changes (landscape ↔ portrait, split-screen resize).
   const { width: windowWidth } = useWindowDimensions();
   const dayEndMs = dayStartMs + DAY_MINS * 60_000;
@@ -427,6 +465,7 @@ const TVEpgRow = React.memo(function TVEpgRow({
       // null means no scroll has been recorded yet for this day.
       if (savedOffset !== null) {
         try {
+          beginProgrammaticScroll(savedOffset, 400);
           flatRef.current?.scrollToOffset({ offset: savedOffset, animated: false });
         } catch (_) {}
         return; // No focus change needed — D-pad focus is preserved by TV framework
@@ -439,6 +478,7 @@ const TVEpgRow = React.memo(function TVEpgRow({
         if (initialIdx != null) {
           // Scroll to and focus the current/upcoming programme.
           try {
+            beginProgrammaticScroll(null, 400);
             flatRef.current?.scrollToIndex({ index: initialIdx, animated: false, viewPosition: 0 });
           } catch (_) {}
           focusTimer = setTimeout(() => initialProgRef.current?.focus(), 80);
@@ -453,6 +493,7 @@ const TVEpgRow = React.memo(function TVEpgRow({
       // rows never compete with the first row's imperative focus above.
       if (initialIdx == null) return;
       try {
+        beginProgrammaticScroll(null, 400);
         flatRef.current?.scrollToIndex({ index: initialIdx, animated: false, viewPosition: 0 });
       } catch (_) {}
     }, 150);
@@ -489,6 +530,7 @@ const TVEpgRow = React.memo(function TVEpgRow({
     jumpToNowRef.current = () => {
       if (initialIdx == null || !flatRef.current) return;
       try {
+        beginProgrammaticScroll(null, 700);
         flatRef.current.scrollToIndex({ index: initialIdx, animated: true, viewPosition: 0 });
       } catch (_) {}
       setTimeout(() => {
@@ -530,6 +572,9 @@ const TVEpgRow = React.memo(function TVEpgRow({
         const scrollOffset = it.offset + fraction * it.width;
 
         try {
+          // jumpToTime already broadcasts to every row itself — suppress the
+          // animated scroll's own echoes so rows don't re-sync each other.
+          beginProgrammaticScroll(scrollOffset, 700);
           flatRef.current.scrollToOffset({ offset: scrollOffset, animated: true });
         } catch (_) {}
         if (isFirst) {
@@ -546,6 +591,59 @@ const TVEpgRow = React.memo(function TVEpgRow({
     const it = items[index];
     return { length: (it?.width ?? 0) + TV_CELL_GAP, offset: it?.offset ?? 0, index };
   }, [items]);
+
+  // Register this row's items + programme-cell refs in the shared registry so
+  // adjacent rows can wire UP/DOWN to the programme airing at the same time.
+  useEffect(() => {
+    if (!Platform.isTV) return;
+    allProgRows.current?.set(rowIndex, { items, refs: progRefs.current });
+    return () => { allProgRows.current?.delete(rowIndex); };
+  }, [items, rowIndex]);
+
+  // Convert a pixel offset in THIS row to the absolute time it represents.
+  const offsetToTimeMs = useCallback((x: number): number | null => {
+    if (items.length === 0) return null;
+    let it = items[items.length - 1];
+    for (let i = 0; i < items.length; i++) {
+      if (x < items[i].offset + items[i].width + TV_CELL_GAP) { it = items[i]; break; }
+    }
+    const itemStartMs = Math.max(it.prog.start.getTime(), dayStartMs);
+    const itemDurMs   = Math.max(1, it.prog.end.getTime() - itemStartMs);
+    const fraction    = Math.max(0, Math.min(1, (x - it.offset) / Math.max(1, it.width)));
+    return itemStartMs + fraction * itemDurMs;
+  }, [items, dayStartMs]);
+
+  // Convert an absolute time to the pixel offset in THIS row.
+  const timeMsToOffset = useCallback((targetMs: number): number | null => {
+    const idx = items.findIndex((it) => it.prog.end.getTime() > targetMs);
+    if (idx < 0) return null;
+    const it = items[idx];
+    const itemStartMs = Math.max(it.prog.start.getTime(), dayStartMs);
+    const itemDurMs   = Math.max(1, it.prog.end.getTime() - itemStartMs);
+    const fraction    = Math.max(0, Math.min(1, (targetMs - itemStartMs) / itemDurMs));
+    return it.offset + fraction * it.width;
+  }, [items, dayStartMs]);
+
+  useEffect(() => {
+    if (!Platform.isTV) return;
+    const sub = DeviceEventEmitter.addListener(
+      'epg:syncScroll',
+      ({ sourceRow, targetMs }: { sourceRow: number; targetMs: number }) => {
+        if (sourceRow === rowIndex || !flatRef.current) return;
+        const off = timeMsToOffset(targetMs);
+        if (off == null) return;
+        // Skip micro-adjustments so rows don't jitter while one row settles.
+        if (Math.abs(off - (scrollOffsetRef.current ?? 0)) < 3) return;
+        beginProgrammaticScroll(off, 400);
+        try { flatRef.current.scrollToOffset({ offset: off, animated: false }); } catch (_) {}
+      },
+    );
+    return () => {
+      sub.remove();
+      if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+      if (emitTimerRef.current) clearTimeout(emitTimerRef.current);
+    };
+  }, [rowIndex, timeMsToOffset, beginProgrammaticScroll]);
 
   return (
     <View style={[styles.tvRow, { borderBottomColor: colors.border }]}>
@@ -625,7 +723,31 @@ const TVEpgRow = React.memo(function TVEpgRow({
           scrollEventThrottle={16}
           removeClippedSubviews={false}
           onScroll={(e: NativeSyntheticEvent<NativeScrollEvent>) => {
-            scrollOffsetRef.current = e.nativeEvent.contentOffset.x;
+            const x = e.nativeEvent.contentOffset.x;
+            scrollOffsetRef.current = x;
+            if (!Platform.isTV) return;
+            if (syncApplyingRef.current) {
+              // Echo of a programmatic scroll — consume it, ending suppression
+              // once the expected offset is observed (timer is the backstop).
+              const exp = expectedOffsetRef.current;
+              if (exp != null && Math.abs(x - exp) < 2) {
+                syncApplyingRef.current = false;
+                expectedOffsetRef.current = null;
+                if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+              }
+              return;
+            }
+            // Broadcast this row's pan to all other rows (time-based) so the
+            // whole grid moves together.  Trailing-debounced: one emit per
+            // pan, 80 ms after the last scroll event, not one per frame.
+            if (emitTimerRef.current) clearTimeout(emitTimerRef.current);
+            emitTimerRef.current = setTimeout(() => {
+              const finalX = scrollOffsetRef.current ?? 0;
+              const targetMs = offsetToTimeMs(finalX);
+              if (targetMs != null) {
+                DeviceEventEmitter.emit('epg:syncScroll', { sourceRow: rowIndex, targetMs });
+              }
+            }, 80);
           }}
           renderItem={({ item: it, index }) => {
             const isNow = it.prog.start.getTime() <= now && now < it.prog.end.getTime();
@@ -658,22 +780,66 @@ const TVEpgRow = React.memo(function TVEpgRow({
                   },
                 ]}
                 onFocus={() => {
-                  // TV: wire D-pad UP/DOWN from this programme cell to the channel
-                  // cells of the rows immediately above and below.  Native spatial
-                  // navigation cannot reliably cross the independently-virtualised
-                  // horizontal FlatList boundaries on Fire OS, so we set the target
-                  // node handles imperatively each time a cell receives focus (the
-                  // focused row + adjacent rows may have scrolled since last wired).
+                  // TV: wire D-pad UP/DOWN from this programme cell to the
+                  // programme airing at the same time in the rows immediately
+                  // above and below (falling back to the channel cell only when
+                  // that cell isn't mounted).  Native spatial navigation cannot
+                  // reliably cross the independently-virtualised horizontal
+                  // FlatList boundaries on Fire OS, so we set the target node
+                  // handles imperatively each time a cell receives focus.
                   if (!Platform.isTV) return;
-                  const prevCh = allChannelRefs.current.get(rowIndex - 1);
-                  const nextCh = allChannelRefs.current.get(rowIndex + 1);
-                  const prevNode = prevCh ? findNodeHandle(prevCh) : null;
-                  const nextNode = nextCh ? findNodeHandle(nextCh) : null;
                   const cell = progRefs.current.get(index);
                   if (!cell) return;
+                  // Time this cell represents — used to pick the same-time
+                  // programme in adjacent rows.  +1 ms so a programme that
+                  // starts exactly at this time is matched (findIndex uses
+                  // strict end > time).
+                  const cellTimeMs = Math.max(it.prog.start.getTime(), dayStartMs) + 1;
+                  const adjacentNode = (adjRow: number): number | null => {
+                    const entry = allProgRows.current?.get(adjRow);
+                    if (entry) {
+                      const idx = entry.items.findIndex((x) => x.prog.end.getTime() > cellTimeMs);
+                      if (idx >= 0) {
+                        const v = entry.refs.get(idx);
+                        if (v) {
+                          const n = findNodeHandle(v);
+                          if (n != null) return n;
+                        }
+                      }
+                    }
+                    // Fallback: adjacent row's channel cell (always mounted).
+                    const ch = allChannelRefs.current.get(adjRow);
+                    return ch ? findNodeHandle(ch) : null;
+                  };
+                  const selfNode = findNodeHandle(cell);
+                  const prevNode = adjacentNode(rowIndex - 1);
+                  const nextNode = adjacentNode(rowIndex + 1);
                   const nativeProps: Record<string, number> = {};
                   if (prevNode != null) nativeProps.nextFocusUp = prevNode;
                   if (nextNode != null) nativeProps.nextFocusDown = nextNode;
+                  if (selfNode != null) {
+                    // Last cell in the row: RIGHT must stop here instead of the
+                    // native spatial search jumping to some other listing.
+                    // Non-last cells: explicitly target the next cell when it's
+                    // mounted, clearing any stale self-pin from list recycling.
+                    if (index === items.length - 1) {
+                      nativeProps.nextFocusRight = selfNode;
+                    } else {
+                      const nxt = progRefs.current.get(index + 1);
+                      const nxtNode = nxt ? findNodeHandle(nxt) : null;
+                      // -1 (Android View.NO_ID) clears a stale self-pin left
+                      // by list recycling when the neighbour isn't mounted yet,
+                      // restoring default spatial navigation for this press.
+                      nativeProps.nextFocusRight = nxtNode != null ? nxtNode : -1;
+                    }
+                    // First cell's LEFT goes to the channel cell (wired in the
+                    // mount effect); pin non-first cells to the previous cell.
+                    if (index > 0) {
+                      const prv = progRefs.current.get(index - 1);
+                      const prvNode = prv ? findNodeHandle(prv) : null;
+                      if (prvNode != null) nativeProps.nextFocusLeft = prvNode;
+                    }
+                  }
                   if (Object.keys(nativeProps).length > 0) {
                     (cell as any).setNativeProps?.(nativeProps);
                   }
@@ -1305,6 +1471,10 @@ function FullGuide({
   // nextFocusUp / nextFocusDown, enabling reliable UP/DOWN across the
   // independently-virtualised horizontal FlatLists on Fire OS.
   const allChannelRefs = useRef<Map<number, View | null>>(new Map());
+  // Shared Map from row-index → { items, refs } for every mounted TVEpgRow.
+  // Programme-cell onFocus uses it to wire UP/DOWN to the programme airing at
+  // the same time in the adjacent row (instead of the channel-name cell).
+  const allProgRows = useRef<Map<number, { items: TVProgItem[]; refs: Map<number, View | null> }>>(new Map());
   // Ref to the programme cell that was last pressed — written by each TVEpgRow
   // on programme-cell press, read on ProgramModal close to restore D-pad focus.
   const lastFocusedProgViewRef = useRef<View | null>(null);
@@ -1388,6 +1558,7 @@ function FullGuide({
   useEffect(() => {
     if (!Platform.isTV) return;
     allChannelRefs.current.clear();
+    allProgRows.current.clear();
     const timer = setTimeout(() => { firstChannelRef.current?.focus(); }, 100);
     return () => clearTimeout(timer);
   }, [selectedCat]);
@@ -1854,6 +2025,7 @@ function FullGuide({
                 jumpToNowRef={index === 0 ? jumpToNowCallbackRef : undefined}
                 rowIndex={index}
                 allChannelRefs={allChannelRefs}
+                allProgRows={allProgRows}
                 isFav={guideFavIds.has(ch.id)}
                 onFavPress={async () => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
