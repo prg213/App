@@ -420,11 +420,11 @@ const TVEpgRow = React.memo(function TVEpgRow({
   useEffect(() => {
     if (!Platform.isTV || !onFavPress) return;
     const t = setTimeout(() => {
-      const channelNode = findNodeHandle(channelCellRef.current);
-      const heartNode   = findNodeHandle(heartRef.current);
-      if (channelNode == null || heartNode == null) return;
-      (channelCellRef.current as any)?.setNativeProps?.({ nextFocusRight: heartNode });
-      (heartRef.current    as any)?.setNativeProps?.({ nextFocusLeft: channelNode });
+      const heartNode = findNodeHandle(heartRef.current);
+      if (heartNode == null) return;
+      // Channel cells are not focusable on TV — pin the heart's LEFT to
+      // itself so the D-pad stops there instead of escaping the row.
+      (heartRef.current as any)?.setNativeProps?.({ nextFocusLeft: heartNode });
     }, 300);
     return () => clearTimeout(t);
   }, [windowWidth, onFavPress]);
@@ -546,22 +546,8 @@ const TVEpgRow = React.memo(function TVEpgRow({
     // must re-run to restore the saved offset.
   }, [initialIdx, isFirst, windowWidth]);
 
-  // TV: wire the first programme cell's LEFT D-pad back to the channel cell.
-  // Native spatial navigation is unreliable across the virtualised FlatList /
-  // channel-pane boundary, so we set nextFocusLeft imperatively after the row
-  // mounts or the window resizes (orientation change remounts the FlatList).
-  useEffect(() => {
-    if (!Platform.isTV) return;
-    const t = setTimeout(() => {
-      // firstChannelRef is typed React.Ref (union with callback); cast to RefObject
-      // so we can access .current — it is always a RefObject in practice here.
-      const chRef = firstChannelRef as React.RefObject<View | null> | undefined;
-      const channelNode = findNodeHandle(chRef?.current ?? null);
-      if (!channelNode || !progFirstRef.current) return;
-      (progFirstRef.current as any).setNativeProps?.({ nextFocusLeft: channelNode });
-    }, 300);
-    return () => clearTimeout(t);
-  }, [windowWidth]);
+  // (Channel cells are not focusable on TV any more — LEFT from the first
+  // programme cell now lands on the favourite heart via native spatial nav.)
 
   // Populate jumpToNowRef (first row only) with a fn FullGuide can call to
   // scroll the horizontal list to the current programme and focus it.
@@ -697,9 +683,11 @@ const TVEpgRow = React.memo(function TVEpgRow({
 
   return (
     <View style={[styles.tvRow, { borderBottomColor: colors.border }]}>
-      {/* Channel info cell — OK/Select advances focus to first programme;
-          long-press watches the channel live (matches catchup auto-advance pattern) */}
+      {/* Channel info cell — NOT focusable on TV (user request: only the
+          programme listings should be selectable; the D-pad goes straight to
+          the grid).  Still pressable on touch devices. */}
       <FocusablePressable
+        focusable={!Platform.isTV}
         ref={(el: View | null) => {
           // Keep the local ref so the heart-wiring useEffect can call findNodeHandle.
           (channelCellRef as React.MutableRefObject<View | null>).current = el;
@@ -707,12 +695,6 @@ const TVEpgRow = React.memo(function TVEpgRow({
           // can read this node handle for nextFocusUp / nextFocusDown wiring.
           if (el) allChannelRefs.current.set(rowIndex, el);
           else allChannelRefs.current.delete(rowIndex);
-          // Forward to firstChannelRef (only provided for row 0) so FullGuide
-          // can programmatically focus the first channel cell on entry.
-          if (firstChannelRef) {
-            if (typeof firstChannelRef === 'function') firstChannelRef(el);
-            else (firstChannelRef as React.MutableRefObject<View | null>).current = el;
-          }
         }}
         focusedStyle={styles.tvFocused}
         style={[styles.tvChCell, { backgroundColor: colors.card, borderRightColor: colors.border }]}
@@ -824,6 +806,14 @@ const TVEpgRow = React.memo(function TVEpgRow({
               }
               if (index === 0) (progFirstRef as React.MutableRefObject<View | null>).current = el;
               if (index === initialIdx) (initialProgRef as React.MutableRefObject<View | null>).current = el;
+              // Channel cells are no longer focusable on TV, so the guide's
+              // D-pad entry point (firstChannelRef, row 0 only) now points at
+              // this row's current programme cell (or the first cell when no
+              // programme is "now", e.g. a future day).
+              if (firstChannelRef && (index === (initialIdx ?? 0))) {
+                if (typeof firstChannelRef === 'function') firstChannelRef(el);
+                else (firstChannelRef as React.MutableRefObject<View | null>).current = el;
+              }
             };
             return (
               <FocusablePressable
@@ -865,9 +855,16 @@ const TVEpgRow = React.memo(function TVEpgRow({
                         }
                       }
                     }
-                    // Fallback: adjacent row's channel cell (always mounted).
-                    const ch = allChannelRefs.current.get(adjRow);
-                    return ch ? findNodeHandle(ch) : null;
+                    // Fallback: adjacent row's first mounted programme cell.
+                    // (Channel cells are not focusable on TV, so they can no
+                    // longer serve as an UP/DOWN landing target.)
+                    if (entry) {
+                      for (const v of entry.refs.values()) {
+                        const n = findNodeHandle(v);
+                        if (n != null) return n;
+                      }
+                    }
+                    return null;
                   };
                   const selfNode = findNodeHandle(cell);
                   const prevNode = adjacentNode(rowIndex - 1);
