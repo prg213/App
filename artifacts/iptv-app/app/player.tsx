@@ -456,6 +456,12 @@ export default function PlayerScreen() {
   const [tvPreviewDir, setTvPreviewDir] = useState<'prev' | 'next' | null>(null);
   const tvPreviewOpacity = useRef(new Animated.Value(0)).current;
   const tvPreviewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Monotonically-incrementing counter that gates the zap onCommit call.
+  // Captured at the start of showTvChannelPreview and checked in the
+  // Animated.timing completion callback — if the value has changed (because
+  // the channel list was replaced while the fade-out animation was running),
+  // the callback exits without calling onCommit/switchChannel.
+  const zapGenRef = useRef(0);
   const [nowTs, setNowTs] = useState(Date.now());
   /** 'back' | 'forward' | null — brief double-tap seek visual indicator */
   const [doubleTapSide, setDoubleTapSide] = useState<'back' | 'forward' | null>(null);
@@ -1481,6 +1487,21 @@ export default function PlayerScreen() {
   // then switches the stream without leaving the player.
   const handleMenuSelectChannel = useCallback(
     (entry: MenuChannelEntry, idx: number, newList: MenuChannelEntry[]) => {
+      // Synchronously cancel any in-flight zap-preview commit BEFORE updating
+      // the channel list or switching streams.  The passive useEffect([channelList])
+      // is React-deferred and may not run until after the Animated.timing
+      // completion callback — if the 250 ms timeout had already fired the
+      // gen-check is the only guard, so we must advance it here, right now,
+      // while we are still synchronous.  clearTimeout covers Stage 1 (timer
+      // still pending); the gen increment covers Stage 2 (animation in flight).
+      zapGenRef.current += 1;
+      if (tvPreviewTimerRef.current) {
+        clearTimeout(tvPreviewTimerRef.current);
+        tvPreviewTimerRef.current = null;
+        setTvPreviewChannel(null);
+        setTvPreviewDir(null);
+        setTvPreviewNowProg(null);
+      }
       // Convert MenuChannelEntry[] → ChannelEntry[] (same shape, separate type)
       const asEntries: ChannelEntry[] = newList.map((e) => ({
         url: e.url,
@@ -1632,6 +1653,32 @@ export default function PlayerScreen() {
     };
   }, []);
 
+  // Cancel any pending zap-preview timer when the channel list is replaced
+  // (e.g. the user switches category in the channel menu while a 250 ms
+  // commit timer is still outstanding).  Without this guard, the timer holds
+  // a stale onCommit closure that calls switchChannel for a channel from the
+  // old list — a channel that no longer maps to the user's current context.
+  //
+  // Incrementing zapGenRef covers the full commit path: both the 250 ms
+  // timeout window (via clearTimeout) and the subsequent 120 ms Animated
+  // fade-out window (via the gen !== zapGenRef.current guard in the animation
+  // completion callback).  Clearing the timer here also dismisses the preview
+  // overlay so the UI reflects the new list immediately.
+  useEffect(() => {
+    // Advance the generation unconditionally — this invalidates any in-flight
+    // animation callback even if the 250 ms timeout has already fired and
+    // tvPreviewTimerRef.current is already null.
+    zapGenRef.current += 1;
+    if (tvPreviewTimerRef.current) {
+      clearTimeout(tvPreviewTimerRef.current);
+      tvPreviewTimerRef.current = null;
+      setTvPreviewChannel(null);
+      setTvPreviewDir(null);
+      setTvPreviewNowProg(null);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [channelList]);
+
   /**
    * Show the live-TV OSD info bar.
    *
@@ -1698,6 +1745,11 @@ export default function PlayerScreen() {
     onCommit: () => void,
   ) => {
     if (tvPreviewTimerRef.current) { clearTimeout(tvPreviewTimerRef.current); tvPreviewTimerRef.current = null; }
+    // Snapshot the current zap generation.  If the channel list is replaced
+    // while the fade-out animation is running (the 120 ms window between the
+    // 250 ms timeout firing and the animation callback), zapGenRef will have
+    // been incremented and the guard below will skip the commit.
+    const gen = zapGenRef.current;
     // Look up the currently-airing EPG programme for the preview channel so we
     // can show programme title and progress on the zap card.
     const epgProgs = epgMap?.get(channel.epgId) ?? [];
@@ -1711,7 +1763,13 @@ export default function PlayerScreen() {
     // possible) — still long enough to coalesce rapid multi-presses into one
     // stream load instead of loading every intermediate channel.
     tvPreviewTimerRef.current = setTimeout(() => {
+      tvPreviewTimerRef.current = null; // timer has fired — ref no longer holds a live handle
       Animated.timing(tvPreviewOpacity, { toValue: 0, duration: 120, useNativeDriver: true }).start(() => {
+        // Guard: abort if the channel list was replaced while the fade-out
+        // animation was in flight (zapGenRef incremented by the channelList
+        // useEffect).  Without this check, a category switch arriving in the
+        // 120 ms fade-out window would still reach onCommit/switchChannel.
+        if (zapGenRef.current !== gen) return;
         setTvPreviewChannel(null);
         setTvPreviewDir(null);
         setTvPreviewNowProg(null);
