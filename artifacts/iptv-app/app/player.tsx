@@ -2232,7 +2232,7 @@ export default function PlayerScreen() {
               <Pressable
                 ref={tvSeekBackRef as any}
                 focusable
-                style={[styles.tvSeekBounce, { left: 0, bottom: insets.bottom + 12 }]}
+                style={[styles.tvSeekBounce, { left: 0, bottom: insets.bottom + 48 }]}
                 onFocus={() => {
                   seek(-10);
                   scheduleHide();
@@ -2244,7 +2244,7 @@ export default function PlayerScreen() {
               <FocusablePressable
                 ref={tvScrubAnchorRef}
                 focusable
-                style={[styles.tvScrubAnchor, { bottom: insets.bottom + 12 }]}
+                style={[styles.tvScrubAnchor, { bottom: insets.bottom + 48 }]}
                 focusedStyle={styles.tvScrubAnchorFocused}
                 onPress={() => { /* OK on scrubber: no-op; LEFT/RIGHT seek via bounce targets */ }}
               >
@@ -2263,7 +2263,7 @@ export default function PlayerScreen() {
               <Pressable
                 ref={tvSeekFwdRef as any}
                 focusable
-                style={[styles.tvSeekBounce, { right: 0, bottom: insets.bottom + 12 }]}
+                style={[styles.tvSeekBounce, { right: 0, bottom: insets.bottom + 48 }]}
                 onFocus={() => {
                   seek(+10);
                   scheduleHide();
@@ -2927,9 +2927,11 @@ const styles = StyleSheet.create({
     opacity: 0,
   },
   // Focusable progress-bar shown on TV in place of the RNGH drag scrubber.
+  // 48px side margins keep the bar inside the TV-safe area — TVs crop up to
+  // ~5% of the picture edge (overscan), which was hiding the bar entirely.
   tvScrubAnchor: {
     position: 'absolute',
-    left: 16, right: 16,
+    left: 48, right: 48,
     gap: 6,
     paddingVertical: 10,
     paddingHorizontal: 8,
