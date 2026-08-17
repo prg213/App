@@ -195,13 +195,39 @@ function Sidebar({ state, descriptors, navigation }: SidebarProps) {
   // D-pad remote lands directly on the first Home item rather than on the
   // sidebar nav item (which would require an extra RIGHT press to enter content).
   useEffect(() => {
-    sidebarNav.focus = () => { requestTvFocus(firstNavRef.current); };
+    // retryTimer lives in the effect closure so the effect cleanup can cancel
+    // it if the Sidebar unmounts while a retry sequence is in flight.
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+
+    // Use a short retry loop (≤5 attempts, 80 ms apart) so the D-pad cursor
+    // lands on the first nav item even when Fire TV silently ignores the
+    // requestTvFocus call during a sidebar animation.  requestTvFocus is called
+    // on every attempt regardless of whether the ref is present — if it is null
+    // the call is a harmless no-op; if it is present but the native layer
+    // ignored the previous request, the next attempt will succeed.
+    sidebarNav.focus = () => {
+      // Cancel any previous in-flight retry to avoid overlapping focus requests.
+      if (retryTimer !== undefined) { clearTimeout(retryTimer); retryTimer = undefined; }
+
+      let attempts = 0;
+      const tryFocus = () => {
+        requestTvFocus(firstNavRef.current);
+        if (++attempts < 5) retryTimer = setTimeout(tryFocus, 80);
+      };
+      tryFocus();
+    };
+
     // Publish the first nav item's native handle so screens can pin their
     // first card's nextFocusLeft to the sidebar (LEFT → nav menu on TV).
     if (Platform.isTV) {
       try { sidebarNav.handle = findNodeHandle(firstNavRef.current); } catch {}
     }
-    return () => { sidebarNav.handle = null; };
+
+    return () => {
+      sidebarNav.handle = null;
+      // Cancel any pending retry timer so it can't fire on an unmounted node.
+      if (retryTimer !== undefined) clearTimeout(retryTimer);
+    };
   }, []);
 
   const dotColor = serverStatus === 'ok' ? '#22C55E'
