@@ -248,3 +248,165 @@ describe('showTvChannelPreview — coalescing behavioural (fake timers)', () => 
     expect(commits[0]).toBe('ch-2');
   });
 });
+
+// =============================================================================
+// 3. Key-repeat / held D-pad — OS-rate simulation
+// =============================================================================
+//
+// When the user holds the D-pad the OS fires key-repeat events continuously.
+// Typical rates range from ~30 ms (very fast Firestick repeat) to ~200 ms
+// (slow first-repeat threshold).  As long as events arrive faster than the
+// 250 ms commit window the timer must be reset on every event so the stream
+// loads only once — for the channel showing when the user releases.
+//
+// Each test below:
+//   1. Sends a burst of key-repeats at a fixed OS rate (simulating a held press).
+//   2. Releases (stops sending events).
+//   3. Advances the clock past the 250 ms commit delay.
+//   4. Asserts exactly ONE commit for the LAST channel, with zero commits for
+//      every intermediate channel the cursor passed through.
+
+describe('showTvChannelPreview — held D-pad / key-repeat (fake timers)', () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(()  => jest.useRealTimers());
+
+  /**
+   * Drive a simulated hold: fires `count` key-repeat events separated by
+   * `repeatIntervalMs`, then releases and lets the commit timer expire.
+   * Returns the list of channels that were committed.
+   */
+  function simulateHold(repeatIntervalMs: number, count: number): string[] {
+    const { zapPreview } = makeZapSimulator();
+    const commits: string[] = [];
+
+    const channels = Array.from({ length: count }, (_, i) => `ch-${i + 1}`);
+
+    for (const ch of channels) {
+      zapPreview(ch, (c) => commits.push(c));
+      // Advance the clock by the repeat interval except after the last event
+      // (the last event represents the key-up / end of hold).
+      if (ch !== channels[channels.length - 1]) {
+        jest.advanceTimersByTime(repeatIntervalMs);
+      }
+    }
+
+    // Let the surviving timer fire (commit window = 250 ms).
+    jest.advanceTimersByTime(300);
+    return commits;
+  }
+
+  it('hold at 30 ms repeat rate fires exactly one commit for the last channel', () => {
+    // 30 ms is a very fast OS key-repeat — well inside the 250 ms window.
+    // 8 repeats → 7 intervals × 30 ms = 210 ms total; all intermediate timers
+    // must have been cancelled.
+    const commits = simulateHold(30, 8);
+
+    expect(commits).toHaveLength(1);
+    expect(commits[0]).toBe('ch-8');
+  });
+
+  it('hold at 50 ms repeat rate fires exactly one commit for the last channel', () => {
+    // 50 ms ≈ fast Firestick key-repeat; 6 repeats → 250 ms elapsed before release.
+    // The 250 ms timer is reset on each event so no intermediate commit fires.
+    const commits = simulateHold(50, 6);
+
+    expect(commits).toHaveLength(1);
+    expect(commits[0]).toBe('ch-6');
+  });
+
+  it('hold at 100 ms repeat rate fires exactly one commit for the last channel', () => {
+    // 100 ms ≈ typical Android TV key-repeat; 3 repeats → 200 ms elapsed.
+    // Still inside the 250 ms window on every intermediate press.
+    const commits = simulateHold(100, 3);
+
+    expect(commits).toHaveLength(1);
+    expect(commits[0]).toBe('ch-3');
+  });
+
+  it('hold at 200 ms repeat rate fires exactly one commit for the last channel', () => {
+    // 200 ms ≈ slow first-repeat delay.  Each repeat arrives just inside the
+    // 250 ms window so the previous timer is always cancelled in time.
+    const commits = simulateHold(200, 2);
+
+    expect(commits).toHaveLength(1);
+    expect(commits[0]).toBe('ch-2');
+  });
+
+  it('no intermediate channel is committed regardless of key-repeat rate', () => {
+    // Run all four OS rates and assert that only the final channel appears in
+    // the commit list — no skipped channel leaks through for any rate.
+    const scenarios: Array<[number, number]> = [
+      [30,  8],   // fast Fire TV repeat, 8 channels
+      [50,  6],   // medium repeat, 6 channels
+      [100, 3],   // slow repeat, 3 channels
+      [200, 2],   // first-repeat threshold, 2 channels
+    ];
+
+    for (const [intervalMs, count] of scenarios) {
+      const commits = simulateHold(intervalMs, count);
+      const lastChannel = `ch-${count}`;
+
+      // Exactly one commit, and it must be for the last channel.
+      expect(commits).toHaveLength(1);
+      expect(commits[0]).toBe(lastChannel);
+
+      // Every channel the cursor passed through must be absent.
+      for (let i = 1; i < count; i++) {
+        expect(commits).not.toContain(`ch-${i}`);
+      }
+    }
+  });
+
+  it('timer is reset on every key-repeat event — countdown always restarts from 250 ms', () => {
+    // Verify the reset property directly: after N repeats at 200 ms intervals,
+    // the commit must not fire until 250 ms after the LAST event, not after
+    // 250 ms from the first event.
+    const { zapPreview, timerRef } = makeZapSimulator();
+    const commits: string[] = [];
+
+    // Press 1 at t=0
+    zapPreview('ch-1', (ch) => commits.push(ch));
+    expect(timerRef.current).not.toBeNull(); // timer started
+
+    // At t=200 ms press 2 — timer must be cancelled and restarted
+    jest.advanceTimersByTime(200);
+    expect(commits).toHaveLength(0);         // no commit yet (< 250 ms from press 1)
+    zapPreview('ch-2', (ch) => commits.push(ch));
+
+    // At t=400 ms (200 ms after press 2) — still no commit, countdown restarted
+    jest.advanceTimersByTime(200);
+    expect(commits).toHaveLength(0);
+
+    // At t=650 ms (250 ms after press 2) — commit fires for ch-2 only
+    jest.advanceTimersByTime(50);
+    expect(commits).toHaveLength(1);
+    expect(commits[0]).toBe('ch-2');         // timer was reset; ch-1 was never committed
+  });
+
+  it('after a hold ends, a new hold starts a fresh independent zap session', () => {
+    // First hold: channels 1-3 at 50 ms → commits ch-3
+    // Second hold (after a gap): channels 4-5 at 50 ms → commits ch-5
+    // Both sessions must be independent — only their respective last channels commit.
+    const { zapPreview } = makeZapSimulator();
+    const commits: string[] = [];
+
+    // First hold
+    zapPreview('ch-1', (ch) => commits.push(ch));
+    jest.advanceTimersByTime(50);
+    zapPreview('ch-2', (ch) => commits.push(ch));
+    jest.advanceTimersByTime(50);
+    zapPreview('ch-3', (ch) => commits.push(ch));
+    // Release — advance past 250 ms
+    jest.advanceTimersByTime(300);
+
+    expect(commits).toEqual(['ch-3']);
+
+    // Second hold (new gesture)
+    zapPreview('ch-4', (ch) => commits.push(ch));
+    jest.advanceTimersByTime(50);
+    zapPreview('ch-5', (ch) => commits.push(ch));
+    jest.advanceTimersByTime(300);
+
+    expect(commits).toEqual(['ch-3', 'ch-5']);
+  });
+});
