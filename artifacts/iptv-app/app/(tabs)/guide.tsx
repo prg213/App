@@ -1504,6 +1504,11 @@ function FullGuide({
   // and so a re-mount after re-login picks up the reset default.
   useEffect(() => { setEpgFavFilterActive(favFilterActive); }, [favFilterActive]);
 
+  // Reset the shared grid-pan position when FullGuide unmounts (logout / account
+  // switch / navigation away) so a new session never restores a prior user's
+  // pan position.  TVEpgRow rows pick this up on their next mount.
+  useEffect(() => () => { currentGridPanMs = null; }, []);
+
   // ── Auto-advance D-pad focus between columns (TV / Fire TV only) ───────────
   // Ref attached to the first channel cell so we can programmatically focus it.
   const firstChannelRef = useRef<View>(null);

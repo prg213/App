@@ -27,7 +27,30 @@ describe('FullGuide — horizontal scroll offset is saved on scroll events (#307
 describe('FullGuide — vertical scroll offset is saved on scroll events (#307)', () => {
   it('gridVertOffsetRef.current is written from the nativeEvent.contentOffset.y', () => {
     // The onScroll handler for the vertical channel list must capture the y offset.
-    expect(src).toMatch(/gridVertOffsetRef\.current\s*=.*\.y/s);
+    // Two accepted forms:
+    //   1. Direct:       gridVertOffsetRef.current = e.nativeEvent.contentOffset.y
+    //   2. Intermediate: const y = ...contentOffset.y; ... gridVertOffsetRef.current = y
+    //      (backreference ensures the *same* identifier reaches the ref)
+    const directAssign = /gridVertOffsetRef\.current\s*=\s*\w+(?:\.\w+)*\.contentOffset\.y/;
+    const viaIntermediate = /(?:const|let|var)\s+(\w+)\s*=\s*[^;]*\.contentOffset\.y[\s\S]{0,500}?gridVertOffsetRef\.current\s*=\s*\1\b/;
+    const matched = directAssign.test(src) || viaIntermediate.test(src);
+    expect(matched).toBe(true);
+  });
+});
+
+describe('FullGuide — grid pan position is cleared on unmount so a new session starts fresh', () => {
+  it('currentGridPanMs is reset to null in a FullGuide unmount cleanup', () => {
+    // A module-level currentGridPanMs carries the last pan position across
+    // TVEpgRow virtualisation.  FullGuide must null it out on unmount so a
+    // subsequent guide session (after logout or account switch) does not
+    // restore a prior user's pan position.
+    // Accept: useEffect(() => () => { currentGridPanMs = null; }, [])
+    // or any cleanup form that assigns null to currentGridPanMs.
+    expect(src).toMatch(/currentGridPanMs\s*=\s*null/);
+    // The assignment must appear inside a return ()=> / cleanup path, not just
+    // as an initialiser.  Look for the null-assign inside a function body that
+    // is returned from a useEffect.
+    expect(src).toMatch(/return\s*\(\s*\)\s*=>\s*\{?\s*currentGridPanMs\s*=\s*null|currentGridPanMs\s*=\s*null[^;]*;\s*\}?\s*,\s*\[\s*\]/s);
   });
 });
 
