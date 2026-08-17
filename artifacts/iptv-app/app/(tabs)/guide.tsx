@@ -483,7 +483,15 @@ const TVEpgRow = React.memo(function TVEpgRow({
       // TV: if the grid has already been panned by the user align this newly
       // mounted row to that position immediately so it doesn't appear at a
       // different time than its neighbours while the next syncScroll fires.
-      if (Platform.isTV && currentGridPanMs !== null) {
+      //
+      // Day-switch race: React fires child effects before parent effects, so
+      // this mount effect (deps: [initialIdx, isFirst, windowWidth]) runs when
+      // initialIdx changes (which happens because dayStartMs changed → items
+      // recomputed) BEFORE FullGuide's useEffect([dayStartMs]) has cleared
+      // currentGridPanMs.  Guard against that by only accepting a pan position
+      // that falls within this day's [dayStartMs, dayEndMs) window; a stale
+      // value from the previous day silently falls through to initialIdx below.
+      if (Platform.isTV && currentGridPanMs !== null && currentGridPanMs >= dayStartMs && currentGridPanMs < dayEndMs) {
         const panOffset = timeMsToOffsetRef.current(currentGridPanMs);
         if (panOffset !== null) {
           try {
