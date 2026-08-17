@@ -289,6 +289,14 @@ interface TVProgItem {
   offset: number;  // cumulative offset from day start (for getItemLayout)
 }
 
+// ── Shared grid pan state ──────────────────────────────────────────────────
+// Tracks the most-recent time position the grid was scrolled to.  Stored at
+// module level so newly mounted TVEpgRow instances (scrolled into view during
+// fast vertical panning) can immediately align to the current pan position
+// instead of waiting for the next epg:syncScroll broadcast.
+// Updated by every row that emits OR receives an epg:syncScroll event.
+let currentGridPanMs: number | null = null;
+
 const TVEpgRow = React.memo(function TVEpgRow({
   channel, programs, dayStartMs, now, isToday, isFirst, colors, reminderIds,
   onProgramPress, onWatchChannel, firstChannelRef, lastFocusedProgRef,
@@ -470,7 +478,29 @@ const TVEpgRow = React.memo(function TVEpgRow({
         } catch (_) {}
         return; // No focus change needed — D-pad focus is preserved by TV framework
       }
-      // No saved offset (initial mount or just after a day change): scroll to the
+      // No saved offset (initial mount or just after a day change).
+      //
+      // TV: if the grid has already been panned by the user align this newly
+      // mounted row to that position immediately so it doesn't appear at a
+      // different time than its neighbours while the next syncScroll fires.
+      if (Platform.isTV && currentGridPanMs !== null) {
+        const panOffset = timeMsToOffsetRef.current(currentGridPanMs);
+        if (panOffset !== null) {
+          try {
+            beginProgrammaticScroll(panOffset, 400);
+            flatRef.current?.scrollToOffset({ offset: panOffset, animated: false });
+          } catch (_) {}
+          // First row only: also focus the nearest cell at the pan position.
+          if (isFirst) {
+            const idx = items.findIndex((it) => it.prog.end.getTime() > currentGridPanMs!);
+            if (idx >= 0) {
+              focusTimer = setTimeout(() => progRefs.current.get(idx)?.focus(), 80);
+            }
+          }
+          return;
+        }
+      }
+      // No saved offset and no grid pan recorded — scroll to the
       // current/upcoming programme and optionally restore D-pad focus.
       //
       // TV first-row: handled separately so no other row steals focus from it.
@@ -624,11 +654,21 @@ const TVEpgRow = React.memo(function TVEpgRow({
     return it.offset + fraction * it.width;
   }, [items, dayStartMs]);
 
+  // Always-fresh ref so the mount effect can call timeMsToOffset without
+  // adding it to the effect's dependency array (which would cause a re-run on
+  // every items change and conflict with the savedOffset-capture pattern).
+  const timeMsToOffsetRef = useRef(timeMsToOffset);
+  timeMsToOffsetRef.current = timeMsToOffset;
+
   useEffect(() => {
     if (!Platform.isTV) return;
     const sub = DeviceEventEmitter.addListener(
       'epg:syncScroll',
       ({ sourceRow, targetMs }: { sourceRow: number; targetMs: number }) => {
+        // Always record the latest pan time — even if this row is the source —
+        // so newly mounted rows (scrolled into view after this event fires) can
+        // align immediately on their next mount.
+        currentGridPanMs = targetMs;
         if (sourceRow === rowIndex || !flatRef.current) return;
         const off = timeMsToOffset(targetMs);
         if (off == null) return;
@@ -745,6 +785,7 @@ const TVEpgRow = React.memo(function TVEpgRow({
               const finalX = scrollOffsetRef.current ?? 0;
               const targetMs = offsetToTimeMs(finalX);
               if (targetMs != null) {
+                currentGridPanMs = targetMs;
                 DeviceEventEmitter.emit('epg:syncScroll', { sourceRow: rowIndex, targetMs });
               }
             }, 80);
