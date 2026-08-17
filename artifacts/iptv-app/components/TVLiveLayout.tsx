@@ -26,6 +26,7 @@ import {
   FlatList,
   Image,
   Platform,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -444,40 +445,49 @@ export function TVLiveLayout({
               </FocusablePressable>
             ) : null}
 
-            {/* 3c — Mini TV guide (info only, not interactive) */}
+            {/* 3c — Mini TV guide.  On TV each row is focusable so the D-pad
+                can move down INTO the list; the enclosing ScrollView then
+                auto-scrolls to keep the focused row visible (previously the
+                rows were plain Views, so the remote could never reach or
+                scroll this panel and everything below the fold was
+                inaccessible on Firestick). */}
             {channelEpg.length > 0 ? (
               <View style={[styles.guideWrap, { backgroundColor: colors.card, borderColor: colors.border }]}>
                 <Text style={[styles.guideHeader, { color: colors.mutedForeground, borderBottomColor: colors.border }]}>
                   TV GUIDE
                 </Text>
-                {channelEpg.map((prog, i) => {
-                  const isNow = prog.start.getTime() <= nowTs && nowTs < prog.end.getTime();
-                  return (
-                    <View
-                      key={i}
-                      style={[
-                        styles.guideItem,
-                        { borderBottomColor: colors.border },
-                        isNow && { backgroundColor: colors.secondary },
-                      ]}
-                    >
-                      <Text
+                <ScrollView showsVerticalScrollIndicator={false}>
+                  {channelEpg.map((prog, i) => {
+                    const isNow = prog.start.getTime() <= nowTs && nowTs < prog.end.getTime();
+                    const Row = Platform.isTV ? FocusablePressable : View;
+                    return (
+                      <Row
+                        key={i}
+                        {...(Platform.isTV ? { focusedStyle: { backgroundColor: colors.secondary } } : {})}
                         style={[
-                          styles.guideTime,
-                          { color: isNow ? colors.primary : colors.mutedForeground },
+                          styles.guideItem,
+                          { borderBottomColor: colors.border },
+                          isNow && { backgroundColor: colors.secondary },
                         ]}
                       >
-                        {fmtTime(prog.start)}{isNow ? ' ●' : ''}
-                      </Text>
-                      <Text
-                        style={[styles.guideTitle, { color: colors.foreground }]}
-                        numberOfLines={1}
-                      >
-                        {prog.title}
-                      </Text>
-                    </View>
-                  );
-                })}
+                        <Text
+                          style={[
+                            styles.guideTime,
+                            { color: isNow ? colors.primary : colors.mutedForeground },
+                          ]}
+                        >
+                          {fmtTime(prog.start)}{isNow ? ' ●' : ''}
+                        </Text>
+                        <Text
+                          style={[styles.guideTitle, { color: colors.foreground }]}
+                          numberOfLines={1}
+                        >
+                          {prog.title}
+                        </Text>
+                      </Row>
+                    );
+                  })}
+                </ScrollView>
               </View>
             ) : null}
           </>
