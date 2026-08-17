@@ -728,6 +728,14 @@ export default function PlayerScreen() {
         } else if (!player.playing) {
           player.play();
         }
+        // Stuck-"Connecting" fix: this screen mounts with isBuffering=true and
+        // relies on a readyToPlay event to clear it. When the shared player is
+        // ALREADY ready/playing (mini-player expand), no new event fires — the
+        // overlay would sit on top of a healthy stream forever. Clear it now
+        // based on the player's current state instead of a future event.
+        if (player.playing || st === 'readyToPlay') {
+          setIsBuffering(false);
+        }
       } catch {}
     } else {
       liveUrlRef.current = params.url;
