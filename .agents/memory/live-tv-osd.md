@@ -30,3 +30,6 @@ description: Professional IPTV OSD patterns in player.tsx and TVLiveLayout.tsx �
 
 ## Stuck "Connecting to stream" on fullscreen expand
 The fullscreen live screen mounts with `isBuffering=true` and clears it only on a `readyToPlay` event. When reusing the shared player that is ALREADY ready/playing (mini-player expand), no new event fires — overlay sticks forever. Rule: any overlay state on the fullscreen screen must be initialized/derived from the shared player's *current* state at mount, not from a future status event.
+
+## Ambient NOW/NEXT strip removed (single bottom OSD)
+The "mutually exclusive" ambient strip (!showInfo) overlapped the OSD's 300ms fade-out → users saw two stacked bottom overlays. Strip deleted; the full OSD info bar is the only bottom overlay. LiveChannelMenu is now wrapped in an error boundary (closes overlay on any render error) — a release-build JS error kills the whole app otherwise.
