@@ -87,17 +87,27 @@ function VodScrubber({
   duration,
   insetBottom,
   onSeek,
+  onScrubStart,
+  onScrubEnd,
 }: {
   currentTime: number;
   duration: number;
   insetBottom: number;
   onSeek: (t: number) => void;
+  /** Called when the user begins dragging — caller should enable scrubbing mode. */
+  onScrubStart?: () => void;
+  /** Called when the drag ends or is cancelled — caller should disable scrubbing mode. */
+  onScrubEnd?: () => void;
 }) {
   const durationRef    = useRef(duration);
   const onSeekRef      = useRef(onSeek);
+  const onScrubStartRef = useRef(onScrubStart);
+  const onScrubEndRef   = useRef(onScrubEnd);
   const currentTimeRef = useRef(currentTime);
   useEffect(() => { durationRef.current    = duration;    }, [duration]);
   useEffect(() => { onSeekRef.current      = onSeek;      }, [onSeek]);
+  useEffect(() => { onScrubStartRef.current = onScrubStart; }, [onScrubStart]);
+  useEffect(() => { onScrubEndRef.current   = onScrubEnd;   }, [onScrubEnd]);
   useEffect(() => { currentTimeRef.current = currentTime; }, [currentTime]);
 
   const trackW    = useRef(1);
@@ -114,6 +124,7 @@ function VodScrubber({
       if (durationRef.current <= 0 || !isFinite(durationRef.current)) return;
       setScrubFrac(clamp(e.x / Math.max(trackW.current, 1)));
       setScrubbing(true);
+      onScrubStartRef.current?.();
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     })
     .onUpdate((e) => {
@@ -123,11 +134,13 @@ function VodScrubber({
     .onEnd((e) => {
       const frac = clamp(e.x / Math.max(trackW.current, 1));
       setScrubbing(false);
+      onScrubEndRef.current?.();
       onSeekRef.current(frac * durationRef.current);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     })
     .onFinalize(() => {
       setScrubbing(false);
+      onScrubEndRef.current?.();
     }),
   // eslint-disable-next-line react-hooks/exhaustive-deps
   []);
@@ -2166,6 +2179,16 @@ export default function PlayerScreen() {
               currentTime={currentTime}
               duration={duration}
               insetBottom={insets.bottom}
+              onScrubStart={() => {
+                // Enable scrubbing mode only for the duration of the drag.
+                // On Android, scrubbingModeEnabled suppresses playback when
+                // left on permanently — so we scope it tightly to the gesture.
+                try { if (player) (player as any).scrubbingModeOptions = { scrubbingModeEnabled: true }; } catch {}
+              }}
+              onScrubEnd={() => {
+                // Always restore normal playback mode when the drag ends.
+                try { if (player) (player as any).scrubbingModeOptions = { scrubbingModeEnabled: false }; } catch {}
+              }}
               onSeek={(t) => {
                 // Optimistic update so the scrubber stays at the dragged position
                 setCurrentTime(t);
