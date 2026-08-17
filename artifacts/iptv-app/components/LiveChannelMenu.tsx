@@ -277,19 +277,34 @@ function LiveChannelMenuImpl({
     }
     list.push({ id: CAT_FAV, label: '★  Favourites' });
 
-    const seen = new Set<string>();
+    // Categories that actually contain channels, keyed by raw groupTitle.
+    const present = new Set<string>();
+    sorted.forEach((ch) => { if (ch.groupTitle) present.add(ch.groupTitle); });
+
+    // Provider categories in the PROVIDER'S OWN ORDER (get_live_categories /
+    // M3U group order) — matches the Live TV tab's sidebar.  Fall back to
+    // channel-encounter order only for groups the provider list doesn't cover.
+    const added = new Set<string>();
+    if (Array.isArray(rawCategories)) {
+      for (const c of rawCategories) {
+        if (!c || c.id == null) continue;
+        const id = String(c.id);
+        if (present.has(id) && !added.has(id)) {
+          added.add(id);
+          // String() guards against providers returning numeric ids/names —
+          // non-string values would crash string ops (search, toLowerCase).
+          list.push({ id, label: String(c.name ?? id) });
+        }
+      }
+    }
     sorted.forEach((ch) => {
-      if (ch.groupTitle && !seen.has(ch.groupTitle)) {
-        seen.add(ch.groupTitle);
-        // Keep the raw groupTitle as the id (selection/filtering is keyed on
-        // it) but display the resolved category name when we have one.
-        // String() guards against providers returning numeric ids/names —
-        // non-string values would crash string ops (search, toLowerCase).
+      if (ch.groupTitle && !added.has(ch.groupTitle)) {
+        added.add(ch.groupTitle);
         list.push({ id: ch.groupTitle, label: String(categoryNameMap.get(String(ch.groupTitle)) ?? ch.groupTitle) });
       }
     });
     return list;
-  }, [sorted, recentChannels.length, categoryNameMap]);
+  }, [sorted, recentChannels.length, categoryNameMap, rawCategories]);
 
   // ── Persisted state ───────────────────────────────────────────────────────────
   const [selectedCat, _setSelectedCat] = useState(_savedCat);
