@@ -58,6 +58,12 @@ export interface TVLiveLayoutProps {
   onWatchFullscreen: () => void;
   /** Called when the user presses OK on the catchup row */
   onOpenCatchup: () => void;
+  /**
+   * Called when the user presses OK on a past programme row in the mini guide
+   * on a catch-up channel.  Receives the programme so the caller can deep-link
+   * to the correct day in the CatchupSheet.
+   */
+  onOpenCatchupProg?: (prog: EpgProgram) => void;
   nowPlayingMap: Map<string, string>;
   colors: any;
   insets: { top: number; bottom: number; left: number; right: number };
@@ -93,6 +99,7 @@ export function TVLiveLayout({
   onChannelSelect,
   onWatchFullscreen,
   onOpenCatchup,
+  onOpenCatchupProg,
   nowPlayingMap,
   colors,
   insets,
@@ -459,16 +466,28 @@ export function TVLiveLayout({
                 <ScrollView showsVerticalScrollIndicator={false}>
                   {channelEpg.map((prog, i) => {
                     const isNow = prog.start.getTime() <= nowTs && nowTs < prog.end.getTime();
-                    const Row = Platform.isTV ? FocusablePressable : View;
+                    const isPast = prog.end.getTime() <= nowTs;
+                    // On TV: past programmes on a catch-up channel are pressable
+                    // so the user can open catch-up directly for that show.
+                    const isCatchupPlayable = Platform.isTV && isPast && hasCatchup && !!onOpenCatchupProg;
+                    const Row = (Platform.isTV ? FocusablePressable : View) as any;
                     return (
                       <Row
                         key={i}
-                        {...(Platform.isTV ? { focusedStyle: { backgroundColor: colors.secondary } } : {})}
+                        focusedStyle={Platform.isTV ? { backgroundColor: colors.secondary } : undefined}
                         style={[
                           styles.guideItem,
                           { borderBottomColor: colors.border },
                           isNow && { backgroundColor: colors.secondary },
                         ]}
+                        {...(isCatchupPlayable
+                          ? {
+                              accessible: true,
+                              accessibilityRole: 'button',
+                              accessibilityLabel: `Play ${prog.title} catch-up`,
+                              onPress: () => onOpenCatchupProg!(prog),
+                            }
+                          : {})}
                       >
                         <Text
                           style={[
@@ -477,6 +496,7 @@ export function TVLiveLayout({
                           ]}
                         >
                           {fmtTime(prog.start)}{isNow ? ' ●' : ''}
+                          {isCatchupPlayable ? ' 📼' : ''}
                         </Text>
                         <Text
                           style={[styles.guideTitle, { color: colors.foreground }]}
@@ -496,7 +516,6 @@ export function TVLiveLayout({
     </View>
   );
 }
-
 // ── Layout constants ──────────────────────────────────────────────────────────
 
 const CAT_ITEM_H = 52;

@@ -33,6 +33,11 @@ export interface CatchupSheetProps {
   /** Already-loaded XMLTV EPG map — used for today's guide row */
   epgMap?: Map<string, EpgProgram[]>;
   onClose: () => void;
+  /**
+   * When set the sheet opens directly on the day that contains this programme.
+   * Passed from the mini TV guide when the user presses OK on a past row.
+   */
+  initialProg?: EpgProgram;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -81,6 +86,7 @@ export function CatchupSheet({
   creds,
   epgMap,
   onClose,
+  initialProg,
 }: CatchupSheetProps) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -104,7 +110,17 @@ export function CatchupSheet({
     return list;
   }, [todayMidnight, archiveDays]);
 
-  const [selectedDay, setSelectedDay] = useState<Date>(() => days[0]);
+  const [selectedDay, setSelectedDay] = useState<Date>(() => {
+    // If opened from the mini guide with a specific programme, jump straight
+    // to the day that contains it instead of always defaulting to today.
+    if (initialProg) {
+      const progDay = new Date(initialProg.start);
+      progDay.setHours(0, 0, 0, 0);
+      const match = days.find((d) => isSameDay(d, progDay));
+      if (match) return match;
+    }
+    return days[0];
+  });
   const [futureToast, setFutureToast] = useState(false);
   // Ref-based guard: prevents rapid taps from resetting the toast's hide timer.
   // A ref is used (rather than reading futureToast state) so the check is

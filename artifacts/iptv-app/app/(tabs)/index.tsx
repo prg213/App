@@ -311,6 +311,8 @@ export default function LiveTVScreen() {
 
   // ── Catch-up sheet ───────────────────────────────────────────────────────
   const [showCatchup, setShowCatchup] = useState(false);
+  // When opened from the mini TV guide, holds the programme to deep-link to.
+  const [catchupInitialProg, setCatchupInitialProg] = useState<EpgProgram | null>(null);
 
   // ── Reorder mode ─────────────────────────────────────────────────────────
   const [isReordering, setIsReordering] = useState(false);
@@ -1371,7 +1373,8 @@ export default function LiveTVScreen() {
           selectedChannel={selectedChannel}
           onChannelSelect={handleSelectChannel}
           onWatchFullscreen={handleTVWatch}
-          onOpenCatchup={() => setShowCatchup(true)}
+          onOpenCatchup={() => { setCatchupInitialProg(null); setShowCatchup(true); }}
+          onOpenCatchupProg={(prog) => { setCatchupInitialProg(prog); setShowCatchup(true); }}
           nowPlayingMap={nowPlayingMap}
           colors={colors}
           insets={insets}
@@ -1388,7 +1391,8 @@ export default function LiveTVScreen() {
             channel={selectedChannel}
             creds={creds}
             epgMap={epgMap}
-            onClose={() => setShowCatchup(false)}
+            initialProg={catchupInitialProg ?? undefined}
+            onClose={() => { setShowCatchup(false); setCatchupInitialProg(null); }}
           />
         )}
       </View>
