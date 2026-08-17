@@ -44,3 +44,6 @@ Files fixed (for reference only — check current code):
 - `components/ContinueWatchingRail.tsx` — `handleClearAll` useCallback was after `if (history.length === 0) return null`
 
 **How to apply:** Grep for `return null` inside component functions, then check whether any hook call appears below it in the same function body. All hooks must be declared before any conditional return.
+
+## Fixing a wrong property name can ACTIVATE dormant behavior
+`scrubbingModeOptions = { isEnabled }` was invalid and silently ignored; renaming it to the real `scrubbingModeEnabled` turned scrubbing mode ON permanently — which on Android SUPPRESSES playback (broke VOD autoplay). Rule: when a typecheck fix renames a property to the correct API name, verify what the now-effective option actually does at runtime; never leave `scrubbingModeEnabled` set outside an active seek-bar drag.
