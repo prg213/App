@@ -12,6 +12,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import WebView from 'react-native-webview';
 import { useAppContext } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
+import { requestTvFocus } from '@/lib/tvFocus';
 
 const CHROME_UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) ' +
@@ -71,7 +72,7 @@ export default function TelegramScreen() {
   const refreshBtnRef = useRef<View>(null);
   useFocusEffect(useCallback(() => {
     if (!Platform.isTV) return;
-    const t = setTimeout(() => (refreshBtnRef.current as any)?.focus?.(), 200);
+    const t = setTimeout(() => requestTvFocus(refreshBtnRef.current), 200);
     return () => clearTimeout(t);
   }, []));
 

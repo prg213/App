@@ -27,6 +27,7 @@ import { getContentUriAsync } from 'expo-file-system/legacy';
 import { startActivityAsync } from 'expo-intent-launcher';
 import type { UpdateInfo } from '@/services/updateService';
 import { CURRENT_BUILD } from '@/services/updateService';
+import { requestTvFocus } from '@/lib/tvFocus';
 
 interface Props {
   update: UpdateInfo;
@@ -56,10 +57,10 @@ export function UpdateModal({ update, onDismiss }: Props) {
     if (!Platform.isTV) return;
     if (!stageChangedRef.current) return; // onShow handles initial open
     const t = setTimeout(() => {
-      if (stage === 'prompt')      (promptPrimaryRef.current     as any)?.focus?.();
-      else if (stage === 'downloading') (downloadingCancelRef.current as any)?.focus?.();
-      else if (stage === 'ready')  (readyPrimaryRef.current      as any)?.focus?.();
-      else if (stage === 'error')  (errorPrimaryRef.current      as any)?.focus?.();
+      if (stage === 'prompt')           requestTvFocus(promptPrimaryRef.current);
+      else if (stage === 'downloading') requestTvFocus(downloadingCancelRef.current);
+      else if (stage === 'ready')       requestTvFocus(readyPrimaryRef.current);
+      else if (stage === 'error')       requestTvFocus(errorPrimaryRef.current);
     }, 80);
     return () => clearTimeout(t);
   }, [stage]);
@@ -161,7 +162,7 @@ export function UpdateModal({ update, onDismiss }: Props) {
         // Stage transitions are handled by the useEffect([stage]) above.
         if (!Platform.isTV) return;
         stageChangedRef.current = true;
-        setTimeout(() => (promptPrimaryRef.current as any)?.focus?.(), 80);
+        setTimeout(() => requestTvFocus(promptPrimaryRef.current), 80);
       }}
     >
       <View style={styles.backdrop}>

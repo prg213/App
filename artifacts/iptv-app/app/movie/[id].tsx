@@ -26,6 +26,7 @@ import { useParentalContext, isContentBlocked } from '@/context/ParentalContext'
 import { PinPad } from '@/components/PinPad';
 import { StorageService } from '@/services/storage';
 import { getXtreamVodInfo, getXtreamVodUrl } from '@/services/xtreamApi';
+import { requestTvFocus } from '@/lib/tvFocus';
 
 function fmtSecs(secs: number) {
   const s = Math.floor(secs), m = Math.floor(s / 60), h = Math.floor(m / 60);
@@ -167,7 +168,7 @@ export default function MovieDetailScreen() {
   useFocusEffect(useCallback(() => {
     if (!Platform.isTV || !playBtnRef.current) return;
     const node = playBtnRef.current;
-    const t = setTimeout(() => (node as any)?.focus?.(), 150);
+    const t = setTimeout(() => requestTvFocus(node), 150);
     return () => clearTimeout(t);
   }, []));
 

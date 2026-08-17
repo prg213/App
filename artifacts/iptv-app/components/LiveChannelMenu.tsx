@@ -39,6 +39,7 @@ import { StorageService } from '@/services/storage';
 import { getXtreamLiveStreams, getXtreamLiveCategories } from '@/services/xtreamApi';
 import { fetchAndParseM3U } from '@/services/m3uParser';
 import type { Category, Channel, EpgProgram, RecentChannel } from '@/types';
+import { requestTvFocus } from '@/lib/tvFocus';
 
 // ─── Category sentinel IDs ─────────────────────────────────────────────────────
 const CAT_ALL    = '__all__';
@@ -451,9 +452,7 @@ function LiveChannelMenuImpl({
     if (!Platform.isTV) return;
     const target =
       currentItemRef.current ?? firstItemRef.current ?? firstCatRef.current;
-    if (target?.focus) {
-      try { target.focus(); } catch (_) {}
-    }
+    requestTvFocus(target);
   }, []); // refs are stable mutable objects — no reactive deps needed
 
   // Register refocusMenu in the caller-supplied ref so player.tsx can invoke it
@@ -473,8 +472,8 @@ function LiveChannelMenuImpl({
     const tryFocus = () => {
       const target =
         currentItemRef.current ?? firstItemRef.current ?? firstCatRef.current;
-      if (target?.focus) {
-        try { target.focus(); return; } catch (_) {}
+      if (target) {
+        requestTvFocus(target); return;
       }
       if (++attempts < 10) timer = setTimeout(tryFocus, 120);
     };

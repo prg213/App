@@ -29,6 +29,7 @@ import { StorageService } from '@/services/storage';
 import { getXtreamSeriesInfo, getXtreamSeriesUrl } from '@/services/xtreamApi';
 import { ThumbnailWithFallback } from '@/components/ThumbnailWithFallback';
 import type { Episode, WatchHistoryEntry } from '@/types';
+import { requestTvFocus } from '@/lib/tvFocus';
 
 function StarRow({ value }: { value: number }) {
   const n = Math.round(Math.min(5, Math.max(0, value)));
@@ -157,7 +158,7 @@ export default function SeriesDetailScreen() {
     if (!Platform.isTV) return;
     const target = lastFocusedEpRef.current ?? playBtnRef.current;
     if (!target) return;
-    const t = setTimeout(() => (target as any)?.focus?.(), 200);
+    const t = setTimeout(() => requestTvFocus(target), 200);
     return () => clearTimeout(t);
   }, []));
 
@@ -698,12 +699,12 @@ export default function SeriesDetailScreen() {
         onRequestClose={() => {
           setShowSeasonPicker(false);
           // TV: restore focus to the season picker opener button on close.
-          if (Platform.isTV) setTimeout(() => (seasonPickerOpenerRef.current as any)?.focus?.(), 150);
+          if (Platform.isTV) setTimeout(() => requestTvFocus(seasonPickerOpenerRef.current), 150);
         }}
         onShow={() => {
           // TV: focus the currently-selected season row on open.
           // Replaces hasTVPreferredFocus which re-fired on every re-render.
-          if (Platform.isTV) setTimeout(() => (firstSeasonRef.current as any)?.focus?.(), 80);
+          if (Platform.isTV) setTimeout(() => requestTvFocus(firstSeasonRef.current), 80);
         }}
       >
         {/* focusable={false}: BACK closes via onRequestClose; this prevents
@@ -729,7 +730,7 @@ export default function SeriesDetailScreen() {
                   tvListRef.current?.scrollToOffset({ offset: 0, animated: false });
                 }
                 // TV: restore focus to the opener after dismissing.
-                if (Platform.isTV) setTimeout(() => (seasonPickerOpenerRef.current as any)?.focus?.(), 150);
+                if (Platform.isTV) setTimeout(() => requestTvFocus(seasonPickerOpenerRef.current), 150);
               }}
             >
               <Text style={[styles.pickerRowText, { color: idx === selectedSeason ? '#3B82F6' : '#fff' }]}>

@@ -1,6 +1,7 @@
 import { useCallback, useRef } from 'react';
 import { Platform, type View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
+import { requestTvFocus } from '@/lib/tvFocus';
 
 export interface FocusRestoreOptions {
   /** Delay before the imperative .focus() call (ms). Default 250. */
@@ -61,7 +62,7 @@ export function useFocusRestore(options: FocusRestoreOptions = {}): FocusRestore
     useCallback(() => {
       if (tvOnly && !Platform.isTV) return;
       const target = lastFocusedRef.current ?? firstRef.current;
-      const t = setTimeout(() => (target as any)?.focus?.(), delay);
+      const t = setTimeout(() => requestTvFocus(target), delay);
       return () => clearTimeout(t);
     }, [delay]),
   );

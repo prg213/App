@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { getXtreamCatchupEpg, getXtreamCatchupUrls } from '@/services/xtreamApi';
 import type { Channel, CatchupProgram, EpgProgram } from '@/types';
+import { requestTvFocus } from '@/lib/tvFocus';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -264,12 +265,12 @@ export function CatchupSheet({
     const id = setTimeout(() => {
       if (firstPlayableIndex !== -1) {
         // Data was already available when the effect ran — focus the row.
-        (firstPlayableRowRef.current as any)?.focus?.();
+        requestTvFocus(firstPlayableRowRef.current);
       } else if (focusPlacedOnDayPillRef.current) {
         // Data is still loading — focus the day pill so the user isn't stuck.
         // If the data-arrival effect already cleared the flag (data resolved
         // during the delay), we skip this to avoid overriding it.
-        (firstDayPillRef.current as any)?.focus?.();
+        requestTvFocus(firstDayPillRef.current);
       }
       // else: data arrived during the delay and the data-arrival effect has
       //       already routed focus to the programme row; nothing to do here.
@@ -322,7 +323,7 @@ export function CatchupSheet({
     focusPlacedOnDayPillRef.current = false;
     focusPlacedOnCloseRef.current = false;
     const id = setTimeout(() => {
-      (firstPlayableRowRef.current as any)?.focus?.();
+      requestTvFocus(firstPlayableRowRef.current);
     }, 100);
     return () => clearTimeout(id);
   }, [firstPlayableIndex]);
@@ -375,10 +376,10 @@ export function CatchupSheet({
         if (!Platform.isTV) return;
         setTimeout(() => {
           if (firstPlayableIndex !== -1 && firstPlayableRowRef.current) {
-            (firstPlayableRowRef.current as any)?.focus?.();
+            requestTvFocus(firstPlayableRowRef.current);
           } else {
             focusPlacedOnCloseRef.current = true;
-            (closeBtnRef.current as any)?.focus?.();
+            requestTvFocus(closeBtnRef.current);
           }
         }, 100);
       }}

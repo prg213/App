@@ -23,6 +23,7 @@ import {
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FocusablePressable } from '@/components/FocusablePressable';
+import { requestTvFocus } from '@/lib/tvFocus';
 
 export type PinPadMode = 'unlock' | 'verify' | 'set';
 
@@ -65,7 +66,7 @@ export function PinPad({ mode, title, subtitle, onSuccess, onCancel, onForgotPin
   const firstKeyRef = useRef<View>(null);
   useEffect(() => {
     if (!Platform.isTV) return;
-    const t = setTimeout(() => (firstKeyRef.current as any)?.focus?.(), 120);
+    const t = setTimeout(() => requestTvFocus(firstKeyRef.current), 120);
     return () => clearTimeout(t);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

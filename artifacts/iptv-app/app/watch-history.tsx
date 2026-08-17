@@ -19,6 +19,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { StorageService } from '@/services/storage';
 import type { WatchHistoryEntry } from '@/types';
+import { requestTvFocus } from '@/lib/tvFocus';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -200,7 +201,7 @@ export default function WatchHistoryScreen() {
       const next = prev.filter((e) => e.id !== id);
       // On TV, if all items are gone focus moves to a void — restore to Back button.
       if (Platform.isTV && next.length === 0) {
-        setTimeout(() => backBtnRef.current?.focus(), 150);
+        setTimeout(() => requestTvFocus(backBtnRef.current), 150);
       }
       return next;
     });
@@ -210,7 +211,7 @@ export default function WatchHistoryScreen() {
     await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
     await StorageService.clearHistory();
     setHistory([]);
-    if (Platform.isTV) setTimeout(() => (backBtnRef.current as any)?.focus?.(), 150);
+    if (Platform.isTV) setTimeout(() => requestTvFocus(backBtnRef.current), 150);
   }, []);
 
   const handleClearAll = useCallback(() => {

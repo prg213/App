@@ -30,6 +30,7 @@ import { RecentChannelsRail } from '@/components/RecentChannelsRail';
 import { sidebarNav } from '@/lib/sidebarNav';
 import { useBackHandler } from '@/hooks/useBackHandler';
 import type { Channel, Movie, Series, WatchHistoryEntry } from '@/types';
+import { requestTvFocus } from '@/lib/tvFocus';
 
 function buildCreds(c: ReturnType<typeof useAppContext>['credentials']) {
   return { host: c!.host!, username: c!.username!, password: c!.password! };
@@ -242,7 +243,7 @@ export default function HomeScreen() {
   // yet and no M3U channels) the optional-chain is a safe no-op.
   useFocusEffect(useCallback(() => {
     if (!Platform.isTV) return;
-    const t = setTimeout(() => (firstItemRef.current as any)?.focus?.(), 200);
+    const t = setTimeout(() => requestTvFocus(firstItemRef.current), 200);
     return () => clearTimeout(t);
   }, []));
 

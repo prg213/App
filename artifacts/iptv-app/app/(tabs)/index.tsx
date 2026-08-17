@@ -58,6 +58,7 @@ import { CatchupSheet } from '@/components/CatchupSheet';
 import { TVLiveLayout } from '@/components/TVLiveLayout';
 import type { Channel, Category, EpgProgram, FavoriteChannel } from '@/types';
 import { normaliseStr } from '@/utils/normalise';
+import { requestTvFocus } from '@/lib/tvFocus';
 
 const FAVS_CAT_ID = '__favs';
 const ALL_CAT_ID = '__all';
@@ -452,7 +453,7 @@ export default function LiveTVScreen() {
         requestAnimationFrame(() => {
           setVideoKey((k) => k + 1);
           if (Platform.isTV) {
-            setTimeout(() => (miniPlayerRef.current as any)?.focus?.(), 400);
+            setTimeout(() => requestTvFocus(miniPlayerRef.current), 400);
           }
         });
         return;
@@ -472,7 +473,7 @@ export default function LiveTVScreen() {
       // player control), and the user must navigate blindly.
       // 400 ms gives the VideoView remount time to settle before focus lands.
       if (Platform.isTV) {
-        setTimeout(() => (miniPlayerRef.current as any)?.focus?.(), 400);
+        setTimeout(() => requestTvFocus(miniPlayerRef.current), 400);
       }
       return;
     }

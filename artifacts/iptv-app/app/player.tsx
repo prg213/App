@@ -1120,7 +1120,7 @@ export default function PlayerScreen() {
       // useEffect at 900 ms (plus the 950 ms zone belt-and-suspenders) is the
       // single authoritative focus restoration — skip the early call entirely.
       if (Platform.isTV && isLive && !wrapAroundPendingRef.current) {
-        setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 150);
+        setTimeout(() => requestTvFocus(tvCenterRef.current), 150);
       }
     } catch {}
   }, [isLive, liveUrlRef, player, setLastWatchedUrl]);
@@ -1240,10 +1240,10 @@ export default function PlayerScreen() {
     // Fire OS when the menu opened. All calls guarded — an exception inside
     // a bare setTimeout bypasses every ErrorBoundary and kills a release build.
     if (Platform.isTV && !showChannelMenuRef.current) {
-      try { (tvCenterRef.current as any)?.focus?.(); } catch {}
+      requestTvFocus(tvCenterRef.current)
       setTimeout(() => {
         if (showChannelMenuRef.current) return;
-        try { (tvCenterRef.current as any)?.focus?.(); } catch {}
+        requestTvFocus(tvCenterRef.current)
       }, 400);
     }
   }, [infoOpacity]);
@@ -1258,7 +1258,7 @@ export default function PlayerScreen() {
     Animated.timing(controlsOpacity, { toValue: 1, duration: 200, useNativeDriver: true }).start();
     if (Platform.isTV) {
       // Give the overlay one frame to mount before requesting focus.
-      setTimeout(() => (audioChipRef.current as any)?.focus?.(), 80);
+      setTimeout(() => requestTvFocus(audioChipRef.current), 80);
     }
   }, [controlsOpacity]);
 
@@ -1268,7 +1268,7 @@ export default function PlayerScreen() {
       setShowControls(false);
       // Return D-pad focus to the centre zone so OK works again immediately.
       if (Platform.isTV) {
-        setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 50);
+        setTimeout(() => requestTvFocus(tvCenterRef.current), 50);
       }
     }, 320);
   }, [controlsOpacity]);
@@ -1292,12 +1292,12 @@ export default function PlayerScreen() {
       // TV: the picker Modal intercepts BACK before onRequestClose fires, so
       // the Modal's own focus-restore is never reached.  Explicitly return
       // focus to the centre zone so the remote doesn't go silent after close.
-      if (Platform.isTV) setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 150);
+      if (Platform.isTV) setTimeout(() => requestTvFocus(tvCenterRef.current), 150);
       return true;
     }
     if (showSubPicker) {
       setShowSubPicker(false);
-      if (Platform.isTV) setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 150);
+      if (Platform.isTV) setTimeout(() => requestTvFocus(tvCenterRef.current), 150);
       return true;
     }
     if (showInfoRef.current) {
@@ -1353,7 +1353,7 @@ export default function PlayerScreen() {
   // Uses imperative focus rather than hasTVPreferredFocus to avoid Fire OS races.
   useEffect(() => {
     if (!Platform.isTV || !hasError) return;
-    const t = setTimeout(() => retryBtnRef.current?.focus(), 100);
+    const t = setTimeout(() => requestTvFocus(retryBtnRef.current), 100);
     return () => clearTimeout(t);
   }, [hasError]);
 
@@ -1374,7 +1374,7 @@ export default function PlayerScreen() {
   // re-enters true (e.g. after an auto-reconnect attempt).
   useEffect(() => {
     if (!Platform.isTV || !isLive || isWeb || !isBuffering || hasError) return;
-    const t = setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 100);
+    const t = setTimeout(() => requestTvFocus(tvCenterRef.current), 100);
     return () => clearTimeout(t);
   }, [isBuffering, isLive, isWeb, hasError]);
 
@@ -1651,7 +1651,7 @@ export default function PlayerScreen() {
     if (!Platform.isTV || !isLive) return;
     const delay = wrapAroundPendingRef.current ? 900 : 600;
     wrapAroundPendingRef.current = false; // consume the flag
-    const t = setTimeout(() => (tvCenterRef.current as any)?.focus?.(), delay);
+    const t = setTimeout(() => requestTvFocus(tvCenterRef.current), delay);
     return () => clearTimeout(t);
   }, [channelIdx, isLive]);
 
@@ -1667,7 +1667,7 @@ export default function PlayerScreen() {
   // any future programmatic close).
   useEffect(() => {
     if (!Platform.isTV || !isLive || showChannelMenu) return;
-    const t = setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 150);
+    const t = setTimeout(() => requestTvFocus(tvCenterRef.current), 150);
     return () => clearTimeout(t);
   }, [showChannelMenu, isLive]);
 
@@ -1762,10 +1762,10 @@ export default function PlayerScreen() {
             // crashed the app on Fire OS.  try/catch because a throw inside
             // this bare timer bypasses ErrorBoundaries and kills the app.
             if (!showChannelMenuRef.current) {
-              try { (tvCenterRef.current as any)?.focus?.(); } catch {}
+              requestTvFocus(tvCenterRef.current)
               setTimeout(() => {
                 if (showChannelMenuRef.current) return;
-                try { (tvCenterRef.current as any)?.focus?.(); } catch {}
+                requestTvFocus(tvCenterRef.current)
               }, 450);
             }
           }
@@ -2045,7 +2045,7 @@ export default function PlayerScreen() {
               try { player.replace(currentEntry ? currentEntry.url : params.url); player.play(); } catch {}
               if (Platform.isTV) {
                 setTimeout(() => {
-                  if (isLive) (tvCenterRef.current as any)?.focus?.();
+                  if (isLive) requestTvFocus(tvCenterRef.current);
                   else requestTvFocus(tvVodIdleRef.current);
                 }, 400);
               }
@@ -2063,7 +2063,7 @@ export default function PlayerScreen() {
                   onPress={() => {
                     const idx = (channelIdx - 1 + channelList.length) % channelList.length;
                     switchChannel(prevChannel, idx);
-                    if (Platform.isTV) setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 400);
+                    if (Platform.isTV) setTimeout(() => requestTvFocus(tvCenterRef.current), 400);
                   }}
                 >
                   <Text style={styles.actionBtnSecondaryText}>← Previous</Text>
@@ -2075,7 +2075,7 @@ export default function PlayerScreen() {
                   onPress={() => {
                     const idx = (channelIdx + 1) % channelList.length;
                     switchChannel(nextChannel, idx);
-                    if (Platform.isTV) setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 400);
+                    if (Platform.isTV) setTimeout(() => requestTvFocus(tvCenterRef.current), 400);
                   }}
                 >
                   <Text style={styles.actionBtnSecondaryText}>Next →</Text>
@@ -2809,16 +2809,16 @@ export default function PlayerScreen() {
         onShow={() => {
           // TV: focus the first audio chip on modal open (replaces hasTVPreferredFocus
           // which fires requestFocus on every re-render and causes races on Fire OS).
-          if (Platform.isTV) setTimeout(() => firstAudioChipRef.current?.focus(), 80);
+          if (Platform.isTV) setTimeout(() => requestTvFocus(firstAudioChipRef.current), 80);
         }}
         onRequestClose={() => {
           setShowAudioPicker(false);
           // On TV: return to the centre zone (the chip may be unmounted if the
           // OSD was dismissed; centre is always safe).  On mobile: chip ref.
           if (Platform.isTV) {
-            setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 150);
+            setTimeout(() => requestTvFocus(tvCenterRef.current), 150);
           } else {
-            setTimeout(() => audioChipRef.current?.focus(), 150);
+            setTimeout(() => requestTvFocus(audioChipRef.current), 150);
           }
         }}
       >
@@ -2828,7 +2828,7 @@ export default function PlayerScreen() {
           accessible={false}
           onPress={() => {
             setShowAudioPicker(false);
-            if (Platform.isTV) setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 150);
+            if (Platform.isTV) setTimeout(() => requestTvFocus(tvCenterRef.current), 150);
           }}
         />
         <View style={[styles.settingsSheet, { paddingBottom: insets.bottom + 16 }]} accessibilityViewIsModal={true}>
@@ -2866,9 +2866,9 @@ export default function PlayerScreen() {
                       // TV: return to centre zone (the chip lives inside the
                       // OSD bar which may auto-dismiss; centre is always safe).
                       if (Platform.isTV) {
-                        setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 150);
+                        setTimeout(() => requestTvFocus(tvCenterRef.current), 150);
                       } else {
-                        setTimeout(() => audioChipRef.current?.focus(), 150);
+                        setTimeout(() => requestTvFocus(audioChipRef.current), 150);
                       }
                     }}
                   >
@@ -2887,14 +2887,14 @@ export default function PlayerScreen() {
         transparent
         animationType="slide"
         onShow={() => {
-          if (Platform.isTV) setTimeout(() => firstSubChipRef.current?.focus(), 80);
+          if (Platform.isTV) setTimeout(() => requestTvFocus(firstSubChipRef.current), 80);
         }}
         onRequestClose={() => {
           setShowSubPicker(false);
           if (Platform.isTV) {
-            setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 150);
+            setTimeout(() => requestTvFocus(tvCenterRef.current), 150);
           } else {
-            setTimeout(() => ccChipRef.current?.focus(), 150);
+            setTimeout(() => requestTvFocus(ccChipRef.current), 150);
           }
         }}
       >
@@ -2904,7 +2904,7 @@ export default function PlayerScreen() {
           accessible={false}
           onPress={() => {
             setShowSubPicker(false);
-            if (Platform.isTV) setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 150);
+            if (Platform.isTV) setTimeout(() => requestTvFocus(tvCenterRef.current), 150);
           }}
         />
         <View style={[styles.settingsSheet, { paddingBottom: insets.bottom + 16 }]} accessibilityViewIsModal={true}>
@@ -2928,9 +2928,9 @@ export default function PlayerScreen() {
                   } catch {}
                   setShowSubPicker(false);
                   if (Platform.isTV) {
-                    setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 150);
+                    setTimeout(() => requestTvFocus(tvCenterRef.current), 150);
                   } else {
-                    setTimeout(() => ccChipRef.current?.focus(), 150);
+                    setTimeout(() => requestTvFocus(ccChipRef.current), 150);
                   }
                 }}
               >
@@ -2956,9 +2956,9 @@ export default function PlayerScreen() {
                       } catch {}
                       setShowSubPicker(false);
                       if (Platform.isTV) {
-                        setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 150);
+                        setTimeout(() => requestTvFocus(tvCenterRef.current), 150);
                       } else {
-                        setTimeout(() => ccChipRef.current?.focus(), 150);
+                        setTimeout(() => requestTvFocus(ccChipRef.current), 150);
                       }
                     }}
                   >
@@ -2977,11 +2977,11 @@ export default function PlayerScreen() {
         transparent
         animationType="slide"
         onShow={() => {
-          if (Platform.isTV) setTimeout(() => firstSpeedChipRef.current?.focus(), 80);
+          if (Platform.isTV) setTimeout(() => requestTvFocus(firstSpeedChipRef.current), 80);
         }}
         onRequestClose={() => {
           setShowSettings(false);
-          setTimeout(() => settingsChipRef.current?.focus(), 150);
+          setTimeout(() => requestTvFocus(settingsChipRef.current), 150);
         }}
       >
         <Pressable

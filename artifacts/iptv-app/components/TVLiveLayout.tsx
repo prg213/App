@@ -37,6 +37,7 @@ import { FocusablePressable } from '@/components/FocusablePressable';
 import { useFocusRestore } from '@/hooks/useFocusRestore';
 import type { Category, Channel, EpgProgram } from '@/types';
 import { channelHasCatchup, isCatchupRowPlayable } from '@/utils/catchup';
+import { requestTvFocus } from '@/lib/tvFocus';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -130,7 +131,7 @@ export function TVLiveLayout({
   // the category list so the user always has a reachable target.
   useEffect(() => {
     if (!Platform.isTV || channelsLoading || channels.length > 0) return;
-    const t = setTimeout(() => (firstCatRef.current as any)?.focus?.(), 400);
+    const t = setTimeout(() => requestTvFocus(firstCatRef.current), 400);
     return () => clearTimeout(t);
   }, [channelsLoading, channels]);
 
@@ -211,7 +212,7 @@ export function TVLiveLayout({
         // Auto-advance D-pad focus to the first channel after category selection so
         // the user doesn't have to manually press RIGHT to reach the channel list.
         if (Platform.isTV) {
-          setTimeout(() => (firstChRef.current as any)?.focus?.(), 300);
+          setTimeout(() => requestTvFocus(firstChRef.current), 300);
         }
       }}
     >

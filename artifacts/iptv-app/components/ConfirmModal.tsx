@@ -22,6 +22,7 @@ import {
 } from 'react-native';
 import { FocusablePressable } from '@/components/FocusablePressable';
 import { useColors } from '@/hooks/useColors';
+import { requestTvFocus } from '@/lib/tvFocus';
 
 interface Props {
   visible: boolean;
@@ -55,7 +56,7 @@ export function ConfirmModal({
 
   const restoreOpener = () => {
     if (!Platform.isTV || !openerRef?.current) return;
-    setTimeout(() => (openerRef.current as any)?.focus?.(), 150);
+    setTimeout(() => requestTvFocus(openerRef.current), 150);
   };
 
   const handleConfirm = () => {
@@ -79,7 +80,7 @@ export function ConfirmModal({
         // TV: focus the confirm/action button so the user can immediately press
         // OK to proceed or D-pad left to Cancel, without navigating from scratch.
         if (Platform.isTV) {
-          setTimeout(() => (confirmRef.current as any)?.focus?.(), 150);
+          setTimeout(() => requestTvFocus(confirmRef.current), 150);
         }
       }}
     >

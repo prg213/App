@@ -3,6 +3,7 @@ import { Stack, useRouter } from 'expo-router';
 import { Platform, StyleSheet, Text, View } from 'react-native';
 import { FocusablePressable } from '@/components/FocusablePressable';
 import { useColors } from '@/hooks/useColors';
+import { requestTvFocus } from '@/lib/tvFocus';
 
 export default function NotFoundScreen() {
   const colors = useColors();
@@ -12,7 +13,7 @@ export default function NotFoundScreen() {
   const homeBtnRef = useRef<View>(null);
   useEffect(() => {
     if (!Platform.isTV) return;
-    const t = setTimeout(() => (homeBtnRef.current as any)?.focus?.(), 150);
+    const t = setTimeout(() => requestTvFocus(homeBtnRef.current), 150);
     return () => clearTimeout(t);
   }, []);
 

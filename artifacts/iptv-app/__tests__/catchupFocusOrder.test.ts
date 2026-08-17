@@ -110,9 +110,9 @@ describe('CatchupSheet — close button TV focus (#259)', () => {
     // within 500 chars of the ref prop).
     const win = src.slice(Math.max(0, closeFpIdx - 100), closeFpIdx + 500);
     expect(win).toMatch(/onClose|closeTouchable|closeIcon|✕/);
-    // Also confirm .focus() (or ?.focus?.() optional-chain form) is called on
-    // closeBtnRef so focus routing works on Fire OS.
-    expect(src).toMatch(/closeBtnRef\.current[\s\S]{0,80}focus\??\.\??\(\)/);
+    // Confirm requestTvFocus is called with closeBtnRef.current so focus
+    // routing uses the forced-focus helper (reliable on Fire OS).
+    expect(src).toMatch(/requestTvFocus\(\s*closeBtnRef\.current/);
   });
 });
 
@@ -187,13 +187,12 @@ describe('CatchupSheet — day-switch focus (#282)', () => {
     expect(src).toMatch(/dayChangedRef/);
   });
 
-  it('calls .focus() on firstPlayableRowRef in the day-change effect to move TV focus', () => {
+  it('calls requestTvFocus on firstPlayableRowRef in the day-change effect to move TV focus', () => {
     // After selectedDay changes, the effect programmatically moves focus by
-    // calling .focus() on firstPlayableRowRef.current — the modern RN API for
-    // imperatively routing TV/D-pad focus (equivalent to setNativeProps with
-    // hasTVPreferredFocus: true but cleaner and more reliable on Fire OS).
-    // Source may use the optional-chaining form ?.focus?.() .
-    expect(src).toMatch(/firstPlayableRowRef\.current[\s\S]{0,80}focus\??\.\??\(\)/);
+    // calling requestTvFocus(firstPlayableRowRef.current) — the forced-focus
+    // helper that toggles hasTVPreferredFocus on Fire OS for reliable D-pad
+    // cursor placement.
+    expect(src).toMatch(/requestTvFocus\(\s*firstPlayableRowRef\.current/);
   });
 
   it('falls back to firstDayPillRef when there are no playable rows for the new day', () => {
@@ -230,10 +229,9 @@ describe('CatchupSheet — day-switch focus (#282)', () => {
 
   it('uses a setTimeout delay in the day-change effect to let the list re-render before focusing', () => {
     // Without a short delay the new programme rows may not yet be mounted,
-    // so .focus() would target a stale or unmounted node.
-    // The effect must schedule focus via setTimeout (any positive delay is fine).
-    // Source may use .focus() or the optional-chaining form ?.focus?.()
-    expect(src).toMatch(/setTimeout[\s\S]{0,200}focus\?\.\(\)|setTimeout[\s\S]{0,200}focus\(\)/);
+    // so focus would target a stale or unmounted node.
+    // The effect must schedule requestTvFocus via setTimeout (any positive delay).
+    expect(src).toMatch(/setTimeout[\s\S]{0,200}requestTvFocus/);
   });
 
   it('sets focusPlacedOnDayPillRef when falling back to the day pill due to loading', () => {

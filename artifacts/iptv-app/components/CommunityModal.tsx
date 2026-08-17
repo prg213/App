@@ -10,6 +10,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
 import { FocusablePressable } from '@/components/FocusablePressable';
+import { requestTvFocus } from '@/lib/tvFocus';
 
 const TELEGRAM_URL = '';
 
@@ -40,7 +41,7 @@ export function CommunityModal({ visible, onClose, openerRef }: Props) {
   const handleClose = React.useCallback(() => {
     onClose();
     if (Platform.isTV && openerRef?.current) {
-      setTimeout(() => (openerRef.current as any)?.focus?.(), 150);
+      setTimeout(() => requestTvFocus(openerRef.current), 150);
     }
   }, [onClose, openerRef]);
 
@@ -53,7 +54,7 @@ export function CommunityModal({ visible, onClose, openerRef }: Props) {
       onShow={() => {
         // TV: focus close button on open — avoids hasTVPreferredFocus races
         // when the loading state changes while the modal is visible.
-        if (Platform.isTV) setTimeout(() => (closeBtnRef.current as any)?.focus?.(), 80);
+        if (Platform.isTV) setTimeout(() => requestTvFocus(closeBtnRef.current), 80);
       }}
     >
       <View style={[styles.container, { paddingTop: insets.top }]}>

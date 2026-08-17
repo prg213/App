@@ -126,7 +126,8 @@ describe('TVEpgRow — jump-to-now callback scrolls to current programme', () =>
   });
 
   it('schedules focus on initialProgRef after 80 ms so the remote lands on the cell', () => {
-    expect(src).toMatch(/initialProgRef\.current\?\.focus\(\)/);
+    // requestTvFocus is the forced-focus helper that reliably moves D-pad cursor on Fire OS.
+    expect(src).toMatch(/requestTvFocus\(\s*initialProgRef\.current/);
   });
 });
 

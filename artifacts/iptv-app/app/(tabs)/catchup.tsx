@@ -27,6 +27,7 @@ import {
 } from '@/services/xtreamApi';
 import type { CatchupProgram, Category, Channel } from '@/types';
 import { sidebarNav } from '@/lib/sidebarNav';
+import { requestTvFocus } from '@/lib/tvFocus';
 
 function buildCreds(c: ReturnType<typeof useAppContext>['credentials']) {
   return { host: c?.host ?? '', username: c?.username ?? '', password: c?.password ?? '' };
@@ -192,7 +193,7 @@ export default function CatchupScreen() {
         : cat !== ALL_CAT_ID
           ? firstChannelRef.current
           : firstCatRef.current;
-      (target as any)?.focus?.();
+      requestTvFocus(target);
     }, 200);
     return () => clearTimeout(t);
   }, []));
@@ -308,7 +309,7 @@ export default function CatchupScreen() {
     setSelectedChannel(null);
     setSelectedDay(null);
     // Auto-advance D-pad focus to the first channel in col 2
-    setTimeout(() => { firstChannelRef.current?.focus(); }, 80);
+    setTimeout(() => { requestTvFocus(firstChannelRef.current); }, 80);
   }, []);
 
   const handleSelectChannel = useCallback((ch: Channel) => {
@@ -323,7 +324,7 @@ export default function CatchupScreen() {
   useEffect(() => {
     if (pendingProgFocusRef.current && dayPrograms.length > 0) {
       pendingProgFocusRef.current = false;
-      setTimeout(() => { firstProgRef.current?.focus(); }, 80);
+      setTimeout(() => { requestTvFocus(firstProgRef.current); }, 80);
     }
   }, [dayPrograms]);
 
@@ -482,7 +483,7 @@ export default function CatchupScreen() {
                     // OK / select press: advance focus directly to the first programme row.
                     onPress={() => {
                       setSelectedDay(k);
-                      setTimeout(() => { firstProgRef.current?.focus(); }, 80);
+                      setTimeout(() => { requestTvFocus(firstProgRef.current); }, 80);
                     }}
                     // D-pad down from the tab strip goes straight to the first programme
                     // row, bypassing the need to press OK first.

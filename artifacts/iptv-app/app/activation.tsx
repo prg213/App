@@ -16,6 +16,7 @@ import { useAppContext } from '@/context/AppContext';
 import { StorageService } from '@/services/storage';
 import type { Credentials } from '@/types';
 import { FocusablePressable } from '@/components/FocusablePressable';
+import { requestTvFocus } from '@/lib/tvFocus';
 
 async function checkActivation(mac: string) {
   const base = process.env.EXPO_PUBLIC_DOMAIN
@@ -64,7 +65,7 @@ export default function ActivationScreen() {
   const checkBtnRef = useRef<View>(null);
   useEffect(() => {
     if (!Platform.isTV) return;
-    const t = setTimeout(() => (checkBtnRef.current as any)?.focus?.(), 200);
+    const t = setTimeout(() => requestTvFocus(checkBtnRef.current), 200);
     return () => clearTimeout(t);
   }, []);
 

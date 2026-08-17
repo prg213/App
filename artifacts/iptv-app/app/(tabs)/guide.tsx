@@ -504,7 +504,7 @@ const TVEpgRow = React.memo(function TVEpgRow({
           if (isFirst) {
             const idx = items.findIndex((it) => it.prog.end.getTime() > currentGridPanMs!);
             if (idx >= 0) {
-              focusTimer = setTimeout(() => progRefs.current.get(idx)?.focus(), 80);
+              focusTimer = setTimeout(() => requestTvFocus(progRefs.current.get(idx)), 80);
             }
           }
           return;
@@ -521,11 +521,11 @@ const TVEpgRow = React.memo(function TVEpgRow({
             beginProgrammaticScroll(null, 400);
             flatRef.current?.scrollToIndex({ index: initialIdx, animated: false, viewPosition: 0 });
           } catch (_) {}
-          focusTimer = setTimeout(() => initialProgRef.current?.focus(), 80);
+          focusTimer = setTimeout(() => requestTvFocus(initialProgRef.current), 80);
         } else {
           // Future day — no "now" programme exists: focus the first cell so the
           // user is never left without a D-pad entry point into the programme grid.
-          focusTimer = setTimeout(() => progFirstRef.current?.focus(), 80);
+          focusTimer = setTimeout(() => requestTvFocus(progFirstRef.current), 80);
         }
         return;
       }
@@ -560,7 +560,7 @@ const TVEpgRow = React.memo(function TVEpgRow({
         flatRef.current.scrollToIndex({ index: initialIdx, animated: true, viewPosition: 0 });
       } catch (_) {}
       setTimeout(() => {
-        initialProgRef.current?.focus();
+        requestTvFocus(initialProgRef.current);
       }, 80);
     };
     return () => {
@@ -605,7 +605,7 @@ const TVEpgRow = React.memo(function TVEpgRow({
         } catch (_) {}
         if (isFirst) {
           setTimeout(() => {
-            progRefs.current.get(idx)?.focus();
+            requestTvFocus(progRefs.current.get(idx));
           }, 120);
         }
       },
@@ -703,7 +703,7 @@ const TVEpgRow = React.memo(function TVEpgRow({
           // (initialProgRef), falling back to the first cell when there is no
           // initialIdx (e.g. a future day where every programme is upcoming).
           setTimeout(() => {
-            (initialProgRef.current ?? progFirstRef.current)?.focus();
+            requestTvFocus(initialProgRef.current ?? progFirstRef.current);
           }, 80);
         }}
         onLongPress={() => onWatchChannel(channel)}
@@ -1174,7 +1174,7 @@ function TVTimePickerOverlay({
   // Fires whenever visible transitions true→false→true (picker re-opens).
   useEffect(() => {
     if (!Platform.isTV || !visible) return;
-    const t = setTimeout(() => (firstHourRef.current as any)?.focus?.(), 200);
+    const t = setTimeout(() => requestTvFocus(firstHourRef.current), 200);
     return () => clearTimeout(t);
   }, [visible]);
 
@@ -1359,7 +1359,7 @@ function CategoryGrid({
     const t = setTimeout(() => {
       const idx = focusedIndexRef.current;
       const target = cardRefs.current[idx] ?? cardRefs.current[0];
-      (target as any)?.focus?.();
+      requestTvFocus(target);
     }, TV_WIRE_DELAY_MS + 50);
     return () => clearTimeout(t);
   }, [numCols]);
@@ -1636,7 +1636,7 @@ function FullGuide({
     if (!Platform.isTV) return;
     allChannelRefs.current.clear();
     allProgRows.current.clear();
-    const timer = setTimeout(() => { firstChannelRef.current?.focus(); }, 100);
+    const timer = setTimeout(() => { requestTvFocus(firstChannelRef.current); }, 100);
     return () => clearTimeout(timer);
   }, [selectedCat]);
 
@@ -1652,7 +1652,7 @@ function FullGuide({
       if (!savedView) return;
       lastWatchedProgViewRef.current = null;
       const timer = setTimeout(() => {
-        savedView.focus();
+        requestTvFocus(savedView);
       }, 150);
       return () => clearTimeout(timer);
     }, []),
@@ -2271,7 +2271,7 @@ function FullGuide({
             setSelected(null);
             // Restore D-pad focus to the programme cell that opened the modal.
             if (Platform.isTV) {
-              setTimeout(() => { lastFocusedProgViewRef.current?.focus(); }, 80);
+              setTimeout(() => { requestTvFocus(lastFocusedProgViewRef.current); }, 80);
             }
           }}
           onWatch={() => {
@@ -2368,7 +2368,7 @@ export default function GuideScreen() {
   const firstCatCardRef = useRef<View | null>(null);
   useFocusEffect(useCallback(() => {
     if (!Platform.isTV || selectedCat !== null) return;
-    const t = setTimeout(() => (firstCatCardRef.current as any)?.focus?.(), 300);
+    const t = setTimeout(() => requestTvFocus(firstCatCardRef.current), 300);
     return () => clearTimeout(t);
   }, [selectedCat]));
 
@@ -2386,7 +2386,7 @@ export default function GuideScreen() {
       return false;
     }
     setSelectedCat(null);
-    if (Platform.isTV) setTimeout(() => (firstCatCardRef.current as any)?.focus?.(), 350);
+    if (Platform.isTV) setTimeout(() => requestTvFocus(firstCatCardRef.current), 350);
     return true;
   });
 

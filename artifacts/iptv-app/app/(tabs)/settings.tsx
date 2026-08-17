@@ -32,6 +32,7 @@ import { rescheduleRemindersForLeadTime } from '@/services/reminderReschedule';
 import { clearReminderRefreshCache } from '@/services/reminderUrlCache';
 import { checkForUpdate, CURRENT_BUILD, type UpdateInfo } from '@/services/updateService';
 import type { MaxRating } from '@/types';
+import { requestTvFocus } from '@/lib/tvFocus';
 
 const LEAD_TIME_OPTIONS: { value: 5 | 10 | 15; label: string }[] = [
   { value: 5,  label: '5 minutes before' },
@@ -204,7 +205,7 @@ export default function SettingsScreen() {
   const firstSettingsRowRef = useRef<View>(null);
   useFocusEffect(useCallback(() => {
     if (!Platform.isTV) return;
-    const t = setTimeout(() => (firstSettingsRowRef.current as any)?.focus?.(), 150);
+    const t = setTimeout(() => requestTvFocus(firstSettingsRowRef.current), 150);
     return () => clearTimeout(t);
   }, []));
 
@@ -212,35 +213,35 @@ export default function SettingsScreen() {
   useEffect(() => {
     if (!Platform.isTV) return;
     if (showAudioLangSheet) { audioLangWasOpen.current = true; return; }
-    if (audioLangWasOpen.current) { audioLangWasOpen.current = false; setTimeout(() => (audioLangRowRef.current as any)?.focus?.(), 150); }
+    if (audioLangWasOpen.current) { audioLangWasOpen.current = false; setTimeout(() => requestTvFocus(audioLangRowRef.current), 150); }
   }, [showAudioLangSheet]);
 
   const subtitleLangWasOpen = useRef(false);
   useEffect(() => {
     if (!Platform.isTV) return;
     if (showSubtitleLangSheet) { subtitleLangWasOpen.current = true; return; }
-    if (subtitleLangWasOpen.current) { subtitleLangWasOpen.current = false; setTimeout(() => (subtitleLangRowRef.current as any)?.focus?.(), 150); }
+    if (subtitleLangWasOpen.current) { subtitleLangWasOpen.current = false; setTimeout(() => requestTvFocus(subtitleLangRowRef.current), 150); }
   }, [showSubtitleLangSheet]);
 
   const leadTimeWasOpen = useRef(false);
   useEffect(() => {
     if (!Platform.isTV) return;
     if (showLeadTimeSheet) { leadTimeWasOpen.current = true; return; }
-    if (leadTimeWasOpen.current) { leadTimeWasOpen.current = false; setTimeout(() => (leadTimeRowRef.current as any)?.focus?.(), 150); }
+    if (leadTimeWasOpen.current) { leadTimeWasOpen.current = false; setTimeout(() => requestTvFocus(leadTimeRowRef.current), 150); }
   }, [showLeadTimeSheet]);
 
   const ratingWasOpen = useRef(false);
   useEffect(() => {
     if (!Platform.isTV) return;
     if (showRatingSheet) { ratingWasOpen.current = true; return; }
-    if (ratingWasOpen.current) { ratingWasOpen.current = false; setTimeout(() => (ratingRowRef.current as any)?.focus?.(), 150); }
+    if (ratingWasOpen.current) { ratingWasOpen.current = false; setTimeout(() => requestTvFocus(ratingRowRef.current), 150); }
   }, [showRatingSheet]);
 
   const pinWasOpen = useRef(false);
   useEffect(() => {
     if (!Platform.isTV) return;
     if (pinFlow !== null) { pinWasOpen.current = true; return; }
-    if (pinWasOpen.current) { pinWasOpen.current = false; setTimeout(() => (setPinRowRef.current as any)?.focus?.(), 150); }
+    if (pinWasOpen.current) { pinWasOpen.current = false; setTimeout(() => requestTvFocus(setPinRowRef.current), 150); }
   }, [pinFlow]);
 
   // Resolve Xtream credentials — either directly (xtream type) or parsed from M3U URL
@@ -806,7 +807,7 @@ export default function SettingsScreen() {
         transparent
         animationType="slide"
         onShow={() => {
-          if (Platform.isTV) setTimeout(() => (firstAudioOptRef.current as any)?.focus?.(), 80);
+          if (Platform.isTV) setTimeout(() => requestTvFocus(firstAudioOptRef.current), 80);
         }}
         onRequestClose={() => setShowAudioLangSheet(false)}
       >
@@ -845,7 +846,7 @@ export default function SettingsScreen() {
         transparent
         animationType="slide"
         onShow={() => {
-          if (Platform.isTV) setTimeout(() => (firstSubOptRef.current as any)?.focus?.(), 80);
+          if (Platform.isTV) setTimeout(() => requestTvFocus(firstSubOptRef.current), 80);
         }}
         onRequestClose={() => setShowSubtitleLangSheet(false)}
       >
@@ -882,7 +883,7 @@ export default function SettingsScreen() {
         transparent
         animationType="slide"
         onShow={() => {
-          if (Platform.isTV) setTimeout(() => (firstLeadOptRef.current as any)?.focus?.(), 80);
+          if (Platform.isTV) setTimeout(() => requestTvFocus(firstLeadOptRef.current), 80);
         }}
         onRequestClose={() => setShowLeadTimeSheet(false)}
       >
@@ -914,7 +915,7 @@ export default function SettingsScreen() {
         transparent
         animationType="slide"
         onShow={() => {
-          if (Platform.isTV) setTimeout(() => (firstRatingOptRef.current as any)?.focus?.(), 80);
+          if (Platform.isTV) setTimeout(() => requestTvFocus(firstRatingOptRef.current), 80);
         }}
         onRequestClose={() => setShowRatingSheet(false)}
       >

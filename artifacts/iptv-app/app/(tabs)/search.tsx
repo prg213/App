@@ -33,6 +33,7 @@ import { fetchAndParseM3U } from '@/services/m3uParser';
 import type { Channel, Movie, Series, WatchHistoryEntry } from '@/types';
 import { normaliseStr } from '@/utils/normalise';
 import { sidebarNav } from '@/lib/sidebarNav';
+import { requestTvFocus } from '@/lib/tvFocus';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -257,7 +258,7 @@ export default function SearchScreen() {
   const firstPillRef = useRef<View>(null);
   useFocusEffect(useCallback(() => {
     if (!Platform.isTV) return;
-    const t = setTimeout(() => (firstPillRef.current as any)?.focus?.(), 200);
+    const t = setTimeout(() => requestTvFocus(firstPillRef.current), 200);
     return () => clearTimeout(t);
   }, []));
 

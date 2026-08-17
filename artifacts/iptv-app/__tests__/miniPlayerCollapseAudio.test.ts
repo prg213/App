@@ -304,14 +304,15 @@ describe('Scenario 4 — TV / Firestick: recently-watched back path sets selecte
 
   it('normal collapse path restores D-pad focus to mini-player on TV', () => {
     // After the collapse animation the remote cursor must land somewhere
-    // reachable.  The fix calls miniPlayerRef.current?.focus() on Platform.isTV.
+    // reachable.  The fix calls requestTvFocus(miniPlayerRef.current) on
+    // Platform.isTV (replaces legacy miniPlayerRef.current?.focus?.()).
     const normalCollapseIdx = index.indexOf('Normal collapse path');
     expect(normalCollapseIdx).toBeGreaterThan(-1);
 
-    // Platform.isTV + focus?.() appear ~775-850 chars after the section marker.
+    // Platform.isTV + requestTvFocus call appear ~775-850 chars after the section marker.
     const focusBlock = index.slice(normalCollapseIdx, normalCollapseIdx + 900);
     expect(focusBlock).toMatch(/Platform\.isTV/);
-    expect(focusBlock).toMatch(/miniPlayerRef\.current.*focus\s*\?\.\s*\(\s*\)/);
+    expect(focusBlock).toMatch(/requestTvFocus\(\s*miniPlayerRef\.current/);
   });
 
   it('recently-watched collapse path also restores D-pad focus to mini-player on TV', () => {
@@ -324,7 +325,7 @@ describe('Scenario 4 — TV / Firestick: recently-watched back path sets selecte
     // Platform.isTV focus-restore that appears after requestAnimationFrame.
     const branchBody = index.slice(consumeIdx, consumeIdx + 1100);
     expect(branchBody).toMatch(/Platform\.isTV/);
-    expect(branchBody).toMatch(/miniPlayerRef\.current.*focus\s*\?\.\s*\(\s*\)/);
+    expect(branchBody).toMatch(/requestTvFocus\(\s*miniPlayerRef\.current/);
   });
 
   it('expand ready-gate cancelled before collapse takes ownership of overlay (ctx)', () => {

@@ -43,6 +43,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { FocusablePressable } from './FocusablePressable';
+import { requestTvFocus } from '@/lib/tvFocus';
 
 export interface TVTextInputProps extends TextInputProps {
   /**
@@ -110,7 +111,7 @@ export const TVTextInput = forwardRef<TextInput, TVTextInputProps>(
     // After keyboard dismiss or submit, put D-pad focus back on the wrapper.
     // 150 ms lets the keyboard close animation complete before requesting focus.
     const restoreWrapperFocus = () =>
-      setTimeout(() => (wrapperRef.current as any)?.focus?.(), 150);
+      setTimeout(() => requestTvFocus(wrapperRef.current), 150);
 
     return (
       <FocusablePressable

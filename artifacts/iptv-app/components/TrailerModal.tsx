@@ -12,6 +12,7 @@ import {
 import { FocusablePressable } from '@/components/FocusablePressable';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
+import { requestTvFocus } from '@/lib/tvFocus';
 
 interface Props {
   /**
@@ -250,7 +251,7 @@ export function TrailerModal({ videoIds, onClose, openerRef }: Props) {
   const handleClose = React.useCallback(() => {
     onClose();
     if (Platform.isTV && openerRef?.current) {
-      setTimeout(() => (openerRef.current as any)?.focus?.(), 150);
+      setTimeout(() => requestTvFocus(openerRef.current), 150);
     }
   }, [onClose, openerRef]);
 
@@ -334,7 +335,7 @@ export function TrailerModal({ videoIds, onClose, openerRef }: Props) {
       onShow={() => {
         // TV: focus the close button on modal open — avoids hasTVPreferredFocus
         // races when loading state, idx, or unmute visibility change mid-session.
-        if (Platform.isTV) setTimeout(() => (closeBtnRef.current as any)?.focus?.(), 80);
+        if (Platform.isTV) setTimeout(() => requestTvFocus(closeBtnRef.current), 80);
       }}
     >
       <View style={[styles.container, { paddingTop: insets.top }]}>

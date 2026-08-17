@@ -33,6 +33,7 @@ import { fetchAndParseM3U } from '@/services/m3uParser';
 import { lastNetworkRefreshByCredential, NETWORK_REFRESH_INTERVAL_MS } from '@/services/reminderUrlCache';
 import type { Reminder, Channel } from '@/types';
 import { SIDEBAR_W } from './_layout';
+import { requestTvFocus } from '@/lib/tvFocus';
 
 /** #152: minimum wait after a background URL-refresh failure before retrying (5 min). */
 const REFRESH_FAILURE_BACKOFF_MS = 5 * 60_000;
@@ -114,7 +115,7 @@ function RescheduleModal({
   const handleClose = () => {
     onClose();
     if (Platform.isTV && openerRef?.current) {
-      setTimeout(() => (openerRef.current as any)?.focus?.(), 150);
+      setTimeout(() => requestTvFocus(openerRef.current), 150);
     }
   };
 
@@ -126,7 +127,7 @@ function RescheduleModal({
       onShow={() => {
         // TV: move D-pad focus into the list on open so the user doesn't
         // have to home in from whatever was focused behind the modal.
-        if (Platform.isTV) setTimeout(() => (firstOptRef.current as any)?.focus?.(), 80);
+        if (Platform.isTV) setTimeout(() => requestTvFocus(firstOptRef.current), 80);
       }}
       onRequestClose={handleClose}
     >
@@ -435,7 +436,7 @@ export default function RemindersScreen() {
   const firstReminderRef = useRef<View>(null);
   useFocusEffect(useCallback(() => {
     if (!Platform.isTV) return;
-    const t = setTimeout(() => (firstReminderRef.current as any)?.focus?.(), 300);
+    const t = setTimeout(() => requestTvFocus(firstReminderRef.current), 300);
     return () => clearTimeout(t);
   }, []));
   // TV: tracks which reminder id currently holds D-pad focus so the expiry
@@ -476,7 +477,7 @@ export default function RemindersScreen() {
             const focusedIsRemoved = ended.some((r) => r.id === lastFocusedReminderIdRef.current);
             if (focusedIsRemoved) {
               lastFocusedReminderIdRef.current = null;
-              setTimeout(() => (firstReminderRef.current as any)?.focus?.(), 200);
+              setTimeout(() => requestTvFocus(firstReminderRef.current), 200);
             }
           }
           return prev.filter((r) => new Date(r.end).getTime() > now);
