@@ -449,6 +449,10 @@ export default function PlayerScreen() {
   // Tracks which TV navigation zone (left / center / right) currently holds
   // D-pad focus so we can show a visible directional indicator.
   const [tvZoneFocused, setTvZoneFocused] = useState<'left' | 'center' | 'right' | null>(null);
+  // True once the user has switched channel at least once — suppresses the
+  // full-screen "Connecting to stream" interstitial on live zaps so channel
+  // changes show nothing but the video surface (initial open still shows it).
+  const [hasZapped, setHasZapped] = useState(false);
   const [tvPreviewDir, setTvPreviewDir] = useState<'prev' | 'next' | null>(null);
   const tvPreviewOpacity = useRef(new Animated.Value(0)).current;
   const tvPreviewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1061,10 +1065,13 @@ export default function PlayerScreen() {
     // clean and focus returns to the centre zone via the channelIdx useEffect.
     setShowControls(false);
     controlsOpacity.setValue(0);
-    // Professional IPTV: auto-show OSD on channel switch.
-    // If the viewer has the OSD pinned open with OK (userInvoked mode), content
-    // updates automatically via state changes — don't reset their manual mode.
-    if (isLive && !infoBarUserInvokedRef.current) showInfoBarRef.current?.();
+    // No auto-OSD on channel switch (user request: nothing on screen while
+    // zapping — just load the channel).  The viewer can press OK to open the
+    // info bar; if it's already pinned open (userInvoked mode), its content
+    // updates automatically via state changes.
+    // Mark that a zap happened so the "Connecting to stream" interstitial is
+    // suppressed for this and all further live switches this session.
+    if (isLive) setHasZapped(true);
     // Reset auto-reconnect counter on manual channel switch
     if (reconnectTimerRef.current) { clearTimeout(reconnectTimerRef.current); reconnectTimerRef.current = null; }
     setReconnectAttempt(0);
@@ -1700,15 +1707,17 @@ export default function PlayerScreen() {
     setTvPreviewNowProg(nowProg);
     tvPreviewOpacity.setValue(0);
     Animated.timing(tvPreviewOpacity, { toValue: 1, duration: 150, useNativeDriver: true }).start();
-    // 700 ms preview before committing — professional IPTV standard (was 1 000 ms).
+    // 250 ms preview before committing (user request: switch as fast as
+    // possible) — still long enough to coalesce rapid multi-presses into one
+    // stream load instead of loading every intermediate channel.
     tvPreviewTimerRef.current = setTimeout(() => {
-      Animated.timing(tvPreviewOpacity, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => {
+      Animated.timing(tvPreviewOpacity, { toValue: 0, duration: 120, useNativeDriver: true }).start(() => {
         setTvPreviewChannel(null);
         setTvPreviewDir(null);
         setTvPreviewNowProg(null);
         onCommit();
       });
-    }, 700);
+    }, 250);
   }, [tvPreviewOpacity, epgMap, nowTs]);
 
   // ── Show VOD controls from TV remote (OK on idle catcher) ───────────────
@@ -1996,7 +2005,7 @@ export default function PlayerScreen() {
           Shown during initial load and every channel switch.  Covers the blank
           VideoView so the user never sees a frozen/empty player surface.
           pointerEvents="none" keeps Back and D-pad zones fully active. */}
-      {isBuffering && !isReconnecting && !isResolvingUrl && !hasError && !isWeb && (
+      {isBuffering && !isReconnecting && !isResolvingUrl && !hasError && !isWeb && !(isLive && hasZapped) && (
         <View style={styles.loadingOverlay} pointerEvents="none">
           <View style={styles.loadingContent}>
             {!!activeLogo && (
@@ -2570,21 +2579,11 @@ export default function PlayerScreen() {
               Visible only when D-pad focus is on a navigation zone so the user
               always knows where the remote cursor is while no overlay is shown.
               pointerEvents="none" so they never intercept touch/D-pad events. */}
-          {tvZoneFocused === 'left' && (
-            <View style={styles.tvZoneFocusLeft} pointerEvents="none">
-              <Text style={styles.tvZoneFocusArrow}>‹</Text>
-            </View>
-          )}
-          {tvZoneFocused === 'center' && (
-            <View style={styles.tvZoneFocusCenter} pointerEvents="none">
-              <View style={styles.tvZoneFocusDot} />
-            </View>
-          )}
-          {tvZoneFocused === 'right' && (
-            <View style={styles.tvZoneFocusRight} pointerEvents="none">
-              <Text style={styles.tvZoneFocusArrow}>›</Text>
-            </View>
-          )}
+          {/* Zone focus indicators intentionally NOT rendered: the translucent
+              highlight bands (and centre dot) were permanently visible on real
+              TV panels — the centre zone always holds focus during playback,
+              so the "subtle" rgba band read as a stuck overlay on screen.
+              tvZoneFocused state is still tracked for OK-button behaviour. */}
         </View>
       )}
 
@@ -3303,43 +3302,8 @@ const styles = StyleSheet.create({
     position: 'absolute', top: 0, bottom: 0,
     right: 0, width: '30%',
   },
-  // ── TV zone focus indicators — shown when D-pad focus is on a navigation zone ──
-  // Semi-transparent pill at the edge of the screen so the user always knows
-  // where the remote cursor is even when the info bar is hidden.
-  tvZoneFocusLeft: {
-    position: 'absolute', top: 0, bottom: 0, left: 0, width: '30%',
-    justifyContent: 'center', alignItems: 'flex-start',
-    paddingLeft: 20,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderRightWidth: 0,
-    borderLeftWidth: 3,
-    borderLeftColor: 'rgba(0,212,255,0.7)',
-  },
-  tvZoneFocusCenter: {
-    position: 'absolute', top: 0, bottom: 0, left: '30%', right: '30%',
-    justifyContent: 'center', alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    borderWidth: 0,
-    borderTopWidth: 3,
-    borderTopColor: 'rgba(0,212,255,0.5)',
-  },
-  tvZoneFocusRight: {
-    position: 'absolute', top: 0, bottom: 0, right: 0, width: '30%',
-    justifyContent: 'center', alignItems: 'flex-end',
-    paddingRight: 20,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderRightWidth: 3,
-    borderRightColor: 'rgba(0,212,255,0.7)',
-  },
-  tvZoneFocusArrow: {
-    color: 'rgba(0,212,255,0.9)',
-    fontSize: 48,
-    fontWeight: '200',
-  },
-  tvZoneFocusDot: {
-    width: 8, height: 8, borderRadius: 4,
-    backgroundColor: 'rgba(0,212,255,0.7)',
-  },
+  // (TV zone focus indicator styles removed — the translucent bands/dot were
+  // permanently visible on real TV panels and read as a stuck overlay.)
 
   // ── TV channel-switch preview overlay ──
   tvChannelPreview: {
