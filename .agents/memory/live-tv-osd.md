@@ -33,3 +33,6 @@ The fullscreen live screen mounts with `isBuffering=true` and clears it only on 
 
 ## Ambient NOW/NEXT strip removed (single bottom OSD)
 The "mutually exclusive" ambient strip (!showInfo) overlapped the OSD's 300ms fade-out → users saw two stacked bottom overlays. Strip deleted; the full OSD info bar is the only bottom overlay. LiveChannelMenu is now wrapped in an error boundary (closes overlay on any render error) — a release-build JS error kills the whole app otherwise.
+
+## OSD hide focus-safety (Aug 2026)
+- When the OSD bar hides while a chip inside it holds D-pad focus, Fire OS spatially reassigns focus BEFORE any explicit focus() call — it can land on a side zap zone and change channel on its own. Fixes: focus tvCenterRef immediately at fade start (before unmount) + backstop after; osdHiddenAtRef timestamp makes side zones bounce (not zap) within 800 ms of a bar hide.
