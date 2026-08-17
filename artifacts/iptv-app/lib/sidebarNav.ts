@@ -17,4 +17,10 @@ export const sidebarNav = {
    * Overwritten by the Sidebar component on mount.
    */
   focus: (() => {}) as () => void,
+  /**
+   * Native node handle of the first sidebar nav item (TV only).
+   * Set by the Sidebar on mount; rails pass it as `nextFocusLeft` on their
+   * first card so pressing D-pad LEFT jumps straight to the nav menu.
+   */
+  handle: null as number | null,
 };

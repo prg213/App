@@ -27,6 +27,8 @@ import {
 import { StorageService } from '@/services/storage';
 import { buildMovieProgressMap, buildSeriesProgressMap } from '@/utils/progressMap';
 import { RecentChannelsRail } from '@/components/RecentChannelsRail';
+import { sidebarNav } from '@/lib/sidebarNav';
+import { useBackHandler } from '@/hooks/useBackHandler';
 import type { Channel, Movie, Series, WatchHistoryEntry } from '@/types';
 
 function buildCreds(c: ReturnType<typeof useAppContext>['credentials']) {
@@ -43,10 +45,12 @@ const MovieBanner = React.memo(React.forwardRef(function MovieBanner({
   movie,
   colors,
   onPress,
+  nextFocusLeft,
 }: {
   movie: Movie;
   colors: ReturnType<typeof useColors>;
   onPress: () => void;
+  nextFocusLeft?: number | null;
 }, ref: React.Ref<View>) {
   return (
     // bannerOuter: dimensions + borderRadius for the focus ring — NO overflow:hidden.
@@ -57,6 +61,7 @@ const MovieBanner = React.memo(React.forwardRef(function MovieBanner({
       ref={ref}
       style={styles.bannerOuter}
       focusedStyle={styles.bannerFocused}
+      nextFocusLeft={nextFocusLeft}
       onPress={onPress}
     >
       <View style={styles.bannerClip}>
@@ -93,15 +98,18 @@ const SeriesBanner = React.memo(function SeriesBanner({
   series,
   colors,
   onPress,
+  nextFocusLeft,
 }: {
   series: Series;
   colors: ReturnType<typeof useColors>;
   onPress: () => void;
+  nextFocusLeft?: number | null;
 }) {
   return (
     <FocusablePressable
       style={styles.bannerOuter}
       focusedStyle={styles.bannerFocused}
+      nextFocusLeft={nextFocusLeft}
       onPress={onPress}
     >
       <View style={styles.bannerClip}>
@@ -380,7 +388,16 @@ export default function HomeScreen() {
     }
   }, [router]);
 
-  const renderContinueWatching = useCallback(({ item }: { item: WatchHistoryEntry }) => {
+  // TV: BACK anywhere on the Home tab returns the D-pad cursor to the nav menu
+  // (user request — BACK from any rail should land on the sidebar, not pop
+  // navigation history or do nothing).
+  useBackHandler(() => {
+    if (!Platform.isTV) return false;
+    sidebarNav.focus();
+    return true;
+  });
+
+  const renderContinueWatching = useCallback(({ item, index }: { item: WatchHistoryEntry; index: number }) => {
     const progress = item.type === 'series'
       ? seriesProgressMap.get(item.parentId ?? item.id)
       : movieProgressMap.get(item.id);
@@ -389,6 +406,8 @@ export default function HomeScreen() {
       <FocusablePressable
         style={styles.bannerOuter}
         focusedStyle={styles.bannerFocused}
+        // TV: LEFT on the first card jumps to the sidebar nav menu
+        nextFocusLeft={Platform.isTV && index === 0 ? sidebarNav.handle : undefined}
         onPress={() => handleHistoryItemPress(item)}
       >
         {/* Inner clip view separates overflow:hidden from the focus borderWidth
@@ -426,12 +445,18 @@ export default function HomeScreen() {
       ref={index === 0 ? firstItemRef : undefined}
       movie={item}
       colors={colors}
+      nextFocusLeft={Platform.isTV && index === 0 ? sidebarNav.handle : undefined}
       onPress={() => handleMoviePress(item)}
     />
   ), [colors, handleMoviePress]);
 
-  const renderSeries = useCallback(({ item }: { item: Series }) => (
-    <SeriesBanner series={item} colors={colors} onPress={() => handleSeriesPress(item)} />
+  const renderSeries = useCallback(({ item, index }: { item: Series; index: number }) => (
+    <SeriesBanner
+      series={item}
+      colors={colors}
+      nextFocusLeft={Platform.isTV && index === 0 ? sidebarNav.handle : undefined}
+      onPress={() => handleSeriesPress(item)}
+    />
   ), [colors, handleSeriesPress]);
 
   if (!isXtream) {

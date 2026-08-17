@@ -4,6 +4,7 @@ import {
   type AppStateStatus,
   BackHandler,
   DeviceEventEmitter,
+  findNodeHandle,
   Platform,
   Pressable,
   ScrollView,
@@ -194,6 +195,12 @@ function Sidebar({ state, descriptors, navigation }: SidebarProps) {
   // sidebar nav item (which would require an extra RIGHT press to enter content).
   useEffect(() => {
     sidebarNav.focus = () => { (firstNavRef.current as any)?.focus?.(); };
+    // Publish the first nav item's native handle so screens can pin their
+    // first card's nextFocusLeft to the sidebar (LEFT → nav menu on TV).
+    if (Platform.isTV) {
+      try { sidebarNav.handle = findNodeHandle(firstNavRef.current); } catch {}
+    }
+    return () => { sidebarNav.handle = null; };
   }, []);
 
   const dotColor = serverStatus === 'ok' ? '#22C55E'

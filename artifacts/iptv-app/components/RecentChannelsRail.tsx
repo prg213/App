@@ -2,10 +2,12 @@ import React, { useCallback, useRef, useState } from 'react';
 import {
   FlatList,
   Image,
+  Platform,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { sidebarNav } from '@/lib/sidebarNav';
 import { useFocusEffect } from 'expo-router';
 import { FocusablePressable } from '@/components/FocusablePressable';
 import { useColors } from '@/hooks/useColors';
@@ -60,6 +62,8 @@ function RecentCard({ item, index, channels, nowTitle, colors, onWatchFullscreen
     <FocusablePressable
       ref={cardRef as any}
       style={styles.card}
+      // TV: LEFT on the first card jumps to the sidebar nav menu
+      nextFocusLeft={Platform.isTV && index === 0 ? sidebarNav.handle : undefined}
       onPress={() => onWatchFullscreen(ch, channels, index, cardRef)}
       onLongPress={() => onRemove(item.id)}
       delayLongPress={500}
