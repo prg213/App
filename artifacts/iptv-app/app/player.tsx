@@ -2588,19 +2588,19 @@ export default function PlayerScreen() {
               // keep focus on the centre zone — the nav cards were removed,
               // so LEFT must not zap while the viewer is reading the overlay.
               if (infoBarUserInvokedRef.current && showInfoRef.current) {
-                setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 50);
+                setTimeout(() => requestTvFocus(tvCenterRef.current), 50);
                 return;
               }
               // Focus arrived here from the OSD bar unmounting (spatial
               // reassignment), not a deliberate LEFT press — bounce, don't zap.
               if (Date.now() - osdHiddenAtRef.current < 800) {
-                setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 50);
+                setTimeout(() => requestTvFocus(tvCenterRef.current), 50);
                 return;
               }
               if (!prevChannel || !tvNavReadyRef.current) {
                 // No previous channel or nav not yet settled — immediately bounce
                 // D-pad focus to center so the remote stays responsive.
-                setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 50);
+                setTimeout(() => requestTvFocus(tvCenterRef.current), 50);
                 return;
               }
               if (navCooldownRef.current) {
@@ -2608,7 +2608,7 @@ export default function PlayerScreen() {
                 // back to centre so the remote always has a working target —
                 // a bare `return` leaves focus stranded on this side zone,
                 // making OK / LEFT / RIGHT feel completely dead.
-                setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 50);
+                setTimeout(() => requestTvFocus(tvCenterRef.current), 50);
                 return;
               }
               // Claim the cooldown upfront so rapid D-pad presses during the preview are ignored
@@ -2626,7 +2626,7 @@ export default function PlayerScreen() {
                 // the native layer has settled after player.replace().
                 // Use a longer delay for wrap-around switches to match the extended
                 // useEffect guard (900 ms vs 600 ms for adjacent-channel switches).
-                setTimeout(() => (tvCenterRef.current as any)?.focus?.(), isWrap ? 950 : 700);
+                setTimeout(() => requestTvFocus(tvCenterRef.current), isWrap ? 950 : 700);
               });
             }}
           />
@@ -2686,24 +2686,24 @@ export default function PlayerScreen() {
               setTvZoneFocused('right');
               // OSD is user-pinned: keep focus on the centre zone (nav cards removed).
               if (infoBarUserInvokedRef.current && showInfoRef.current) {
-                setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 50);
+                setTimeout(() => requestTvFocus(tvCenterRef.current), 50);
                 return;
               }
               // Focus arrived here from the OSD bar unmounting (spatial
               // reassignment), not a deliberate RIGHT press — bounce, don't zap.
               if (Date.now() - osdHiddenAtRef.current < 800) {
-                setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 50);
+                setTimeout(() => requestTvFocus(tvCenterRef.current), 50);
                 return;
               }
               if (!nextChannel || !tvNavReadyRef.current) {
                 // No next channel or nav not yet settled — bounce focus to center.
-                setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 50);
+                setTimeout(() => requestTvFocus(tvCenterRef.current), 50);
                 return;
               }
               if (navCooldownRef.current) {
                 // Same guard as the left zone: bounce to centre rather than
                 // leaving the remote stranded on this non-navigating side zone.
-                setTimeout(() => (tvCenterRef.current as any)?.focus?.(), 50);
+                setTimeout(() => requestTvFocus(tvCenterRef.current), 50);
                 return;
               }
               navCooldownRef.current = true;
@@ -2714,7 +2714,7 @@ export default function PlayerScreen() {
               const isWrap = channelIdx === channelList.length - 1;
               showTvChannelPreview(targetChannel, 'next', () => {
                 switchChannel(targetChannel, targetIdx, isWrap);
-                setTimeout(() => (tvCenterRef.current as any)?.focus?.(), isWrap ? 950 : 700);
+                setTimeout(() => requestTvFocus(tvCenterRef.current), isWrap ? 950 : 700);
               });
             }}
           />
