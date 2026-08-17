@@ -1736,6 +1736,16 @@ function FullGuide({
   }, [epgMap, selectedDay]);
 
   const dayStartMs = useMemo(() => dayStart(selectedDay).getTime(), [selectedDay]);
+
+  // Reset the shared grid-pan position whenever the user switches days.
+  // currentGridPanMs is module-level and persists across day switches; without
+  // this reset newly mounted TVEpgRow instances for the new day would apply the
+  // old day's pan time, which maps to a completely different cell (or no cell)
+  // in the new day's programme data, causing misalignment.
+  useEffect(() => {
+    currentGridPanMs = null;
+  }, [dayStartMs]);
+
   const nowX = ((now - dayStartMs) / 60_000) * PX_PER_MIN;
 
   // Animated value for the NOW line so position transitions smoothly each minute
