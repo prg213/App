@@ -36,3 +36,7 @@ description: LiveChannelMenu overlay component for the Firestick Live TV player 
 
 ## StyleSheet gotcha
 `StyleSheet.absoluteFill` (not `absoluteFillObject`) — latter was removed from RN types. See runtime-referror-patterns.md.
+
+## TV focus handoff (Aug 2026)
+- The menu is an absolute View, not a Modal — native D-pad focus stays on the player behind it unless moved in explicitly. On open, a retrying effect (10×120 ms) focuses: current channel row → first channel row → first category row. Without this the remote appears dead inside the menu.
+- Player OSD has a "≡ Channels" chip on TV (alongside Audio/CC) as the discoverable opener; the remote's Menu button still toggles it.
