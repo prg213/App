@@ -777,6 +777,13 @@ const TVEpgRow = React.memo(function TVEpgRow({
               }
               return;
             }
+            // Update currentGridPanMs immediately (non-debounced) so that a
+            // category switch that fires within the 80 ms debounce window still
+            // sees the correct pan position when new rows mount.  The debounced
+            // timer below also writes the final value after the pan settles and
+            // then broadcasts to peer rows.
+            const immediateMs = offsetToTimeMs(x);
+            if (immediateMs != null) currentGridPanMs = immediateMs;
             // Broadcast this row's pan to all other rows (time-based) so the
             // whole grid moves together.  Trailing-debounced: one emit per
             // pan, 80 ms after the last scroll event, not one per frame.
