@@ -1,24 +1,31 @@
 /**
- * Task #475 — TVLiveLayout mini-guide OK press guard
+ * TVLiveLayout mini-guide OK press guard
  *
- * Verifies the isPast / isCatchupPlayable gating logic that controls whether
- * pressing OK on a mini-guide row calls onOpenCatchupProg.
+ * Verifies the isPast / isCatchupRowPlayable gating logic that controls whether
+ * pressing OK on a mini-guide row calls onOpenCatchupProg, AND that the
+ * channelHasCatchup derivation uses strict equality (tvArchive === 1) so that
+ * tvArchive: 0 and absent tvArchive keep catch-up fully locked.
  *
- * The relevant logic from TVLiveLayout.tsx (lines ~468–490):
+ * Tests import the real production helpers from utils/catchup.ts so that any
+ * change to the guards in source code will break these tests immediately.
  *
+ * The relevant logic from TVLiveLayout.tsx:
+ *
+ *   const hasCatchup        = channelHasCatchup(selectedChannel);
  *   const isPast            = prog.end.getTime() <= nowTs;
- *   const isCatchupPlayable = Platform.isTV && isPast && hasCatchup && !!onOpenCatchupProg;
+ *   const isCatchupPlayable = isCatchupRowPlayable(prog, nowTs, Platform.isTV, hasCatchup, !!onOpenCatchupProg);
  *   // Row gets: onPress: () => onOpenCatchupProg!(prog)   ← only when isCatchupPlayable
  *
  * Why simulate instead of render?
  * ────────────────────────────────
  * TVLiveLayout mounts VideoView (expo-video), FlatList, and a chain of
  * platform-specific pressables — all of which require a running native layer.
- * The simulation mirrors the exact conditional logic verbatim; any divergence
- * in the source would also diverge here and the test would fail.
+ * The simulation uses the real production helpers verbatim; any divergence
+ * in the source immediately propagates to these tests.
  */
 
 import type { EpgProgram } from '../types';
+import { channelHasCatchup, isCatchupRowPlayable } from '../utils/catchup';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -33,28 +40,8 @@ function makeProg(offsetStartMs: number, offsetEndMs: number, nowTs: number): Ep
 }
 
 /**
- * Mirror of the isCatchupPlayable derivation from TVLiveLayout.tsx.
- *
- * @param prog         The programme row.
- * @param nowTs        Current epoch ms.
- * @param isTV         Simulates Platform.isTV.
- * @param hasCatchup   selectedChannel.tvArchive === 1.
- * @param hasCallback  !!onOpenCatchupProg passed to the layout.
- */
-function isCatchupPlayable(
-  prog: EpgProgram,
-  nowTs: number,
-  isTV: boolean,
-  hasCatchup: boolean,
-  hasCallback: boolean,
-): boolean {
-  const isPast = prog.end.getTime() <= nowTs;
-  return isTV && isPast && hasCatchup && hasCallback;
-}
-
-/**
- * Simulate a row press: returns the programme the callback would receive,
- * or null if the row is not pressable.
+ * Simulate a row press using the real production helpers: returns the programme
+ * the callback would receive, or null if the row is not pressable.
  */
 function simulateRowPress(
   prog: EpgProgram,
@@ -63,7 +50,7 @@ function simulateRowPress(
   hasCatchup: boolean,
   onOpenCatchupProg: ((p: EpgProgram) => void) | undefined,
 ): EpgProgram | null {
-  const playable = isCatchupPlayable(prog, nowTs, isTV, hasCatchup, !!onOpenCatchupProg);
+  const playable = isCatchupRowPlayable(prog, nowTs, isTV, hasCatchup, !!onOpenCatchupProg);
   if (!playable) return null;
   onOpenCatchupProg!(prog);
   return prog;
@@ -74,11 +61,43 @@ function simulateRowPress(
 const NOW_TS = new Date('2026-08-17T14:00:00Z').getTime();
 
 // Past: ended 2 hours ago
-const PAST_PROG = makeProg(-3 * 3600_000, -2 * 3600_000, NOW_TS);
+const PAST_PROG   = makeProg(-3 * 3600_000,  -2 * 3600_000, NOW_TS);
 // Current: started 30 min ago, ends in 30 min
-const NOW_PROG  = makeProg(-30 * 60_000,   30 * 60_000, NOW_TS);
+const NOW_PROG    = makeProg(-30 * 60_000,    30 * 60_000,  NOW_TS);
 // Future: starts in 1 hour
-const FUTURE_PROG = makeProg(60 * 60_000, 2 * 3600_000, NOW_TS);
+const FUTURE_PROG = makeProg(60 * 60_000, 2 * 3600_000,    NOW_TS);
+
+// ── channelHasCatchup — tvArchive strict equality (production function) ───────
+
+describe('channelHasCatchup — tvArchive strict equality', () => {
+  it('is true when tvArchive is exactly 1', () => {
+    expect(channelHasCatchup({ tvArchive: 1 } as any)).toBe(true);
+  });
+
+  it('is false when tvArchive is 0', () => {
+    expect(channelHasCatchup({ tvArchive: 0 } as any)).toBe(false);
+  });
+
+  it('is false when tvArchive field is absent (undefined)', () => {
+    expect(channelHasCatchup({} as any)).toBe(false);
+  });
+
+  it('is false when the channel object is undefined', () => {
+    expect(channelHasCatchup(undefined)).toBe(false);
+  });
+
+  it('is false when the channel object is null', () => {
+    expect(channelHasCatchup(null)).toBe(false);
+  });
+
+  it('is false when tvArchive is 2 (only exactly 1 qualifies)', () => {
+    expect(channelHasCatchup({ tvArchive: 2 } as any)).toBe(false);
+  });
+
+  it('is false when tvArchive is -1', () => {
+    expect(channelHasCatchup({ tvArchive: -1 } as any)).toBe(false);
+  });
+});
 
 // ── isPast classification ─────────────────────────────────────────────────────
 
@@ -101,39 +120,90 @@ describe('isPast classification', () => {
   });
 });
 
-// ── isCatchupPlayable guard ───────────────────────────────────────────────────
+// ── isCatchupRowPlayable guard (production function) ─────────────────────────
 
-describe('isCatchupPlayable guard — TV + catchup channel + callback present', () => {
+describe('isCatchupRowPlayable — TV + catchup channel + callback present', () => {
   it('is true for a past row on a catchup channel when on TV', () => {
-    expect(isCatchupPlayable(PAST_PROG, NOW_TS, true, true, true)).toBe(true);
+    expect(isCatchupRowPlayable(PAST_PROG, NOW_TS, true, true, true)).toBe(true);
   });
 
   it('is false for the current (now-airing) row even on a catchup channel', () => {
-    expect(isCatchupPlayable(NOW_PROG, NOW_TS, true, true, true)).toBe(false);
+    expect(isCatchupRowPlayable(NOW_PROG, NOW_TS, true, true, true)).toBe(false);
   });
 
   it('is false for a future row even on a catchup channel', () => {
-    expect(isCatchupPlayable(FUTURE_PROG, NOW_TS, true, true, true)).toBe(false);
+    expect(isCatchupRowPlayable(FUTURE_PROG, NOW_TS, true, true, true)).toBe(false);
   });
 
   it('is false when Platform.isTV is false (phone/tablet)', () => {
-    expect(isCatchupPlayable(PAST_PROG, NOW_TS, false, true, true)).toBe(false);
+    expect(isCatchupRowPlayable(PAST_PROG, NOW_TS, false, true, true)).toBe(false);
   });
 
   it('is false when the channel has no catch-up (hasCatchup = false)', () => {
-    expect(isCatchupPlayable(PAST_PROG, NOW_TS, true, false, true)).toBe(false);
+    expect(isCatchupRowPlayable(PAST_PROG, NOW_TS, true, false, true)).toBe(false);
   });
 
   it('is false when onOpenCatchupProg was not passed (hasCallback = false)', () => {
-    expect(isCatchupPlayable(PAST_PROG, NOW_TS, true, true, false)).toBe(false);
+    expect(isCatchupRowPlayable(PAST_PROG, NOW_TS, true, true, false)).toBe(false);
   });
 
   it('is false when neither catchup nor callback is present', () => {
-    expect(isCatchupPlayable(PAST_PROG, NOW_TS, true, false, false)).toBe(false);
+    expect(isCatchupRowPlayable(PAST_PROG, NOW_TS, true, false, false)).toBe(false);
   });
 });
 
-// ── Callback is called with the correct programme ─────────────────────────────
+// ── End-to-end: channel object → channelHasCatchup → isCatchupRowPlayable ─────
+
+describe('end-to-end: tvArchive value flows through to playability', () => {
+  it('allows catch-up playback when tvArchive === 1', () => {
+    const hasCatchup = channelHasCatchup({ tvArchive: 1 } as any);
+    expect(isCatchupRowPlayable(PAST_PROG, NOW_TS, true, hasCatchup, true)).toBe(true);
+  });
+
+  it('blocks catch-up playback when tvArchive === 0', () => {
+    const hasCatchup = channelHasCatchup({ tvArchive: 0 } as any);
+    expect(isCatchupRowPlayable(PAST_PROG, NOW_TS, true, hasCatchup, true)).toBe(false);
+  });
+
+  it('blocks catch-up playback when tvArchive field is absent', () => {
+    const hasCatchup = channelHasCatchup({} as any);
+    expect(isCatchupRowPlayable(PAST_PROG, NOW_TS, true, hasCatchup, true)).toBe(false);
+  });
+
+  it('blocks catch-up playback when channel is null', () => {
+    const hasCatchup = channelHasCatchup(null);
+    expect(isCatchupRowPlayable(PAST_PROG, NOW_TS, true, hasCatchup, true)).toBe(false);
+  });
+
+  it('blocks catch-up playback when channel is undefined', () => {
+    const hasCatchup = channelHasCatchup(undefined);
+    expect(isCatchupRowPlayable(PAST_PROG, NOW_TS, true, hasCatchup, true)).toBe(false);
+  });
+
+  it('blocks the callback from firing when tvArchive is 0', () => {
+    const cb = jest.fn();
+    const hasCatchup = channelHasCatchup({ tvArchive: 0 } as any);
+    simulateRowPress(PAST_PROG, NOW_TS, true, hasCatchup, cb);
+    expect(cb).not.toHaveBeenCalled();
+  });
+
+  it('blocks the callback from firing when tvArchive field is absent', () => {
+    const cb = jest.fn();
+    const hasCatchup = channelHasCatchup({} as any);
+    simulateRowPress(PAST_PROG, NOW_TS, true, hasCatchup, cb);
+    expect(cb).not.toHaveBeenCalled();
+  });
+
+  it('fires the callback when tvArchive is exactly 1', () => {
+    const cb = jest.fn();
+    const hasCatchup = channelHasCatchup({ tvArchive: 1 } as any);
+    simulateRowPress(PAST_PROG, NOW_TS, true, hasCatchup, cb);
+    expect(cb).toHaveBeenCalledTimes(1);
+    expect(cb).toHaveBeenCalledWith(PAST_PROG);
+  });
+});
+
+// ── Callback receives the correct programme ───────────────────────────────────
 
 describe('simulateRowPress — callback receives the correct programme', () => {
   it('calls onOpenCatchupProg with the past programme when all guards pass', () => {
@@ -176,7 +246,6 @@ describe('simulateRowPress — callback receives the correct programme', () => {
   });
 
   it('does NOT call the callback when onOpenCatchupProg is undefined', () => {
-    // simulateRowPress with undefined callback — must not throw or call anything
     const result = simulateRowPress(PAST_PROG, NOW_TS, true, true, undefined);
     expect(result).toBeNull();
   });

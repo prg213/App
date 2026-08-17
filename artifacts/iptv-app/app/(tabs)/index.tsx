@@ -1360,39 +1360,15 @@ export default function LiveTVScreen() {
   // ── TV: play a past mini-guide programme directly (skip CatchupSheet) ─────
   // Converts an EpgProgram (which has JS Date fields) into the same catch-up
   // URL params that CatchupSheet uses, then navigates straight to the player.
+  // ── TV: open CatchupSheet pre-scrolled to a specific past mini-guide row ──
+  // We must NOT derive serverStart from an EpgProgram (XMLTV) Date: getXtreamCatchupUrls
+  // requires the raw server-local "YYYY-MM-DD HH:MM:SS" string from get_simple_data_table,
+  // which is never safe to reconstruct from a UTC Date (provider server timezone is unknown).
+  // CatchupSheet fetches get_simple_data_table itself and uses the correct serverStart.
   const handleTVCatchupProg = useCallback((prog: EpgProgram) => {
-    if (!selectedChannel || !creds) return;
-    const pad = (n: number) => String(n).padStart(2, '0');
-    const d = prog.start;
-    const serverStart =
-      `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ` +
-      `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-    const startTimestamp = Math.floor(prog.start.getTime() / 1000);
-    const durationMinutes = Math.max(
-      1,
-      Math.ceil((prog.end.getTime() - prog.start.getTime()) / 60_000),
-    );
-    const urls = getXtreamCatchupUrls(
-      creds,
-      selectedChannel.id,
-      serverStart,
-      durationMinutes,
-      startTimestamp,
-    );
-    router.push({
-      pathname: '/player',
-      params: {
-        url: urls[0],
-        title: `${prog.title} — ${selectedChannel.name}`,
-        type: 'catchup',
-        logo: selectedChannel.logo ?? '',
-        knownDuration: String(durationMinutes * 60),
-        catchupStreamId: selectedChannel.id,
-        catchupServerStart: serverStart,
-        catchupStartTimestamp: String(startTimestamp),
-      },
-    });
-  }, [selectedChannel, creds, router]);
+    setCatchupInitialProg(prog);
+    setShowCatchup(true);
+  }, []);
 
   // ── Render ────────────────────────────────────────────────────────────────
 

@@ -36,6 +36,7 @@ import { VideoView, type VideoPlayer } from 'expo-video';
 import { FocusablePressable } from '@/components/FocusablePressable';
 import { useFocusRestore } from '@/hooks/useFocusRestore';
 import type { Category, Channel, EpgProgram } from '@/types';
+import { channelHasCatchup, isCatchupRowPlayable } from '@/utils/catchup';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -180,7 +181,7 @@ export function TVLiveLayout({
     [channelEpg, nowTs],
   );
 
-  const hasCatchup = selectedChannel?.tvArchive === 1;
+  const hasCatchup = channelHasCatchup(selectedChannel);
 
   // ── Category row ──────────────────────────────────────────────────────────
   // onFocus: scroll only — category changes on OK press.
@@ -478,7 +479,7 @@ export function TVLiveLayout({
                     const isPast = prog.end.getTime() <= nowTs;
                     // On TV: past programmes on a catch-up channel are pressable
                     // so the user can open catch-up directly for that show.
-                    const isCatchupPlayable = Platform.isTV && isPast && hasCatchup && !!onOpenCatchupProg;
+                    const isCatchupPlayable = isCatchupRowPlayable(prog, nowTs, Platform.isTV, hasCatchup, !!onOpenCatchupProg);
                     const Row = (Platform.isTV ? FocusablePressable : View) as any;
                     return (
                       <Row
