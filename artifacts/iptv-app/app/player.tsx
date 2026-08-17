@@ -40,6 +40,7 @@ import type { EpgProgram } from '@/types';
 import { Image } from 'expo-image';
 import { useCast } from '@/hooks/useCast';
 import { useTVRemote } from '@/hooks/useTVRemote';
+import { requestTvFocus } from '@/lib/tvFocus';
 import CastButton from '@/components/CastButton';
 import { useBackHandler } from '@/hooks/useBackHandler';
 
@@ -1354,7 +1355,7 @@ export default function PlayerScreen() {
   useEffect(() => {
     if (!Platform.isTV || isLive || isWeb || hasError) return;
     if (!showControls) {
-      const t = setTimeout(() => (tvVodIdleRef.current as any)?.focus?.(), 80);
+      const t = setTimeout(() => requestTvFocus(tvVodIdleRef.current), 80);
       return () => clearTimeout(t);
     }
   }, [showControls, isLive, isWeb, hasError]);
@@ -1417,7 +1418,7 @@ export default function PlayerScreen() {
         // Return TV focus to the idle catch-all so the next OK press
         // can show controls again.
         if (Platform.isTV) {
-          setTimeout(() => (tvVodIdleRef.current as any)?.focus?.(), 50);
+          setTimeout(() => requestTvFocus(tvVodIdleRef.current), 50);
         }
       }, 320);
       return true; // consumed — do not navigate back
@@ -1806,7 +1807,7 @@ export default function PlayerScreen() {
     scheduleHide();
     if (Platform.isTV) {
       // Give the overlay a frame to mount its children before requesting focus.
-      setTimeout(() => (tvPlayBtnRef.current as any)?.focus?.(), 80);
+      setTimeout(() => requestTvFocus(tvPlayBtnRef.current), 80);
     }
   }, [controlsOpacity, scheduleHide]);
 
@@ -2023,7 +2024,7 @@ export default function PlayerScreen() {
               if (Platform.isTV) {
                 setTimeout(() => {
                   if (isLive) (tvCenterRef.current as any)?.focus?.();
-                  else (tvVodIdleRef.current as any)?.focus?.();
+                  else requestTvFocus(tvVodIdleRef.current);
                 }, 400);
               }
             }}
@@ -2320,7 +2321,7 @@ export default function PlayerScreen() {
                 onFocus={() => {
                   seek(-10);
                   scheduleHide();
-                  setTimeout(() => (tvScrubAnchorRef.current as any)?.focus?.(), 70);
+                  setTimeout(() => requestTvFocus(tvScrubAnchorRef.current), 70);
                 }}
               />
 
@@ -2351,7 +2352,7 @@ export default function PlayerScreen() {
                 onFocus={() => {
                   seek(+10);
                   scheduleHide();
-                  setTimeout(() => (tvScrubAnchorRef.current as any)?.focus?.(), 70);
+                  setTimeout(() => requestTvFocus(tvScrubAnchorRef.current), 70);
                 }}
               />
             </>
