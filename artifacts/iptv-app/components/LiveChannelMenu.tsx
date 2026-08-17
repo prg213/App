@@ -143,6 +143,13 @@ export interface LiveChannelMenuProps {
     newList: MenuChannelEntry[],
   ) => void;
   onClose: () => void;
+  /**
+   * TV only — optional mutable ref that the menu fills with a callback to
+   * push D-pad focus back inside the overlay.  Player.tsx writes the zone
+   * onFocus handlers to call this whenever the menu is open so focus can
+   * never escape to the player's D-pad zones while the browser is visible.
+   */
+  focusCallbackRef?: React.MutableRefObject<(() => void) | null>;
 }
 
 
@@ -155,6 +162,7 @@ function LiveChannelMenuImpl({
   epgMap,
   onSelectChannel,
   onClose,
+  focusCallbackRef,
 }: LiveChannelMenuProps) {
   const { credentials } = useAppContext();
   const isXtream = credentials?.type === 'xtream';
@@ -424,11 +432,36 @@ function LiveChannelMenuImpl({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoading]);
 
-  // TV: hand D-pad focus INTO the overlay once it's ready.  The menu is an
-  // absolutely-positioned View (not a Modal), so native focus stays on the
-  // player's zones behind it unless we move it here explicitly — which made
-  // the remote appear completely dead inside the menu.  Retry with fallbacks:
-  // current channel row → first channel row → first category row.
+  // ── Focus-trap helpers ────────────────────────────────────────────────────────
+  // The menu is an absolutely-positioned View, NOT a Modal, so native spatial
+  // navigation on Fire TV can still escape to the player's D-pad zones behind
+  // it.  refocusMenu is the single authoritative function that puts focus back
+  // inside the overlay.  It is:
+  //   1. Called with a retry loop when the menu first becomes ready.
+  //   2. Exposed via focusCallbackRef so player.tsx D-pad zone onFocus handlers
+  //      can call it whenever they detect the menu is open (focus-escape guard).
+  //   3. Called automatically whenever the user switches categories, because
+  //      the previously-focused channel row unmounts and focus would otherwise
+  //      fall back to the player.
+  const refocusMenu = useCallback(() => {
+    if (!Platform.isTV) return;
+    const target =
+      currentItemRef.current ?? firstItemRef.current ?? firstCatRef.current;
+    if (target?.focus) {
+      try { target.focus(); } catch (_) {}
+    }
+  }, []); // refs are stable mutable objects — no reactive deps needed
+
+  // Register refocusMenu in the caller-supplied ref so player.tsx can invoke it
+  // from the D-pad zone onFocus handlers without needing a forwardRef chain.
+  useEffect(() => {
+    if (!focusCallbackRef) return;
+    focusCallbackRef.current = refocusMenu;
+    return () => { focusCallbackRef.current = null; };
+  }, [focusCallbackRef, refocusMenu]);
+
+  // TV: hand D-pad focus INTO the overlay once it's ready.  Retry with
+  // fallbacks: current channel row → first channel row → first category row.
   useEffect(() => {
     if (!Platform.isTV || isLoading) return;
     let attempts = 0;
@@ -445,6 +478,28 @@ function LiveChannelMenuImpl({
     return () => clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoading]);
+
+  // TV: re-focus inside the overlay whenever the user switches categories.
+  // When the active category changes, the previously-focused channel row
+  // unmounts and Fire TV's spatial nav can escape to the player zones behind
+  // the overlay.  Re-focusing the first visible item in the new list keeps
+  // focus trapped inside the browser.
+  //
+  // Skip the very first run (mount) — the initial-focus effect above already
+  // handles that case with its retry loop.
+  const categoryFocusInitRef = useRef(false);
+  useEffect(() => {
+    if (!Platform.isTV) return;
+    if (!categoryFocusInitRef.current) {
+      // First execution is triggered by mount — mark as initialised and skip.
+      categoryFocusInitRef.current = true;
+      return;
+    }
+    // Give the new list one frame to render before requesting focus.
+    const t = setTimeout(refocusMenu, 80);
+    return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCat]);
 
   // When category or search changes: reset offset and scroll to current channel.
   useEffect(() => {

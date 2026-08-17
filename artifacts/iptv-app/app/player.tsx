@@ -422,6 +422,9 @@ export default function PlayerScreen() {
   const [showChannelMenu, setShowChannelMenu] = useState(false);
   const showChannelMenuRef = useRef(false);
   useEffect(() => { showChannelMenuRef.current = showChannelMenu; }, [showChannelMenu]);
+  // TV: callback ref filled by LiveChannelMenu so D-pad zone onFocus handlers
+  // can push focus back inside the overlay without a forwardRef chain.
+  const channelMenuFocusRef = useRef<(() => void) | null>(null);
   // Ref to block spurious onFocus channel-switch on initial TV mount
   const tvNavReadyRef = useRef(false);
   const tvCenterRef = useRef<View>(null);
@@ -2549,6 +2552,12 @@ export default function PlayerScreen() {
             onPress={showInfo ? dismissInfoBar : () => showInfoBar()}
             onBlur={() => setTvZoneFocused(null)}
             onFocus={() => {
+              // Channel browser is open — bounce focus straight back into the
+              // overlay so D-pad can't reach the player zones behind it.
+              if (showChannelMenuRef.current) {
+                setTimeout(() => channelMenuFocusRef.current?.(), 50);
+                return;
+              }
               setTvZoneFocused('left');
               // OSD is user-pinned (viewer pressed OK to open it):
               // keep focus on the centre zone — the nav cards were removed,
@@ -2607,7 +2616,15 @@ export default function PlayerScreen() {
             focusable
             style={styles.tvZoneCenter}
             onBlur={() => setTvZoneFocused(null)}
-            onFocus={() => setTvZoneFocused('center')}
+            onFocus={() => {
+              // Channel browser is open — bounce focus straight back into the
+              // overlay so D-pad can't reach the player zones behind it.
+              if (showChannelMenuRef.current) {
+                setTimeout(() => channelMenuFocusRef.current?.(), 50);
+                return;
+              }
+              setTvZoneFocused('center');
+            }}
             onPress={() => {
               if (Platform.isTV) {
                 // Fire TV: OK toggles the OSD info bar.
@@ -2635,6 +2652,12 @@ export default function PlayerScreen() {
             onPress={showInfo ? dismissInfoBar : () => showInfoBar()}
             onBlur={() => setTvZoneFocused(null)}
             onFocus={() => {
+              // Channel browser is open — bounce focus straight back into the
+              // overlay so D-pad can't reach the player zones behind it.
+              if (showChannelMenuRef.current) {
+                setTimeout(() => channelMenuFocusRef.current?.(), 50);
+                return;
+              }
               setTvZoneFocused('right');
               // OSD is user-pinned: keep focus on the centre zone (nav cards removed).
               if (infoBarUserInvokedRef.current && showInfoRef.current) {
@@ -3001,6 +3024,7 @@ export default function PlayerScreen() {
           epgMap={epgMap}
           onSelectChannel={handleMenuSelectChannel}
           onClose={handleMenuClose}
+          focusCallbackRef={channelMenuFocusRef}
         />
       )}
 
