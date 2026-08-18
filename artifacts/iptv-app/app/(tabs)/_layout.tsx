@@ -147,6 +147,7 @@ function NavItem({
       onBlur={() => setFocused(false)}
       style={[
         styles.navItem,
+        Platform.isTV && styles.navItemTV,
         active && styles.navItemActive,
         focused && styles.navItemFocused,
       ]}
@@ -243,7 +244,7 @@ function Sidebar({ state, descriptors, navigation }: SidebarProps) {
   return (
     <View style={[styles.sidebar, { paddingTop: insets.top + 16, paddingLeft: insets.left }]}>
       {/* Brand */}
-      <View style={styles.brand}>
+      <View style={[styles.brand, Platform.isTV && styles.brandTV]}>
         <View style={styles.brandIcon}><Text style={styles.brandPlay}>▶</Text></View>
         <View>
           <Text style={styles.brandName}>StreamVault</Text>
@@ -282,7 +283,7 @@ function Sidebar({ state, descriptors, navigation }: SidebarProps) {
       </ScrollView>
 
       {/* Footer — real server health indicator */}
-      <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
+      <View style={[styles.footer, { paddingBottom: insets.bottom + (Platform.isTV ? 8 : 16) }]}>
         <View style={[styles.footerDot, { backgroundColor: dotColor }]} />
         <Text style={styles.footerText}>{statusLabel}</Text>
       </View>
@@ -371,6 +372,9 @@ const styles = StyleSheet.create({
     gap: 10, paddingVertical: 10, paddingHorizontal: 12,
     borderRadius: 10, position: 'relative',
   },
+  // TV: sidebar scrolling is disabled, so all items must fit ~540dp — tighter rows.
+  navItemTV: { paddingVertical: 7 },
+  brandTV: { paddingBottom: 12, marginBottom: 4 },
   navItemActive: { backgroundColor: 'rgba(59,130,246,0.12)' },
   navItemFocused: {
     borderWidth: 2,
