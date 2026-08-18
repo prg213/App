@@ -52,9 +52,10 @@ interface CardProps {
   colors: ReturnType<typeof useColors>;
   onWatchFullscreen: (ch: Channel, channels: Channel[], index: number, cardRef: React.RefObject<View | null>) => void;
   onRemove: (id: string) => void;
+  onCardFocus?: () => void;
 }
 
-function RecentCard({ item, index, channels, nowTitle, colors, onWatchFullscreen, onRemove }: CardProps) {
+function RecentCard({ item, index, channels, nowTitle, colors, onWatchFullscreen, onRemove, onCardFocus }: CardProps) {
   const cardRef = useRef<View>(null);
   const ch = toChannel(item);
 
@@ -64,6 +65,7 @@ function RecentCard({ item, index, channels, nowTitle, colors, onWatchFullscreen
       style={styles.card}
       // TV: LEFT on the first card jumps to the sidebar nav menu
       nextFocusLeft={Platform.isTV && index === 0 ? sidebarNav.handle : undefined}
+      onFocus={onCardFocus}
       onPress={() => onWatchFullscreen(ch, channels, index, cardRef)}
       onLongPress={() => onRemove(item.id)}
       delayLongPress={500}
@@ -108,6 +110,10 @@ export function RecentChannelsRail({
   const colors = useColors();
   const [recent, setRecent] = useState<RecentChannel[]>([]);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+  // TV: glide the rail so the focused card stays in view (Fire OS doesn't
+  // reliably auto-scroll virtualized horizontal lists on D-pad focus moves).
+  const listRef = useRef<FlatList<RecentChannel>>(null);
+  const CARD_STRIDE = 88 + 8; // card width + list gap
 
   useFocusEffect(
     useCallback(() => {
@@ -153,10 +159,12 @@ export function RecentChannelsRail({
         </FocusablePressable>
       </View>
       <FlatList
+        ref={listRef}
         data={recent}
         horizontal
         keyExtractor={(item) => item.id}
         showsHorizontalScrollIndicator={false}
+        getItemLayout={(_, i) => ({ length: CARD_STRIDE, offset: CARD_STRIDE * i, index: i })}
         contentContainerStyle={styles.list}
         renderItem={({ item, index }) => {
           const epgKey = item.epgId ?? item.id;
@@ -173,6 +181,9 @@ export function RecentChannelsRail({
               colors={colors}
               onWatchFullscreen={onWatchFullscreen}
               onRemove={handleRemove}
+              onCardFocus={Platform.isTV ? () => {
+                try { listRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.35 }); } catch {}
+              } : undefined}
             />
           );
         }}

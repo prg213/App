@@ -48,12 +48,14 @@ const MovieBanner = React.memo(React.forwardRef(function MovieBanner({
   onPress,
   nextFocusLeft,
   cardStyle,
+  onCardFocus,
 }: {
   movie: Movie;
   colors: ReturnType<typeof useColors>;
   onPress: () => void;
   nextFocusLeft?: number | null;
   cardStyle?: any;
+  onCardFocus?: () => void;
 }, ref: React.Ref<View>) {
   return (
     // bannerOuter: dimensions + borderRadius for the focus ring — NO overflow:hidden.
@@ -65,6 +67,7 @@ const MovieBanner = React.memo(React.forwardRef(function MovieBanner({
       style={cardStyle ?? styles.bannerOuter}
       focusedStyle={styles.bannerFocused}
       nextFocusLeft={nextFocusLeft}
+      onFocus={onCardFocus}
       onPress={onPress}
     >
       <View style={styles.bannerClip}>
@@ -103,18 +106,21 @@ const SeriesBanner = React.memo(function SeriesBanner({
   onPress,
   nextFocusLeft,
   cardStyle,
+  onCardFocus,
 }: {
   series: Series;
   colors: ReturnType<typeof useColors>;
   onPress: () => void;
   nextFocusLeft?: number | null;
   cardStyle?: any;
+  onCardFocus?: () => void;
 }) {
   return (
     <FocusablePressable
       style={cardStyle ?? styles.bannerOuter}
       focusedStyle={styles.bannerFocused}
       nextFocusLeft={nextFocusLeft}
+      onFocus={onCardFocus}
       onPress={onPress}
     >
       <View style={styles.bannerClip}>
@@ -225,6 +231,21 @@ export default function HomeScreen() {
   // card.  useFocusEffect calls .focus() every time the Home tab becomes the
   // active screen.
   const firstItemRef = useRef<View>(null);
+
+  // ── TV carousels: keep the focused card in view ───────────────────────────
+  // Fire OS's native focus engine doesn't reliably scroll a virtualized
+  // horizontal FlatList as D-pad focus moves; drive it ourselves on card
+  // focus so rows glide like a proper TV carousel (focused card kept near
+  // the left third of the row).
+  const cwListRef     = useRef<FlatList<WatchHistoryEntry>>(null);
+  const movieListRef  = useRef<FlatList<Movie>>(null);
+  const seriesListRef = useRef<FlatList<Series>>(null);
+  const scrollRowToIndex = useCallback((listRef: React.RefObject<FlatList<any> | null>, index: number) => {
+    if (!Platform.isTV) return;
+    try {
+      listRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.35 });
+    } catch {}
+  }, []);
 
   // ── Watch history (for Continue Watching rail) ─────────────────────────────
   const [watchHistory, setWatchHistory] = useState<WatchHistoryEntry[]>([]);
@@ -437,6 +458,7 @@ export default function HomeScreen() {
         focusedStyle={styles.bannerFocused}
         // TV: LEFT on the first card jumps to the sidebar nav menu
         nextFocusLeft={Platform.isTV && index === 0 ? sidebarNav.handle : undefined}
+        onFocus={() => scrollRowToIndex(cwListRef, index)}
         onPress={() => handleHistoryItemPress(item)}
       >
         {/* Inner clip view separates overflow:hidden from the focus borderWidth
@@ -465,7 +487,7 @@ export default function HomeScreen() {
         </View>
       </FocusablePressable>
     );
-  }, [colors, handleHistoryItemPress, movieProgressMap, seriesProgressMap]);
+  }, [colors, handleHistoryItemPress, movieProgressMap, seriesProgressMap, scrollRowToIndex]);
 
   const renderMovie = useCallback(({ item, index }: { item: Movie; index: number }) => (
     // First movie card carries the TV focus ref now that the hero banner is
@@ -476,9 +498,10 @@ export default function HomeScreen() {
       colors={colors}
       cardStyle={Platform.isTV ? styles.tvBannerOuter : undefined}
       nextFocusLeft={Platform.isTV && index === 0 ? sidebarNav.handle : undefined}
+      onCardFocus={() => scrollRowToIndex(movieListRef, index)}
       onPress={() => handleMoviePress(item)}
     />
-  ), [colors, handleMoviePress]);
+  ), [colors, handleMoviePress, scrollRowToIndex]);
 
   const renderSeries = useCallback(({ item, index }: { item: Series; index: number }) => (
     <SeriesBanner
@@ -486,9 +509,10 @@ export default function HomeScreen() {
       colors={colors}
       cardStyle={Platform.isTV ? styles.tvBannerOuter : undefined}
       nextFocusLeft={Platform.isTV && index === 0 ? sidebarNav.handle : undefined}
+      onCardFocus={() => scrollRowToIndex(seriesListRef, index)}
       onPress={() => handleSeriesPress(item)}
     />
-  ), [colors, handleSeriesPress]);
+  ), [colors, handleSeriesPress, scrollRowToIndex]);
 
   if (!isXtream) {
     return (
@@ -528,6 +552,10 @@ export default function HomeScreen() {
         {continueWatchingItems.length > 0 && (
           <Section title="Continue Watching" isLoading={false} colors={colors} tv>
             <FlatList
+              ref={cwListRef}
+              onScrollToIndexFailed={(info) => {
+                try { cwListRef.current?.scrollToOffset({ offset: info.averageItemLength * info.index, animated: true }); } catch {}
+              }}
               data={continueWatchingItems}
               keyExtractor={(e) => e.id}
               renderItem={renderContinueWatching}
@@ -544,6 +572,10 @@ export default function HomeScreen() {
 
         <Section title="Latest Movies" isLoading={moviesLoading} colors={colors} tv>
           <FlatList
+            ref={movieListRef}
+            onScrollToIndexFailed={(info) => {
+              try { movieListRef.current?.scrollToOffset({ offset: info.averageItemLength * info.index, animated: true }); } catch {}
+            }}
             data={latestMovies}
             keyExtractor={(m) => m.id}
             renderItem={renderMovie}
@@ -559,6 +591,10 @@ export default function HomeScreen() {
 
         <Section title="Latest TV Shows" isLoading={seriesLoading} colors={colors} tv>
           <FlatList
+            ref={seriesListRef}
+            onScrollToIndexFailed={(info) => {
+              try { seriesListRef.current?.scrollToOffset({ offset: info.averageItemLength * info.index, animated: true }); } catch {}
+            }}
             data={latestSeries}
             keyExtractor={(s) => s.id}
             renderItem={renderSeries}
