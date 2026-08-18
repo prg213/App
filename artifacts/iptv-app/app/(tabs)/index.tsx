@@ -1382,6 +1382,23 @@ export default function LiveTVScreen() {
     setShowCatchup(true);
   }, []);
 
+  // Stable callbacks for TVLiveLayout — inline arrow functions would be new
+  // references on every render, which can contribute to update-depth crashes
+  // when the component tree is re-evaluating effects.
+  const handleOpenCatchup = useCallback(() => {
+    setCatchupInitialProg(null);
+    setShowCatchup(true);
+  }, []);
+
+  const handleCatchupFocusChange = useCallback((focused: boolean) => {
+    catchupFocusedRef.current = focused;
+  }, []);
+
+  const handleTVCloseCatchup = useCallback(() => {
+    setShowCatchup(false);
+    setCatchupInitialProg(null);
+  }, []);
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   // On Fire TV / Android TV use the 3-panel D-pad layout.
@@ -1399,7 +1416,7 @@ export default function LiveTVScreen() {
           selectedChannel={selectedChannel}
           onChannelSelect={handleSelectChannel}
           onWatchFullscreen={handleTVWatch}
-          onOpenCatchup={() => { setCatchupInitialProg(null); setShowCatchup(true); }}
+          onOpenCatchup={handleOpenCatchup}
           onOpenCatchupProg={handleTVCatchupProg}
           nowPlayingMap={nowPlayingMap}
           colors={colors}
@@ -1409,7 +1426,7 @@ export default function LiveTVScreen() {
           isBuffering={isBuffering}
           hasError={hasError}
           miniPlayerRef={miniPlayerRef}
-          onCatchupFocusChange={(focused) => { catchupFocusedRef.current = focused; }}
+          onCatchupFocusChange={handleCatchupFocusChange}
           highlightedChNodeRef={highlightedChNodeRef}
         />
         {showCatchup && selectedChannel && creds && (
@@ -1420,7 +1437,7 @@ export default function LiveTVScreen() {
             creds={creds}
             epgMap={epgMap}
             initialProg={catchupInitialProg ?? undefined}
-            onClose={() => { setShowCatchup(false); setCatchupInitialProg(null); }}
+            onClose={handleTVCloseCatchup}
           />
         )}
       </View>

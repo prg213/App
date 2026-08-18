@@ -121,10 +121,15 @@ describe('CatchupSheet — close button TV focus (#259)', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('CatchupSheet — nowTs is a stable snapshot (#259)', () => {
-  it('captures nowTs as a const before the programme map so all rows use the same timestamp', () => {
-    // Must be assigned once via `Date.now()`, not called inside the map
-    // callback where it could drift between rows and produce inconsistent focus.
-    expect(src).toMatch(/const\s+nowTs\s*=\s*Date\.now\(\)/);
+  it('keeps nowTs in state (not a render-body Date.now() call) so memos do not recompute every frame', () => {
+    // nowTs must come from useState so that firstPlayableIndex / lastPlayableIndex
+    // memos are stable between renders.  A bare `Date.now()` in render would
+    // change every millisecond, defeating useMemo caching and producing new
+    // inline ref-callback closures on every render — the root cause of the
+    // "Maximum update depth exceeded" crash when the catchup sheet mounts.
+    expect(src).toMatch(/useState\s*\(\s*Date\.now\s*\)/);
+    // The interval that refreshes it must also be present.
+    expect(src).toMatch(/setInterval\s*\(\s*\(\s*\)\s*=>\s*setNowTs\s*\(\s*Date\.now\s*\(\s*\)\s*\)/);
   });
 });
 

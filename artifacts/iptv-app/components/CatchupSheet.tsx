@@ -148,7 +148,17 @@ export function CatchupSheet({
   });
 
   const isToday = isSameDay(selectedDay, todayMidnight);
-  const nowTs = Date.now();
+  // Keep nowTs in state (updated every 60 s) so that firstPlayableIndex /
+  // lastPlayableIndex memos don't recompute on every render.  A plain
+  // `Date.now()` call in the render body changes every millisecond, which
+  // defeats useMemo caching and creates new inline ref-callback functions on
+  // every render — a key contributor to the "Maximum update depth exceeded"
+  // crash on TV when the sheet mounts.
+  const [nowTs, setNowTs] = useState(Date.now);
+  useEffect(() => {
+    const t = setInterval(() => setNowTs(Date.now()), 60_000);
+    return () => clearInterval(t);
+  }, []);
 
   // Programmes for the selected day
   const programmes = useMemo<CatchupProgram[]>(() => {
