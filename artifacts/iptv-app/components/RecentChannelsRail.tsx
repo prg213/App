@@ -9,6 +9,13 @@ import {
 } from 'react-native';
 import { sidebarNav } from '@/lib/sidebarNav';
 import { tvRowNav } from '@/lib/tvRowNav';
+import {
+  RAIL_TV_PADDING_TOP_EXTRA,
+  RAIL_TV_PADDING_BOTTOM,
+  RAIL_TV_HEADER_MARGIN_BOTTOM,
+  RAIL_TV_HEADER_FONT_SIZE,
+  RAIL_TV_CARD_HEIGHT,
+} from '@/lib/tvHomeLayout';
 import { useFocusEffect } from 'expo-router';
 import { FocusablePressable } from '@/components/FocusablePressable';
 import { useColors } from '@/hooks/useColors';
@@ -151,7 +158,7 @@ export function RecentChannelsRail({
         // TV dashboard: keep this strip as slim as possible — every saved
         // pixel goes to the poster rows below.
         Platform.isTV && styles.containerTV,
-        { borderBottomColor: colors.border, paddingTop: topInset + (Platform.isTV ? 2 : 8) },
+        { borderBottomColor: colors.border, paddingTop: topInset + (Platform.isTV ? RAIL_TV_PADDING_TOP_EXTRA : 8) },
       ]}
     >
       <View style={[styles.sectionHeader, Platform.isTV && styles.sectionHeaderTV]}>
@@ -212,8 +219,8 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   containerTV: {
-    paddingTop: 2,
-    paddingBottom: 4,
+    paddingTop: RAIL_TV_PADDING_TOP_EXTRA,
+    paddingBottom: RAIL_TV_PADDING_BOTTOM,
     // Hard cap so the rail can never consume more than ~100dp regardless of
     // content changes (e.g. a future EPG subtitle line or taller logo card).
     // The flex poster-row sections below always get the remaining height.
@@ -222,7 +229,7 @@ const styles = StyleSheet.create({
     maxHeight: 100,
   },
   sectionHeaderTV: {
-    marginBottom: 4,
+    marginBottom: RAIL_TV_HEADER_MARGIN_BOTTOM,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -232,7 +239,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   sectionTitle: {
-    fontSize: 9,
+    fontSize: RAIL_TV_HEADER_FONT_SIZE,
     fontFamily: 'Inter_600SemiBold',
     letterSpacing: 1.5,
     paddingHorizontal: 12,
@@ -247,7 +254,7 @@ const styles = StyleSheet.create({
 
   logoWrap: {
     width: 88,
-    height: 50,           // ≈ 16:9
+    height: RAIL_TV_CARD_HEIGHT,  // ≈ 16:9
     borderRadius: 6,
     overflow: 'hidden',
     justifyContent: 'center',

@@ -398,13 +398,17 @@ describe('TV Home layout — vertical budget audit', () => {
   });
 
   it('containerTV in RecentChannelsRail has compact padding so the rail stays slim', () => {
-    const block = railSrc.match(/containerTV:\s*\{[^}]+\}/)?.[0] ?? '';
+    // The style values are now driven by exported constants in lib/tvHomeLayout.ts.
+    // Import the constants directly so a future numeric change updates both the
+    // style and this assertion in lockstep.
+    const {
+      RAIL_TV_PADDING_TOP_EXTRA,
+      RAIL_TV_PADDING_BOTTOM,
+    } = require('../lib/tvHomeLayout');
     // paddingTop must be ≤ 4 and paddingBottom must be ≤ 6 so the rail
     // does not consume too much of the 540dp viewport
-    const pt = parseInt(block.match(/paddingTop\s*:\s*(\d+)/)?.[1] ?? '99');
-    const pb = parseInt(block.match(/paddingBottom\s*:\s*(\d+)/)?.[1] ?? '99');
-    expect(pt).toBeLessThanOrEqual(4);
-    expect(pb).toBeLessThanOrEqual(6);
+    expect(RAIL_TV_PADDING_TOP_EXTRA).toBeLessThanOrEqual(4);
+    expect(RAIL_TV_PADDING_BOTTOM).toBeLessThanOrEqual(6);
   });
 
   it('focus ring borderWidth is at least 3dp for TV couch-distance visibility', () => {
@@ -414,8 +418,9 @@ describe('TV Home layout — vertical budget audit', () => {
   });
 
   it('TV section title font is at least 14dp for couch-distance legibility', () => {
-    const block = homeSrc.match(/tvSectionTitle:\s*\{[^}]+\}/)?.[0] ?? '';
-    const fs = parseInt(block.match(/fontSize\s*:\s*(\d+)/)?.[1] ?? '0');
-    expect(fs).toBeGreaterThanOrEqual(14);
+    // fontSize is now driven by the exported constant TV_SECTION_TITLE_FONT_SIZE
+    // in lib/tvHomeLayout.ts — assert against the constant directly.
+    const { TV_SECTION_TITLE_FONT_SIZE } = require('../lib/tvHomeLayout');
+    expect(TV_SECTION_TITLE_FONT_SIZE).toBeGreaterThanOrEqual(14);
   });
 });

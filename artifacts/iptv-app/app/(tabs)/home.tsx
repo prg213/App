@@ -28,6 +28,14 @@ import {
 import { StorageService } from '@/services/storage';
 import { buildMovieProgressMap, buildSeriesProgressMap } from '@/utils/progressMap';
 import { RecentChannelsRail } from '@/components/RecentChannelsRail';
+import {
+  TV_ROOT_PADDING_TOP,
+  TV_ROOT_PADDING_BOTTOM,
+  TV_SECTION_MARGIN_TOP,
+  TV_SECTION_HEADER_MARGIN_BOTTOM,
+  TV_SECTION_TITLE_FONT_SIZE,
+  TV_BANNER_LIST_PADDING_VERTICAL,
+} from '@/lib/tvHomeLayout';
 import { sidebarNav } from '@/lib/sidebarNav';
 import { tvRowNav } from '@/lib/tvRowNav';
 import { useBackHandler } from '@/hooks/useBackHandler';
@@ -782,23 +790,23 @@ const styles = StyleSheet.create({
 
   // ── TV fixed dashboard ──
   tvRoot: {
-    paddingTop: 4,
-    paddingBottom: 8,
+    paddingTop: TV_ROOT_PADDING_TOP,
+    paddingBottom: TV_ROOT_PADDING_BOTTOM,
   },
   tvSection: {
     flex: 1,
     minHeight: 0,
-    marginTop: 4,
+    marginTop: TV_SECTION_MARGIN_TOP,
   },
   tvSectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     paddingHorizontal: 14,
-    marginBottom: 3,
+    marginBottom: TV_SECTION_HEADER_MARGIN_BOTTOM,
   },
   // TV couch-distance legibility: minimum 15dp so text is readable from ~10 ft
-  tvSectionTitle: { fontSize: 15, fontFamily: 'Inter_700Bold' },
+  tvSectionTitle: { fontSize: TV_SECTION_TITLE_FONT_SIZE, fontFamily: 'Inter_700Bold' },
   tvSectionSub: { fontSize: 12, fontFamily: 'Inter_400Regular' },
   tvSectionBody: { flex: 1, minHeight: 0 },
   tvLoadingRow: { flex: 1, justifyContent: 'center', alignItems: 'center' },
@@ -807,7 +815,7 @@ const styles = StyleSheet.create({
   // clearance so it is not flush against the FlatList clip boundary.
   // At 720p (~640dp usable) with all 4 sections the body is ~154dp before
   // this inset and ~148dp after — well above the ~80dp legibility floor.
-  tvBannerList: { paddingHorizontal: 14, paddingVertical: 3, gap: 8, alignItems: 'stretch' },
+  tvBannerList: { paddingHorizontal: 14, paddingVertical: TV_BANNER_LIST_PADDING_VERTICAL, gap: 8, alignItems: 'stretch' },
   // Card fills its row's height (minus the 3dp inset on each side);
   // width follows from the banner aspect ratio.
   tvBannerOuter: {
