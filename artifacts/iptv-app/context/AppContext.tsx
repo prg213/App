@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
+import { useQueryClient } from '@tanstack/react-query';
 import { getDeviceMac } from '@/services/macAddress';
 import { StorageService } from '@/services/storage';
 import { clearTmdbTrailerCache } from '@/services/tmdb';
@@ -8,7 +9,10 @@ import { resetSessionPushFailures } from '@/services/favoritesSync';
 import { resetChannelMenuState } from '@/components/LiveChannelMenu';
 import { resetEpgScrollState } from '@/services/epgScrollState';
 import type { Credentials } from '@/types';
+import type { EpgProgram } from '@/types';
 import { resetEpgFilterState } from '@/services/epgFilterState';
+import { fetchAndParseXmltv } from '@/services/epgService';
+import { getXtreamXmltvUrl } from '@/services/xtreamApi';
 
 export type LogoutReason = 'deactivated' | null;
 
@@ -64,6 +68,7 @@ export function AppContextProvider({ children }: { children: React.ReactNode }) 
   const [isLoading, setIsLoading] = useState(true);
   const [isActivated, setIsActivated] = useState(false);
   const [credentials, setCredentials] = useState<Credentials | null>(null);
+  const queryClient = useQueryClient();
   const [deviceMac, setDeviceMac] = useState('');
   const [lastWatchedUrl, setLastWatchedUrl] = useState<string | null>(null);
 
@@ -71,6 +76,28 @@ export function AppContextProvider({ children }: { children: React.ReactNode }) 
   // needing to be re-registered every time they change.
   const isActivatedRef = useRef(false);
   const deviceMacRef = useRef('');
+
+  // ── EPG prefetch — warm the cache as soon as credentials are available ────
+  // Uses the identical query key + staleTime as guide.tsx so the Guide screen
+  // finds data already cached and renders without any loading delay.
+  useEffect(() => {
+    if (!credentials || credentials.type !== 'xtream') return;
+    const xtreamCreds = {
+      host: credentials.host!,
+      username: credentials.username!,
+      password: credentials.password!,
+    };
+    const xmltvUrl = getXtreamXmltvUrl(xtreamCreds);
+    queryClient.prefetchQuery({
+      queryKey: ['xmltv-epg', credentials],
+      queryFn: ({ signal }) => {
+        const previous = queryClient.getQueryData<Map<string, EpgProgram[]>>(['xmltv-epg', credentials]);
+        return fetchAndParseXmltv(xmltvUrl, signal, previous);
+      },
+      staleTime: 30 * 60_000,
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [credentials]);
 
   // ── Periodic interval ref — defined early so doLogout can clear it ────────
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);

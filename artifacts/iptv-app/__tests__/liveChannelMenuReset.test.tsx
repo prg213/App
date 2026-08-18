@@ -82,9 +82,21 @@ jest.mock('expo-image', () => {
 });
 
 // ── @tanstack/react-query ──────────────────────────────────────────────────────
-jest.mock('@tanstack/react-query', () => ({
-  useQuery: jest.fn(() => ({ data: [], isLoading: false })),
-}));
+jest.mock('@tanstack/react-query', () => {
+  const React = require('react');
+  // Minimal QueryClient stub — only the methods AppContextProvider calls.
+  function QueryClient() { this._cache = {}; }
+  QueryClient.prototype.prefetchQuery  = jest.fn();
+  QueryClient.prototype.getQueryData   = jest.fn(() => undefined);
+  // QueryClientProvider just renders children (no real context needed in these tests).
+  const QueryClientProvider = ({ children }: any) => children;
+  return {
+    useQuery:         jest.fn(() => ({ data: [], isLoading: false })),
+    useQueryClient:   jest.fn(() => new QueryClient()),
+    QueryClient,
+    QueryClientProvider,
+  };
+});
 
 // ── FocusablePressable ─────────────────────────────────────────────────────────
 jest.mock('@/components/FocusablePressable', () => {
@@ -171,6 +183,7 @@ jest.mock('@/services/storage', () => ({
 import React from 'react';
 import { act, create } from 'react-test-renderer';
 import * as SecureStore from 'expo-secure-store';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import {
   resetChannelMenuState,
@@ -238,12 +251,15 @@ async function renderProvider() {
     return null;
   }
 
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   let renderer: ReturnType<typeof create>;
   await act(async () => {
     renderer = create(
-      <AppContextProvider>
-        <Consumer />
-      </AppContextProvider>,
+      <QueryClientProvider client={qc}>
+        <AppContextProvider>
+          <Consumer />
+        </AppContextProvider>
+      </QueryClientProvider>,
     );
   });
   await act(async () => {});

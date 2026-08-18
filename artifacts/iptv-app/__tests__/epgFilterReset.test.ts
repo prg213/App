@@ -85,6 +85,7 @@ jest.mock('@/services/storage', () => ({
 import React from 'react';
 import { act, create } from 'react-test-renderer';
 import * as SecureStore from 'expo-secure-store';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import {
   resetEpgFilterState,
@@ -147,11 +148,14 @@ async function renderProvider() {
     return null;
   }
 
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   let renderer: ReturnType<typeof create>;
   await act(async () => {
     renderer = create(
-      React.createElement(AppContextProvider, null,
-        React.createElement(Consumer),
+      React.createElement(QueryClientProvider, { client: qc },
+        React.createElement(AppContextProvider, null,
+          React.createElement(Consumer),
+        ),
       ),
     );
   });

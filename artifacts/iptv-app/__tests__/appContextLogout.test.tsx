@@ -83,6 +83,7 @@ import React, { useRef } from 'react';
 import { act, create } from 'react-test-renderer';
 import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { AppContextProvider, useAppContext } from '../context/AppContext';
 
@@ -144,12 +145,15 @@ async function renderProvider() {
     return null;
   }
 
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   let renderer: ReturnType<typeof create>;
   await act(async () => {
     renderer = create(
-      <AppContextProvider>
-        <Consumer />
-      </AppContextProvider>,
+      <QueryClientProvider client={qc}>
+        <AppContextProvider>
+          <Consumer />
+        </AppContextProvider>
+      </QueryClientProvider>,
     );
   });
   // Flush remaining microtasks (Promise chains inside useEffect).
