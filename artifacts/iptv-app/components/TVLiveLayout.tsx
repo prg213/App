@@ -81,6 +81,17 @@ export interface TVLiveLayoutProps {
    * for the fullscreen ↔ mini-player animation on TV.
    */
   miniPlayerRef?: React.RefObject<View | null>;
+  /**
+   * TV only — called when the Catch-up TV row gains or loses focus so the
+   * parent's BACK handler can redirect focus to the channel list instead of
+   * clearing the channel selection.
+   */
+  onCatchupFocusChange?: (focused: boolean) => void;
+  /**
+   * TV only — written by TVLiveLayout with the currently-highlighted channel's
+   * View node so the parent's BACK handler can requestTvFocus on it.
+   */
+  highlightedChNodeRef?: React.MutableRefObject<View | null>;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -107,6 +118,8 @@ export function TVLiveLayout({
   nowPlayingMap,
   colors,
   insets,
+  onCatchupFocusChange,
+  highlightedChNodeRef,
   player,
   videoKey,
   isBuffering,
@@ -171,11 +184,15 @@ export function TVLiveLayout({
     let h: number | null = null;
     try { h = node ? findNodeHandle(node) : null; } catch {}
     setHighlightedChHandle(h);
+    // Expose highlighted channel node to the parent (for BACK handler).
+    if (highlightedChNodeRef) {
+      highlightedChNodeRef.current = node ?? null;
+    }
     // Wire preview box LEFT → highlighted channel
     if (h != null) {
       try { (miniPlayerRef?.current as any)?.setNativeProps?.({ nextFocusLeft: h }); } catch {}
     }
-  }, [highlightedChId, miniPlayerRef]);
+  }, [highlightedChId, miniPlayerRef, highlightedChNodeRef]);
 
   // Scroll the channel list to the selected channel when it is set from outside
   // (e.g. returning from recently-watched on the Home screen).  Also depends on
@@ -547,6 +564,10 @@ export function TVLiveLayout({
                 accessibilityLabel="Open catch-up TV"
                 focusedStyle={styles.focusedItem}
                 style={[styles.catchupRow, { backgroundColor: colors.card, borderColor: colors.border }]}
+                // TV LEFT / BACK: go back to the highlighted channel
+                nextFocusLeft={highlightedChHandle ?? undefined}
+                onFocus={() => onCatchupFocusChange?.(true)}
+                onBlur={() => onCatchupFocusChange?.(false)}
                 onPress={onOpenCatchup}
               >
                 <Text style={styles.catchupIcon}>📼</Text>

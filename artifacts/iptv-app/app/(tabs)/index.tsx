@@ -770,6 +770,11 @@ export default function LiveTVScreen() {
   // Clear channel filter whenever the user switches category
   useEffect(() => { setChannelFilter(''); }, [selectedCatId]);
 
+  // TV only — track whether the Catch-up TV row is focused so the BACK handler
+  // can redirect focus to the channel instead of clearing the selection.
+  const catchupFocusedRef   = useRef(false);
+  const highlightedChNodeRef = useRef<View | null>(null);
+
   // Hardware BACK: pop through active states one level at a time.
   // useBackHandler (via useFocusEffect) ensures this is only active while Live TV is focused —
   // fixing the previous plain-useEffect bug that registered the handler on every tab.
@@ -778,6 +783,12 @@ export default function LiveTVScreen() {
     if (showCatchup) { setShowCatchup(false); return true; }
     if (channelFilter.trim()) { setChannelFilter(''); Keyboard.dismiss(); return true; }
     if (catSearch.trim()) { setCatSearch(''); return true; }
+    // TV: BACK from the catchup row should move focus back to the channel,
+    // not dismiss the entire preview panel.
+    if (Platform.isTV && catchupFocusedRef.current && highlightedChNodeRef.current) {
+      requestTvFocus(highlightedChNodeRef.current);
+      return true;
+    }
     if (selectedChannel) { setPlayingChannel(null); setSelectedChannel(null); return true; }
     return false; // let global handler focus the sidebar
   });
@@ -1398,6 +1409,8 @@ export default function LiveTVScreen() {
           isBuffering={isBuffering}
           hasError={hasError}
           miniPlayerRef={miniPlayerRef}
+          onCatchupFocusChange={(focused) => { catchupFocusedRef.current = focused; }}
+          highlightedChNodeRef={highlightedChNodeRef}
         />
         {showCatchup && selectedChannel && creds && (
           <CatchupSheet
