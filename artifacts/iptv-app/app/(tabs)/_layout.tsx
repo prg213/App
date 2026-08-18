@@ -124,6 +124,7 @@ function NavItem({
   active,
   isFirst,
   firstRef,
+  nodeRef,
   onPress,
   badgeCount,
 }: {
@@ -131,13 +132,20 @@ function NavItem({
   active: boolean;
   isFirst: boolean;
   firstRef: React.RefObject<RNView | null>;
+  /** Per-item ref used on TV to wire D-pad nextFocus constraints. */
+  nodeRef?: React.RefObject<RNView | null>;
   onPress: () => void;
   badgeCount: number;
 }) {
   const [focused, setFocused] = useState(false);
+  // Combine firstRef + nodeRef so both are satisfied by one Pressable ref.
+  const combinedRef = (el: RNView | null) => {
+    if (isFirst && firstRef) (firstRef as React.MutableRefObject<RNView | null>).current = el;
+    if (nodeRef) (nodeRef as React.MutableRefObject<RNView | null>).current = el;
+  };
   return (
     <Pressable
-      ref={isFirst ? firstRef : undefined}
+      ref={combinedRef as any}
       focusable
       accessible
       accessibilityRole="button"
@@ -187,6 +195,41 @@ function Sidebar({ state, descriptors, navigation }: SidebarProps) {
   const serverStatus = useServerStatus();
   const upcomingReminderCount = useUpcomingReminderCount();
   const firstNavRef = useRef<RNView>(null);
+
+  // TV D-pad constraints for the sidebar:
+  // ─ LEFT   → nothing (sidebar is leftmost; pin to self)
+  // ─ UP     → nothing on first item; navigate up elsewhere
+  // ─ DOWN   → nothing on last item; navigate down elsewhere
+  // ─ RIGHT  → handled per-screen (sidebarNav.handle wiring)
+  // ─ OK     → works as-is
+  // We keep one ref per visible nav item and wire them after mount.
+  const navItemRefs = useRef<(RNView | null)[]>([]);
+  // Number of routes that will actually render a NavItem (exclude unknown).
+  const visibleCount = state.routes.filter((r) => NAV.find((n) => n.name === r.name)).length;
+
+  // Wire TV D-pad constraints: runs after every render so newly-mounted items
+  // are always wired, and stale handles from a previous route set are replaced.
+  useEffect(() => {
+    if (!Platform.isTV) return;
+    const handles = navItemRefs.current.map((node) => {
+      try { return findNodeHandle(node); } catch { return null; }
+    }).filter((h): h is number => h !== null);
+    if (handles.length === 0) return;
+
+    navItemRefs.current.forEach((node, i) => {
+      if (!node) return;
+      try {
+        node.setNativeProps({
+          // LEFT → always pin to self (nowhere to go; sidebar is leftmost)
+          nextFocusLeft: handles[i],
+          // UP → pin to self on first item; previous item otherwise
+          nextFocusUp: i === 0 ? handles[0] : handles[i - 1] ?? handles[i],
+          // DOWN → pin to self on last item; next item otherwise
+          nextFocusDown: i === handles.length - 1 ? handles[i] : handles[i + 1] ?? handles[i],
+        });
+      } catch {}
+    });
+  });
 
   // Register sidebarNav.focus so per-screen BackHandlers can return focus to
   // the sidebar when the user presses BACK from inside a screen's content.
@@ -260,26 +303,45 @@ function Sidebar({ state, descriptors, navigation }: SidebarProps) {
         bounces={false}
         scrollEnabled={!Platform.isTV}
       >
-        {state.routes.map((route, i) => {
-          const active = state.index === i;
-          const item = NAV.find((n) => n.name === route.name);
-          if (!item) return null;
-          const badgeCount = item.name === 'reminders' ? upcomingReminderCount : 0;
-          return (
-            <NavItem
-              key={route.key}
-              item={item}
-              active={active}
-              isFirst={i === 0}
-              firstRef={firstNavRef}
-              badgeCount={badgeCount}
-              onPress={() => {
-                const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
-                if (!event.defaultPrevented) navigation.navigate(route.name);
-              }}
-            />
-          );
-        })}
+        {(() => {
+          // Track a separate visible-item index so navItemRefs stays dense
+          // (only items that actually render get a slot).
+          let visibleIdx = 0;
+          return state.routes.map((route, i) => {
+            const active = state.index === i;
+            const item = NAV.find((n) => n.name === route.name);
+            if (!item) return null;
+            const slotIdx = visibleIdx++;
+            // Ensure the refs array is long enough.
+            if (!navItemRefs.current[slotIdx]) navItemRefs.current[slotIdx] = null;
+            // Stable per-slot ref object stored on the array itself so React
+            // doesn't create a new object on every render.
+            if (!(navItemRefs as any)._refs) (navItemRefs as any)._refs = [];
+            if (!(navItemRefs as any)._refs[slotIdx]) {
+              (navItemRefs as any)._refs[slotIdx] = {
+                get current() { return navItemRefs.current[slotIdx]; },
+                set current(v) { navItemRefs.current[slotIdx] = v; },
+              };
+            }
+            const slotRef = (navItemRefs as any)._refs[slotIdx] as React.RefObject<RNView | null>;
+            const badgeCount = item.name === 'reminders' ? upcomingReminderCount : 0;
+            return (
+              <NavItem
+                key={route.key}
+                item={item}
+                active={active}
+                isFirst={slotIdx === 0}
+                firstRef={firstNavRef}
+                nodeRef={Platform.isTV ? slotRef : undefined}
+                badgeCount={badgeCount}
+                onPress={() => {
+                  const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
+                  if (!event.defaultPrevented) navigation.navigate(route.name);
+                }}
+              />
+            );
+          });
+        })()}
       </ScrollView>
 
       {/* Footer — real server health indicator */}
