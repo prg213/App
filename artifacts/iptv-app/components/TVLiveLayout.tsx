@@ -23,6 +23,7 @@ import React, {
 import { useFocusEffect } from 'expo-router';
 import {
   ActivityIndicator,
+  findNodeHandle,
   FlatList,
   Image,
   Platform,
@@ -38,6 +39,7 @@ import { useFocusRestore } from '@/hooks/useFocusRestore';
 import type { Category, Channel, EpgProgram } from '@/types';
 import { channelHasCatchup, isCatchupRowPlayable } from '@/utils/catchup';
 import { requestTvFocus } from '@/lib/tvFocus';
+import { sidebarNav } from '@/lib/sidebarNav';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -114,6 +116,17 @@ export function TVLiveLayout({
 
   const catListRef = useRef<FlatList<Category>>(null);
   const chListRef  = useRef<FlatList<Channel>>(null);
+  // TV LEFT navigation refs:
+  //   catRefMap — stores each mounted category node by item.id
+  //   catFocusedRef — the most-recently-focused category node (LEFT target for channels)
+  const catRefMap    = useRef(new Map<string, View>());
+  const catFocusedRef = useRef<View | null>(null);
+  // TV no-wrap UP/DOWN edge refs for yellow panel
+  const catchupRowRef   = useRef<View | null>(null);
+  const lastGuideRowRef = useRef<View | null>(null);
+  // Count refs so renderers can check isFirst/isLast without breaking memoization
+  const catCountRef = useRef(0);
+  const chCountRef  = useRef(0);
 
   // ── TV remote initial focus ───────────────────────────────────────────────
   // useFocusRestore handles the full restore lifecycle:
@@ -146,6 +159,23 @@ export function TVLiveLayout({
   useEffect(() => {
     if (selectedChannel) setHighlightedChId(selectedChannel.id);
   }, [selectedChannel?.id]);
+
+  // TV LEFT nav: when the highlighted channel changes, compute its native handle
+  // and push nextFocusLeft onto the preview box immediately (setNativeProps).
+  // Store in state too so guide rows re-render with the correct prop.
+  const [highlightedChHandle, setHighlightedChHandle] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!Platform.isTV) return;
+    const node = highlightedChId ? chRefMap.current.get(highlightedChId) : null;
+    let h: number | null = null;
+    try { h = node ? findNodeHandle(node) : null; } catch {}
+    setHighlightedChHandle(h);
+    // Wire preview box LEFT → highlighted channel
+    if (h != null) {
+      try { (miniPlayerRef?.current as any)?.setNativeProps?.({ nextFocusLeft: h }); } catch {}
+    }
+  }, [highlightedChId, miniPlayerRef]);
 
   // Scroll the channel list to the selected channel when it is set from outside
   // (e.g. returning from recently-watched on the Home screen).  Also depends on
@@ -184,8 +214,32 @@ export function TVLiveLayout({
 
   const hasCatchup = channelHasCatchup(selectedChannel);
 
+  // TV no-wrap edges for yellow panel — runs after hasCatchup & channelEpg are known.
+  // Preview box is always the TOP element (UP → self).
+  // Bottom-most focusable element (last guide row → catchup → preview) DOWN → self.
+  useEffect(() => {
+    if (!Platform.isTV) return;
+    const previewNode = miniPlayerRef?.current as any;
+    if (!previewNode) return;
+    try {
+      const previewH = findNodeHandle(previewNode);
+      if (previewH == null) return;
+      previewNode.setNativeProps?.({ nextFocusUp: previewH });
+      const bottomNode: any =
+        lastGuideRowRef.current ?? catchupRowRef.current ?? previewNode;
+      const bottomH = bottomNode === previewNode
+        ? previewH
+        : (() => { try { return findNodeHandle(bottomNode); } catch { return null; } })();
+      if (bottomH != null) bottomNode.setNativeProps?.({ nextFocusDown: bottomH });
+    } catch {}
+  }, [miniPlayerRef, selectedChannel, hasCatchup, channelEpg.length]);
+
   // ── Category row ──────────────────────────────────────────────────────────
   // onFocus: scroll only — category changes on OK press.
+
+  // Keep count refs in sync so renderers can check isFirst/isLast each render.
+  catCountRef.current = allCategories.length;
+  chCountRef.current  = channels.length;
 
   const handleCatFocus = useCallback((index: number) => {
     try {
@@ -195,7 +249,13 @@ export function TVLiveLayout({
 
   const renderCat: ListRenderItem<Category> = useCallback(({ item, index }) => (
     <FocusablePressable
-      ref={index === 0 ? (firstCatRef as any) : undefined}
+      ref={(node: View | null) => {
+        // Keep firstCatRef pointed at the first item for focus-restore fallback.
+        if (index === 0) (firstCatRef as React.MutableRefObject<View | null>).current = node;
+        // Store every mounted node so onFocus can identify the focused one.
+        if (node) catRefMap.current.set(item.id, node);
+        else catRefMap.current.delete(item.id);
+      }}
       accessible
       accessibilityRole="button"
       accessibilityLabel={item.name}
@@ -205,7 +265,27 @@ export function TVLiveLayout({
         { borderBottomColor: colors.border },
         item.id === selectedCatId && { borderLeftColor: colors.primary, borderLeftWidth: 3 },
       ]}
-      onFocus={() => handleCatFocus(index)}
+      // TV LEFT: category panel is leftmost content — go to the sidebar.
+      nextFocusLeft={Platform.isTV ? (sidebarNav.handle ?? undefined) : undefined}
+      onFocus={() => {
+        handleCatFocus(index);
+        if (!Platform.isTV) return;
+        // Record focused category node so channel LEFT can return here.
+        const node = catRefMap.current.get(item.id) ?? null;
+        catFocusedRef.current = node;
+        // No-wrap edges: UP on first → nothing; DOWN on last → nothing.
+        if (node) {
+          try {
+            const h = findNodeHandle(node);
+            if (h != null) {
+              const props: Record<string, number> = {};
+              if (index === 0) props.nextFocusUp = h;
+              if (index === catCountRef.current - 1) props.nextFocusDown = h;
+              if (Object.keys(props).length) (node as any).setNativeProps?.(props);
+            }
+          } catch {}
+        }
+      }}
       onPress={() => {
         onCatSelect(item.id);
         handleCatFocus(index);
@@ -263,7 +343,26 @@ export function TVLiveLayout({
         onFocus={() => {
           handleChFocus(item, index);
           const node = chRefMap.current.get(item.id);
-          if (node) markChFocused(node);
+          if (node) {
+            markChFocused(node);
+            if (Platform.isTV) {
+              try {
+                const h = findNodeHandle(node);
+                const props: Record<string, number> = {};
+                // LEFT → last-focused category
+                if (catFocusedRef.current) {
+                  const ch = findNodeHandle(catFocusedRef.current);
+                  if (ch != null) props.nextFocusLeft = ch;
+                }
+                // No-wrap edges: UP on first → nothing; DOWN on last → nothing.
+                if (h != null) {
+                  if (index === 0) props.nextFocusUp = h;
+                  if (index === chCountRef.current - 1) props.nextFocusDown = h;
+                }
+                if (Object.keys(props).length) (node as any).setNativeProps?.(props);
+              } catch {}
+            }
+          }
         }}
         onPress={() => {
           onChannelSelect(item);
@@ -442,6 +541,7 @@ export function TVLiveLayout({
             {/* 3b — Catchup */}
             {hasCatchup ? (
               <FocusablePressable
+                ref={(n: View | null) => { catchupRowRef.current = n; }}
                 accessible
                 accessibilityRole="button"
                 accessibilityLabel="Open catch-up TV"
@@ -479,15 +579,23 @@ export function TVLiveLayout({
                     // so the user can open catch-up directly for that show.
                     const isCatchupPlayable = isCatchupRowPlayable(prog, nowTs, Platform.isTV, hasCatchup, !!onOpenCatchupProg);
                     const Row = (Platform.isTV ? FocusablePressable : View) as any;
+                    const isLastGuideRow = i === channelEpg.length - 1;
                     return (
                       <Row
                         key={i}
+                        ref={Platform.isTV && isLastGuideRow
+                          ? (n: View | null) => { lastGuideRowRef.current = n; }
+                          : undefined}
                         focusedStyle={Platform.isTV ? { backgroundColor: colors.secondary } : undefined}
                         style={[
                           styles.guideItem,
                           { borderBottomColor: colors.border },
                           isNow && { backgroundColor: colors.secondary },
                         ]}
+                        // TV LEFT: mini-guide → back to the highlighted channel
+                        {...(Platform.isTV && highlightedChHandle != null
+                          ? { nextFocusLeft: highlightedChHandle }
+                          : {})}
                         {...(isCatchupPlayable
                           ? {
                               accessible: true,

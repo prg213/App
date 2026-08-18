@@ -263,6 +263,7 @@ function Sidebar({ state, descriptors, navigation }: SidebarProps) {
 
     // Publish the first nav item's native handle so screens can pin their
     // first card's nextFocusLeft to the sidebar (LEFT → nav menu on TV).
+    // (Active-item tracking is done in a separate effect below.)
     if (Platform.isTV) {
       try { sidebarNav.handle = findNodeHandle(firstNavRef.current); } catch {}
     }
@@ -273,6 +274,15 @@ function Sidebar({ state, descriptors, navigation }: SidebarProps) {
       if (retryTimer !== undefined) clearTimeout(retryTimer);
     };
   }, []);
+
+  // Keep sidebarNav.handle pointed at the ACTIVE tab's nav item so that
+  // LEFT from any screen's content returns focus to the correct sidebar entry
+  // (e.g. LEFT on Live TV categories → "Live TV", not always "Home").
+  useEffect(() => {
+    if (!Platform.isTV) return;
+    const activeNode = navItemRefs.current[state.index] ?? firstNavRef.current;
+    try { sidebarNav.handle = findNodeHandle(activeNode); } catch {}
+  });
 
   const dotColor = serverStatus === 'ok' ? '#22C55E'
     : serverStatus === 'error' ? '#EF4444'
