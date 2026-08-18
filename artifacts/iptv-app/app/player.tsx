@@ -1579,7 +1579,13 @@ export default function PlayerScreen() {
     if (infoTimer.current) clearTimeout(infoTimer.current);
     infoTimer.current = setTimeout(() => {
       Animated.timing(infoOpacity, { toValue: 0, duration: 400, useNativeDriver: true }).start();
-      setTimeout(() => setShowInfo(false), 450);
+      // Store in dismissTimerRef so showInfoBar() can cancel it if the user
+      // reopens the OSD during the 450 ms fade-out window.
+      if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
+      dismissTimerRef.current = setTimeout(() => {
+        dismissTimerRef.current = null;
+        setShowInfo(false);
+      }, 450);
     }, 3000);
   }, [infoOpacity]);
 
@@ -1609,7 +1615,12 @@ export default function PlayerScreen() {
         // Only dismiss if the user hasn't opened the OSD manually in the meantime.
         if (!infoBarUserInvokedRef.current) {
           Animated.timing(infoOpacity, { toValue: 0, duration: 400, useNativeDriver: true }).start();
-          setTimeout(() => setShowInfo(false), 420);
+          // Store in dismissTimerRef so showInfoBar() can cancel it if the user
+          // reopens the OSD during the 420 ms fade-out window.
+          dismissTimerRef.current = setTimeout(() => {
+            dismissTimerRef.current = null;
+            setShowInfo(false);
+          }, 420);
         }
       }, 5000);
       infoTimer.current = t;
