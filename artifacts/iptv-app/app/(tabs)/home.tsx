@@ -759,9 +759,13 @@ const styles = StyleSheet.create({
   tvSectionBody: { flex: 1, minHeight: 0 },
   tvLoadingRow: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   tvRail: { flex: 1 },
-  tvBannerList: { paddingHorizontal: 14, gap: 8, alignItems: 'stretch' },
-  // Card fills its row's height; width follows from the banner aspect ratio.
-  // 6px vertical inset leaves room for the 3px focus ring inside the row.
+  // 6dp vertical padding (3dp top + 3dp bottom) gives the 3px focus ring
+  // clearance so it is not flush against the FlatList clip boundary.
+  // At 720p (~640dp usable) with all 4 sections the body is ~154dp before
+  // this inset and ~148dp after — well above the ~80dp legibility floor.
+  tvBannerList: { paddingHorizontal: 14, paddingVertical: 3, gap: 8, alignItems: 'stretch' },
+  // Card fills its row's height (minus the 3dp inset on each side);
+  // width follows from the banner aspect ratio.
   tvBannerOuter: {
     height: '100%',
     aspectRatio: BANNER_W / BANNER_H,
