@@ -214,6 +214,12 @@ const styles = StyleSheet.create({
   containerTV: {
     paddingTop: 2,
     paddingBottom: 4,
+    // Hard cap so the rail can never consume more than ~100dp regardless of
+    // content changes (e.g. a future EPG subtitle line or taller logo card).
+    // The flex poster-row sections below always get the remaining height.
+    // Note: no overflow:'hidden' here — the Toast child is absolutely
+    // positioned and must remain visible above the clip boundary.
+    maxHeight: 100,
   },
   sectionHeaderTV: {
     marginBottom: 4,
