@@ -85,9 +85,11 @@ jest.mock('expo-image', () => {
 jest.mock('@tanstack/react-query', () => {
   const React = require('react');
   // Minimal QueryClient stub — only the methods AppContextProvider calls.
-  function QueryClient() { this._cache = {}; }
-  QueryClient.prototype.prefetchQuery  = jest.fn();
-  QueryClient.prototype.getQueryData   = jest.fn(() => undefined);
+  class QueryClient {
+    _cache: Record<string, unknown> = {};
+    prefetchQuery  = jest.fn();
+    getQueryData   = jest.fn(() => undefined);
+  }
   // QueryClientProvider just renders children (no real context needed in these tests).
   const QueryClientProvider = ({ children }: any) => children;
   return {
