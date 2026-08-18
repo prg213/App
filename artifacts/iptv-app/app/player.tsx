@@ -1539,7 +1539,18 @@ export default function PlayerScreen() {
         num: e.num,
       }));
       setChannelList(asEntries);
-      switchChannel(asEntries[idx] ?? { url: entry.url, title: entry.title, epgId: entry.epgId }, idx);
+      // Switch using `entry` directly — it is toMenuEntry(ch), the exact channel
+      // the user pressed, with the correct url/channelId/num already populated.
+      // Using asEntries[idx] here inherited any index error from the caller and
+      // could load a different channel if idx was wrong (e.g. findIndex → -1 → 0).
+      switchChannel({
+        url: entry.url,
+        title: entry.title,
+        epgId: entry.epgId,
+        logo: entry.logo ?? '',
+        channelId: entry.channelId,
+        num: entry.num,
+      }, idx);
       setShowChannelMenu(false);
     },
     [switchChannel],

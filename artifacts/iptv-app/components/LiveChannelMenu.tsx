@@ -581,8 +581,12 @@ function LiveChannelMenuImpl({
           style={[styles.chRow, isCurrent && styles.chRowCurrent]}
           focusedStyle={styles.chRowFocused}
           onPress={() => {
-            const idx = filteredEntries.findIndex((e) => e.channelId === ch.id);
-            onSelectChannel(toMenuEntry(ch), Math.max(0, idx), filteredEntries);
+            // Use the render `index` directly — it's the authoritative position of
+            // this item in `filtered` (and therefore in `filteredEntries`).
+            // The previous findIndex could return -1 for channels whose id was
+            // missing or duplicated, collapsing to Math.max(0,-1)=0 and loading
+            // the first channel in the list instead of the selected one.
+            onSelectChannel(toMenuEntry(ch), index, filteredEntries);
           }}
         >
           {/* Active-channel left accent */}
