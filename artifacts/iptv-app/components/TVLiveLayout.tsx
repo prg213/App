@@ -967,9 +967,12 @@ const styles = StyleSheet.create({
     borderRadius: 1,
   },
 
-  // ── Focus ring (shared) ──
+  // ── Focus highlight (shared — TV D-pad cursor) ──
+  // A solid tinted background + thick left accent makes the focused row
+  // immediately obvious from across the room on a Firestick / Android TV.
   focusedItem: {
-    borderWidth: 2,
-    borderColor: FOCUS_BORDER,
+    backgroundColor: 'rgba(0, 229, 255, 0.22)',
+    borderLeftWidth: 4,
+    borderLeftColor: FOCUS_BORDER,
   },
 });
