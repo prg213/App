@@ -262,6 +262,12 @@ export default function HomeScreen() {
   const cwListRef     = useRef<FlatList<WatchHistoryEntry>>(null);
   const movieListRef  = useRef<FlatList<Movie>>(null);
   const seriesListRef = useRef<FlatList<Series>>(null);
+  // Store current data lengths in refs so renderers can check isLast without
+  // needing the length in their useCallback dep arrays (avoids unnecessary
+  // renderer recreation every time data loads more items).
+  const cwCountRef     = useRef(0);
+  const movieCountRef  = useRef(0);
+  const seriesCountRef = useRef(0);
   useEffect(() => {
     if (!Platform.isTV) return;
     tvRowNav.setOrder(['recent', 'cw', 'movies', 'series']);
@@ -530,6 +536,11 @@ export default function HomeScreen() {
     return true;
   });
 
+  // Keep count refs in sync each render so renderers can check isLast.
+  cwCountRef.current     = continueWatchingItems.length;
+  movieCountRef.current  = latestMovies.length;
+  seriesCountRef.current = latestSeries.length;
+
   const renderContinueWatching = useCallback(({ item, index }: { item: WatchHistoryEntry; index: number }) => {
     const progress = item.type === 'series'
       ? seriesProgressMap.get(item.parentId ?? item.id)
@@ -545,6 +556,7 @@ export default function HomeScreen() {
         onFocus={() => {
           tvRowNav.focused('cw', index);
           scrollRowToIndex(cwListRef, index);
+          if (Platform.isTV && index === cwCountRef.current - 1) tvRowNav.pinRightEdge('cw', index);
         }}
         onPress={() => handleHistoryItemPress(item)}
       >
@@ -591,6 +603,7 @@ export default function HomeScreen() {
       onCardFocus={() => {
         tvRowNav.focused('movies', index);
         scrollRowToIndex(movieListRef, index);
+        if (Platform.isTV && index === movieCountRef.current - 1) tvRowNav.pinRightEdge('movies', index);
       }}
       onPress={() => handleMoviePress(item)}
     />
@@ -606,6 +619,7 @@ export default function HomeScreen() {
       onCardFocus={() => {
         tvRowNav.focused('series', index);
         scrollRowToIndex(seriesListRef, index);
+        if (Platform.isTV && index === seriesCountRef.current - 1) tvRowNav.pinRightEdge('series', index);
       }}
       onPress={() => handleSeriesPress(item)}
     />

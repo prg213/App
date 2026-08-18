@@ -106,6 +106,21 @@ export const tvRowNav = {
   },
 
   /**
+   * Pin the right edge of a row: call on the last card's onFocus so that
+   * RIGHT never wraps back to the first card.  Safe to call on every focus
+   * event for that card — it's idempotent.
+   */
+  pinRightEdge(rowId: string, index: number) {
+    const r = rows.get(rowId);
+    const node = r?.cards.get(index);
+    if (!node) return;
+    try {
+      const h = findNodeHandle(node);
+      if (h != null) (node as any).setNativeProps?.({ nextFocusRight: h });
+    } catch {}
+  },
+
+  /**
    * Call from the card's onFocus.  Records the row's position and wires the
    * focused card's UP/DOWN to the adjacent rows' remembered cards.
    */
