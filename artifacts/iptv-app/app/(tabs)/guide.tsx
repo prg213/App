@@ -1290,7 +1290,7 @@ function CategoryGrid({
   firstCardRef?: React.RefObject<View | null>;
 }) {
   const { width } = useWindowDimensions();
-  const availW = width - 190; // sidebar is 190px
+  const availW = width - SIDEBAR_W - insets.right;
   const numCols = Math.max(2, Math.floor(availW / 180));
   const colW = Math.floor((availW - (numCols + 1) * 12) / numCols);
 
