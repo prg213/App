@@ -353,7 +353,95 @@ describe('tvRowNav — setOrder preserves card registrations', () => {
 });
 
 // =============================================================================
-// 8. Static layout audit — RecentChannelsRail vertical budget on TV
+// 8. Generation counter — stale handles ignored after setOrder reset
+// =============================================================================
+
+describe('tvRowNav — generation counter / stale-handle guard', () => {
+  beforeEach(() => { mockFindNodeHandle(); });
+
+  it('ignores neighbour rows registered in a previous generation after setOrder is called again', () => {
+    const nav = loadTvRowNav();
+
+    // ── Generation 1 ──────────────────────────────────────────────────────────
+    // Simulate the first mount of the Home screen: register cards and wire up.
+    const topGen1  = makeNode(10);
+    const botGen1  = makeNode(20);
+    nav.setOrder(['top', 'bottom']);      // generation → 1
+    nav.register('top',    0, topGen1);  // row 'top'    gen = 1
+    nav.register('bottom', 0, botGen1);  // row 'bottom' gen = 1
+
+    nav.focused('top', 0);
+    expect(topGen1.setNativeProps.mock.calls[0][0].nextFocusDown).toBe(20);
+
+    // ── Simulated navigation away + back ──────────────────────────────────────
+    // The Home screen unmounts (clearRow is called) then remounts and calls
+    // setOrder again before the new cards re-register.  At this point the
+    // 'bottom' row's cards have been cleared but the Row object still exists
+    // in the module-level Map with its gen = 1 stamp.
+
+    nav.clearRow('top');       // Home screen cleanup
+    nav.clearRow('bottom');    // Home screen cleanup
+
+    // ── Generation 2 ──────────────────────────────────────────────────────────
+    // setOrder is called from the new mount's useEffect.
+    nav.setOrder(['top', 'bottom']);      // generation → 2
+
+    // Only 'top' re-registers its card; 'bottom' has not yet (e.g. it is still
+    // below the fold or the virtualiser hasn't mounted it yet).
+    const topGen2 = makeNode(100);
+    nav.register('top', 0, topGen2);     // row 'top' gen = 2
+
+    // 'bottom' still holds the cleared state (gen = 0 from clearRow), so it
+    // should be skipped by the neighbour lookup — nextFocusDown is pinned to
+    // topGen2's own handle instead of the stale/empty bottom row.
+    nav.focused('top', 0);
+    const call = topGen2.setNativeProps.mock.calls[0][0];
+    expect(call.nextFocusDown).toBe(100); // pinned to self — bottom is stale/empty
+  });
+
+  it('uses a neighbour row once its cards re-register in the current generation', () => {
+    const nav = loadTvRowNav();
+
+    // Generation 1
+    nav.setOrder(['top', 'bottom']);           // gen → 1
+    nav.clearRow('top');
+    nav.clearRow('bottom');
+
+    // Generation 2
+    nav.setOrder(['top', 'bottom']);           // gen → 2
+    const topNode = makeNode(50);
+    const botNode = makeNode(60);
+    nav.register('top',    0, topNode);        // gen = 2
+    nav.register('bottom', 0, botNode);        // gen = 2
+
+    nav.focused('top', 0);
+    const call = topNode.setNativeProps.mock.calls[0][0];
+    // Both rows are current-generation, so routing works normally.
+    expect(call.nextFocusDown).toBe(60);
+  });
+
+  it('clearRow resets the row so it is treated as stale until re-registered', () => {
+    const nav = loadTvRowNav();
+    nav.setOrder(['rowA', 'rowB']);     // gen → 1
+    const a = makeNode(1);
+    const b = makeNode(2);
+    nav.register('rowA', 0, a);
+    nav.register('rowB', 0, b);
+
+    // Clear rowB (simulating unmount cleanup)
+    nav.clearRow('rowB');
+
+    // setOrder is NOT called again — still gen 1.  But clearRow set rowB.gen = 0.
+    // Neighbour lookup for rowA going DOWN should skip rowB (gen 0 < gen 1)
+    // and pin to self.
+    nav.focused('rowA', 0);
+    const call = a.setNativeProps.mock.calls[0][0];
+    expect(call.nextFocusDown).toBe(1); // pinned to self
+  });
+});
+
+// =============================================================================
+// 9. Static layout audit — RecentChannelsRail vertical budget on TV
 // =============================================================================
 
 describe('TV Home layout — vertical budget audit', () => {

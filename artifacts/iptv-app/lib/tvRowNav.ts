@@ -13,37 +13,96 @@
  * standard TV-dashboard behaviour, like Netflix/Prime rails), falling back
  * to the row's first mounted card.  At the top/bottom edge the direction is
  * pinned to the card itself so focus can never escape the dashboard.
+ *
+ * Generation tracking
+ * ───────────────────
+ * `rows` is a module-level singleton that persists across React navigations.
+ * Card refs unmount cleanly (register null), but if a virtualiser recycles a
+ * native node without an unmount/remount cycle `findNodeHandle` may return a
+ * stale integer that no longer maps to a visible view.
+ *
+ * To guard against this, `setOrder` bumps a monotonic `generation` counter.
+ * Each `Row` records the generation in which it last received a registration.
+ * The neighbour-lookup in `focused()` skips any row whose stored generation is
+ * older than the current one, treating its handles as potentially stale.
+ *
+ * The Home screen's `useEffect` cleanup also calls `clearRow` for every row it
+ * owns, so the registry is always fresh when the screen remounts.
  */
 import { findNodeHandle } from 'react-native';
 
 interface Row {
   cards: Map<number, any>;
   lastIndex: number;
+  /** Generation in which the most recent card was registered. */
+  gen: number;
 }
 
 const rows = new Map<string, Row>();
 let rowOrder: string[] = [];
+/** Monotonically increasing; bumped every time setOrder is called. */
+let generation = 0;
 
 function getRow(rowId: string): Row {
   let r = rows.get(rowId);
   if (!r) {
-    r = { cards: new Map(), lastIndex: 0 };
+    r = { cards: new Map(), lastIndex: 0, gen: generation };
     rows.set(rowId, r);
   }
   return r;
 }
 
 export const tvRowNav = {
-  /** Declare the vertical order of rows for the current screen. */
+  /**
+   * Declare the vertical order of rows for the current screen.
+   * Bumps the generation counter so handles registered in a previous
+   * session are ignored until they re-register in this one.
+   *
+   * Rows that still have mounted cards (non-empty after a re-render) are
+   * immediately promoted to the new generation so that calling setOrder more
+   * than once during the same mount (e.g., React re-renders) does not
+   * invalidate currently-valid handles.  Only rows that were explicitly
+   * cleared via clearRow() — and therefore have no cards — remain at gen=0
+   * and are treated as stale until a card re-registers in them.
+   */
   setOrder(ids: string[]) {
+    generation += 1;
     rowOrder = ids;
+    // Promote any row that still has registered cards to the new generation.
+    // Cleared rows (cards.size === 0) keep their gen=0 and stay stale.
+    for (const r of rows.values()) {
+      if (r.cards.size > 0) {
+        r.gen = generation;
+      }
+    }
   },
 
   /** Callback-ref helper: register/unregister a card's native node. */
   register(rowId: string, index: number, node: any | null) {
     const r = getRow(rowId);
-    if (node) r.cards.set(index, node);
-    else r.cards.delete(index);
+    if (node) {
+      r.cards.set(index, node);
+      // Mark this row as current-generation so neighbour lookup trusts it.
+      r.gen = generation;
+    } else {
+      r.cards.delete(index);
+    }
+  },
+
+  /**
+   * Remove all card registrations for a single row.
+   * Call this from a `useEffect` cleanup so that when the Home screen
+   * unmounts (or re-mounts after navigation) the registry starts fresh
+   * rather than potentially holding stale native handles.
+   */
+  clearRow(rowId: string) {
+    const r = rows.get(rowId);
+    if (r) {
+      r.cards.clear();
+      r.lastIndex = 0;
+      // Reset gen so this row is treated as stale until re-registered.
+      r.gen = 0;
+    }
   },
 
   /**
@@ -63,7 +122,9 @@ export const tvRowNav = {
     const neighborHandle = (dir: 1 | -1): number | null => {
       for (let i = pos + dir; i >= 0 && i < rowOrder.length; i += dir) {
         const n = rows.get(rowOrder[i]);
-        if (!n || n.cards.size === 0) continue;
+        // Skip rows with no cards, or rows whose last registration was in a
+        // previous generation (their native handles may be stale/recycled).
+        if (!n || n.cards.size === 0 || n.gen < generation) continue;
         const target =
           n.cards.get(n.lastIndex) ??
           n.cards.get(0) ??

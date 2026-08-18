@@ -263,7 +263,18 @@ export default function HomeScreen() {
   const movieListRef  = useRef<FlatList<Movie>>(null);
   const seriesListRef = useRef<FlatList<Series>>(null);
   useEffect(() => {
-    if (Platform.isTV) tvRowNav.setOrder(['recent', 'cw', 'movies', 'series']);
+    if (!Platform.isTV) return;
+    tvRowNav.setOrder(['recent', 'cw', 'movies', 'series']);
+    return () => {
+      // Clear all row registrations on unmount so that if the Home screen
+      // remounts (e.g. after a navigation away and back), the registry starts
+      // fresh and does not route D-pad focus through stale native handles that
+      // the virtualiser may have recycled.
+      tvRowNav.clearRow('recent');
+      tvRowNav.clearRow('cw');
+      tvRowNav.clearRow('movies');
+      tvRowNav.clearRow('series');
+    };
   }, []);
 
   // Responsive breakpoint: tablets (wide touch screens) get larger posters.
