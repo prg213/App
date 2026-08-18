@@ -1,4 +1,4 @@
-import React, { forwardRef, useEffect, useRef, useState } from 'react';
+import React, { forwardRef, useCallback, useEffect, useRef, useState } from 'react';
 import {
   Platform,
   Pressable,
@@ -84,11 +84,24 @@ export const FocusablePressable = forwardRef<View, FocusablePressableProps>(
       return () => clearTimeout(t);
     }, [nextFocusUp, nextFocusDown, nextFocusLeft, nextFocusRight]);
 
-    const setRefs = (node: View | null) => {
+    // Keep the forwarded ref in a ref so setRefs can be a stable useCallback
+    // that never changes identity between renders.  Without this, React treats
+    // the ref prop as "changed" on EVERY re-render (because `setRefs` would be
+    // a new inline function each time), calls the old one with null and the new
+    // one with the node on every render cycle.  When many FocusablePressables
+    // re-render together (day pills, programme rows, channel list) this ref-
+    // churn cascade exceeds React's 50-nested-update limit and throws
+    // "Maximum update depth exceeded".
+    const forwardedRef = useRef(ref);
+    forwardedRef.current = ref;
+
+    const setRefs = useCallback((node: View | null) => {
       innerRef.current = node;
-      if (typeof ref === 'function') ref(node);
-      else if (ref) (ref as React.MutableRefObject<View | null>).current = node;
-    };
+      const fwd = forwardedRef.current;
+      if (typeof fwd === 'function') fwd(node);
+      else if (fwd) (fwd as React.MutableRefObject<View | null>).current = node;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []); // stable — never recreated after mount
 
     const resolvedStyle: StyleProp<ViewStyle> = typeof style === 'function'
       ? style(focused)
