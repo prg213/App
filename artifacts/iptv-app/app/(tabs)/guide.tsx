@@ -142,6 +142,104 @@ function TimeHeader({ dayStartMs, colors }: { dayStartMs: number; colors: any })
   );
 }
 
+// ─── TV Time Header ───────────────────────────────────────────────────────────
+// Fixed ruler row above the TV programme grid. Driven by the same
+// epg:syncScroll events that keep programme rows in sync, so the time labels
+// always match the visible content without any additional plumbing in FullGuide.
+const TVTimeHeader = React.forwardRef<ScrollView, { dayStartMs: number; colors: any }>(
+  function TVTimeHeader({ dayStartMs, colors }, ref) {
+    const scrollRef = useRef<ScrollView>(null);
+    React.useImperativeHandle(ref, () => scrollRef.current as ScrollView, []);
+
+    useEffect(() => {
+      if (!Platform.isTV) return;
+      // Align immediately if the grid already has a known pan position
+      if (currentGridPanMs != null) {
+        const x = Math.max(0, (currentGridPanMs - dayStartMs) / 60_000 * PX_PER_MIN);
+        scrollRef.current?.scrollTo({ x, animated: false });
+      }
+      const sub = DeviceEventEmitter.addListener(
+        'epg:syncScroll',
+        ({ targetMs }: { sourceRow: number; targetMs: number }) => {
+          const x = Math.max(0, (targetMs - dayStartMs) / 60_000 * PX_PER_MIN);
+          scrollRef.current?.scrollTo({ x, animated: false });
+        },
+      );
+      return () => sub.remove();
+    }, [dayStartMs]);
+
+    const slots = useMemo(() =>
+      Array.from({ length: 24 }, (_, i) => ({
+        label: fmtTime(new Date(dayStartMs + i * SLOT_MINS * 60_000)),
+      })), [dayStartMs]);
+
+    return (
+      <View style={{ flexDirection: 'row', flexShrink: 0 }}>
+        <View style={[styles.cornerCell, {
+          width: TV_CH_W,
+          backgroundColor: colors.card,
+          borderBottomColor: colors.border,
+          borderRightColor: colors.border,
+        }]}>
+          <Text style={[styles.cornerText, { color: colors.mutedForeground }]}>CH</Text>
+        </View>
+        <ScrollView
+          ref={scrollRef}
+          horizontal
+          scrollEnabled={false}
+          showsHorizontalScrollIndicator={false}
+          style={{ flex: 1 }}
+        >
+          <View style={{
+            flexDirection: 'row',
+            backgroundColor: colors.card,
+            borderBottomWidth: StyleSheet.hairlineWidth,
+            borderBottomColor: colors.border,
+          }}>
+            {slots.map((slot, i) => (
+              <View key={i} style={[styles.timeSlot, { borderLeftColor: colors.border }]}>
+                <Text style={[styles.timeLabel, { color: colors.mutedForeground }]}>{slot.label}</Text>
+              </View>
+            ))}
+          </View>
+        </ScrollView>
+      </View>
+    );
+  },
+);
+
+// ─── TV Now-line ──────────────────────────────────────────────────────────────
+// Vertical red line overlaid on the TV grid at the current-time position.
+// Tracks epg:syncScroll to stay aligned as the user pans.
+function TVNowLine({ nowX, dayStartMs }: { nowX: number; dayStartMs: number }) {
+  const initScrollX = currentGridPanMs != null
+    ? Math.max(0, (currentGridPanMs - dayStartMs) / 60_000 * PX_PER_MIN)
+    : 0;
+  const [left, setLeft] = useState(TV_CH_W + nowX - initScrollX);
+
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener(
+      'epg:syncScroll',
+      ({ targetMs }: { sourceRow: number; targetMs: number }) => {
+        const scrollX = Math.max(0, (targetMs - dayStartMs) / 60_000 * PX_PER_MIN);
+        setLeft(TV_CH_W + nowX - scrollX);
+      },
+    );
+    return () => sub.remove();
+  }, [nowX, dayStartMs]);
+
+  return (
+    <View
+      pointerEvents="none"
+      style={{
+        position: 'absolute', top: 0, bottom: 0,
+        left,
+        width: 2, backgroundColor: '#EF4444', opacity: 0.85, zIndex: 10,
+      }}
+    />
+  );
+}
+
 // ─── Channel cell ─────────────────────────────────────────────────────────────
 
 function ChannelCell({
@@ -1800,6 +1898,8 @@ function FullGuide({
   // Only one horizontal scroll ref is needed — the time header shadows it
   const timeHeaderRef = useRef<ScrollView>(null);
   const gridHorizRef  = useRef<ScrollView>(null);
+  // TV: ref for the time-ruler row above the programme grid
+  const tvTimeHeaderRef = useRef<ScrollView>(null);
   // Vertical ScrollView ref — needed to restore vertical position after
   // an orientation change remounts the view and resets offset to 0.
   const gridVertRef   = useRef<ScrollView>(null);
@@ -1825,6 +1925,7 @@ function FullGuide({
     const timer = setTimeout(() => {
       gridHorizRef.current?.scrollTo({ x: scrollX, animated: false });
       timeHeaderRef.current?.scrollTo({ x: scrollX, animated: false });
+      tvTimeHeaderRef.current?.scrollTo({ x: scrollX, animated: false });
     }, 100);
     return () => clearTimeout(timer);
   }, [selectedDay, nowX]);
@@ -2089,7 +2190,11 @@ function FullGuide({
       )}
       {!selectedDayEmpty && visibleChannels.length > 0 && (
         Platform.isTV ? (
-          /* ── TV / Fire TV: FlatList rows — every cell is D-pad focusable ── */
+          <View style={{ flex: 1 }}>
+            {/* Fixed time-ruler row — synced via epg:syncScroll */}
+            <TVTimeHeader ref={tvTimeHeaderRef} dayStartMs={dayStartMs} colors={colors} />
+            <View style={{ flex: 1, position: 'relative' }}>
+          {/* ── TV / Fire TV: FlatList rows — every cell is D-pad focusable ── */}
           <FlatList
             data={visibleChannels}
             keyExtractor={(ch) => ch.id}
@@ -2143,6 +2248,12 @@ function FullGuide({
               />
             )}
           />
+              {/* Red "now" line overlay — today only */}
+              {selectedDay === 0 && nowX >= 0 && nowX <= TOTAL_DAY_W && (
+                <TVNowLine nowX={nowX} dayStartMs={dayStartMs} />
+              )}
+            </View>
+          </View>
         ) : (
           /* ── Phone / tablet: original nested-ScrollView grid ── */
           <View style={[styles.grid, { paddingRight: insets.right }]}>
