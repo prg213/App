@@ -28,6 +28,7 @@ import { StorageService } from '@/services/storage';
 import { buildMovieProgressMap, buildSeriesProgressMap } from '@/utils/progressMap';
 import { RecentChannelsRail } from '@/components/RecentChannelsRail';
 import { sidebarNav } from '@/lib/sidebarNav';
+import { tvRowNav } from '@/lib/tvRowNav';
 import { useBackHandler } from '@/hooks/useBackHandler';
 import type { Channel, Movie, Series, WatchHistoryEntry } from '@/types';
 import { requestTvFocus } from '@/lib/tvFocus';
@@ -100,7 +101,7 @@ const MovieBanner = React.memo(React.forwardRef(function MovieBanner({
 
 // ─── Series banner card ───────────────────────────────────────────────────────
 
-const SeriesBanner = React.memo(function SeriesBanner({
+const SeriesBanner = React.memo(React.forwardRef(function SeriesBanner({
   series,
   colors,
   onPress,
@@ -114,9 +115,10 @@ const SeriesBanner = React.memo(function SeriesBanner({
   nextFocusLeft?: number | null;
   cardStyle?: any;
   onCardFocus?: () => void;
-}) {
+}, ref: React.Ref<View>) {
   return (
     <FocusablePressable
+      ref={ref}
       style={cardStyle ?? styles.bannerOuter}
       focusedStyle={styles.bannerFocused}
       nextFocusLeft={nextFocusLeft}
@@ -149,7 +151,7 @@ const SeriesBanner = React.memo(function SeriesBanner({
       </View>
     </FocusablePressable>
   );
-});
+}));
 
 // ─── Section row ─────────────────────────────────────────────────────────────
 
@@ -240,6 +242,10 @@ export default function HomeScreen() {
   const cwListRef     = useRef<FlatList<WatchHistoryEntry>>(null);
   const movieListRef  = useRef<FlatList<Movie>>(null);
   const seriesListRef = useRef<FlatList<Series>>(null);
+  useEffect(() => {
+    if (Platform.isTV) tvRowNav.setOrder(['recent', 'cw', 'movies', 'series']);
+  }, []);
+
   const scrollRowToIndex = useCallback((listRef: React.RefObject<FlatList<any> | null>, index: number) => {
     if (!Platform.isTV) return;
     try {
@@ -454,11 +460,15 @@ export default function HomeScreen() {
     const pct = progress != null ? Math.max(2, Math.min(100, progress * 100)) : 0;
     return (
       <FocusablePressable
+        ref={Platform.isTV ? ((el: any) => tvRowNav.register('cw', index, el)) as any : undefined}
         style={Platform.isTV ? styles.tvBannerOuter : styles.bannerOuter}
         focusedStyle={styles.bannerFocused}
         // TV: LEFT on the first card jumps to the sidebar nav menu
         nextFocusLeft={Platform.isTV && index === 0 ? sidebarNav.handle : undefined}
-        onFocus={() => scrollRowToIndex(cwListRef, index)}
+        onFocus={() => {
+          tvRowNav.focused('cw', index);
+          scrollRowToIndex(cwListRef, index);
+        }}
         onPress={() => handleHistoryItemPress(item)}
       >
         {/* Inner clip view separates overflow:hidden from the focus borderWidth
@@ -493,23 +503,33 @@ export default function HomeScreen() {
     // First movie card carries the TV focus ref now that the hero banner is
     // gone — the D-pad needs an initial focus target when Home becomes active.
     <MovieBanner
-      ref={index === 0 ? firstItemRef : undefined}
+      ref={(el: View | null) => {
+        if (Platform.isTV) tvRowNav.register('movies', index, el);
+        if (index === 0) (firstItemRef as React.MutableRefObject<View | null>).current = el;
+      }}
       movie={item}
       colors={colors}
       cardStyle={Platform.isTV ? styles.tvBannerOuter : undefined}
       nextFocusLeft={Platform.isTV && index === 0 ? sidebarNav.handle : undefined}
-      onCardFocus={() => scrollRowToIndex(movieListRef, index)}
+      onCardFocus={() => {
+        tvRowNav.focused('movies', index);
+        scrollRowToIndex(movieListRef, index);
+      }}
       onPress={() => handleMoviePress(item)}
     />
   ), [colors, handleMoviePress, scrollRowToIndex]);
 
   const renderSeries = useCallback(({ item, index }: { item: Series; index: number }) => (
     <SeriesBanner
+      ref={Platform.isTV ? ((el: View | null) => tvRowNav.register('series', index, el)) : undefined}
       series={item}
       colors={colors}
       cardStyle={Platform.isTV ? styles.tvBannerOuter : undefined}
       nextFocusLeft={Platform.isTV && index === 0 ? sidebarNav.handle : undefined}
-      onCardFocus={() => scrollRowToIndex(seriesListRef, index)}
+      onCardFocus={() => {
+        tvRowNav.focused('series', index);
+        scrollRowToIndex(seriesListRef, index);
+      }}
       onPress={() => handleSeriesPress(item)}
     />
   ), [colors, handleSeriesPress, scrollRowToIndex]);

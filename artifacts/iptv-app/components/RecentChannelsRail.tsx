@@ -8,6 +8,7 @@ import {
   View,
 } from 'react-native';
 import { sidebarNav } from '@/lib/sidebarNav';
+import { tvRowNav } from '@/lib/tvRowNav';
 import { useFocusEffect } from 'expo-router';
 import { FocusablePressable } from '@/components/FocusablePressable';
 import { useColors } from '@/hooks/useColors';
@@ -61,7 +62,10 @@ function RecentCard({ item, index, channels, nowTitle, colors, onWatchFullscreen
 
   return (
     <FocusablePressable
-      ref={cardRef as any}
+      ref={((el: any) => {
+        cardRef.current = el;
+        if (Platform.isTV) tvRowNav.register('recent', index, el);
+      }) as any}
       style={styles.card}
       // TV: LEFT on the first card jumps to the sidebar nav menu
       nextFocusLeft={Platform.isTV && index === 0 ? sidebarNav.handle : undefined}
@@ -182,6 +186,7 @@ export function RecentChannelsRail({
               onWatchFullscreen={onWatchFullscreen}
               onRemove={handleRemove}
               onCardFocus={Platform.isTV ? () => {
+                tvRowNav.focused('recent', index);
                 try { listRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.35 }); } catch {}
               } : undefined}
             />
