@@ -85,4 +85,29 @@ export const tvRowNav = {
       });
     } catch {}
   },
+
+  /**
+   * Return the card node for a row.  When `index` is omitted (or the card at
+   * that index is unmounted), falls back to the row's lastIndex, then card 0.
+   * Returns null when the row is unknown or has no mounted cards.
+   */
+  getCard(rowId: string, index?: number): any | null {
+    const r = rows.get(rowId);
+    if (!r || r.cards.size === 0) return null;
+    if (index !== undefined) {
+      const c = r.cards.get(index);
+      if (c) return c;
+    }
+    return (
+      r.cards.get(r.lastIndex) ??
+      r.cards.get(0) ??
+      r.cards.values().next().value ??
+      null
+    );
+  },
+
+  /** Return the lastIndex recorded for a row, or 0 if the row is unknown. */
+  getLastIndex(rowId: string): number {
+    return rows.get(rowId)?.lastIndex ?? 0;
+  },
 };

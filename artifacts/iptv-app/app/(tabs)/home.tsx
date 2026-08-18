@@ -240,6 +240,12 @@ export default function HomeScreen() {
   // active screen.
   const firstItemRef = useRef<View>(null);
 
+  // ── TV: focus restoration after Back from movie / series / CW detail ──────
+  // Records which carousel row the user navigated away from so that on return
+  // (useFocusEffect) we can restore D-pad focus to exactly that card instead
+  // of always landing on the first card in the row.
+  const lastNavRowRef = useRef<'movies' | 'series' | 'cw' | null>(null);
+
   // ── TV carousels: keep the focused card in view ───────────────────────────
   // Fire OS's native focus engine doesn't reliably scroll a virtualized
   // horizontal FlatList as D-pad focus moves; drive it ourselves on card
@@ -307,15 +313,49 @@ export default function HomeScreen() {
     refetchSeries();
   }, [credentials, isXtream, refetchMovies, refetchSeries]));
 
-  // ── TV: focus the first content item whenever Home becomes active ──────────
-  // 200 ms gives React Query time to serve cached data and render the hero
-  // before we call .focus().  If the ref is still null (e.g. no movies cached
-  // yet and no M3U channels) the optional-chain is a safe no-op.
+  // ── TV: restore D-pad focus when Home becomes active ─────────────────────
+  // • First visit (lastNavRowRef === null): focus the first Latest Movies card
+  //   (same behaviour as before — gives the D-pad a guaranteed landing target).
+  // • Returning via Back from a movie / series / CW detail
+  //   (lastNavRowRef is 'movies' | 'series' | 'cw'): scroll the originating
+  //   row to the card the user came from and request focus on that card so
+  //   the D-pad cursor is restored to exactly where the user left off.
+  // 200 ms gives React Query time to serve cached data so the card is mounted.
   useFocusEffect(useCallback(() => {
     if (!Platform.isTV) return;
-    const t = setTimeout(() => requestTvFocus(firstItemRef.current), 200);
+
+    const row = lastNavRowRef.current;
+    lastNavRowRef.current = null; // consume — next visit defaults to first card
+
+    let focusTarget: View | null = null;
+    let listRef: React.RefObject<FlatList<any> | null> | null = null;
+
+    if (row === 'movies') {
+      focusTarget = tvRowNav.getCard('movies') as View | null;
+      listRef = movieListRef;
+    } else if (row === 'series') {
+      focusTarget = tvRowNav.getCard('series') as View | null;
+      listRef = seriesListRef;
+    } else if (row === 'cw') {
+      focusTarget = tvRowNav.getCard('cw') as View | null;
+      listRef = cwListRef;
+    }
+
+    // Fall back to the first card when no remembered card is available.
+    const target = focusTarget ?? firstItemRef.current;
+
+    const t = setTimeout(() => {
+      // Scroll the row so the target card is visible before focusing.
+      if (row && listRef) {
+        scrollRowToIndex(listRef, tvRowNav.getLastIndex(row));
+      }
+      requestTvFocus(target);
+    }, 200);
+
     return () => clearTimeout(t);
-  }, []));
+  // scrollRowToIndex is stable (useCallback with []); all others are refs.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scrollRowToIndex]));
 
   // ── Progress maps for Continue Watching rail ─────────────────────────────
   // Filter by type before building each map so a movie and a series that happen
@@ -366,6 +406,7 @@ export default function HomeScreen() {
 
   const handleMoviePress = useCallback((movie: Movie) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (Platform.isTV) lastNavRowRef.current = 'movies';
     router.push({
       pathname: '/movie/[id]',
       params: {
@@ -386,6 +427,7 @@ export default function HomeScreen() {
 
   const handleSeriesPress = useCallback((s: Series) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (Platform.isTV) lastNavRowRef.current = 'series';
     router.push({
       pathname: '/series/[id]',
       params: {
@@ -446,6 +488,7 @@ export default function HomeScreen() {
   // Navigate to the correct detail page from a history entry
   const handleHistoryItemPress = useCallback((entry: WatchHistoryEntry) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (Platform.isTV) lastNavRowRef.current = 'cw';
     if (entry.type === 'movie') {
       router.push({
         pathname: '/movie/[id]',
