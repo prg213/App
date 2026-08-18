@@ -18,6 +18,8 @@ import { useColors } from '@/hooks/useColors';
 import { getXtreamCatchupEpg, getXtreamCatchupUrls } from '@/services/xtreamApi';
 import type { Channel, CatchupProgram, EpgProgram } from '@/types';
 import { requestTvFocus } from '@/lib/tvFocus';
+import { useTVRemote } from '@/hooks/useTVRemote';
+import { useBackHandler } from '@/hooks/useBackHandler';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -337,6 +339,31 @@ export function CatchupSheet({
     }, 100);
     return () => clearTimeout(id);
   }, [firstPlayableIndex]);
+
+  // ── TV navigation: BACK and LEFT both dismiss the sheet ──────────────────────
+  //
+  // BACK is already handled natively by the Modal's onRequestClose prop, but
+  // on some Fire OS builds the Modal consumes the event before reaching the
+  // parent screen's BackHandler, so we register a second handler here as
+  // belt-and-suspenders.
+  useBackHandler(() => {
+    if (!Platform.isTV) return false;
+    onClose();
+    return true;
+  });
+
+  // LEFT key: when fired from a focusable element that has no nextFocusLeft
+  // target (programme rows, leftmost day pill, close button), the spatial
+  // engine can't route focus and the raw key event falls through to
+  // onHWKeyEvent — which useTVRemote picks up here and uses to dismiss the
+  // sheet, matching the "LEFT = go back one level" pattern used across all
+  // other TV overlays in the app.
+  useTVRemote({
+    left: (e) => {
+      // Fire on key-up only to avoid double-firing on held presses.
+      if (e.eventKeyAction === 1) onClose();
+    },
+  });
 
   const handlePlayCatchup = (prog: CatchupProgram) => {
     const durationMinutes = Math.max(
