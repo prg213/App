@@ -92,12 +92,12 @@ const MovieBanner = React.memo(React.forwardRef(function MovieBanner({
         <View style={styles.bannerInfo}>
           {movie.rating ? (
             <View style={styles.ratingBadge}>
-              <Text style={styles.ratingText}>★ {parseFloat(movie.rating).toFixed(1)}</Text>
+              <Text style={[styles.ratingText, Platform.isTV && styles.tvRatingText]}>★ {parseFloat(movie.rating).toFixed(1)}</Text>
             </View>
           ) : null}
-          <Text style={styles.bannerTitle} numberOfLines={2}>{movie.name}</Text>
+          <Text style={[styles.bannerTitle, Platform.isTV && styles.tvBannerTitle]} numberOfLines={2}>{movie.name}</Text>
           {movie.genre ? (
-            <Text style={styles.bannerMeta} numberOfLines={1}>{movie.genre}</Text>
+            <Text style={[styles.bannerMeta, Platform.isTV && styles.tvBannerMeta]} numberOfLines={1}>{movie.genre}</Text>
           ) : null}
         </View>
       </View>
@@ -146,12 +146,12 @@ const SeriesBanner = React.memo(React.forwardRef(function SeriesBanner({
         <View style={styles.bannerInfo}>
           {series.rating ? (
             <View style={styles.ratingBadge}>
-              <Text style={styles.ratingText}>★ {parseFloat(series.rating).toFixed(1)}</Text>
+              <Text style={[styles.ratingText, Platform.isTV && styles.tvRatingText]}>★ {parseFloat(series.rating).toFixed(1)}</Text>
             </View>
           ) : null}
-          <Text style={styles.bannerTitle} numberOfLines={2}>{series.name}</Text>
+          <Text style={[styles.bannerTitle, Platform.isTV && styles.tvBannerTitle]} numberOfLines={2}>{series.name}</Text>
           {series.genre ? (
-            <Text style={styles.bannerMeta} numberOfLines={1}>{series.genre}</Text>
+            <Text style={[styles.bannerMeta, Platform.isTV && styles.tvBannerMeta]} numberOfLines={1}>{series.genre}</Text>
           ) : null}
         </View>
       </View>
@@ -499,7 +499,7 @@ export default function HomeScreen() {
           )}
           <LinearGradient colors={['transparent', 'rgba(0,0,0,0.85)']} style={styles.bannerGrad} />
           <View style={styles.bannerInfo}>
-            <Text style={styles.bannerTitle} numberOfLines={2}>
+            <Text style={[styles.bannerTitle, Platform.isTV && styles.tvBannerTitle]} numberOfLines={2}>
               {item.type === 'series' ? (item.parentTitle ?? item.title) : item.title}
             </Text>
           </View>
@@ -754,8 +754,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     marginBottom: 3,
   },
-  tvSectionTitle: { fontSize: 13, fontFamily: 'Inter_700Bold' },
-  tvSectionSub: { fontSize: 10, fontFamily: 'Inter_400Regular' },
+  // TV couch-distance legibility: minimum 15dp so text is readable from ~10 ft
+  tvSectionTitle: { fontSize: 15, fontFamily: 'Inter_700Bold' },
+  tvSectionSub: { fontSize: 12, fontFamily: 'Inter_400Regular' },
   tvSectionBody: { flex: 1, minHeight: 0 },
   tvLoadingRow: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   tvRail: { flex: 1 },
@@ -788,7 +789,8 @@ const styles = StyleSheet.create({
   // Fire OS bug: overflow:hidden + borderRadius + borderWidth on the same
   // ReactViewGroup collapses the clip rect when borderWidth is added, making
   // absolute-positioned image children invisible on focus.
-  bannerFocused: { borderWidth: 3, borderColor: '#00E5FF' },
+  // 4dp ring is clearly visible at couch distance without clipping card content.
+  bannerFocused: { borderWidth: 4, borderColor: '#00E5FF' },
 
   // ── Banner card ──
   // Outer Pressable: owns the dimensions and borderRadius for the focus ring.
@@ -839,6 +841,10 @@ const styles = StyleSheet.create({
   ratingText: { fontSize: 9, color: '#FCD34D', fontFamily: 'Inter_600SemiBold' },
   bannerTitle: { fontSize: 12, fontFamily: 'Inter_700Bold', color: '#fff', lineHeight: 16 },
   bannerMeta: { fontSize: 10, color: 'rgba(255,255,255,0.55)', fontFamily: 'Inter_400Regular' },
+  // TV couch-distance overrides: poster overlays must be legible from ~10 ft.
+  tvBannerTitle: { fontSize: 14, lineHeight: 18 },
+  tvBannerMeta:  { fontSize: 12 },
+  tvRatingText:  { fontSize: 11 },
 
   // ── Continue Watching progress bar ──
   progressRail: {
