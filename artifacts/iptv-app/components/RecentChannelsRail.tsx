@@ -135,8 +135,16 @@ export function RecentChannelsRail({
   if (recent.length === 0) return null;
 
   return (
-    <View style={[styles.container, { borderBottomColor: colors.border, paddingTop: topInset + 8 }]}>
-      <View style={styles.sectionHeader}>
+    <View
+      style={[
+        styles.container,
+        // TV dashboard: keep this strip as slim as possible — every saved
+        // pixel goes to the poster rows below.
+        Platform.isTV && styles.containerTV,
+        { borderBottomColor: colors.border, paddingTop: topInset + (Platform.isTV ? 2 : 8) },
+      ]}
+    >
+      <View style={[styles.sectionHeader, Platform.isTV && styles.sectionHeaderTV]}>
         <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>
           RECENTLY WATCHED
         </Text>
@@ -186,6 +194,13 @@ const styles = StyleSheet.create({
     paddingTop: 10,
     paddingBottom: 8,
     borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  containerTV: {
+    paddingTop: 2,
+    paddingBottom: 4,
+  },
+  sectionHeaderTV: {
+    marginBottom: 4,
   },
   sectionHeader: {
     flexDirection: 'row',

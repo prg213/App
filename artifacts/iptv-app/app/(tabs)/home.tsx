@@ -668,27 +668,27 @@ const styles = StyleSheet.create({
 
   // ── TV fixed dashboard ──
   tvRoot: {
-    paddingTop: 10,
-    paddingBottom: 12,
+    paddingTop: 4,
+    paddingBottom: 8,
   },
   tvSection: {
     flex: 1,
     minHeight: 0,
-    marginTop: 8,
+    marginTop: 4,
   },
   tvSectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 16,
-    marginBottom: 6,
+    gap: 6,
+    paddingHorizontal: 14,
+    marginBottom: 3,
   },
-  tvSectionTitle: { fontSize: 15, fontFamily: 'Inter_700Bold' },
-  tvSectionSub: { fontSize: 11, fontFamily: 'Inter_400Regular' },
+  tvSectionTitle: { fontSize: 13, fontFamily: 'Inter_700Bold' },
+  tvSectionSub: { fontSize: 10, fontFamily: 'Inter_400Regular' },
   tvSectionBody: { flex: 1, minHeight: 0 },
   tvLoadingRow: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   tvRail: { flex: 1 },
-  tvBannerList: { paddingHorizontal: 16, gap: 10, alignItems: 'stretch' },
+  tvBannerList: { paddingHorizontal: 14, gap: 8, alignItems: 'stretch' },
   // Card fills its row's height; width follows from the banner aspect ratio.
   // 6px vertical inset leaves room for the 3px focus ring inside the row.
   tvBannerOuter: {
