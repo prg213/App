@@ -381,7 +381,7 @@ const ProgramRow = React.memo(function ProgramRow({
 // Only rendered when Platform.isTV is true.
 
 const TV_CELL_GAP = 2;   // horizontal gap between cells
-const TV_CH_W    = 160;  // fixed channel-info column width
+const TV_CH_W    = 110;  // fixed channel-info column width
 
 interface TVProgItem {
   prog: EpgProgram;
@@ -401,6 +401,7 @@ const TVEpgRow = React.memo(function TVEpgRow({
   channel, programs, dayStartMs, now, isToday, isFirst, colors, reminderIds,
   onProgramPress, onWatchChannel, firstChannelRef, lastFocusedProgRef,
   jumpToNowRef, rowIndex, allChannelRefs, allProgRows, isFav, onFavPress,
+  onGridFocus,
 }: {
   channel: Channel;
   programs: EpgProgram[];
@@ -413,6 +414,8 @@ const TVEpgRow = React.memo(function TVEpgRow({
   reminderIds?: Set<string>;
   onProgramPress: (p: EpgProgram, ch: Channel) => void;
   onWatchChannel: (ch: Channel) => void;
+  /** Called when any programme cell receives focus — used by FullGuide to track focus level */
+  onGridFocus?: () => void;
   /** Ref forwarded from FullGuide so it can focus the first channel cell after a category change */
   firstChannelRef?: React.Ref<View>;
   /**
@@ -506,26 +509,9 @@ const TVEpgRow = React.memo(function TVEpgRow({
   const { width: windowWidth } = useWindowDimensions();
   const dayEndMs = dayStartMs + DAY_MINS * 60_000;
 
-  // TV favourite heart zone refs — local channel cell ref (mirrors the callback
-  // ref that writes into allChannelRefs) + the heart button ref for D-pad wiring.
+  // TV channel cell ref — stored in allChannelRefs; plain View on TV so it is
+  // never focusable (user navigates directly to programme cells via D-pad).
   const channelCellRef = useRef<View>(null);
-  const heartRef = useRef<View>(null);
-
-  // TV: wire channel cell → RIGHT → heart, heart → LEFT → channel cell.
-  // Mirrors the two-zone pattern used by ChannelRow in index.tsx.
-  // Re-runs on windowWidth so orientation changes that remount the FlatList
-  // don't leave the wiring pointing at stale node handles.
-  useEffect(() => {
-    if (!Platform.isTV || !onFavPress) return;
-    const t = setTimeout(() => {
-      const heartNode = findNodeHandle(heartRef.current);
-      if (heartNode == null) return;
-      // Channel cells are not focusable on TV — pin the heart's LEFT to
-      // itself so the D-pad stops there instead of escaping the row.
-      (heartRef.current as any)?.setNativeProps?.({ nextFocusLeft: heartNode });
-    }, 300);
-    return () => clearTimeout(t);
-  }, [windowWidth, onFavPress]);
 
   // Pre-compute widths + cumulative offsets so getItemLayout is O(1)
   const items: TVProgItem[] = useMemo(() => {
@@ -781,60 +767,58 @@ const TVEpgRow = React.memo(function TVEpgRow({
 
   return (
     <View style={[styles.tvRow, { borderBottomColor: colors.border }]}>
-      {/* Channel info cell — NOT focusable on TV (user request: only the
-          programme listings should be selectable; the D-pad goes straight to
-          the grid).  Still pressable on touch devices. */}
-      <FocusablePressable
-        focusable={!Platform.isTV}
-        ref={(el: View | null) => {
-          // Keep the local ref so the heart-wiring useEffect can call findNodeHandle.
-          (channelCellRef as React.MutableRefObject<View | null>).current = el;
-          // Store in the shared cross-row map so adjacent-row programme cells
-          // can read this node handle for nextFocusUp / nextFocusDown wiring.
-          if (el) allChannelRefs.current.set(rowIndex, el);
-          else allChannelRefs.current.delete(rowIndex);
-        }}
-        focusedStyle={styles.tvFocused}
-        style={[styles.tvChCell, { backgroundColor: colors.card, borderRightColor: colors.border }]}
-        onPress={() => {
-          // Auto-advance D-pad focus to the current/upcoming programme cell
-          // (initialProgRef), falling back to the first cell when there is no
-          // initialIdx (e.g. a future day where every programme is upcoming).
-          setTimeout(() => {
-            requestTvFocus(initialProgRef.current ?? progFirstRef.current);
-          }, 80);
-        }}
-        onLongPress={() => onWatchChannel(channel)}
-        delayLongPress={400}
-      >
-        {channel.logo ? (
-          <Image source={{ uri: channel.logo }} style={styles.tvChLogo} resizeMode="contain" />
-        ) : (
-          <Text style={[styles.tvChInitials, { color: colors.primary }]}>
-            {channel.name.slice(0, 3).toUpperCase()}
-          </Text>
-        )}
-        <Text style={[styles.tvChName, { color: colors.foreground }]} numberOfLines={2}>
-          {channel.name}
-        </Text>
-      </FocusablePressable>
-
-      {/* TV favourite heart zone — focusable via D-pad RIGHT from the channel cell.
-          Only rendered on TV when an onFavPress handler is provided. */}
-      {Platform.isTV && !!onFavPress && (
-        <FocusablePressable
-          ref={heartRef}
-          focusable
-          onPress={onFavPress}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          focusedStyle={styles.tvFocusedRound}
-          style={styles.tvChHeart}
+      {/* Channel info cell — plain non-focusable View on TV so D-pad never
+          lands here; pressable on touch devices only. */}
+      {Platform.isTV ? (
+        <View
+          ref={(el: View | null) => {
+            (channelCellRef as React.MutableRefObject<View | null>).current = el;
+            if (el) allChannelRefs.current.set(rowIndex, el);
+            else allChannelRefs.current.delete(rowIndex);
+          }}
+          style={[styles.tvChCell, { backgroundColor: colors.card, borderRightColor: colors.border }]}
         >
-          <Text style={[styles.heartIcon, { color: isFav ? '#EF4444' : colors.mutedForeground }]}>
-            {isFav ? '♥' : '♡'}
+          {channel.logo ? (
+            <Image source={{ uri: channel.logo }} style={styles.tvChLogo} resizeMode="contain" />
+          ) : (
+            <Text style={[styles.tvChInitials, { color: colors.primary }]}>
+              {channel.name.slice(0, 3).toUpperCase()}
+            </Text>
+          )}
+          <Text style={[styles.tvChName, { color: colors.foreground }]} numberOfLines={2}>
+            {channel.name}
+          </Text>
+        </View>
+      ) : (
+        <FocusablePressable
+          ref={(el: View | null) => {
+            (channelCellRef as React.MutableRefObject<View | null>).current = el;
+            if (el) allChannelRefs.current.set(rowIndex, el);
+            else allChannelRefs.current.delete(rowIndex);
+          }}
+          focusedStyle={styles.tvFocused}
+          style={[styles.tvChCell, { backgroundColor: colors.card, borderRightColor: colors.border }]}
+          onPress={() => {
+            setTimeout(() => {
+              requestTvFocus(initialProgRef.current ?? progFirstRef.current);
+            }, 80);
+          }}
+          onLongPress={() => onWatchChannel(channel)}
+          delayLongPress={400}
+        >
+          {channel.logo ? (
+            <Image source={{ uri: channel.logo }} style={styles.tvChLogo} resizeMode="contain" />
+          ) : (
+            <Text style={[styles.tvChInitials, { color: colors.primary }]}>
+              {channel.name.slice(0, 3).toUpperCase()}
+            </Text>
+          )}
+          <Text style={[styles.tvChName, { color: colors.foreground }]} numberOfLines={2}>
+            {channel.name}
           </Text>
         </FocusablePressable>
       )}
+
 
       {/* Programme cells */}
       {items.length === 0 ? (
@@ -926,13 +910,13 @@ const TVEpgRow = React.memo(function TVEpgRow({
                   },
                 ]}
                 onFocus={() => {
+                  // Notify FullGuide that focus is in the programme grid.
+                  onGridFocus?.();
                   // TV: wire D-pad UP/DOWN from this programme cell to the
                   // programme airing at the same time in the rows immediately
-                  // above and below (falling back to the channel cell only when
-                  // that cell isn't mounted).  Native spatial navigation cannot
-                  // reliably cross the independently-virtualised horizontal
-                  // FlatList boundaries on Fire OS, so we set the target node
-                  // handles imperatively each time a cell receives focus.
+                  // above and below.  Native spatial navigation cannot reliably
+                  // cross independently-virtualised horizontal FlatList
+                  // boundaries on Fire OS, so we set targets imperatively.
                   if (!Platform.isTV) return;
                   const cell = progRefs.current.get(index);
                   if (!cell) return;
@@ -985,9 +969,12 @@ const TVEpgRow = React.memo(function TVEpgRow({
                       // restoring default spatial navigation for this press.
                       nativeProps.nextFocusRight = nxtNode != null ? nxtNode : -1;
                     }
-                    // First cell's LEFT goes to the channel cell (wired in the
-                    // mount effect); pin non-first cells to the previous cell.
-                    if (index > 0) {
+                    if (index === 0) {
+                      // First cell: pin LEFT to self so D-pad cannot leave the
+                      // guide horizontally — only BACK exits the guide.
+                      nativeProps.nextFocusLeft = selfNode;
+                    } else {
+                      // Non-first cells: wire to the previous cell.
                       const prv = progRefs.current.get(index - 1);
                       const prvNode = prv ? findNodeHandle(prv) : null;
                       if (prvNode != null) nativeProps.nextFocusLeft = prvNode;
@@ -1657,6 +1644,34 @@ function FullGuide({
   // D-pad focus can be restored when the user presses Back from the player and
   // the guide tab regains focus.  Cleared in the useFocusEffect once consumed.
   const lastWatchedProgViewRef = useRef<View | null>(null);
+
+  // ── TV layered BACK navigation ────────────────────────────────────────────
+  // Tracks which UI layer currently holds D-pad focus so the BACK handler can
+  // move it one level up: grid → daybar → topbar → sidebar.
+  const tvFocusLevelRef = useRef<'grid' | 'daybar' | 'topbar'>('grid');
+  // BACK targets for each step
+  const firstDayTabRef = useRef<View>(null);  // "Today" day-tab button
+  const nextCatBtnRef  = useRef<View>(null);  // "›" next-category button in top bar
+
+  // Layered BACK — registered inside FullGuide so it fires BEFORE the outer
+  // GuideScreen handler (BackHandler is LIFO; child effects run after parent).
+  useBackHandler(() => {
+    if (!Platform.isTV) return false;
+    const level = tvFocusLevelRef.current;
+    if (level === 'grid') {
+      tvFocusLevelRef.current = 'daybar';
+      setTimeout(() => requestTvFocus(firstDayTabRef.current), 50);
+      return true;
+    }
+    if (level === 'daybar') {
+      tvFocusLevelRef.current = 'topbar';
+      setTimeout(() => requestTvFocus(nextCatBtnRef.current), 50);
+      return true;
+    }
+    // topbar → go straight to the sidebar (skip category grid on TV)
+    sidebarNav.focus();
+    return true;
+  });
   // ── Jump-to-now hardware shortcut (Play/Pause key on Fire TV) ────────────
   // The first TVEpgRow populates this ref with a fn that scrolls its horizontal
   // FlatList to the current programme and focuses that cell.  FullGuide calls
@@ -1724,16 +1739,18 @@ function FullGuide({
     if (playPauseHoldTimer.current) clearTimeout(playPauseHoldTimer.current);
   }, []);
 
-  // Focus the first channel cell whenever the selected category changes (covers
-  // both the initial mount from CategoryGrid and ‹ › prev/next navigation).
-  // Also clear the allChannelRefs Map immediately so that any programme-cell
-  // onFocus UP/DOWN wiring that fires during the TVEpgRow remount cycle cannot
-  // read stale node handles from the old category's rows.  New TVEpgRows will
-  // repopulate the Map via their callback refs as they mount.
+  // Focus the first programme cell when the selected category changes — but only
+  // when the change came from CategoryGrid (initial entry).  When the user uses
+  // ‹ › to switch categories, tvFocusLevelRef is 'topbar', so we leave focus
+  // on the arrow button they just pressed.
+  // Also clear the allChannelRefs / allProgRows Maps immediately so that any
+  // programme-cell onFocus wiring that fires during the TVEpgRow remount cycle
+  // cannot read stale node handles from the old category's rows.
   useEffect(() => {
     if (!Platform.isTV) return;
     allChannelRefs.current.clear();
     allProgRows.current.clear();
+    if (tvFocusLevelRef.current === 'topbar') return; // keep focus on the nav arrow
     const timer = setTimeout(() => { requestTvFocus(firstChannelRef.current); }, 100);
     return () => clearTimeout(timer);
   }, [selectedCat]);
@@ -1982,6 +1999,7 @@ function FullGuide({
               <FocusablePressable
                 style={[styles.catNavBtn, { opacity: hasPrev ? 1 : 0.25 }]}
                 onPress={() => hasPrev ? onChangeCat(categoryIds[catIndex - 1]) : onBack()}
+                onFocus={Platform.isTV ? () => { tvFocusLevelRef.current = 'topbar'; } : undefined}
               >
                 <Text style={[styles.catNavArrow, { color: colors.foreground }]}>‹</Text>
               </FocusablePressable>
@@ -1989,8 +2007,10 @@ function FullGuide({
                 {categoryName}
               </Text>
               <FocusablePressable
+                ref={nextCatBtnRef}
                 style={[styles.catNavBtn, { opacity: hasNext ? 1 : 0.25 }]}
                 onPress={() => { if (hasNext) onChangeCat(categoryIds[catIndex + 1]); }}
+                onFocus={Platform.isTV ? () => { tvFocusLevelRef.current = 'topbar'; } : undefined}
                 disabled={!hasNext}
               >
                 <Text style={[styles.catNavArrow, { color: colors.foreground }]}>›</Text>
@@ -2018,6 +2038,7 @@ function FullGuide({
         <FocusablePressable
           style={[styles.todayBtn, { backgroundColor: colors.secondary, borderColor: colors.border }]}
           onPress={() => refetchEpg()}
+          onFocus={Platform.isTV ? () => { tvFocusLevelRef.current = 'topbar'; } : undefined}
         >
           <Text style={[styles.todayBtnText, { color: colors.mutedForeground }]}>↺</Text>
         </FocusablePressable>
@@ -2025,6 +2046,7 @@ function FullGuide({
         {/* Jump-to-now button — always visible so the user can navigate back to Today */}
         <FocusablePressable
           style={[styles.todayBtn, { backgroundColor: colors.secondary, borderColor: colors.border }]}
+          onFocus={Platform.isTV ? () => { tvFocusLevelRef.current = 'topbar'; } : undefined}
           onPress={() => {
             // If on a future day, snap back to Today first
             setSelectedDay(0);
@@ -2052,6 +2074,7 @@ function FullGuide({
               : { backgroundColor: colors.secondary, borderColor: colors.border },
           ]}
           onPress={() => setFavFilterActive((v) => !v)}
+          onFocus={Platform.isTV ? () => { tvFocusLevelRef.current = 'topbar'; } : undefined}
         >
           <Text style={[styles.todayBtnText, { color: favFilterActive ? '#fff' : colors.mutedForeground }]}>
             {favFilterActive ? '♥ Favs' : '♡ All'}
@@ -2080,6 +2103,7 @@ function FullGuide({
         <FocusablePressable
           style={[styles.dayNavArrow, { opacity: selectedDay === 0 ? 0.25 : 1 }]}
           onPress={() => setSelectedDay((d) => Math.max(0, d - 1))}
+          onFocus={Platform.isTV ? () => { tvFocusLevelRef.current = 'daybar'; } : undefined}
           disabled={selectedDay === 0}
         >
           <Text style={[styles.dayNavArrowText, { color: colors.foreground }]}>‹</Text>
@@ -2098,6 +2122,7 @@ function FullGuide({
             return (
               <FocusablePressable
                 key={i}
+                ref={i === 0 ? firstDayTabRef : undefined}
                 style={[
                   styles.dayTab,
                   isSelected
@@ -2107,6 +2132,7 @@ function FullGuide({
                     : { backgroundColor: 'transparent', borderColor: colors.border },
                 ]}
                 onPress={() => setSelectedDay(i)}
+                onFocus={Platform.isTV ? () => { tvFocusLevelRef.current = 'daybar'; } : undefined}
               >
                 <Text style={[styles.dayTabText, { color: isSelected ? '#fff' : colors.mutedForeground }]}>
                   {d.short}
@@ -2121,6 +2147,7 @@ function FullGuide({
         <FocusablePressable
           style={[styles.dayNavArrow, { opacity: selectedDay === days.length - 1 ? 0.25 : 1 }]}
           onPress={() => setSelectedDay((d) => Math.min(days.length - 1, d + 1))}
+          onFocus={Platform.isTV ? () => { tvFocusLevelRef.current = 'daybar'; } : undefined}
           disabled={selectedDay === days.length - 1}
         >
           <Text style={[styles.dayNavArrowText, { color: colors.foreground }]}>›</Text>
@@ -2219,6 +2246,7 @@ function FullGuide({
                 allChannelRefs={allChannelRefs}
                 allProgRows={allProgRows}
                 isFav={guideFavIds.has(ch.id)}
+                onGridFocus={() => { tvFocusLevelRef.current = 'grid'; }}
                 onFavPress={async () => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                   const updated = await StorageService.toggleFavorite({
@@ -2977,7 +3005,7 @@ const styles = StyleSheet.create({
     gap: 3,
     borderRightWidth: StyleSheet.hairlineWidth,
   },
-  tvChLogo: { width: 52, height: 32, borderRadius: 4 },
+  tvChLogo: { width: 40, height: 24, borderRadius: 3 },
   tvChInitials: { fontSize: 11, fontFamily: 'Inter_700Bold' },
   tvChName: {
     fontSize: 9, fontFamily: 'Inter_400Regular',
