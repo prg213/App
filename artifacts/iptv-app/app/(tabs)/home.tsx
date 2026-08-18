@@ -47,11 +47,13 @@ const MovieBanner = React.memo(React.forwardRef(function MovieBanner({
   colors,
   onPress,
   nextFocusLeft,
+  cardStyle,
 }: {
   movie: Movie;
   colors: ReturnType<typeof useColors>;
   onPress: () => void;
   nextFocusLeft?: number | null;
+  cardStyle?: any;
 }, ref: React.Ref<View>) {
   return (
     // bannerOuter: dimensions + borderRadius for the focus ring — NO overflow:hidden.
@@ -60,7 +62,7 @@ const MovieBanner = React.memo(React.forwardRef(function MovieBanner({
     // bug where adding borderWidth on focus collapses the clip rect and hides the image.
     <FocusablePressable
       ref={ref}
-      style={styles.bannerOuter}
+      style={cardStyle ?? styles.bannerOuter}
       focusedStyle={styles.bannerFocused}
       nextFocusLeft={nextFocusLeft}
       onPress={onPress}
@@ -100,15 +102,17 @@ const SeriesBanner = React.memo(function SeriesBanner({
   colors,
   onPress,
   nextFocusLeft,
+  cardStyle,
 }: {
   series: Series;
   colors: ReturnType<typeof useColors>;
   onPress: () => void;
   nextFocusLeft?: number | null;
+  cardStyle?: any;
 }) {
   return (
     <FocusablePressable
-      style={styles.bannerOuter}
+      style={cardStyle ?? styles.bannerOuter}
       focusedStyle={styles.bannerFocused}
       nextFocusLeft={nextFocusLeft}
       onPress={onPress}
@@ -149,13 +153,37 @@ function Section({
   isLoading,
   children,
   colors,
+  tv = false,
 }: {
   title: string;
   subtitle?: string;
   isLoading: boolean;
   children: React.ReactNode;
   colors: ReturnType<typeof useColors>;
+  /** TV dashboard mode: section flexes to its share of the screen, compact
+      one-line header, and the rail fills the remaining row height. */
+  tv?: boolean;
 }) {
+  if (tv) {
+    return (
+      <View style={styles.tvSection}>
+        <View style={styles.tvSectionHeader}>
+          <View style={styles.sectionPip} />
+          <Text style={[styles.tvSectionTitle, { color: colors.foreground }]}>{title}</Text>
+          {subtitle ? (
+            <Text style={[styles.tvSectionSub, { color: colors.mutedForeground }]}>{subtitle}</Text>
+          ) : null}
+        </View>
+        {isLoading ? (
+          <View style={styles.tvLoadingRow}>
+            <ActivityIndicator color={colors.primary} />
+          </View>
+        ) : (
+          <View style={styles.tvSectionBody}>{children}</View>
+        )}
+      </View>
+    );
+  }
   return (
     <View style={styles.section}>
       <View style={styles.sectionHeader}>
@@ -405,7 +433,7 @@ export default function HomeScreen() {
     const pct = progress != null ? Math.max(2, Math.min(100, progress * 100)) : 0;
     return (
       <FocusablePressable
-        style={styles.bannerOuter}
+        style={Platform.isTV ? styles.tvBannerOuter : styles.bannerOuter}
         focusedStyle={styles.bannerFocused}
         // TV: LEFT on the first card jumps to the sidebar nav menu
         nextFocusLeft={Platform.isTV && index === 0 ? sidebarNav.handle : undefined}
@@ -446,6 +474,7 @@ export default function HomeScreen() {
       ref={index === 0 ? firstItemRef : undefined}
       movie={item}
       colors={colors}
+      cardStyle={Platform.isTV ? styles.tvBannerOuter : undefined}
       nextFocusLeft={Platform.isTV && index === 0 ? sidebarNav.handle : undefined}
       onPress={() => handleMoviePress(item)}
     />
@@ -455,6 +484,7 @@ export default function HomeScreen() {
     <SeriesBanner
       series={item}
       colors={colors}
+      cardStyle={Platform.isTV ? styles.tvBannerOuter : undefined}
       nextFocusLeft={Platform.isTV && index === 0 ? sidebarNav.handle : undefined}
       onPress={() => handleSeriesPress(item)}
     />
@@ -477,6 +507,70 @@ export default function HomeScreen() {
             Connect with Xtream Codes to see{'\n'}latest movies and TV shows here.
           </Text>
         </View>
+      </View>
+    );
+  }
+
+  // ── TV: fixed dashboard — every section shares the 16:9 viewport, no page
+  // scrolling.  Each flexible section gets an equal share of the leftover
+  // height after the (intrinsically sized) Recently Watched rail; cards fill
+  // their row via height:100% + a fixed aspect ratio, so nothing is squashed —
+  // rows simply divide the screen and the rails scroll horizontally only.
+  if (Platform.isTV) {
+    return (
+      <View style={[styles.root, styles.tvRoot, { backgroundColor: colors.background }]}>
+        <RecentChannelsRail
+          blockedIds={blockedIdSet}
+          nowPlayingMap={emptyNowPlayingMap}
+          onWatchFullscreen={handleRecentChannelWatch}
+        />
+
+        {continueWatchingItems.length > 0 && (
+          <Section title="Continue Watching" isLoading={false} colors={colors} tv>
+            <FlatList
+              data={continueWatchingItems}
+              keyExtractor={(e) => e.id}
+              renderItem={renderContinueWatching}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.tvRail}
+              contentContainerStyle={styles.tvBannerList}
+              initialNumToRender={8}
+              maxToRenderPerBatch={8}
+              removeClippedSubviews={false}
+            />
+          </Section>
+        )}
+
+        <Section title="Latest Movies" isLoading={moviesLoading} colors={colors} tv>
+          <FlatList
+            data={latestMovies}
+            keyExtractor={(m) => m.id}
+            renderItem={renderMovie}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.tvRail}
+            contentContainerStyle={styles.tvBannerList}
+            initialNumToRender={8}
+            maxToRenderPerBatch={8}
+            removeClippedSubviews={false}
+          />
+        </Section>
+
+        <Section title="Latest TV Shows" isLoading={seriesLoading} colors={colors} tv>
+          <FlatList
+            data={latestSeries}
+            keyExtractor={(s) => s.id}
+            renderItem={renderSeries}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.tvRail}
+            contentContainerStyle={styles.tvBannerList}
+            initialNumToRender={8}
+            maxToRenderPerBatch={8}
+            removeClippedSubviews={false}
+          />
+        </Section>
       </View>
     );
   }
@@ -571,6 +665,37 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
+
+  // ── TV fixed dashboard ──
+  tvRoot: {
+    paddingTop: 10,
+    paddingBottom: 12,
+  },
+  tvSection: {
+    flex: 1,
+    minHeight: 0,
+    marginTop: 8,
+  },
+  tvSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+    marginBottom: 6,
+  },
+  tvSectionTitle: { fontSize: 15, fontFamily: 'Inter_700Bold' },
+  tvSectionSub: { fontSize: 11, fontFamily: 'Inter_400Regular' },
+  tvSectionBody: { flex: 1, minHeight: 0 },
+  tvLoadingRow: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  tvRail: { flex: 1 },
+  tvBannerList: { paddingHorizontal: 16, gap: 10, alignItems: 'stretch' },
+  // Card fills its row's height; width follows from the banner aspect ratio.
+  // 6px vertical inset leaves room for the 3px focus ring inside the row.
+  tvBannerOuter: {
+    height: '100%',
+    aspectRatio: BANNER_W / BANNER_H,
+    borderRadius: 10,
+  },
 
   // ── Sections ──
   section: { marginTop: 24 },
