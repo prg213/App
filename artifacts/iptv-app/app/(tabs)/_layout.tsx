@@ -275,13 +275,14 @@ function Sidebar({ state, descriptors, navigation }: SidebarProps) {
     };
   }, []);
 
-  // Keep sidebarNav.handle pointed at the ACTIVE tab's nav item so that
-  // LEFT from any screen's content returns focus to the correct sidebar entry
-  // (e.g. LEFT on Live TV categories → "Live TV", not always "Home").
+  // Keep sidebarNav.handle AND sidebarNav.focus pointed at the ACTIVE tab's
+  // nav item so that LEFT and BACK from any screen both land on the correct
+  // sidebar entry (e.g. TV Guide categories → "TV Guide", not always "Home").
   useEffect(() => {
     if (!Platform.isTV) return;
     const activeNode = navItemRefs.current[state.index] ?? firstNavRef.current;
     try { sidebarNav.handle = findNodeHandle(activeNode); } catch {}
+    sidebarNav.focus = () => requestTvFocus(activeNode);
   });
 
   const dotColor = serverStatus === 'ok' ? '#22C55E'
