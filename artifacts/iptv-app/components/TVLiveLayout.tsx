@@ -366,9 +366,11 @@ export function TVLiveLayout({
               try {
                 const h = findNodeHandle(node);
                 const props: Record<string, number> = {};
-                // LEFT → last-focused category
-                if (catFocusedRef.current) {
-                  const ch = findNodeHandle(catFocusedRef.current);
+                // LEFT → last-focused category (or first category if none has
+                // been D-pad-focused yet, e.g. user arrived via BACK from catchup).
+                const catTarget = catFocusedRef.current ?? firstCatRef.current;
+                if (catTarget) {
+                  const ch = findNodeHandle(catTarget);
                   if (ch != null) props.nextFocusLeft = ch;
                 }
                 // No-wrap edges: UP on first → nothing; DOWN on last → nothing.
