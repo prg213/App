@@ -13,3 +13,4 @@
 - [TV EPG D-pad & synced panning](tv-epg-dpad-sync.md) — imperative setNativeProps focus routing; time-based (not pixel) row sync with debounced broadcast + expected-offset loop guard.
 - [TV Home dashboard & row nav](tv-home-dashboard.md) — fixed non-scrolling Home on TV; tvRowNav registry for D-pad UP/DOWN between carousels (native focus can't cross virtualized rails).
 - [Live Channel Menu](live-channel-menu.md) — LiveChannelMenu overlay; Menu button opens/closes; fetchAndParseM3U returns {channels,categories} not array; zap list is mutable useState; BACK priority order.
+- [FocusablePressable stable setRefs](fp-stable-setrefs.md) — setRefs MUST be stable useCallback([], []); inline function causes null→node ref churn on every render → "Maximum update depth exceeded" crash.
