@@ -11,6 +11,7 @@ import {
   StyleSheet,
   Text,
   View,
+  useWindowDimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useQuery } from '@tanstack/react-query';
@@ -39,6 +40,11 @@ function buildCreds(c: ReturnType<typeof useAppContext>['credentials']) {
 
 const BANNER_W = 220;
 const BANNER_H = 130;
+// Tablet breakpoint (>=768dp shortest-side style width check at render time):
+// larger posters so a 10" screen isn't showing phone-sized cards.
+const TABLET_BP = 768;
+const BANNER_W_TAB = 280;
+const BANNER_H_TAB = 165;
 const LATEST_N = 30;
 
 // ─── Movie banner card ────────────────────────────────────────────────────────
@@ -245,6 +251,15 @@ export default function HomeScreen() {
   useEffect(() => {
     if (Platform.isTV) tvRowNav.setOrder(['recent', 'cw', 'movies', 'series']);
   }, []);
+
+  // Responsive breakpoint: tablets (wide touch screens) get larger posters.
+  const { width: winW } = useWindowDimensions();
+  const isTablet = !Platform.isTV && winW >= TABLET_BP;
+  const cardW = isTablet ? BANNER_W_TAB : BANNER_W;
+  const tabletCardStyle = useMemo(
+    () => (isTablet ? { width: BANNER_W_TAB, height: BANNER_H_TAB, borderRadius: 12 } : undefined),
+    [isTablet],
+  );
 
   const scrollRowToIndex = useCallback((listRef: React.RefObject<FlatList<any> | null>, index: number) => {
     if (!Platform.isTV) return;
@@ -461,7 +476,7 @@ export default function HomeScreen() {
     return (
       <FocusablePressable
         ref={Platform.isTV ? ((el: any) => tvRowNav.register('cw', index, el)) as any : undefined}
-        style={Platform.isTV ? styles.tvBannerOuter : styles.bannerOuter}
+        style={Platform.isTV ? styles.tvBannerOuter : [styles.bannerOuter, tabletCardStyle]}
         focusedStyle={styles.bannerFocused}
         // TV: LEFT on the first card jumps to the sidebar nav menu
         nextFocusLeft={Platform.isTV && index === 0 ? sidebarNav.handle : undefined}
@@ -497,7 +512,7 @@ export default function HomeScreen() {
         </View>
       </FocusablePressable>
     );
-  }, [colors, handleHistoryItemPress, movieProgressMap, seriesProgressMap, scrollRowToIndex]);
+  }, [colors, handleHistoryItemPress, movieProgressMap, seriesProgressMap, scrollRowToIndex, tabletCardStyle]);
 
   const renderMovie = useCallback(({ item, index }: { item: Movie; index: number }) => (
     // First movie card carries the TV focus ref now that the hero banner is
@@ -509,7 +524,7 @@ export default function HomeScreen() {
       }}
       movie={item}
       colors={colors}
-      cardStyle={Platform.isTV ? styles.tvBannerOuter : undefined}
+      cardStyle={Platform.isTV ? styles.tvBannerOuter : tabletCardStyle && [styles.bannerOuter, tabletCardStyle]}
       nextFocusLeft={Platform.isTV && index === 0 ? sidebarNav.handle : undefined}
       onCardFocus={() => {
         tvRowNav.focused('movies', index);
@@ -517,14 +532,14 @@ export default function HomeScreen() {
       }}
       onPress={() => handleMoviePress(item)}
     />
-  ), [colors, handleMoviePress, scrollRowToIndex]);
+  ), [colors, handleMoviePress, scrollRowToIndex, tabletCardStyle]);
 
   const renderSeries = useCallback(({ item, index }: { item: Series; index: number }) => (
     <SeriesBanner
       ref={Platform.isTV ? ((el: View | null) => tvRowNav.register('series', index, el)) : undefined}
       series={item}
       colors={colors}
-      cardStyle={Platform.isTV ? styles.tvBannerOuter : undefined}
+      cardStyle={Platform.isTV ? styles.tvBannerOuter : tabletCardStyle && [styles.bannerOuter, tabletCardStyle]}
       nextFocusLeft={Platform.isTV && index === 0 ? sidebarNav.handle : undefined}
       onCardFocus={() => {
         tvRowNav.focused('series', index);
@@ -532,7 +547,7 @@ export default function HomeScreen() {
       }}
       onPress={() => handleSeriesPress(item)}
     />
-  ), [colors, handleSeriesPress, scrollRowToIndex]);
+  ), [colors, handleSeriesPress, scrollRowToIndex, tabletCardStyle]);
 
   if (!isXtream) {
     return (
@@ -664,7 +679,7 @@ export default function HomeScreen() {
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.bannerList}
-            getItemLayout={(_, i) => ({ length: BANNER_W + 10, offset: (BANNER_W + 10) * i, index: i })}
+            getItemLayout={(_, i) => ({ length: cardW + 10, offset: (cardW + 10) * i, index: i })}
             initialNumToRender={6}
             maxToRenderPerBatch={8}
             removeClippedSubviews={false}
@@ -686,7 +701,7 @@ export default function HomeScreen() {
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.bannerList}
-          getItemLayout={(_, i) => ({ length: BANNER_W + 10, offset: (BANNER_W + 10) * i, index: i })}
+          getItemLayout={(_, i) => ({ length: cardW + 10, offset: (cardW + 10) * i, index: i })}
           initialNumToRender={6}
           maxToRenderPerBatch={8}
           removeClippedSubviews={false}
@@ -707,7 +722,7 @@ export default function HomeScreen() {
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.bannerList}
-          getItemLayout={(_, i) => ({ length: BANNER_W + 10, offset: (BANNER_W + 10) * i, index: i })}
+          getItemLayout={(_, i) => ({ length: cardW + 10, offset: (cardW + 10) * i, index: i })}
           initialNumToRender={6}
           maxToRenderPerBatch={8}
           removeClippedSubviews={false}
