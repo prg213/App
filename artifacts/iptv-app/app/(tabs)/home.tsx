@@ -299,6 +299,26 @@ export default function HomeScreen() {
     } catch {}
   }, []);
 
+  // Synced panning: Continue Watching, Latest Movies and Latest TV Shows all
+  // glide together — focusing any card in any of those three rows scrolls all
+  // three to the same column, just like the EPG grid.  Recently Watched is
+  // intentionally excluded (different card size / different content type).
+  const scrollAllContentRows = useCallback((index: number) => {
+    if (!Platform.isTV) return;
+    [
+      { ref: cwListRef,     count: cwCountRef },
+      { ref: movieListRef,  count: movieCountRef },
+      { ref: seriesListRef, count: seriesCountRef },
+    ].forEach(({ ref, count }) => {
+      // Clamp to the row's own length so a short row doesn't throw an
+      // out-of-bounds error when the focused row has more items.
+      const safeIdx = Math.min(index, Math.max(0, count.current - 1));
+      try {
+        ref.current?.scrollToIndex({ index: safeIdx, animated: true, viewPosition: 0.35 });
+      } catch {}
+    });
+  }, []);
+
   // ── Watch history (for Continue Watching rail) ─────────────────────────────
   const [watchHistory, setWatchHistory] = useState<WatchHistoryEntry[]>([]);
 
@@ -555,7 +575,7 @@ export default function HomeScreen() {
         nextFocusLeft={Platform.isTV && index === 0 ? sidebarNav.handle : undefined}
         onFocus={() => {
           tvRowNav.focused('cw', index);
-          scrollRowToIndex(cwListRef, index);
+          scrollAllContentRows(index);
           if (Platform.isTV && index === cwCountRef.current - 1) tvRowNav.pinRightEdge('cw', index);
         }}
         onPress={() => handleHistoryItemPress(item)}
@@ -586,7 +606,7 @@ export default function HomeScreen() {
         </View>
       </FocusablePressable>
     );
-  }, [colors, handleHistoryItemPress, movieProgressMap, seriesProgressMap, scrollRowToIndex, tabletCardStyle]);
+  }, [colors, handleHistoryItemPress, movieProgressMap, seriesProgressMap, scrollAllContentRows, tabletCardStyle]);
 
   const renderMovie = useCallback(({ item, index }: { item: Movie; index: number }) => (
     // First movie card carries the TV focus ref now that the hero banner is
@@ -602,12 +622,12 @@ export default function HomeScreen() {
       nextFocusLeft={Platform.isTV && index === 0 ? sidebarNav.handle : undefined}
       onCardFocus={() => {
         tvRowNav.focused('movies', index);
-        scrollRowToIndex(movieListRef, index);
+        scrollAllContentRows(index);
         if (Platform.isTV && index === movieCountRef.current - 1) tvRowNav.pinRightEdge('movies', index);
       }}
       onPress={() => handleMoviePress(item)}
     />
-  ), [colors, handleMoviePress, scrollRowToIndex, tabletCardStyle]);
+  ), [colors, handleMoviePress, scrollAllContentRows, tabletCardStyle]);
 
   const renderSeries = useCallback(({ item, index }: { item: Series; index: number }) => (
     <SeriesBanner
@@ -618,12 +638,12 @@ export default function HomeScreen() {
       nextFocusLeft={Platform.isTV && index === 0 ? sidebarNav.handle : undefined}
       onCardFocus={() => {
         tvRowNav.focused('series', index);
-        scrollRowToIndex(seriesListRef, index);
+        scrollAllContentRows(index);
         if (Platform.isTV && index === seriesCountRef.current - 1) tvRowNav.pinRightEdge('series', index);
       }}
       onPress={() => handleSeriesPress(item)}
     />
-  ), [colors, handleSeriesPress, scrollRowToIndex, tabletCardStyle]);
+  ), [colors, handleSeriesPress, scrollAllContentRows, tabletCardStyle]);
 
   if (!isXtream) {
     return (
