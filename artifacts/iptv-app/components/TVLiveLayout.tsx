@@ -209,11 +209,8 @@ export function TVLiveLayout({
       onPress={() => {
         onCatSelect(item.id);
         handleCatFocus(index);
-        // Auto-advance D-pad focus to the first channel after category selection so
-        // the user doesn't have to manually press RIGHT to reach the channel list.
-        if (Platform.isTV) {
-          setTimeout(() => requestTvFocus(firstChRef.current), 300);
-        }
+        // Focus stays on the selected category — the user presses RIGHT to
+        // enter the channel list when ready.
       }}
     >
       <Text style={[styles.catName, { color: colors.foreground }]} numberOfLines={1}>
