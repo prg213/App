@@ -42,4 +42,12 @@ describe('TV Live category/channel row alignment', () => {
     expect(SOURCE.slice(start, end)).not.toMatch(/scrollToIndex/);
     expect(SOURCE.slice(start, end)).not.toMatch(/animated:\s*true/);
   });
+
+  it('keeps the TV grid inside the viewport and constrains the guide height', () => {
+    expect(SOURCE).toMatch(/paddingLeft:\s*Math\.max\(insets\.left,\s*12\)/);
+    expect(SOURCE).toMatch(/paddingRight:\s*Math\.max\(insets\.right,\s*12\)/);
+    expect(SOURCE).toMatch(/minWidth:\s*0/);
+    expect(SOURCE).toMatch(/style=\{\{ flex: 1, minHeight: 0 \}\}/);
+    expect(SOURCE).toMatch(/contentContainerStyle=\{\{ paddingBottom: 4 \}\}/);
+  });
 });

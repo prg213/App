@@ -14,3 +14,9 @@ description: Shared sizing rule for the Fire TV category and channel panels.
 - **Rule:** Do not call animated `scrollToIndex` from a Live TV channel row's `onFocus`.
 - **Why:** Fire TV already scrolls a focused FlatList natively. Starting another animation for every repeated D-pad event makes competing motions jump or skip during fast navigation.
 - **How to apply:** Let focus events update only the highlighted row. Reserve imperative, non-animated scrolling for restoring a selected channel from outside the list.
+
+## TV viewport safety
+
+- **Rule:** The three-panel TV layout needs a fixed overscan-safe edge margin and its mini-guide must be height-constrained.
+- **Why:** Some Fire TV displays report no safe-area inset while clipping outer pixels; an unconstrained guide can also grow beyond the lower edge of the viewport.
+- **How to apply:** Keep a small minimum root inset, allow panels to shrink with zero minimum dimensions, and make the guide’s ScrollView fill only the remaining preview height.

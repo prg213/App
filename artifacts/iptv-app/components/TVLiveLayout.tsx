@@ -785,10 +785,13 @@ export function TVLiveLayout({
         styles.root,
         {
           backgroundColor: colors.background,
-          paddingTop: insets.top,
-          paddingBottom: insets.bottom,
-          paddingLeft: insets.left,
-          paddingRight: insets.right,
+          // TVs often report zero safe-area insets even when overscan trims
+          // the outermost pixels. Keep the three-panel grid inside a small
+          // hardware-safe margin on every edge.
+          paddingTop: Math.max(insets.top, 8),
+          paddingBottom: Math.max(insets.bottom, 8),
+          paddingLeft: Math.max(insets.left, 12),
+          paddingRight: Math.max(insets.right, 12),
         },
       ]}
     >
@@ -955,7 +958,11 @@ export function TVLiveLayout({
                 <Text style={[styles.guideHeader, { color: colors.mutedForeground, borderBottomColor: colors.border }]}>
                   TV GUIDE
                 </Text>
-                <ScrollView showsVerticalScrollIndicator={false}>
+                <ScrollView
+                  style={{ flex: 1, minHeight: 0 }}
+                  contentContainerStyle={{ paddingBottom: 4 }}
+                  showsVerticalScrollIndicator={false}
+                >
                   {channelEpg.map((prog, i) => {
                     const isNow = prog.start.getTime() <= nowTs && nowTs < prog.end.getTime();
                     const isPast = prog.end.getTime() <= nowTs;
@@ -1043,11 +1050,15 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     flexDirection: 'row',
+    minWidth: 0,
+    minHeight: 0,
+    overflow: 'hidden',
   },
 
   // ── Panel 1 — Categories ──
   catPanel: {
     width: '20%',
+    minWidth: 0,
     borderRightWidth: StyleSheet.hairlineWidth,
   },
 
@@ -1077,6 +1088,7 @@ const styles = StyleSheet.create({
   // ── Panel 2 — Channels ──
   chPanel: {
     width: '30%',
+    minWidth: 0,
     borderRightWidth: StyleSheet.hairlineWidth,
   },
 
@@ -1111,6 +1123,7 @@ const styles = StyleSheet.create({
 
   chTextWrap: {
     flex: 1,
+    minWidth: 0,
   },
 
   chName: {
@@ -1139,6 +1152,9 @@ const styles = StyleSheet.create({
   // ── Panel 3 — Preview ──
   previewPanel: {
     flex: 1,
+    minWidth: 0,
+    minHeight: 0,
+    overflow: 'hidden',
   },
 
   noSelWrap: {
@@ -1158,6 +1174,7 @@ const styles = StyleSheet.create({
   videoWrap: {
     aspectRatio: 16 / 9,
     width: '100%',
+    flexShrink: 0,
     backgroundColor: '#000',
     borderWidth: 2,
     borderColor: 'transparent',
@@ -1244,6 +1261,8 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     overflow: 'hidden',
     flex: 1,
+    minWidth: 0,
+    minHeight: 0,
   },
 
   guideHeader: {
@@ -1258,6 +1277,7 @@ const styles = StyleSheet.create({
   guideItem: {
     flexDirection: 'row',
     alignItems: 'center',
+    minWidth: 0,
     paddingHorizontal: 12,
     paddingVertical: 8,
     gap: 10,
@@ -1272,6 +1292,7 @@ const styles = StyleSheet.create({
 
   guideTitle: {
     flex: 1,
+    minWidth: 0,
     fontSize: 12,
     fontFamily: 'Inter_400Regular',
   },
