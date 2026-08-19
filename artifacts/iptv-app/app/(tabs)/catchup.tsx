@@ -11,6 +11,8 @@ import {
   StyleSheet,
   Text,
   View,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
@@ -58,6 +60,10 @@ function initialsOf(name: string) {
 }
 
 const ALL_CAT_ID = '__all__';
+// Categories and channels are visually paired grids.  Keep their rows
+// identical so a long category name or an archive subtitle cannot accumulate
+// vertical drift between the two independently virtualised lists.
+const CATCHUP_GRID_ROW_H = 58;
 
 // ─── Category Row ─────────────────────────────────────────────────────────────
 
@@ -80,7 +86,7 @@ const CategoryRow = React.memo(React.forwardRef<View, {
     >
       <Text
         style={[styles.catRowText, { color: isSelected ? '#fff' : colors.foreground }]}
-        numberOfLines={2}
+        numberOfLines={1}
       >
         {cat.name}
       </Text>
@@ -149,6 +155,12 @@ export default function CatchupScreen() {
   const firstCatRef     = useRef<View>(null);
   const firstChannelRef = useRef<View>(null);
   const firstProgRef    = useRef<View>(null);
+  const categoryListRef = useRef<FlatList<Category>>(null);
+  const channelListRef  = useRef<FlatList<Channel>>(null);
+  // Keep the category grid visually paired with the channel grid while the
+  // user scrolls through channels. Both lists use the same row height, and
+  // this keeps their content offsets identical as well.
+  const lastSyncedCategoryOffsetRef = useRef<number | null>(null);
   // Set to true when a channel is selected so the useEffect below fires focus
   // once the programme list data arrives (EPG is fetched asynchronously).
   const pendingProgFocusRef = useRef(false);
@@ -320,6 +332,18 @@ export default function CatchupScreen() {
     pendingProgFocusRef.current = true;
   }, []);
 
+  const syncCategoryScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const offset = Math.max(0, event.nativeEvent.contentOffset.y);
+    if (
+      lastSyncedCategoryOffsetRef.current != null
+      && Math.abs(lastSyncedCategoryOffsetRef.current - offset) < 0.5
+    ) {
+      return;
+    }
+    lastSyncedCategoryOffsetRef.current = offset;
+    categoryListRef.current?.scrollToOffset({ offset, animated: false });
+  }, []);
+
   // Auto-advance D-pad focus to the first programme row once EPG data loads
   useEffect(() => {
     if (pendingProgFocusRef.current && dayPrograms.length > 0) {
@@ -394,15 +418,28 @@ export default function CatchupScreen() {
 
       {/* ══ COL 1: Categories ══ */}
       <View style={[styles.catCol, { borderRightColor: colors.border, paddingTop: insets.top + 4 }]}>
-        <Text style={[styles.colHeader, { color: colors.mutedForeground }]}>CATEGORIES</Text>
+         <Text
+           style={[
+             styles.colHeader,
+             { color: colors.mutedForeground, borderBottomColor: colors.border },
+           ]}
+         >
+           CATEGORIES
+         </Text>
         {loading ? (
           <View style={styles.centerFill}><ActivityIndicator color={colors.primary} /></View>
         ) : (
           <FlatList
+            ref={categoryListRef}
             data={categories}
             keyExtractor={(c) => c.id}
             renderItem={renderCategory}
             showsVerticalScrollIndicator={false}
+            getItemLayout={(_, i) => ({
+              length: CATCHUP_GRID_ROW_H,
+              offset: CATCHUP_GRID_ROW_H * i,
+              index: i,
+            })}
             removeClippedSubviews={false}
             contentContainerStyle={{ paddingBottom: insets.bottom + 8 }}
           />
@@ -411,7 +448,14 @@ export default function CatchupScreen() {
 
       {/* ══ COL 2: Channels ══ */}
       <View style={[styles.chCol, { borderRightColor: colors.border, paddingTop: insets.top + 4 }]}>
-        <Text style={[styles.colHeader, { color: colors.mutedForeground }]}>CHANNELS</Text>
+        <Text
+          style={[
+            styles.colHeader,
+            { color: colors.mutedForeground, borderBottomColor: colors.border },
+          ]}
+        >
+          CHANNELS
+        </Text>
         {loading ? (
           <View style={styles.centerFill}><ActivityIndicator color={colors.primary} /></View>
         ) : visibleChannels.length === 0 ? (
@@ -422,10 +466,18 @@ export default function CatchupScreen() {
           </View>
         ) : (
           <FlatList
+            ref={channelListRef}
             data={visibleChannels}
             keyExtractor={(c) => c.id}
             renderItem={renderChannel}
             showsVerticalScrollIndicator={false}
+            onScroll={syncCategoryScroll}
+            scrollEventThrottle={16}
+            getItemLayout={(_, i) => ({
+              length: CATCHUP_GRID_ROW_H,
+              offset: CATCHUP_GRID_ROW_H * i,
+              index: i,
+            })}
             removeClippedSubviews={false}
             contentContainerStyle={{ paddingBottom: insets.bottom + 8 }}
           />
@@ -554,31 +606,39 @@ const styles = StyleSheet.create({
 
   colHeader: {
     fontSize: 10, fontFamily: 'Inter_600SemiBold', letterSpacing: 1.5,
-    paddingHorizontal: 14, paddingTop: 10, paddingBottom: 8,
+    paddingHorizontal: 12, paddingVertical: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
 
   // Col 1 — categories
-  catCol: { width: 180, borderRightWidth: StyleSheet.hairlineWidth },
+  catCol: { width: '20%', borderRightWidth: StyleSheet.hairlineWidth },
   catRow: {
-    paddingHorizontal: 14, paddingVertical: 12,
+    height: CATCHUP_GRID_ROW_H,
+    paddingHorizontal: 12,
+    justifyContent: 'center',
     borderBottomWidth: StyleSheet.hairlineWidth,
+    borderLeftWidth: 3,
+    borderLeftColor: 'transparent',
   },
-  catRowText: { fontSize: 12.5, fontFamily: 'Inter_500Medium' },
+  catRowText: { fontSize: 13, fontFamily: 'Inter_500Medium' },
 
   // Col 2 — channels
-  chCol: { width: 220, borderRightWidth: StyleSheet.hairlineWidth },
+  chCol: { width: '30%', borderRightWidth: StyleSheet.hairlineWidth },
   chRow: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
-    paddingHorizontal: 12, paddingVertical: 10,
+    height: CATCHUP_GRID_ROW_H,
+    paddingHorizontal: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
+    borderLeftWidth: 3,
+    borderLeftColor: 'transparent',
   },
   chLogo: {
-    width: 42, height: 30, borderRadius: 4, overflow: 'hidden',
+    width: 36, height: 28, borderRadius: 4, overflow: 'hidden',
     justifyContent: 'center', alignItems: 'center', flexShrink: 0,
   },
   chInitials: { fontSize: 10, fontFamily: 'Inter_700Bold' },
-  chName: { fontSize: 12.5, fontFamily: 'Inter_500Medium' },
-  chSub: { fontSize: 10.5, fontFamily: 'Inter_400Regular', marginTop: 1 },
+  chName: { fontSize: 13, fontFamily: 'Inter_500Medium' },
+  chSub: { fontSize: 10, fontFamily: 'Inter_400Regular', marginTop: 2 },
 
   // Col 3 — programmes
   progPanel: { flex: 1, paddingLeft: 14 },

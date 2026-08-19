@@ -25,4 +25,12 @@ describe('TV Live category/channel row alignment', () => {
     expect(SOURCE).toMatch(/height:\s*CAT_ITEM_H/);
     expect(SOURCE).toMatch(/height:\s*CH_ITEM_H/);
   });
+
+  it('mirrors the channel scroll offset into the category grid', () => {
+    expect(SOURCE).toMatch(/const syncCategoryScroll\s*=\s*useCallback/);
+    expect(SOURCE).toMatch(/event\.nativeEvent\.contentOffset\.y/);
+    expect(SOURCE).toMatch(/catListRef\.current\?\.scrollToOffset\(\{ offset, animated: false \}\)/);
+    expect(SOURCE).toMatch(/onScroll=\{syncCategoryScroll\}/);
+    expect(SOURCE).toMatch(/scrollEventThrottle=\{16\}/);
+  });
 });
