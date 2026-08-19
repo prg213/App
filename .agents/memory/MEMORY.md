@@ -14,3 +14,4 @@
 - [TV Home dashboard & row nav](tv-home-dashboard.md) — fixed non-scrolling Home on TV; tvRowNav registry for D-pad UP/DOWN between carousels (native focus can't cross virtualized rails).
 - [Live Channel Menu](live-channel-menu.md) — LiveChannelMenu overlay; Menu button opens/closes; fetchAndParseM3U returns {channels,categories} not array; zap list is mutable useState; BACK priority order.
 - [FocusablePressable stable setRefs](fp-stable-setrefs.md) — setRefs MUST be stable useCallback([], []); inline function causes null→node ref churn on every render → "Maximum update depth exceeded" crash.
+- [EPG startup prefetch](epg-startup-prefetch.md) — Start Xtream XMLTV fetch before MAC verification completes; Guide shares the in-flight/cache query.

@@ -6,8 +6,9 @@
  * actually fail these tests.
  *
  * Covers:
- *   - Xtream credentials at startup trigger queryClient.prefetchQuery with the
- *     key ['xmltv-epg', credentials] and staleTime: 30 * 60_000.
+ *   - Xtream credentials at startup immediately trigger queryClient.prefetchQuery
+ *     with the key ['xmltv-epg', credentials] and staleTime: 30 * 60_000,
+ *     without waiting for MAC verification to complete.
  *   - M3U credentials do NOT trigger a prefetch (no XMLTV feed available).
  */
 
@@ -172,6 +173,41 @@ describe('AppContextProvider — EPG prefetch on startup', () => {
       expect.objectContaining({
         queryKey:  ['xmltv-epg', xtreamCreds],
         staleTime: 30 * 60_000,
+      }),
+    );
+  });
+
+  test('starts the EPG prefetch before the startup MAC check finishes', async () => {
+    const xtreamCreds = {
+      type:     'xtream',
+      host:     'http://example.com',
+      username: 'user',
+      password: 'pass',
+    };
+    (SecureStore.getItemAsync as jest.Mock).mockResolvedValueOnce(
+      JSON.stringify(xtreamCreds),
+    );
+
+    // Keep activation verification pending. The EPG request must still have
+    // started — waiting here was the bug that made TV Guide download on demand.
+    global.fetch = jest.fn(() => new Promise(() => {})) as unknown as typeof fetch;
+
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const prefetchSpy = jest.spyOn(qc, 'prefetchQuery');
+
+    await act(async () => {
+      create(
+        <QueryClientProvider client={qc}>
+          <AppContextProvider>{null}</AppContextProvider>
+        </QueryClientProvider>,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(prefetchSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        queryKey: ['xmltv-epg', xtreamCreds],
       }),
     );
   });

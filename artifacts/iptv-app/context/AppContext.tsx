@@ -77,27 +77,36 @@ export function AppContextProvider({ children }: { children: React.ReactNode }) 
   const isActivatedRef = useRef(false);
   const deviceMacRef = useRef('');
 
-  // ── EPG prefetch — warm the cache as soon as credentials are available ────
-  // Uses the identical query key + staleTime as guide.tsx so the Guide screen
-  // finds data already cached and renders without any loading delay.
-  useEffect(() => {
-    if (!credentials || credentials.type !== 'xtream') return;
+  // ── Startup EPG prefetch ──────────────────────────────────────────────────
+  // Begin this request as soon as stored credentials are available — BEFORE the
+  // MAC verification request resolves and before the Home screen is rendered.
+  // This gives the XMLTV download the whole startup/Home-screen window to run
+  // in the background, so opening TV Guide reuses this same in-flight or cached
+  // query instead of starting a fresh download on demand.
+  //
+  // It deliberately remains fire-and-forget: a slow or unavailable guide must
+  // never delay app launch, activation, or navigation.
+  const prefetchStartupEpg = useCallback((creds: Credentials) => {
+    if (creds.type !== 'xtream') return;
     const xtreamCreds = {
-      host: credentials.host!,
-      username: credentials.username!,
-      password: credentials.password!,
+      host: creds.host!,
+      username: creds.username!,
+      password: creds.password!,
     };
     const xmltvUrl = getXtreamXmltvUrl(xtreamCreds);
-    queryClient.prefetchQuery({
-      queryKey: ['xmltv-epg', credentials],
+    void queryClient.prefetchQuery({
+      // This is intentionally identical to TV Guide's query key. React Query
+      // deduplicates an in-flight request and Guide reads the completed cache.
+      queryKey: ['xmltv-epg', creds],
       queryFn: ({ signal }) => {
-        const previous = queryClient.getQueryData<Map<string, EpgProgram[]>>(['xmltv-epg', credentials]);
+        const previous = queryClient.getQueryData<Map<string, EpgProgram[]>>(['xmltv-epg', creds]);
         return fetchAndParseXmltv(xmltvUrl, signal, previous);
       },
       staleTime: 30 * 60_000,
+      gcTime: 60 * 60_000,
+      retry: 1,
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [credentials]);
+  }, [queryClient]);
 
   // ── Periodic interval ref — defined early so doLogout can clear it ────────
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -178,6 +187,11 @@ export function AppContextProvider({ children }: { children: React.ReactNode }) 
       consecutiveMacFailRef.current = persistedFailCount;
 
       if (creds) {
+        // Start the EPG download immediately. Do not wait for the MAC check:
+        // it can take up to ten seconds, which otherwise leaves no meaningful
+        // background-download window before the viewer reaches TV Guide.
+        prefetchStartupEpg(creds);
+
         // Verify the MAC is still registered before trusting stored credentials
         const stillActive = await isMacStillRegistered(mac);
         if (stillActive) {
@@ -257,6 +271,9 @@ export function AppContextProvider({ children }: { children: React.ReactNode }) 
     } catch {
       // Storage failure must not block navigation — session still works in-memory
     }
+    // Newly activated accounts get the same immediate background prefetch as a
+    // returning session. It does not wait for the user to open TV Guide.
+    prefetchStartupEpg(creds);
     setCredentials(creds);
     setIsActivated(true);
     isActivatedRef.current = true;
