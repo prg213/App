@@ -346,6 +346,14 @@ function Sidebar({ state, descriptors, navigation }: SidebarProps) {
                 nodeRef={Platform.isTV ? slotRef : undefined}
                 badgeCount={badgeCount}
                 onPress={() => {
+                  // Fire TV entry contract: pressing OK on Live TV always
+                  // opens its three-panel view on All Channels. Emit before
+                  // navigation so an already-mounted tab can clear its
+                  // remembered channel focus before useFocusEffect restores it.
+                  if (Platform.isTV && route.name === 'index') {
+                    StorageService.setPrefLiveCat('__all__').catch(() => {});
+                    DeviceEventEmitter.emit('live:open-all');
+                  }
                   const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
                   if (!event.defaultPrevented) navigation.navigate(route.name);
                 }}

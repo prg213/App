@@ -285,12 +285,23 @@ export default function LiveTVScreen() {
   const creds = isXtream ? buildCreds(credentials) : null;
   const xmltvUrl = creds ? getXtreamXmltvUrl(creds) : null;
 
-  const [selectedCatId, setSelectedCatId] = useState<string>(FAVS_CAT_ID);
+  // All Channels is the explicit Fire TV landing state when the viewer presses
+  // OK on Live TV in the sidebar. Favourites remains available as the next
+  // category, but never steals the first remote focus.
+  const [selectedCatId, setSelectedCatId] = useState<string>(ALL_CAT_ID);
+  const skipStoredCategoryRestoreRef = useRef(false);
+  // Filled by TVLiveLayout so the sidebar entry event can synchronously clear
+  // remembered channel focus before this tab regains navigation focus.
+  const tvLiveEntryResetRef = useRef<(() => void) | null>(null);
   // Persist and restore the last-selected category so the user lands where
   // they left off.  useFocusEffect (not useEffect[]) so that when the player
   // navigates back here after a recently-watched channel it re-reads the pref
   // that the player wrote (groupTitle → @pref_live_cat) before navigating.
   useFocusEffect(useCallback(() => {
+    if (Platform.isTV && skipStoredCategoryRestoreRef.current) {
+      skipStoredCategoryRestoreRef.current = false;
+      return;
+    }
     StorageService.getPrefLiveCat().then((v) => { if (v) setSelectedCatId(v); });
   }, []));
   const [catSearch, setCatSearch] = useState('');
@@ -301,6 +312,21 @@ export default function LiveTVScreen() {
   const [isBuffering, setIsBuffering] = useState(false);
   const [hasError, setHasError] = useState(false);
   const [nowTs, setNowTs] = useState(Date.now());
+
+  // The sidebar emits this immediately before it navigates to the Live TV tab.
+  // Selecting All Channels and clearing the focus memory are separate: the
+  // former starts the correct list query, while the latter prevents
+  // useFocusRestore from returning the cursor to an old channel row.
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener('live:open-all', () => {
+      skipStoredCategoryRestoreRef.current = true;
+      tvLiveEntryResetRef.current?.();
+      setSelectedCatId(ALL_CAT_ID);
+      setSelectedChannel(null);
+      setPlayingChannel(null);
+    });
+    return () => sub.remove();
+  }, []);
 
   // ── TV block/unblock confirm modal ───────────────────────────────────────
   // Alert.alert buttons are not reliably D-pad-focusable on Fire OS; we use
@@ -760,8 +786,8 @@ export default function LiveTVScreen() {
 
   const allCategories: Category[] = useMemo(
     () => [
-      { id: FAVS_CAT_ID, name: '♥ Favourites' },
       { id: ALL_CAT_ID, name: 'All Channels' },
+      { id: FAVS_CAT_ID, name: '♥ Favourites' },
       ...rawCategories,
     ],
     [rawCategories],
@@ -1428,6 +1454,7 @@ export default function LiveTVScreen() {
           miniPlayerRef={miniPlayerRef}
           onCatchupFocusChange={handleCatchupFocusChange}
           highlightedChNodeRef={highlightedChNodeRef}
+          entryResetCallbackRef={tvLiveEntryResetRef}
         />
         {showCatchup && selectedChannel && creds && (
           <CatchupSheet

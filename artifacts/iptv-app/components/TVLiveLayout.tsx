@@ -92,6 +92,12 @@ export interface TVLiveLayoutProps {
    * View node so the parent's BACK handler can requestTvFocus on it.
    */
   highlightedChNodeRef?: React.MutableRefObject<View | null>;
+  /**
+   * Filled with a synchronous reset callback for the sidebar's Live TV entry
+   * action. It clears remembered channel focus so the next tab activation
+   * lands on All Channels rather than a previously-highlighted row.
+   */
+  entryResetCallbackRef?: React.MutableRefObject<(() => void) | null>;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -120,6 +126,7 @@ export function TVLiveLayout({
   insets,
   onCatchupFocusChange,
   highlightedChNodeRef,
+  entryResetCallbackRef,
   player,
   videoKey,
   isBuffering,
@@ -147,12 +154,38 @@ export function TVLiveLayout({
   //   • markChFocused(node)    — records the last D-pad-focused channel row
   //   • On every tab visit (initial + return from player) the last-focused channel
   //     is restored; if none exists focus falls back to the first category item.
-  const { firstRef: firstCatRef, markFocused: markChFocused } = useFocusRestore({ delay: 400 });
+  const {
+    firstRef: firstCatRef,
+    markFocused: markChFocused,
+    clearFocus,
+  } = useFocusRestore({ delay: 400 });
   const firstChRef  = useRef<View>(null);
   const chRefMap = useRef(new Map<string, View>());
   const nodeHandle = useCallback((node: View | null | undefined): number | null => {
     try { return node ? findNodeHandle(node) : null; } catch { return null; }
   }, []);
+
+  // The sidebar emits its entry intent before React Navigation focuses this
+  // tab. Clear the old channel restore target synchronously and make the
+  // first-focus fallback the All Channels category (which is deliberately the
+  // first category rendered by the parent).
+  useEffect(() => {
+    if (!entryResetCallbackRef) return;
+    const resetEntryFocus = () => {
+      clearFocus();
+      const allChannelsNode = catRefMap.current.get('__all__') ?? firstCatRef.current;
+      catFocusedRef.current = allChannelsNode ?? null;
+      if (allChannelsNode) {
+        (firstCatRef as React.MutableRefObject<View | null>).current = allChannelsNode;
+      }
+    };
+    entryResetCallbackRef.current = resetEntryFocus;
+    return () => {
+      if (entryResetCallbackRef.current === resetEntryFocus) {
+        entryResetCallbackRef.current = null;
+      }
+    };
+  }, [clearFocus, entryResetCallbackRef, firstCatRef]);
 
   // TV: if the selected category has no channels the category-press handler's
   // firstChRef.focus() is a no-op (the channel FlatList is replaced by an
