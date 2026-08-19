@@ -797,12 +797,15 @@ export default function LiveTVScreen() {
   // Clear channel filter whenever the user switches category
   useEffect(() => { setChannelFilter(''); }, [selectedCatId]);
 
-  // TV only — track whether the Catch-up TV row is focused so the BACK handler
-  // can redirect focus to the channel instead of clearing the selection.
-  const catchupFocusedRef   = useRef(false);
+  // TV only — preview-panel controls return BACK to the playing channel rather
+  // than clearing the preview. Each row reports its native focus independently.
+  const previewFocusedRef = useRef(false);
+  const catchupFocusedRef = useRef(false);
+  const guideFocusedRef = useRef(false);
   const categoryFocusedRef = useRef(false);
   const highlightedChNodeRef = useRef<View | null>(null);
   const focusHighlightedChCategoryRef = useRef<(() => boolean) | null>(null);
+  const focusPlayingChannelRef = useRef<(() => boolean) | null>(null);
 
   const handleExitToSidebar = useCallback(() => {
     categoryFocusedRef.current = false;
@@ -818,10 +821,13 @@ export default function LiveTVScreen() {
     if (showCatchup) { setShowCatchup(false); return true; }
     if (channelFilter.trim()) { setChannelFilter(''); Keyboard.dismiss(); return true; }
     if (catSearch.trim()) { setCatSearch(''); return true; }
-    // TV: BACK from the catchup row should move focus back to the channel,
-    // not dismiss the entire preview panel.
-    if (Platform.isTV && catchupFocusedRef.current && highlightedChNodeRef.current) {
-      requestTvFocus(highlightedChNodeRef.current);
+    // TV: BACK from the preview, Catch-up, or mini-guide returns to the
+    // currently playing channel — never just the last highlighted row.
+    if (
+      Platform.isTV
+      && (previewFocusedRef.current || catchupFocusedRef.current || guideFocusedRef.current)
+      && focusPlayingChannelRef.current?.()
+    ) {
       return true;
     }
     // Category is the leftmost Live TV panel: BACK returns to the active
@@ -1446,6 +1452,14 @@ export default function LiveTVScreen() {
     catchupFocusedRef.current = focused;
   }, []);
 
+  const handlePreviewFocusChange = useCallback((focused: boolean) => {
+    previewFocusedRef.current = focused;
+  }, []);
+
+  const handleGuideFocusChange = useCallback((focused: boolean) => {
+    guideFocusedRef.current = focused;
+  }, []);
+
   const handleCategoryFocusChange = useCallback((focused: boolean) => {
     categoryFocusedRef.current = focused;
   }, []);
@@ -1482,12 +1496,15 @@ export default function LiveTVScreen() {
           isBuffering={isBuffering}
           hasError={hasError}
           miniPlayerRef={miniPlayerRef}
+          onPreviewFocusChange={handlePreviewFocusChange}
           onCatchupFocusChange={handleCatchupFocusChange}
+          onGuideFocusChange={handleGuideFocusChange}
           onCategoryFocusChange={handleCategoryFocusChange}
           onExitToSidebar={handleExitToSidebar}
           highlightedChNodeRef={highlightedChNodeRef}
           entryResetCallbackRef={tvLiveEntryResetRef}
           focusHighlightedChCategoryRef={focusHighlightedChCategoryRef}
+          focusPlayingChannelRef={focusPlayingChannelRef}
         />
         {showCatchup && selectedChannel && creds && (
           <CatchupSheet

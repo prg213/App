@@ -50,6 +50,17 @@ describe('Fire TV category navigation', () => {
     expect(LIVE_TV).toMatch(/focusHighlightedChCategoryRef\.current\?\.\(\)/);
   });
 
+  it('returns preview, Catch-up, and mini-guide LEFT/BACK to the playing channel', () => {
+    expect(TV_LAYOUT).toMatch(/const focusPlayingChannel = useCallback/);
+    expect(TV_LAYOUT).toMatch(/focusPlayingChannelRef\.current = focusPlayingChannel/);
+    expect(TV_LAYOUT).toMatch(/nextFocusLeft=\{playingChHandle \?\? undefined\}/);
+    expect(TV_LAYOUT).toMatch(/guideFocusedRef\.current = true/);
+    expect(TV_LAYOUT).toMatch(/focusPlayingChannel\(\)/);
+    expect(LIVE_TV).toMatch(/const focusPlayingChannelRef = useRef/);
+    expect(LIVE_TV).toMatch(/previewFocusedRef\.current \|\| catchupFocusedRef\.current \|\| guideFocusedRef\.current/);
+    expect(LIVE_TV).toMatch(/focusPlayingChannelRef\.current\?\.\(\)/);
+  });
+
   it('stops playback only when category focus exits to the Live TV sidebar', () => {
     expect(TV_LAYOUT).toMatch(/sidebarNav\.focusedRoute === 'index'.*?onExitToSidebar/s);
     expect(LIVE_TV).toMatch(/const handleExitToSidebar = useCallback[\s\S]*?setPlayingChannel\(null\)[\s\S]*?setSelectedChannel\(null\)/);

@@ -65,6 +65,10 @@ export interface TVLiveLayoutProps {
   onCategoryFocusChange?: (focused: boolean) => void;
   /** Stops preview only after focus has actually reached the Live TV sidebar. */
   onExitToSidebar?: () => void;
+  /** Tracks focus on the small preview player for BACK handling. */
+  onPreviewFocusChange?: (focused: boolean) => void;
+  /** Tracks focus on mini-guide rows for BACK handling. */
+  onGuideFocusChange?: (focused: boolean) => void;
   /** Called when the user presses OK on the video preview — goes full-screen */
   onWatchFullscreen: () => void;
   /** Called when the user presses OK on the catchup row */
@@ -110,6 +114,11 @@ export interface TVLiveLayoutProps {
    * highlighted channel to that channel's category without stopping playback.
    */
   focusHighlightedChCategoryRef?: React.MutableRefObject<(() => boolean) | null>;
+  /**
+   * Filled with a callback so preview-panel controls can return focus to the
+   * currently playing channel, even when it is not the highlighted row.
+   */
+  focusPlayingChannelRef?: React.MutableRefObject<(() => boolean) | null>;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -132,6 +141,8 @@ export function TVLiveLayout({
   onChannelSelect,
   onCategoryFocusChange,
   onExitToSidebar,
+  onPreviewFocusChange,
+  onGuideFocusChange,
   onWatchFullscreen,
   onOpenCatchup,
   onOpenCatchupProg,
@@ -142,6 +153,7 @@ export function TVLiveLayout({
   highlightedChNodeRef,
   entryResetCallbackRef,
   focusHighlightedChCategoryRef,
+  focusPlayingChannelRef,
   player,
   videoKey,
   isBuffering,
@@ -161,6 +173,9 @@ export function TVLiveLayout({
   const catRefMap    = useRef(new Map<string, View>());
   const catFocusedRef = useRef<View | null>(null);
   const channelFocusedRef = useRef(false);
+  const previewFocusedRef = useRef(false);
+  const catchupFocusedLocalRef = useRef(false);
+  const guideFocusedRef = useRef(false);
   // TV no-wrap UP/DOWN edge refs for yellow panel
   const catchupRowRef   = useRef<View | null>(null);
   const lastGuideRowRef = useRef<View | null>(null);
@@ -184,8 +199,13 @@ export function TVLiveLayout({
   // A category press selects a new (potentially async) channel list. Keep the
   // intent until its first row has mounted so OK can focus and preview it.
   const pendingCategoryActivationRef = useRef<string | null>(null);
+  const pendingPlayingChannelFocusRef = useRef<{
+    channelId: string;
+    categoryId: string;
+  } | null>(null);
   const firstChannelFocusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const categoryFocusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const playingChannelFocusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const nodeHandle = useCallback((node: View | null | undefined): number | null => {
     try { return node ? findNodeHandle(node) : null; } catch { return null; }
   }, []);
@@ -266,26 +286,26 @@ export function TVLiveLayout({
     if (selectedChannel) setHighlightedChId(selectedChannel.id);
   }, [selectedChannel?.id]);
 
-  // TV LEFT nav: when the highlighted channel changes, compute its native handle
-  // and push nextFocusLeft onto the preview box immediately (setNativeProps).
-  // Store in state too so guide rows re-render with the correct prop.
-  const [highlightedChHandle, setHighlightedChHandle] = useState<number | null>(null);
+  // Preview-panel rows route left to the playing channel, which can differ from
+  // the last channel the viewer merely highlighted while browsing.
+  const [playingChHandle, setPlayingChHandle] = useState<number | null>(null);
 
   useEffect(() => {
     if (!Platform.isTV) return;
     const node = highlightedChId ? chRefMap.current.get(highlightedChId) : null;
-    let h: number | null = null;
-    try { h = node ? findNodeHandle(node) : null; } catch {}
-    setHighlightedChHandle(h);
     // Expose highlighted channel node to the parent (for BACK handler).
     if (highlightedChNodeRef) {
       highlightedChNodeRef.current = node ?? null;
     }
-    // Wire preview box LEFT → highlighted channel
-    if (h != null) {
-      try { (miniPlayerRef?.current as any)?.setNativeProps?.({ nextFocusLeft: h }); } catch {}
-    }
-  }, [highlightedChId, miniPlayerRef, highlightedChNodeRef]);
+  }, [highlightedChId, highlightedChNodeRef]);
+
+  // Preview controls must return to the channel that is actually playing, not
+  // a different row that the viewer may have highlighted while browsing.
+  useEffect(() => {
+    if (!Platform.isTV) return;
+    const node = selectedChannel ? chRefMap.current.get(selectedChannel.id) : null;
+    setPlayingChHandle(nodeHandle(node));
+  }, [selectedChannel?.id, channels, nodeHandle]);
 
   // Scroll the channel list to the selected channel when it is set from outside
   // (e.g. returning from recently-watched on the Home screen).  Also depends on
@@ -360,14 +380,100 @@ export function TVLiveLayout({
     };
   }, [focusHighlightedChCategoryRef, focusCategoryForHighlightedChannel]);
 
+  const focusPlayingChannel = useCallback(() => {
+    if (!selectedChannel) return false;
+    const playingChannel = selectedChannel;
+    const playingIndex = channels.findIndex((channel) => channel.id === playingChannel.id);
+    if (playingIndex < 0) {
+      const playingCategory = categoryForChannel(playingChannel);
+      if (!playingCategory) return false;
+      pendingPlayingChannelFocusRef.current = {
+        channelId: playingChannel.id,
+        categoryId: playingCategory.id,
+      };
+      onCatSelect(playingCategory.id);
+      return true;
+    }
+
+    setHighlightedChId(playingChannel.id);
+    const focusPlayingNode = () => {
+      const node = chRefMap.current.get(playingChannel.id);
+      if (!node) return false;
+      if (highlightedChNodeRef) highlightedChNodeRef.current = node;
+      setPlayingChHandle(nodeHandle(node));
+      requestTvFocus(node);
+      return true;
+    };
+
+    if (focusPlayingNode()) return true;
+    try {
+      chListRef.current?.scrollToIndex({
+        index: playingIndex,
+        animated: false,
+        viewPosition: 0.35,
+      });
+    } catch {}
+    if (playingChannelFocusTimerRef.current) {
+      clearTimeout(playingChannelFocusTimerRef.current);
+    }
+    playingChannelFocusTimerRef.current = setTimeout(() => {
+      focusPlayingNode();
+      playingChannelFocusTimerRef.current = null;
+    }, 120);
+    return true;
+  }, [
+    categoryForChannel,
+    channels,
+    highlightedChNodeRef,
+    nodeHandle,
+    onCatSelect,
+    selectedChannel,
+  ]);
+
+  useEffect(() => {
+    const pending = pendingPlayingChannelFocusRef.current;
+    if (
+      !pending
+      || pending.channelId !== selectedChannel?.id
+      || pending.categoryId !== selectedCatId
+      || channelsLoading
+    ) {
+      return;
+    }
+    if (!channels.some((channel) => channel.id === pending.channelId)) {
+      pendingPlayingChannelFocusRef.current = null;
+      return;
+    }
+    pendingPlayingChannelFocusRef.current = null;
+    focusPlayingChannel();
+  }, [channels, channelsLoading, focusPlayingChannel, selectedCatId, selectedChannel?.id]);
+
+  useEffect(() => {
+    if (!focusPlayingChannelRef) return;
+    focusPlayingChannelRef.current = focusPlayingChannel;
+    return () => {
+      if (focusPlayingChannelRef.current === focusPlayingChannel) {
+        focusPlayingChannelRef.current = null;
+      }
+    };
+  }, [focusPlayingChannelRef, focusPlayingChannel]);
+
   // Direct nextFocusLeft handles the normal route. When that category row has
   // been virtualized away, Fire OS lets the key fall through to this shared
-  // remote hook; return the cursor to the channel's own category instead of
-  // allowing the platform to choose an unrelated row.
+  // remote hook. It also returns preview-panel rows to the playing channel
+  // when their direct native target is unavailable.
   useTVRemote({
     left: (event) => {
-      if (event.eventKeyAction === 0 || !channelFocusedRef.current) return;
-      focusCategoryForHighlightedChannel();
+      if (event.eventKeyAction === 0) return;
+      if (
+        previewFocusedRef.current
+        || catchupFocusedLocalRef.current
+        || guideFocusedRef.current
+      ) {
+        focusPlayingChannel();
+        return;
+      }
+      if (channelFocusedRef.current) focusCategoryForHighlightedChannel();
     },
   });
 
@@ -749,6 +855,15 @@ export function TVLiveLayout({
               accessibilityLabel="Watch fullscreen — press OK"
               focusedStyle={styles.videoFocused}
               style={styles.videoWrap}
+              nextFocusLeft={playingChHandle ?? undefined}
+              onFocus={() => {
+                previewFocusedRef.current = true;
+                onPreviewFocusChange?.(true);
+              }}
+              onBlur={() => {
+                previewFocusedRef.current = false;
+                onPreviewFocusChange?.(false);
+              }}
               onPress={onWatchFullscreen}
             >
               <VideoView
@@ -806,10 +921,16 @@ export function TVLiveLayout({
                 accessibilityLabel="Open catch-up TV"
                 focusedStyle={styles.focusedItem}
                 style={[styles.catchupRow, { backgroundColor: colors.card, borderColor: colors.border }]}
-                // TV LEFT / BACK: go back to the highlighted channel
-                nextFocusLeft={highlightedChHandle ?? undefined}
-                onFocus={() => onCatchupFocusChange?.(true)}
-                onBlur={() => onCatchupFocusChange?.(false)}
+                // TV LEFT / BACK: return to the channel that is playing.
+                nextFocusLeft={playingChHandle ?? undefined}
+                onFocus={() => {
+                  catchupFocusedLocalRef.current = true;
+                  onCatchupFocusChange?.(true);
+                }}
+                onBlur={() => {
+                  catchupFocusedLocalRef.current = false;
+                  onCatchupFocusChange?.(false);
+                }}
                 onPress={onOpenCatchup}
               >
                 <Text style={styles.catchupIcon}>📼</Text>
@@ -855,9 +976,21 @@ export function TVLiveLayout({
                           { borderBottomColor: colors.border },
                           isNow && { backgroundColor: colors.secondary },
                         ]}
-                        // TV LEFT: mini-guide → back to the highlighted channel
-                        {...(Platform.isTV && highlightedChHandle != null
-                          ? { nextFocusLeft: highlightedChHandle }
+                        // TV LEFT: mini-guide → return to the playing channel.
+                        {...(Platform.isTV && playingChHandle != null
+                          ? { nextFocusLeft: playingChHandle }
+                          : {})}
+                        {...(Platform.isTV
+                          ? {
+                              onFocus: () => {
+                                guideFocusedRef.current = true;
+                                onGuideFocusChange?.(true);
+                              },
+                              onBlur: () => {
+                                guideFocusedRef.current = false;
+                                onGuideFocusChange?.(false);
+                              },
+                            }
                           : {})}
                         {...(isCatchupPlayable
                           ? {

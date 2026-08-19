@@ -20,3 +20,9 @@ description: Fire TV behavior when the viewer activates Live TV from the sidebar
 - **Rule:** Channel LEFT/BACK returns to the channel's own category and keeps the preview playing. Playback stops only when category focus exits to the Live TV sidebar.
 - **Why:** Browsing is a focus action, not a stop action; clearing the selected channel while moving back to categories creates an unexpected black preview.
 - **How to apply:** Resolve the channel's provider category to its category node, expose that focus action to the screen's BACK handler, and distinguish a category→sidebar blur from a category→channel blur. Keep a remote LEFT fallback for category rows that virtualization has unmounted.
+
+## Preview-panel return target
+
+- **Rule:** Preview, Catch-up, and mini-guide LEFT/BACK always return to the currently playing channel, not whichever channel was last highlighted.
+- **Why:** Browsing can move the highlight away from an active preview; returning to that stale highlight is disorienting and contradicts the screen's playing state.
+- **How to apply:** Share a playing-channel focus action between native LEFT targets and the screen BACK handler. If the playing row belongs to another category, switch to that category and focus it after its list is ready.
