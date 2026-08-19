@@ -25,7 +25,7 @@ description: Professional IPTV OSD patterns in player.tsx and TVLiveLayout.tsx �
 
 ## Bottom OSD unified (Aug 2026)
 - Prev/next channel nav cards removed from the info bar — the minimal NOW/NEXT strip is the only bottom menu; refs/styles (chNav*, prevChBtnRef/nextChBtnRef) deleted.
-- Zapping inputs: TV D-pad UP=next / DOWN=prev via useTVRemote onHWKeyEvent fallback (guarded vs channel menu, pickers, user-pinned OSD); touch swipe LEFT=next / RIGHT=prev (swipe-right no longer dismisses OSD/goes back — back is via visible button); vertical swipe zap kept.
+- Zapping inputs: TV D-pad UP=next / DOWN=prev via useTVRemote onHWKeyEvent fallback; the visible info bar does not suppress zapping, but the channel browser and Audio/CC pickers retain exclusive D-pad control. Touch swipe LEFT=next / RIGHT=prev; vertical swipe zap kept.
 - First-channel-never-loads fix: tab loader writes liveUrlRef before replaceAsync commits, so fullscreen mount can see URL equality while player status is 'idle'/'error' — in that case force player.replace(url)+play() instead of just play().
 
 ## Stuck "Connecting to stream" on fullscreen expand

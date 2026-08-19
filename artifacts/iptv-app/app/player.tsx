@@ -1490,19 +1490,17 @@ export default function PlayerScreen() {
     },
     // D-pad UP/DOWN → channel zap on live TV. These fire through the
     // onHWKeyEvent fallback when the spatial engine has no focus target
-    // above/below the centre zone. Guarded so they never zap while an
-    // overlay (channel menu, audio/CC picker, pinned OSD) is open —
-    // those surfaces own the D-pad while visible.
+    // above/below the centre zone. The info bar stays visible while zapping;
+    // only modal overlays (channel browser and Audio/CC pickers) own the
+    // D-pad exclusively.
     up: ({ eventKeyAction }) => {
       if (eventKeyAction !== 1 || !isLive) return;
       if (showChannelMenuRef.current || showAudioPickerRef.current || showSubPickerRef.current) return;
-      if (infoBarUserInvokedRef.current && showInfoRef.current) return;
       handleNextChannel();
     },
     down: ({ eventKeyAction }) => {
       if (eventKeyAction !== 1 || !isLive) return;
       if (showChannelMenuRef.current || showAudioPickerRef.current || showSubPickerRef.current) return;
-      if (infoBarUserInvokedRef.current && showInfoRef.current) return;
       handlePrevChannel();
     },
     onFastForward: ({ eventKeyAction }) => {
