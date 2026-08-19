@@ -1,0 +1,28 @@
+/**
+ * The category and channel panels are two synchronized vertical lists. Their
+ * item heights must remain identical or the horizontal row boundaries drift
+ * as soon as the viewer scrolls.
+ */
+
+import * as fs from 'fs';
+import * as path from 'path';
+
+const SOURCE = fs.readFileSync(
+  path.resolve(__dirname, '../components/TVLiveLayout.tsx'),
+  'utf8',
+);
+
+describe('TV Live category/channel row alignment', () => {
+  it('defines one shared row height for both lists', () => {
+    expect(SOURCE).toMatch(/const TV_LIST_ROW_H\s*=\s*58/);
+    expect(SOURCE).toMatch(/const CAT_ITEM_H\s*=\s*TV_LIST_ROW_H/);
+    expect(SOURCE).toMatch(/const CH_ITEM_H\s*=\s*TV_LIST_ROW_H/);
+  });
+
+  it('uses the matching heights for both FlatList layouts and item styles', () => {
+    expect(SOURCE).toMatch(/length:\s*CAT_ITEM_H,\s*offset:\s*CAT_ITEM_H\s*\*\s*i/);
+    expect(SOURCE).toMatch(/length:\s*CH_ITEM_H,\s*offset:\s*CH_ITEM_H\s*\*\s*i/);
+    expect(SOURCE).toMatch(/height:\s*CAT_ITEM_H/);
+    expect(SOURCE).toMatch(/height:\s*CH_ITEM_H/);
+  });
+});

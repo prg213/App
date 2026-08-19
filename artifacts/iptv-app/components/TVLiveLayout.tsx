@@ -703,8 +703,12 @@ export function TVLiveLayout({
 }
 // ── Layout constants ──────────────────────────────────────────────────────────
 
-const CAT_ITEM_H = 52;
-const CH_ITEM_H  = 58;
+// Both lists share one row height so their horizontal boundaries stay inline
+// while the viewer scrolls through channels. The channel row is the taller
+// requirement because it contains the logo, channel name, and programme text.
+const TV_LIST_ROW_H = 58;
+const CAT_ITEM_H = TV_LIST_ROW_H;
+const CH_ITEM_H  = TV_LIST_ROW_H;
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 
