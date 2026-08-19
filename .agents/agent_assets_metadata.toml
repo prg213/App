@@ -6,3 +6,10 @@ id = "jjKyL8UHcTCF2r348q6pT"
 uri = "file://StreamVault-debug.apk"
 type = "unspecified"
 title = "StreamVault Debug APK"
+
+[[outputs]]
+id = "xdB-s5DvZsujToahHK2nt"
+uri = "file://StreamVault-v230.apk"
+type = "unspecified"
+title = "StreamVault v230 APK"
+description = "Release APK built from commit 1020e39. Includes the latest Live TV focus navigation, TV viewport fitting, and channel zapping with the OSD visible."
