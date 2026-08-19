@@ -439,7 +439,31 @@ export default function PlayerScreen() {
   const tvVodIdleRef   = useRef<View>(null); // catch-all when controls are hidden
   const tvPlayBtnRef   = useRef<View>(null); // play/pause button (focused when controls appear)
   const tvScrubAnchorRef = useRef<View>(null); // focusable scrubber progress bar
-  const [tvScrubFocused, setTvScrubFocused] = useState(false); // drives the thumb's focused style
+  // D-pad LEFT/RIGHT moves native focus through invisible bounce targets before
+  // immediately returning to the scrubber. Keep its visible focus treatment
+  // latched through that handoff so the border and thumb do not flash.
+  const [tvScrubFocused, setTvScrubFocused] = useState(false);
+  const tvScrubBlurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const holdTvScrubFocus = useCallback(() => {
+    if (tvScrubBlurTimerRef.current) {
+      clearTimeout(tvScrubBlurTimerRef.current);
+      tvScrubBlurTimerRef.current = null;
+    }
+    setTvScrubFocused(true);
+  }, []);
+  const deferTvScrubFocusClear = useCallback(() => {
+    if (tvScrubBlurTimerRef.current) clearTimeout(tvScrubBlurTimerRef.current);
+    // A bounce target receives focus immediately after the anchor blurs. Give
+    // it enough time to cancel this clear, but remove the treatment promptly
+    // when the viewer really moves to another player control.
+    tvScrubBlurTimerRef.current = setTimeout(() => {
+      tvScrubBlurTimerRef.current = null;
+      setTvScrubFocused(false);
+    }, 140);
+  }, []);
+  useEffect(() => () => {
+    if (tvScrubBlurTimerRef.current) clearTimeout(tvScrubBlurTimerRef.current);
+  }, []);
   const tvSeekBackRef  = useRef<View>(null); // hidden D-pad-left  bounce target → seek −10 s
   const tvSeekFwdRef   = useRef<View>(null); // hidden D-pad-right bounce target → seek +10 s
   const tvSeek30BackRef = useRef<View>(null); // visible −30 s button — wired nextFocusDown→scrubber
@@ -2364,6 +2388,7 @@ export default function PlayerScreen() {
                 focusable
                 style={[styles.tvSeekBounce, { left: 0, bottom: insets.bottom + 48 }]}
                 onFocus={() => {
+                  holdTvScrubFocus();
                   seek(-10);
                   scheduleHide();
                   setTimeout(() => requestTvFocus(tvScrubAnchorRef.current), 70);
@@ -2374,11 +2399,18 @@ export default function PlayerScreen() {
               <FocusablePressable
                 ref={tvScrubAnchorRef}
                 focusable
-                style={[styles.tvScrubAnchor, { bottom: insets.bottom + 48 }]}
-                focusedStyle={styles.tvScrubAnchorFocused}
+                // FocusablePressable clears its own focus state while the
+                // invisible bounce target owns native focus. Drive the visual
+                // treatment from the latched state as well, so it stays steady
+                // throughout LEFT/RIGHT scrubbing.
+                style={(focused) => [
+                  styles.tvScrubAnchor,
+                  { bottom: insets.bottom + 48 },
+                  (focused || tvScrubFocused) && styles.tvScrubAnchorFocused,
+                ]}
                 onPress={() => { /* OK on scrubber: no-op; LEFT/RIGHT seek via bounce targets */ }}
-                onFocus={() => setTvScrubFocused(true)}
-                onBlur={() => setTvScrubFocused(false)}
+                onFocus={holdTvScrubFocus}
+                onBlur={deferTvScrubFocusClear}
               >
                 <View style={styles.tvScrubRailWrap}>
                   <View style={styles.tvScrubRail}>
@@ -2410,6 +2442,7 @@ export default function PlayerScreen() {
                 focusable
                 style={[styles.tvSeekBounce, { right: 0, bottom: insets.bottom + 48 }]}
                 onFocus={() => {
+                  holdTvScrubFocus();
                   seek(+10);
                   scheduleHide();
                   setTimeout(() => requestTvFocus(tvScrubAnchorRef.current), 70);
