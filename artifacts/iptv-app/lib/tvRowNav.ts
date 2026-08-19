@@ -122,7 +122,9 @@ export const tvRowNav = {
 
   /**
    * Call from the card's onFocus.  Records the row's position and wires the
-   * focused card's UP/DOWN to the adjacent rows' remembered cards.
+   * focused card's UP/DOWN to the adjacent rows' same-column cards. If the
+   * destination row is shorter, the nearest mounted card at or before that
+   * column is used.
    */
   focused(rowId: string, index: number) {
     const r = rows.get(rowId);
@@ -140,8 +142,17 @@ export const tvRowNav = {
         // Skip rows with no cards, or rows whose last registration was in a
         // previous generation (their native handles may be stale/recycled).
         if (!n || n.cards.size === 0 || n.gen < generation) continue;
+        // Home is a 4-column × 3-row TV grid. Preserve the focused column
+        // when moving vertically instead of jumping to the destination row's
+        // last remembered card. A shorter row clamps to its nearest available
+        // column.
         const target =
-          n.cards.get(n.lastIndex) ??
+          n.cards.get(index) ??
+          [...n.cards.keys()]
+            .filter((cardIndex) => cardIndex <= index)
+            .sort((a, b) => b - a)
+            .map((cardIndex) => n.cards.get(cardIndex))
+            .find(Boolean) ??
           n.cards.get(0) ??
           n.cards.values().next().value;
         if (target) {

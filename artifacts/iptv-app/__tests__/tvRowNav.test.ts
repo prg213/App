@@ -10,9 +10,8 @@
  * ─────────────────
  * 1. register / unregister — register(rowId, index, node) stores node;
  *    register(rowId, index, null) removes it.
- * 2. Remembered index — lastIndex is updated on focused(); when focus returns
- *    to a row from another row the neighbour lookup uses that remembered index,
- *    not 0.
+ * 2. Same-column routing — moving between rows preserves the focused visual
+ *    column, clamping to the nearest available card in a shorter row.
  * 3. Edge pinning — top-row cards get nextFocusUp === selfHandle;
  *    bottom-row cards get nextFocusDown === selfHandle (focus never escapes the
  *    dashboard vertically).
@@ -109,13 +108,13 @@ describe('tvRowNav — register / unregister', () => {
 });
 
 // =============================================================================
-// 2. Remembered index
+// 2. Same-column routing
 // =============================================================================
 
-describe('tvRowNav — remembered index', () => {
+describe('tvRowNav — same-column routing', () => {
   beforeEach(() => { mockFindNodeHandle(); });
 
-  it('updates lastIndex when focused() is called', () => {
+  it('uses the focused column instead of the destination row’s last-focused card', () => {
     const nav = loadTvRowNav();
     const n0 = makeNode(20);
     const n2 = makeNode(22);
@@ -128,37 +127,36 @@ describe('tvRowNav — remembered index', () => {
     nav.focused('rowA', 2);
     n2.setNativeProps.mockClear();
 
-    // Now focus rowB — its nextFocusUp should point to rowA's lastIndex=2 (handle 22)
+    // Focus rowB column 0. Even though rowA last focused column 2, UP must
+    // preserve rowB's visual column and return to rowA column 0.
     const nB0 = makeNode(30);
     nav.register('rowB', 0, nB0);
     nav.focused('rowB', 0);
 
     const call = nB0.setNativeProps.mock.calls[0][0];
-    expect(call.nextFocusUp).toBe(22); // rowA's remembered card at index 2
+    expect(call.nextFocusUp).toBe(20); // rowA's same-column card at index 0
   });
 
-  it('falls back to index 0 when the remembered card was unregistered', () => {
+  it('clamps to the nearest available card when the destination row is shorter', () => {
     const nav = loadTvRowNav();
     const n0 = makeNode(40);
     const n1 = makeNode(41);
     nav.setOrder(['rowA', 'rowB']);
     nav.register('rowA', 0, n0);
     nav.register('rowA', 1, n1);
-    nav.register('rowB', 0, makeNode(50));
+    nav.register('rowB', 3, makeNode(50));
 
-    // Focus rowA at index 1 — sets lastIndex = 1
+    // Focus rowA at index 1 so its last visible card is available.
     nav.focused('rowA', 1);
 
-    // Unregister index 1 so the remembered card is gone
-    nav.register('rowA', 1, null);
-
-    // Focus rowB — neighbor lookup for rowA should fall back to n0 (index 0, handle 40)
+    // Focus rowB column 3 — rowA has only columns 0 and 1, so UP must clamp
+    // to its final available card at index 1.
     const nB0 = makeNode(50);
-    nav.register('rowB', 0, nB0);
-    nav.focused('rowB', 0);
+    nav.register('rowB', 3, nB0);
+    nav.focused('rowB', 3);
 
     const call = nB0.setNativeProps.mock.calls[0][0];
-    expect(call.nextFocusUp).toBe(40); // rowA's index-0 card (fallback)
+    expect(call.nextFocusUp).toBe(41); // rowA's nearest available card
   });
 });
 
@@ -218,17 +216,21 @@ describe('tvRowNav — edge pinning', () => {
 describe('tvRowNav — multi-row D-pad routing', () => {
   beforeEach(() => { mockFindNodeHandle(); });
 
-  it('routes nextFocusDown to the correct neighbouring row', () => {
+  it('routes nextFocusDown to the same column in the neighbouring row', () => {
     const nav = loadTvRowNav();
-    const top    = makeNode(10);
-    const middle = makeNode(20);
+    const top0    = makeNode(10);
+    const top2    = makeNode(12);
+    const middle0 = makeNode(20);
+    const middle2 = makeNode(22);
     nav.setOrder(['top', 'middle']);
-    nav.register('top',    0, top);
-    nav.register('middle', 0, middle);
+    nav.register('top',    0, top0);
+    nav.register('top',    2, top2);
+    nav.register('middle', 0, middle0);
+    nav.register('middle', 2, middle2);
 
-    nav.focused('top', 0);
-    const call = top.setNativeProps.mock.calls[0][0];
-    expect(call.nextFocusDown).toBe(20); // → middle row
+    nav.focused('top', 2);
+    const call = top2.setNativeProps.mock.calls[0][0];
+    expect(call.nextFocusDown).toBe(22); // → same column in middle row
   });
 
   it('routes nextFocusUp to the correct neighbouring row', () => {

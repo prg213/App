@@ -270,7 +270,11 @@ export default function HomeScreen() {
   const seriesCountRef = useRef(0);
   useEffect(() => {
     if (!Platform.isTV) return;
-    tvRowNav.setOrder(['recent', 'cw', 'movies', 'series']);
+     // The main Home content is a 4-column × 3-row TV grid:
+     // Continue Watching → Latest Movies → Latest TV Shows.
+     // Recently Watched is a separate strip above this grid and has its own
+     // focus behaviour, so it must not become a vertical destination here.
+     tvRowNav.setOrder(['cw', 'movies', 'series']);
     return () => {
       // Clear all row registrations on unmount so that if the Home screen
       // remounts (e.g. after a navigation away and back), the registry starts
