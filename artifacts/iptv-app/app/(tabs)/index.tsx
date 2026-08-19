@@ -59,6 +59,7 @@ import { TVLiveLayout } from '@/components/TVLiveLayout';
 import type { Channel, Category, EpgProgram, FavoriteChannel } from '@/types';
 import { normaliseStr } from '@/utils/normalise';
 import { requestTvFocus } from '@/lib/tvFocus';
+import { sidebarNav } from '@/lib/sidebarNav';
 
 const FAVS_CAT_ID = '__favs';
 const ALL_CAT_ID = '__all';
@@ -799,6 +800,7 @@ export default function LiveTVScreen() {
   // TV only — track whether the Catch-up TV row is focused so the BACK handler
   // can redirect focus to the channel instead of clearing the selection.
   const catchupFocusedRef   = useRef(false);
+  const categoryFocusedRef = useRef(false);
   const highlightedChNodeRef = useRef<View | null>(null);
 
   // Hardware BACK: pop through active states one level at a time.
@@ -813,6 +815,12 @@ export default function LiveTVScreen() {
     // not dismiss the entire preview panel.
     if (Platform.isTV && catchupFocusedRef.current && highlightedChNodeRef.current) {
       requestTvFocus(highlightedChNodeRef.current);
+      return true;
+    }
+    // Category is the leftmost Live TV panel: BACK returns to the active
+    // Live TV sidebar item even if its first channel is previewing.
+    if (Platform.isTV && categoryFocusedRef.current) {
+      sidebarNav.focus();
       return true;
     }
     if (selectedChannel) { setPlayingChannel(null); setSelectedChannel(null); return true; }
@@ -1420,6 +1428,10 @@ export default function LiveTVScreen() {
     catchupFocusedRef.current = focused;
   }, []);
 
+  const handleCategoryFocusChange = useCallback((focused: boolean) => {
+    categoryFocusedRef.current = focused;
+  }, []);
+
   const handleTVCloseCatchup = useCallback(() => {
     setShowCatchup(false);
     setCatchupInitialProg(null);
@@ -1453,6 +1465,7 @@ export default function LiveTVScreen() {
           hasError={hasError}
           miniPlayerRef={miniPlayerRef}
           onCatchupFocusChange={handleCatchupFocusChange}
+          onCategoryFocusChange={handleCategoryFocusChange}
           highlightedChNodeRef={highlightedChNodeRef}
           entryResetCallbackRef={tvLiveEntryResetRef}
         />

@@ -60,6 +60,8 @@ export interface TVLiveLayoutProps {
   selectedChannel: Channel | null;
   /** Called when the user presses OK on a channel — triggers stream load */
   onChannelSelect: (ch: Channel) => void;
+  /** Tracks whether remote focus is currently in the category panel. */
+  onCategoryFocusChange?: (focused: boolean) => void;
   /** Called when the user presses OK on the video preview — goes full-screen */
   onWatchFullscreen: () => void;
   /** Called when the user presses OK on the catchup row */
@@ -120,6 +122,7 @@ export function TVLiveLayout({
   nowTs,
   selectedChannel,
   onChannelSelect,
+  onCategoryFocusChange,
   onWatchFullscreen,
   onOpenCatchup,
   onOpenCatchupProg,
@@ -167,8 +170,30 @@ export function TVLiveLayout({
   } = useFocusRestore({ delay: 400 });
   const firstChRef  = useRef<View>(null);
   const chRefMap = useRef(new Map<string, View>());
+  // A category press selects a new (potentially async) channel list. Keep the
+  // intent until its first row has mounted so OK can focus and preview it.
+  const pendingCategoryActivationRef = useRef<string | null>(null);
+  const firstChannelFocusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const nodeHandle = useCallback((node: View | null | undefined): number | null => {
     try { return node ? findNodeHandle(node) : null; } catch { return null; }
+  }, []);
+
+  const focusAndPlayFirstChannel = useCallback(() => {
+    const firstChannel = channels[0];
+    if (!firstChannel) return false;
+    pendingCategoryActivationRef.current = null;
+    setHighlightedChId(firstChannel.id);
+    onChannelSelect(firstChannel);
+    if (firstChannelFocusTimerRef.current) clearTimeout(firstChannelFocusTimerRef.current);
+    firstChannelFocusTimerRef.current = setTimeout(() => {
+      requestTvFocus(chRefMap.current.get(firstChannel.id) ?? firstChRef.current);
+      firstChannelFocusTimerRef.current = null;
+    }, 80);
+    return true;
+  }, [channels, onChannelSelect]);
+
+  useEffect(() => () => {
+    if (firstChannelFocusTimerRef.current) clearTimeout(firstChannelFocusTimerRef.current);
   }, []);
 
   // The sidebar emits its entry intent before React Navigation focuses this
@@ -202,6 +227,19 @@ export function TVLiveLayout({
     const t = setTimeout(() => requestTvFocus(firstCatRef.current), 400);
     return () => clearTimeout(t);
   }, [channelsLoading, channels]);
+
+  // Category OK waits for a newly selected list to finish loading, then opens
+  // the first channel in the preview and advances remote focus to that row.
+  useEffect(() => {
+    if (
+      !Platform.isTV
+      || pendingCategoryActivationRef.current !== selectedCatId
+      || channelsLoading
+    ) {
+      return;
+    }
+    if (!focusAndPlayFirstChannel()) pendingCategoryActivationRef.current = null;
+  }, [selectedCatId, channelsLoading, channels, focusAndPlayFirstChannel]);
 
   // Track which channel row is visually highlighted.
   // Updated on D-pad focus AND on successful OK press — never triggers stream load.
@@ -306,6 +344,20 @@ export function TVLiveLayout({
     } catch (_) {}
   }, []);
 
+  const wireCategoryToFirstChannel = useCallback((categoryNode?: View | null) => {
+    if (!Platform.isTV) return;
+    const category = categoryNode ?? catFocusedRef.current;
+    const firstChannelHandle = nodeHandle(firstChRef.current);
+    if (!category || firstChannelHandle == null) return;
+    try { (category as any).setNativeProps?.({ nextFocusRight: firstChannelHandle }); } catch {}
+  }, [nodeHandle]);
+
+  // A new category can load its rows after that category already has focus.
+  // Re-wire RIGHT after those rows mount instead of waiting for another focus event.
+  useEffect(() => {
+    wireCategoryToFirstChannel();
+  }, [channels, wireCategoryToFirstChannel]);
+
   const renderCat: ListRenderItem<Category> = useCallback(({ item, index }) => (
     <FocusablePressable
       ref={(node: View | null) => {
@@ -328,6 +380,7 @@ export function TVLiveLayout({
       nextFocusLeft={Platform.isTV ? (sidebarNav.handle ?? undefined) : undefined}
       onFocus={() => {
         handleCatFocus(index);
+        onCategoryFocusChange?.(true);
         if (!Platform.isTV) return;
         // Record focused category node so channel LEFT can return here.
         const node = catRefMap.current.get(item.id) ?? null;
@@ -340,28 +393,43 @@ export function TVLiveLayout({
               const props: Record<string, number> = {};
               if (index === 0) props.nextFocusUp = h;
               if (index === catCountRef.current - 1) props.nextFocusDown = h;
-              // Fire OS does not reliably infer a route across these two
-              // independently-virtualised lists. Make category → channel
-              // navigation deterministic once the first row is mounted.
-              const firstChannelHandle = nodeHandle(firstChRef.current);
-              if (firstChannelHandle != null) props.nextFocusRight = firstChannelHandle;
+              // Category LEFT must land on the active Live TV sidebar item.
+              if (sidebarNav.handle != null) props.nextFocusLeft = sidebarNav.handle;
               if (Object.keys(props).length) (node as any).setNativeProps?.(props);
+              // Fire OS does not reliably infer a route across these two
+              // independently-virtualised lists. Make category → first channel
+              // deterministic once the channel row is mounted.
+              wireCategoryToFirstChannel(node);
             }
           } catch {}
         }
       }}
+      onBlur={() => onCategoryFocusChange?.(false)}
       onPress={() => {
+        pendingCategoryActivationRef.current = item.id;
         onCatSelect(item.id);
         handleCatFocus(index);
-        // Focus stays on the selected category — the user presses RIGHT to
-        // enter the channel list when ready.
+        // Selecting an already-loaded category does not trigger a data update,
+        // so open its first channel immediately rather than waiting for the
+        // pending-selection effect.
+        if (item.id === selectedCatId && !channelsLoading) focusAndPlayFirstChannel();
       }}
     >
       <Text style={[styles.catName, { color: colors.foreground }]} numberOfLines={1}>
         {item.name}
       </Text>
     </FocusablePressable>
-  ), [selectedCatId, colors, handleCatFocus, onCatSelect, nodeHandle]);
+  ), [
+    selectedCatId,
+    colors,
+    handleCatFocus,
+    onCatSelect,
+    nodeHandle,
+    onCategoryFocusChange,
+    wireCategoryToFirstChannel,
+    channelsLoading,
+    focusAndPlayFirstChannel,
+  ]);
 
   // ── Channel row ───────────────────────────────────────────────────────────
   // onFocus: highlight only — native TV focus owns rapid list scrolling.
@@ -417,6 +485,7 @@ export function TVLiveLayout({
         ]}
         onFocus={() => {
           handleChFocus(item);
+          onCategoryFocusChange?.(false);
           const node = chRefMap.current.get(item.id);
           if (node) {
             markChFocused(node);
@@ -494,7 +563,7 @@ export function TVLiveLayout({
         </View>
       </FocusablePressable>
     );
-  }, [highlightedChId, nowPlayingMap, selectedChannel, epgMap, nowTs, colors, handleChFocus, onChannelSelect, markChFocused, miniPlayerRef, nodeHandle]);
+  }, [highlightedChId, nowPlayingMap, selectedChannel, epgMap, nowTs, colors, handleChFocus, onChannelSelect, onCategoryFocusChange, markChFocused, miniPlayerRef, nodeHandle]);
 
   // ── Render ────────────────────────────────────────────────────────────────
 
