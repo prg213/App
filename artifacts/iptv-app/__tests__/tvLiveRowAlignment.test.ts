@@ -33,4 +33,13 @@ describe('TV Live category/channel row alignment', () => {
     expect(SOURCE).toMatch(/onScroll=\{syncCategoryScroll\}/);
     expect(SOURCE).toMatch(/scrollEventThrottle=\{16\}/);
   });
+
+  it('does not start an animated list scroll for every rapid channel focus event', () => {
+    const start = SOURCE.indexOf('const handleChFocus');
+    const end = SOURCE.indexOf('const syncCategoryScroll', start);
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    expect(SOURCE.slice(start, end)).not.toMatch(/scrollToIndex/);
+    expect(SOURCE.slice(start, end)).not.toMatch(/animated:\s*true/);
+  });
 });

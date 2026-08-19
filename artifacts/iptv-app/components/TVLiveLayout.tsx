@@ -364,13 +364,12 @@ export function TVLiveLayout({
   ), [selectedCatId, colors, handleCatFocus, onCatSelect, nodeHandle]);
 
   // ── Channel row ───────────────────────────────────────────────────────────
-  // onFocus: highlight + scroll — stream loads on OK press only.
+  // onFocus: highlight only — native TV focus owns rapid list scrolling.
+  // Stream loads on OK press only.  An imperative animated scroll here would
+  // start a new animation for every D-pad event and make fast navigation jump.
 
-  const handleChFocus = useCallback((ch: Channel, index: number) => {
+  const handleChFocus = useCallback((ch: Channel) => {
     setHighlightedChId(ch.id);
-    try {
-      chListRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.3 });
-    } catch (_) {}
   }, []);
 
   const syncCategoryScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -417,7 +416,7 @@ export function TVLiveLayout({
           isHighlighted && { borderLeftColor: FOCUS_BORDER, borderLeftWidth: 3 },
         ]}
         onFocus={() => {
-          handleChFocus(item, index);
+          handleChFocus(item);
           const node = chRefMap.current.get(item.id);
           if (node) {
             markChFocused(node);
