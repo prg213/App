@@ -1,6 +1,44 @@
 import { useCallback, useEffect, useRef } from 'react';
-import { BackHandler } from 'react-native';
+import { BackHandler, DeviceEventEmitter, Platform } from 'react-native';
 import { useFocusEffect } from 'expo-router';
+
+// Fire OS builds do not consistently surface the remote BACK key through
+// React Native's `hardwareBackPress` event. Some send it only through the
+// react-native-tvos `onHWKeyEvent` emitter. Keep a single LIFO dispatcher so
+// those raw events retain the same "most local overlay first" semantics as
+// BackHandler instead of broadcasting the action to every mounted screen.
+const tvBackHandlers: Array<() => boolean> = [];
+let tvBackSubscription: { remove: () => void } | null = null;
+let lastHandledBackAt = 0;
+
+function ensureTvBackSubscription() {
+  if (tvBackSubscription || !Platform.isTV) return;
+  tvBackSubscription = DeviceEventEmitter.addListener('onHWKeyEvent', (event: {
+    eventType?: string;
+    eventKeyAction?: number;
+  }) => {
+    const eventType = event.eventType?.toLowerCase();
+    // Key-up only prevents a held BACK key from dismissing multiple layers.
+    if (!['back', 'backspace', 'escape'].includes(eventType ?? '') || event.eventKeyAction === 0) return;
+    const now = Date.now();
+    // Some Fire OS versions emit both onHWKeyEvent and hardwareBackPress for
+    // the same physical press. Consume the duplicate after the first handler.
+    if (now - lastHandledBackAt < 180) return;
+
+    for (let i = tvBackHandlers.length - 1; i >= 0; i -= 1) {
+      if (tvBackHandlers[i]()) {
+        lastHandledBackAt = now;
+        return;
+      }
+    }
+  });
+}
+
+function releaseTvBackSubscriptionIfUnused() {
+  if (tvBackHandlers.length !== 0 || !tvBackSubscription) return;
+  tvBackSubscription.remove();
+  tvBackSubscription = null;
+}
 
 /**
  * #357: Shared hardware-back-button hook.
@@ -31,10 +69,27 @@ export function useBackHandler(handler: () => boolean, enabled: boolean = true) 
   useFocusEffect(
     useCallback(() => {
       if (!enabled) return;
-      const sub = BackHandler.addEventListener('hardwareBackPress', () =>
-        handlerRef.current(),
-      );
-      return () => sub.remove();
+      const invoke = () => {
+        // Avoid handling the same physical Fire TV press through both event
+        // systems. Returning true keeps BackHandler from falling through.
+        if (Date.now() - lastHandledBackAt < 180) return true;
+        const handled = handlerRef.current();
+        if (handled) lastHandledBackAt = Date.now();
+        return handled;
+      };
+      const sub = BackHandler.addEventListener('hardwareBackPress', invoke);
+
+      if (Platform.isTV) {
+        tvBackHandlers.push(invoke);
+        ensureTvBackSubscription();
+      }
+
+      return () => {
+        sub.remove();
+        const index = tvBackHandlers.indexOf(invoke);
+        if (index !== -1) tvBackHandlers.splice(index, 1);
+        releaseTvBackSubscriptionIfUnused();
+      };
     }, [enabled]),
   );
 }

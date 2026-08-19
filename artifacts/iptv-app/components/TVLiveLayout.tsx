@@ -150,6 +150,9 @@ export function TVLiveLayout({
   const { firstRef: firstCatRef, markFocused: markChFocused } = useFocusRestore({ delay: 400 });
   const firstChRef  = useRef<View>(null);
   const chRefMap = useRef(new Map<string, View>());
+  const nodeHandle = useCallback((node: View | null | undefined): number | null => {
+    try { return node ? findNodeHandle(node) : null; } catch { return null; }
+  }, []);
 
   // TV: if the selected category has no channels the category-press handler's
   // firstChRef.focus() is a no-op (the channel FlatList is replaced by an
@@ -298,6 +301,11 @@ export function TVLiveLayout({
               const props: Record<string, number> = {};
               if (index === 0) props.nextFocusUp = h;
               if (index === catCountRef.current - 1) props.nextFocusDown = h;
+              // Fire OS does not reliably infer a route across these two
+              // independently-virtualised lists. Make category → channel
+              // navigation deterministic once the first row is mounted.
+              const firstChannelHandle = nodeHandle(firstChRef.current);
+              if (firstChannelHandle != null) props.nextFocusRight = firstChannelHandle;
               if (Object.keys(props).length) (node as any).setNativeProps?.(props);
             }
           } catch {}
@@ -314,7 +322,7 @@ export function TVLiveLayout({
         {item.name}
       </Text>
     </FocusablePressable>
-  ), [selectedCatId, colors, handleCatFocus, onCatSelect]);
+  ), [selectedCatId, colors, handleCatFocus, onCatSelect, nodeHandle]);
 
   // ── Channel row ───────────────────────────────────────────────────────────
   // onFocus: highlight + scroll — stream loads on OK press only.
@@ -377,6 +385,11 @@ export function TVLiveLayout({
                 if (h != null) {
                   if (index === 0) props.nextFocusUp = h;
                   if (index === chCountRef.current - 1) props.nextFocusDown = h;
+                  // The preview panel is the next column to the right. Without
+                  // an explicit native target Fire OS can lose focus within
+                  // the channel list or jump to an unrelated control.
+                  const previewHandle = nodeHandle(miniPlayerRef?.current);
+                  if (previewHandle != null) props.nextFocusRight = previewHandle;
                 }
                 if (Object.keys(props).length) (node as any).setNativeProps?.(props);
               } catch {}
@@ -431,7 +444,7 @@ export function TVLiveLayout({
         </View>
       </FocusablePressable>
     );
-  }, [highlightedChId, nowPlayingMap, selectedChannel, epgMap, nowTs, colors, handleChFocus, onChannelSelect]);
+  }, [highlightedChId, nowPlayingMap, selectedChannel, epgMap, nowTs, colors, handleChFocus, onChannelSelect, markChFocused, miniPlayerRef, nodeHandle]);
 
   // ── Render ────────────────────────────────────────────────────────────────
 

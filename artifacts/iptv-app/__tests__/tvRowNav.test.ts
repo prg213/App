@@ -262,6 +262,29 @@ describe('tvRowNav — multi-row D-pad routing', () => {
 });
 
 // =============================================================================
+// 5. Horizontal sibling routing
+// =============================================================================
+
+describe('tvRowNav — horizontal sibling routing', () => {
+  beforeEach(() => { mockFindNodeHandle(); });
+
+  it('routes mounted neighbouring cards left and right explicitly', () => {
+    const nav = loadTvRowNav();
+    const first = makeNode(701);
+    const second = makeNode(702);
+    nav.setOrder(['rowA']);
+    nav.register('rowA', 0, first);
+    nav.register('rowA', 1, second);
+
+    nav.focused('rowA', 0);
+    expect(first.setNativeProps.mock.calls[0][0].nextFocusRight).toBe(702);
+
+    nav.focused('rowA', 1);
+    expect(second.setNativeProps.mock.calls[0][0].nextFocusLeft).toBe(701);
+  });
+});
+
+// =============================================================================
 // 5. Empty-row skip
 // =============================================================================
 

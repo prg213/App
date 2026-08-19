@@ -153,12 +153,26 @@ export const tvRowNav = {
     };
 
     try {
-      (self as any).setNativeProps?.({
+      const patch: Record<string, number> = {
         // Pin to self at the edges so focus never leaves the dashboard
         // vertically (LEFT on first card still exits to the sidebar).
         nextFocusUp: neighborHandle(-1) ?? selfHandle,
         nextFocusDown: neighborHandle(1) ?? selfHandle,
-      });
+      };
+
+      // Fire OS often cannot infer the neighbour inside a virtualised
+      // horizontal FlatList. Wire mounted siblings explicitly, while leaving
+      // an unmounted direction untouched so FlatList can still scroll and
+      // mount it naturally. The first card's LEFT is intentionally not
+      // overwritten — Home supplies its sidebar target declaratively.
+      const previous = index > 0 ? r.cards.get(index - 1) : null;
+      const next = r.cards.get(index + 1);
+      const previousHandle = previous ? findNodeHandle(previous) : null;
+      const nextHandle = next ? findNodeHandle(next) : null;
+      if (previousHandle != null) patch.nextFocusLeft = previousHandle;
+      if (nextHandle != null) patch.nextFocusRight = nextHandle;
+
+      (self as any).setNativeProps?.(patch);
     } catch {}
   },
 

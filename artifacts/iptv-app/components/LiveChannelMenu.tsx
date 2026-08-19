@@ -25,6 +25,7 @@ import {
   ActivityIndicator,
   Animated,
   FlatList,
+  findNodeHandle,
   Platform,
   StyleSheet,
   Text,
@@ -426,6 +427,13 @@ function LiveChannelMenuImpl({
   // category active on open, virtualization, slow layout).
   const firstItemRef   = useRef<any>(null);
   const firstCatRef    = useRef<any>(null);
+  const catItemRefs    = useRef<Map<number, View | null>>(new Map());
+  const channelItemRefs = useRef<Map<number, View | null>>(new Map());
+  const focusedCatIndexRef = useRef(0);
+
+  const getHandle = useCallback((node: View | null | undefined): number | null => {
+    try { return node ? findNodeHandle(node) : null; } catch { return null; }
+  }, []);
 
   const scrollToCurrent = useCallback(() => {
     const idx = filtered.findIndex((ch) => ch.id === currentChannelId);
@@ -543,9 +551,31 @@ function LiveChannelMenuImpl({
       const active = selectedCat === item.id;
       return (
         <FocusablePressable
-          ref={index === 0 ? (firstCatRef as any) : undefined}
+          ref={(node: View | null) => {
+            if (node) catItemRefs.current.set(index, node);
+            else catItemRefs.current.delete(index);
+            if (index === 0) firstCatRef.current = node;
+          }}
           style={[styles.catRow, active && styles.catRowActive]}
           focusedStyle={styles.catRowFocused}
+          onFocus={() => {
+            if (!Platform.isTV) return;
+            focusedCatIndexRef.current = index;
+            const node = catItemRefs.current.get(index);
+            const selfHandle = getHandle(node);
+            if (selfHandle == null || !node) return;
+            const channelHandle = getHandle(currentItemRef.current ?? firstItemRef.current);
+            const patch: Record<string, number> = {
+              // The category panel is the left boundary of this overlay.
+              nextFocusLeft: selfHandle,
+            };
+            if (index === 0) patch.nextFocusUp = selfHandle;
+            if (index === categories.length - 1) patch.nextFocusDown = selfHandle;
+            // Explicit category → channel transition. This must not depend on
+            // Fire OS guessing across two virtualised FlatLists.
+            if (channelHandle != null) patch.nextFocusRight = channelHandle;
+            (node as any).setNativeProps?.(patch);
+          }}
           onPress={() => setSelectedCat(item.id)}
         >
           {active && <View style={styles.catActiveBar} />}
@@ -558,7 +588,7 @@ function LiveChannelMenuImpl({
         </FocusablePressable>
       );
     },
-    [selectedCat, setSelectedCat],
+    [selectedCat, setSelectedCat, categories.length, getHandle],
   );
 
   // ─── Channel row ──────────────────────────────────────────────────────────────
@@ -577,9 +607,30 @@ function LiveChannelMenuImpl({
 
       return (
         <FocusablePressable
-          ref={isCurrent ? (currentItemRef as any) : index === 0 ? (firstItemRef as any) : undefined}
+          ref={(node: View | null) => {
+            if (node) channelItemRefs.current.set(index, node);
+            else channelItemRefs.current.delete(index);
+            if (isCurrent) currentItemRef.current = node;
+            if (index === 0) firstItemRef.current = node;
+          }}
           style={[styles.chRow, isCurrent && styles.chRowCurrent]}
           focusedStyle={styles.chRowFocused}
+          onFocus={() => {
+            if (!Platform.isTV) return;
+            const node = channelItemRefs.current.get(index);
+            const selfHandle = getHandle(node);
+            if (selfHandle == null || !node) return;
+            const catHandle = getHandle(catItemRefs.current.get(focusedCatIndexRef.current) ?? firstCatRef.current);
+            const patch: Record<string, number> = {
+              // Keep focus inside the overlay — channel LEFT reliably enters
+              // categories and channel RIGHT cannot escape to the player.
+              nextFocusRight: selfHandle,
+            };
+            if (catHandle != null) patch.nextFocusLeft = catHandle;
+            if (index === 0) patch.nextFocusUp = selfHandle;
+            if (index === filtered.length - 1) patch.nextFocusDown = selfHandle;
+            (node as any).setNativeProps?.(patch);
+          }}
           onPress={() => {
             // Use the render `index` directly — it's the authoritative position of
             // this item in `filtered` (and therefore in `filteredEntries`).
@@ -666,7 +717,7 @@ function LiveChannelMenuImpl({
         </FocusablePressable>
       );
     },
-    [currentChannelId, favIds, getNowNext, nowTs, filteredEntries, onSelectChannel],
+    [currentChannelId, favIds, getNowNext, nowTs, filteredEntries, onSelectChannel, filtered.length, getHandle],
   );
 
   const getItemLayout = useCallback(

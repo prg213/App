@@ -90,6 +90,7 @@ jest.mock('@tanstack/react-query', () => ({
 // using a stable nodeRef ensures the internal ref and lastCapturedRef always
 // point to the same { focus } object regardless of how many renders occur.
 let lastCapturedRef: { focus: jest.Mock } | null = null;
+let mockCapturedRefs = new Set<{ focus: jest.Mock }>();
 
 jest.mock('@/components/FocusablePressable', () => {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -107,6 +108,7 @@ jest.mock('@/components/FocusablePressable', () => {
           if (typeof ref === 'function') ref(handleRef.current);
           else ref.current = handleRef.current;
           lastCapturedRef = handleRef.current!;
+          mockCapturedRefs.add(handleRef.current!);
           return () => {
             if (typeof ref === 'function') ref(null);
             else ref.current = null;
@@ -174,6 +176,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   resetChannelMenuState();
   lastCapturedRef = null;
+  mockCapturedRefs = new Set();
 });
 afterEach(() => {
   jest.useRealTimers();
@@ -244,19 +247,21 @@ describe('LiveChannelMenu — TV focus trap', () => {
     // Let the initial-focus retry loop settle.
     await act(async () => { jest.advanceTimersByTime(1500); });
 
-    // Snapshot the current captured ref and clear its mock so previous calls
-    // from the initial-focus effect don't pollute the assertion below.
-    const itemRef = lastCapturedRef;
-    if (itemRef) itemRef.focus.mockClear();
+    // Clear all captured refs so initial-focus retry calls do not pollute the
+    // assertion below. The router may restore current, first-channel, or
+    // first-category focus depending on which list is currently rendered.
+    for (const itemRef of mockCapturedRefs) itemRef.focus.mockClear();
 
     // Invoke the callback — this is exactly what player.tsx zone onFocus does.
     await act(async () => {
       focusCallbackRef.current?.();
     });
 
-    if (itemRef) {
-      // The callback must have called .focus() on the item ref.
-      expect(itemRef.focus).toHaveBeenCalledTimes(1);
+    if (mockCapturedRefs.size > 0) {
+      // The callback must restore focus to a valid menu item. Do not require a
+      // specific last-rendered row: the explicit category/channel matrix may
+      // correctly choose the current or first visible target instead.
+      expect([...mockCapturedRefs].some((itemRef) => itemRef.focus.mock.calls.length === 1)).toBe(true);
     } else {
       // No ref-bearing FocusablePressable was rendered (empty channel list in
       // this stub configuration).  The important invariant is that the callback
