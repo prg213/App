@@ -23,4 +23,10 @@ export const sidebarNav = {
    * first card so pressing D-pad LEFT jumps straight to the nav menu.
    */
   handle: null as number | null,
+  /**
+   * Route name currently holding native focus. Content screens clear this
+   * while focused so they can distinguish a category → sidebar exit from a
+   * category → channel move.
+   */
+  focusedRoute: null as string | null,
 };

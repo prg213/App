@@ -62,6 +62,8 @@ export interface TVLiveLayoutProps {
   onChannelSelect: (ch: Channel) => void;
   /** Tracks whether remote focus is currently in the category panel. */
   onCategoryFocusChange?: (focused: boolean) => void;
+  /** Stops preview only after focus has actually reached the Live TV sidebar. */
+  onExitToSidebar?: () => void;
   /** Called when the user presses OK on the video preview — goes full-screen */
   onWatchFullscreen: () => void;
   /** Called when the user presses OK on the catchup row */
@@ -102,6 +104,11 @@ export interface TVLiveLayoutProps {
    * lands on All Channels rather than a previously-highlighted row.
    */
   entryResetCallbackRef?: React.MutableRefObject<(() => void) | null>;
+  /**
+   * Filled with a callback so the parent's BACK handler can return from a
+   * highlighted channel to that channel's category without stopping playback.
+   */
+  focusHighlightedChCategoryRef?: React.MutableRefObject<(() => boolean) | null>;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -123,6 +130,7 @@ export function TVLiveLayout({
   selectedChannel,
   onChannelSelect,
   onCategoryFocusChange,
+  onExitToSidebar,
   onWatchFullscreen,
   onOpenCatchup,
   onOpenCatchupProg,
@@ -132,6 +140,7 @@ export function TVLiveLayout({
   onCatchupFocusChange,
   highlightedChNodeRef,
   entryResetCallbackRef,
+  focusHighlightedChCategoryRef,
   player,
   videoKey,
   isBuffering,
@@ -174,6 +183,7 @@ export function TVLiveLayout({
   // intent until its first row has mounted so OK can focus and preview it.
   const pendingCategoryActivationRef = useRef<string | null>(null);
   const firstChannelFocusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const categoryFocusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const nodeHandle = useCallback((node: View | null | undefined): number | null => {
     try { return node ? findNodeHandle(node) : null; } catch { return null; }
   }, []);
@@ -194,6 +204,7 @@ export function TVLiveLayout({
 
   useEffect(() => () => {
     if (firstChannelFocusTimerRef.current) clearTimeout(firstChannelFocusTimerRef.current);
+    if (categoryFocusTimerRef.current) clearTimeout(categoryFocusTimerRef.current);
   }, []);
 
   // The sidebar emits its entry intent before React Navigation focuses this
@@ -285,6 +296,67 @@ export function TVLiveLayout({
       chListRef.current?.scrollToIndex({ index, animated: false, viewPosition: 0.5 });
     } catch (_) {}
   }, [selectedChannel?.id, channels]);
+
+  const categoryForChannel = useCallback((channel: Channel) => {
+    const group = channel.groupTitle?.trim();
+    if (group) {
+      const matchingCategory = allCategories.find(
+        (category) => category.id === group || category.name === group,
+      );
+      if (matchingCategory) return matchingCategory;
+    }
+    return allCategories.find((category) => category.id === selectedCatId)
+      ?? allCategories[0]
+      ?? null;
+  }, [allCategories, selectedCatId]);
+
+  const focusCategoryForHighlightedChannel = useCallback(() => {
+    const channel = channels.find((candidate) => candidate.id === highlightedChId)
+      ?? selectedChannel;
+    const category = channel ? categoryForChannel(channel) : null;
+    if (!category) return false;
+
+    const categoryIndex = allCategories.findIndex((candidate) => candidate.id === category.id);
+    if (categoryIndex < 0) return false;
+    catListRef.current?.scrollToIndex({
+      index: categoryIndex,
+      animated: false,
+      viewPosition: 0.3,
+    });
+
+    const focusCategory = () => {
+      const node = catRefMap.current.get(category.id);
+      if (!node) return;
+      catFocusedRef.current = node;
+      sidebarNav.focusedRoute = null;
+      onCategoryFocusChange?.(true);
+      requestTvFocus(node);
+    };
+    focusCategory();
+    if (categoryFocusTimerRef.current) clearTimeout(categoryFocusTimerRef.current);
+    categoryFocusTimerRef.current = setTimeout(() => {
+      focusCategory();
+      categoryFocusTimerRef.current = null;
+    }, 120);
+    return true;
+  }, [
+    allCategories,
+    categoryForChannel,
+    channels,
+    highlightedChId,
+    onCategoryFocusChange,
+    selectedChannel,
+  ]);
+
+  useEffect(() => {
+    if (!focusHighlightedChCategoryRef) return;
+    focusHighlightedChCategoryRef.current = focusCategoryForHighlightedChannel;
+    return () => {
+      if (focusHighlightedChCategoryRef.current === focusCategoryForHighlightedChannel) {
+        focusHighlightedChCategoryRef.current = null;
+      }
+    };
+  }, [focusHighlightedChCategoryRef, focusCategoryForHighlightedChannel]);
 
   // EPG for the currently playing channel (panel 3 mini-guide).
   // Include up to 2 recently-ended programmes before the current one so that
@@ -381,6 +453,7 @@ export function TVLiveLayout({
       onFocus={() => {
         handleCatFocus(index);
         onCategoryFocusChange?.(true);
+        sidebarNav.focusedRoute = null;
         if (!Platform.isTV) return;
         // Record focused category node so channel LEFT can return here.
         const node = catRefMap.current.get(item.id) ?? null;
@@ -404,7 +477,15 @@ export function TVLiveLayout({
           } catch {}
         }
       }}
-      onBlur={() => onCategoryFocusChange?.(false)}
+      onBlur={() => {
+        onCategoryFocusChange?.(false);
+        // Native focus events can arrive in either order on Fire OS. Defer
+        // this check until the sidebar has had a chance to claim focus, so
+        // category → channel navigation never stops the preview.
+        setTimeout(() => {
+          if (sidebarNav.focusedRoute === 'index') onExitToSidebar?.();
+        }, 0);
+      }}
       onPress={() => {
         pendingCategoryActivationRef.current = item.id;
         onCatSelect(item.id);
@@ -486,8 +567,10 @@ export function TVLiveLayout({
         onFocus={() => {
           handleChFocus(item);
           onCategoryFocusChange?.(false);
+          sidebarNav.focusedRoute = null;
           const node = chRefMap.current.get(item.id);
           if (node) {
+            if (highlightedChNodeRef) highlightedChNodeRef.current = node;
             markChFocused(node);
             if (Platform.isTV) {
               try {
@@ -495,7 +578,12 @@ export function TVLiveLayout({
                 const props: Record<string, number> = {};
                 // LEFT → last-focused category (or first category if none has
                 // been D-pad-focused yet, e.g. user arrived via BACK from catchup).
-                const catTarget = catFocusedRef.current ?? firstCatRef.current;
+                const channelCategory = categoryForChannel(item);
+                const categoryNode = channelCategory
+                  ? catRefMap.current.get(channelCategory.id)
+                  : null;
+                if (categoryNode) catFocusedRef.current = categoryNode;
+                const catTarget = categoryNode ?? catFocusedRef.current ?? firstCatRef.current;
                 if (catTarget) {
                   const ch = findNodeHandle(catTarget);
                   if (ch != null) props.nextFocusLeft = ch;
@@ -563,7 +651,7 @@ export function TVLiveLayout({
         </View>
       </FocusablePressable>
     );
-  }, [highlightedChId, nowPlayingMap, selectedChannel, epgMap, nowTs, colors, handleChFocus, onChannelSelect, onCategoryFocusChange, markChFocused, miniPlayerRef, nodeHandle]);
+  }, [highlightedChId, nowPlayingMap, selectedChannel, epgMap, nowTs, colors, handleChFocus, onChannelSelect, onCategoryFocusChange, onExitToSidebar, categoryForChannel, markChFocused, miniPlayerRef, nodeHandle, highlightedChNodeRef]);
 
   // ── Render ────────────────────────────────────────────────────────────────
 

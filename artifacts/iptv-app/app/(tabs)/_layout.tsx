@@ -151,8 +151,14 @@ function NavItem({
       accessibilityRole="button"
       accessibilityLabel={item.label}
       accessibilityState={{ selected: active }}
-      onFocus={() => setFocused(true)}
-      onBlur={() => setFocused(false)}
+      onFocus={() => {
+        setFocused(true);
+        sidebarNav.focusedRoute = item.name;
+      }}
+      onBlur={() => {
+        setFocused(false);
+        if (sidebarNav.focusedRoute === item.name) sidebarNav.focusedRoute = null;
+      }}
       style={[
         styles.navItem,
         Platform.isTV && styles.navItemTV,

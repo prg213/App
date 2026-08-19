@@ -802,6 +802,13 @@ export default function LiveTVScreen() {
   const catchupFocusedRef   = useRef(false);
   const categoryFocusedRef = useRef(false);
   const highlightedChNodeRef = useRef<View | null>(null);
+  const focusHighlightedChCategoryRef = useRef<(() => boolean) | null>(null);
+
+  const handleExitToSidebar = useCallback(() => {
+    categoryFocusedRef.current = false;
+    setPlayingChannel(null);
+    setSelectedChannel(null);
+  }, []);
 
   // Hardware BACK: pop through active states one level at a time.
   // useBackHandler (via useFocusEffect) ensures this is only active while Live TV is focused —
@@ -818,9 +825,20 @@ export default function LiveTVScreen() {
       return true;
     }
     // Category is the leftmost Live TV panel: BACK returns to the active
-    // Live TV sidebar item even if its first channel is previewing.
+    // Live TV sidebar item and is the only browse-navigation path that stops
+    // the currently playing preview.
     if (Platform.isTV && categoryFocusedRef.current) {
+      handleExitToSidebar();
       sidebarNav.focus();
+      return true;
+    }
+    // Channel BACK returns to the category which contains that channel. Keep
+    // the preview playing so browsing does not interrupt the stream.
+    if (
+      Platform.isTV
+      && highlightedChNodeRef.current
+      && focusHighlightedChCategoryRef.current?.()
+    ) {
       return true;
     }
     if (selectedChannel) { setPlayingChannel(null); setSelectedChannel(null); return true; }
@@ -1466,8 +1484,10 @@ export default function LiveTVScreen() {
           miniPlayerRef={miniPlayerRef}
           onCatchupFocusChange={handleCatchupFocusChange}
           onCategoryFocusChange={handleCategoryFocusChange}
+          onExitToSidebar={handleExitToSidebar}
           highlightedChNodeRef={highlightedChNodeRef}
           entryResetCallbackRef={tvLiveEntryResetRef}
+          focusHighlightedChCategoryRef={focusHighlightedChCategoryRef}
         />
         {showCatchup && selectedChannel && creds && (
           <CatchupSheet

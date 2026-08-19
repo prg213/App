@@ -24,7 +24,7 @@ describe('Fire TV category navigation', () => {
   it('wires category LEFT to the active sidebar item and tracks category focus', () => {
     expect(TV_LAYOUT).toMatch(/props\.nextFocusLeft = sidebarNav\.handle/);
     expect(TV_LAYOUT).toMatch(/onCategoryFocusChange\?\.\(true\)/);
-    expect(TV_LAYOUT).toMatch(/onBlur=\{\(\) => onCategoryFocusChange\?\.\(false\)\}/);
+    expect(TV_LAYOUT).toMatch(/onBlur=\{\(\) => \{\s*onCategoryFocusChange\?\.\(false\)/);
   });
 
   it('selects, previews, and focuses the first available channel after category OK', () => {
@@ -39,5 +39,19 @@ describe('Fire TV category navigation', () => {
     expect(TV_LAYOUT).toMatch(/const wireCategoryToFirstChannel = useCallback/);
     expect(TV_LAYOUT).toMatch(/setNativeProps\?\.\(\{ nextFocusRight: firstChannelHandle \}\)/);
     expect(TV_LAYOUT).toMatch(/wireCategoryToFirstChannel\(\);\s*\n  \}, \[channels, wireCategoryToFirstChannel\]\)/);
+  });
+
+  it('returns channel LEFT and BACK to that channel’s category without clearing preview state', () => {
+    expect(TV_LAYOUT).toMatch(/const categoryForChannel = useCallback/);
+    expect(TV_LAYOUT).toMatch(/const focusCategoryForHighlightedChannel = useCallback/);
+    expect(TV_LAYOUT).toMatch(/focusHighlightedChCategoryRef\.current = focusCategoryForHighlightedChannel/);
+    expect(TV_LAYOUT).toMatch(/const channelCategory = categoryForChannel\(item\)/);
+    expect(LIVE_TV).toMatch(/focusHighlightedChCategoryRef\.current\?\.\(\)/);
+  });
+
+  it('stops playback only when category focus exits to the Live TV sidebar', () => {
+    expect(TV_LAYOUT).toMatch(/sidebarNav\.focusedRoute === 'index'.*?onExitToSidebar/s);
+    expect(LIVE_TV).toMatch(/const handleExitToSidebar = useCallback[\s\S]*?setPlayingChannel\(null\)[\s\S]*?setSelectedChannel\(null\)/);
+    expect(LIVE_TV).toMatch(/categoryFocusedRef\.current[\s\S]*?handleExitToSidebar\(\)[\s\S]*?sidebarNav\.focus\(\)/);
   });
 });
