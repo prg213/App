@@ -1987,11 +1987,79 @@ export default function PlayerScreen() {
     scheduleHide();
   }, [isCasting, isPlaying, player, scheduleHide, pauseRemote, playRemote]);
 
+  /**
+   * Timeshift HLS cannot seek through expo-video's currentTime/seekBy APIs.
+   * Xtream catch-up streams must be reopened with a programme-relative start
+   * offset instead. Returns true when this catch-up-specific path handled the
+   * request, allowing normal VOD/cast seeking to keep its existing behavior.
+   */
+  const seekCatchupTo = useCallback((targetTime: number): boolean => {
+    if (
+      !isCatchup ||
+      !catchupStreamId ||
+      !catchupServerStart ||
+      catchupStartTimestamp <= 0 ||
+      credentials?.type !== 'xtream'
+    ) {
+      return false;
+    }
+
+    const durationSecs = durationRef.current > 0 ? durationRef.current : knownDurationSecs;
+    const seekSecs = Math.floor(Math.max(
+      0,
+      durationSecs > 0 ? Math.min(durationSecs, targetTime) : targetTime,
+    ));
+    const remainingSecs = Math.max(60, knownDurationSecs - seekSecs);
+    const newDurationMins = Math.ceil(remainingSecs / 60);
+    const newStartTs = catchupStartTimestamp + seekSecs;
+    const newServerStart = addSecondsToServerTime(catchupServerStart, seekSecs);
+    const creds = {
+      host: credentials.host!,
+      username: credentials.username!,
+      password: credentials.password!,
+    };
+    const newUrl = getXtreamCatchupUrls(
+      creds,
+      catchupStreamId,
+      newServerStart,
+      newDurationMins,
+      newStartTs,
+    )[catchupFormatRef.current];
+
+    catchupSeekOffsetRef.current = seekSecs;
+    catchupWallStartRef.current = Date.now() - seekSecs * 1000;
+    currentTimeRef.current = seekSecs;
+    setCurrentTime(seekSecs);
+    setIsBuffering(true);
+    setHasError(false);
+    activeUrlRef.current = newUrl;
+    try {
+      player.replace(newUrl);
+      player.play();
+    } catch {}
+    return true;
+  }, [
+    isCatchup,
+    catchupStreamId,
+    catchupServerStart,
+    catchupStartTimestamp,
+    credentials,
+    knownDurationSecs,
+    player,
+  ]);
+
   const seek = useCallback((delta: number) => {
-    if (isCasting) { seekRemote(currentTime + delta); }
+    const target = currentTimeRef.current + delta;
+    // Timeshift HLS does not expose a seekable currentTime to expo-video.
+    // Rebuild the catch-up URL at the requested programme offset instead.
+    if (isCatchup && seekCatchupTo(target)) {
+      scheduleHide();
+      return;
+    }
+    if (isCasting) { seekRemote(target); }
     else           { player.seekBy(delta); }
     scheduleHide();
-  }, [isCasting, currentTime, player, scheduleHide, seekRemote]);
+  }, [isCatchup, isCasting, player, scheduleHide, seekRemote, seekCatchupTo]);
 
   // TV D-pad seeks are discrete, but the scrubber should visually travel to
   // each new position instead of jumping when the player reports the seek.
@@ -2366,30 +2434,17 @@ export default function PlayerScreen() {
                 try { if (player) (player as any).scrubbingModeOptions = { scrubbingModeEnabled: false }; } catch {}
               }}
               onSeek={(t) => {
-                // Optimistic update so the scrubber stays at the dragged position
-                setCurrentTime(t);
                 scheduleHide();
 
-                if (isCatchup && catchupStreamId && catchupServerStart && catchupStartTimestamp > 0 && credentials?.type === 'xtream') {
-                  // Timeshift HLS can't be seeked via currentTime — regenerate the
-                  // URL with a new start offset and reload the stream.
-                  const seekSecs = Math.floor(t);
-                  const remainingSecs = Math.max(60, knownDurationSecs - seekSecs);
-                  const newDurationMins = Math.ceil(remainingSecs / 60);
-                  const newStartTs = catchupStartTimestamp + seekSecs;
-                  const newServerStart = addSecondsToServerTime(catchupServerStart, seekSecs);
-                  const creds = { host: credentials.host!, username: credentials.username!, password: credentials.password! };
-                  // Use whichever format index succeeded on first load (#69)
-                  const newUrl = getXtreamCatchupUrls(creds, catchupStreamId, newServerStart, newDurationMins, newStartTs)[catchupFormatRef.current];
-                  // Update the wall-clock timer offset so it resumes from seek position
-                  catchupSeekOffsetRef.current = seekSecs;
-                  catchupWallStartRef.current = Date.now() - seekSecs * 1000;
-                  setIsBuffering(true);
-                  try { player.replace(newUrl); player.play(); } catch {}
-                } else if (isCasting) {
-                  seekRemote(t);
-                } else {
-                  player.currentTime = t;
+                if (!seekCatchupTo(t)) {
+                  // Optimistic update so the scrubber stays at the dragged position
+                  setCurrentTime(t);
+                  currentTimeRef.current = t;
+                  if (isCasting) {
+                    seekRemote(t);
+                  } else {
+                    player.currentTime = t;
+                  }
                 }
               }}
             />
