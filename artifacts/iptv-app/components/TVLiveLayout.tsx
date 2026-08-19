@@ -38,6 +38,7 @@ import {
 import { VideoView, type VideoPlayer } from 'expo-video';
 import { FocusablePressable } from '@/components/FocusablePressable';
 import { useFocusRestore } from '@/hooks/useFocusRestore';
+import { useTVRemote } from '@/hooks/useTVRemote';
 import type { Category, Channel, EpgProgram } from '@/types';
 import { channelHasCatchup, isCatchupRowPlayable } from '@/utils/catchup';
 import { requestTvFocus } from '@/lib/tvFocus';
@@ -159,6 +160,7 @@ export function TVLiveLayout({
   //   catFocusedRef — the most-recently-focused category node (LEFT target for channels)
   const catRefMap    = useRef(new Map<string, View>());
   const catFocusedRef = useRef<View | null>(null);
+  const channelFocusedRef = useRef(false);
   // TV no-wrap UP/DOWN edge refs for yellow panel
   const catchupRowRef   = useRef<View | null>(null);
   const lastGuideRowRef = useRef<View | null>(null);
@@ -358,6 +360,17 @@ export function TVLiveLayout({
     };
   }, [focusHighlightedChCategoryRef, focusCategoryForHighlightedChannel]);
 
+  // Direct nextFocusLeft handles the normal route. When that category row has
+  // been virtualized away, Fire OS lets the key fall through to this shared
+  // remote hook; return the cursor to the channel's own category instead of
+  // allowing the platform to choose an unrelated row.
+  useTVRemote({
+    left: (event) => {
+      if (event.eventKeyAction === 0 || !channelFocusedRef.current) return;
+      focusCategoryForHighlightedChannel();
+    },
+  });
+
   // EPG for the currently playing channel (panel 3 mini-guide).
   // Include up to 2 recently-ended programmes before the current one so that
   // past rows are present in the list and can be pressed for catch-up on TV.
@@ -454,6 +467,7 @@ export function TVLiveLayout({
         handleCatFocus(index);
         onCategoryFocusChange?.(true);
         sidebarNav.focusedRoute = null;
+        channelFocusedRef.current = false;
         if (!Platform.isTV) return;
         // Record focused category node so channel LEFT can return here.
         const node = catRefMap.current.get(item.id) ?? null;
@@ -568,6 +582,7 @@ export function TVLiveLayout({
           handleChFocus(item);
           onCategoryFocusChange?.(false);
           sidebarNav.focusedRoute = null;
+          channelFocusedRef.current = true;
           const node = chRefMap.current.get(item.id);
           if (node) {
             if (highlightedChNodeRef) highlightedChNodeRef.current = node;
@@ -602,6 +617,9 @@ export function TVLiveLayout({
               } catch {}
             }
           }
+        }}
+        onBlur={() => {
+          channelFocusedRef.current = false;
         }}
         onPress={() => {
           onChannelSelect(item);

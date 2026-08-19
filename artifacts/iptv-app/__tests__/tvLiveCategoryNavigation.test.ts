@@ -46,6 +46,7 @@ describe('Fire TV category navigation', () => {
     expect(TV_LAYOUT).toMatch(/const focusCategoryForHighlightedChannel = useCallback/);
     expect(TV_LAYOUT).toMatch(/focusHighlightedChCategoryRef\.current = focusCategoryForHighlightedChannel/);
     expect(TV_LAYOUT).toMatch(/const channelCategory = categoryForChannel\(item\)/);
+    expect(TV_LAYOUT).toMatch(/useTVRemote\(\{[\s\S]*?left: \(event\)[\s\S]*?focusCategoryForHighlightedChannel\(\)/);
     expect(LIVE_TV).toMatch(/focusHighlightedChCategoryRef\.current\?\.\(\)/);
   });
 
