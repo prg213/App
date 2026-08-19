@@ -5,6 +5,7 @@ import {
   AppState,
   AppStateStatus,
   BackHandler,
+  Easing,
   Linking,
   Modal,
   Platform,
@@ -1992,6 +1993,16 @@ export default function PlayerScreen() {
     scheduleHide();
   }, [isCasting, currentTime, player, scheduleHide, seekRemote]);
 
+  // TV D-pad seeks are discrete, but the scrubber should visually travel to
+  // each new position instead of jumping when the player reports the seek.
+  const seekTvStep = useCallback((delta: number) => {
+    const current = currentTimeRef.current;
+    const durationSecs = durationRef.current;
+    const next = Math.max(0, durationSecs > 0 ? Math.min(durationSecs, current + delta) : current + delta);
+    setCurrentTime(next);
+    seek(delta);
+  }, [seek]);
+
   // TV media keys are handled by the single useTVRemote call above (search
   // "useTVRemote gates the subscription").  A second call here would create
   // a duplicate DeviceEventEmitter subscription, firing every handler twice.
@@ -2045,6 +2056,17 @@ export default function PlayerScreen() {
       : 'CC';
 
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
+  const tvScrubProgress = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (!Platform.isTV || isLive || isWeb) return;
+    const target = Math.max(0, Math.min(100, progress));
+    Animated.timing(tvScrubProgress, {
+      toValue: target,
+      duration: 180,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+  }, [isLive, isWeb, progress, tvScrubProgress]);
 
   return (
     <View style={styles.container}>
@@ -2389,7 +2411,7 @@ export default function PlayerScreen() {
                 style={[styles.tvSeekBounce, { left: 0, bottom: insets.bottom + 48 }]}
                 onFocus={() => {
                   holdTvScrubFocus();
-                  seek(-10);
+                  seekTvStep(-10);
                   scheduleHide();
                   setTimeout(() => requestTvFocus(tvScrubAnchorRef.current), 70);
                 }}
@@ -2414,17 +2436,22 @@ export default function PlayerScreen() {
               >
                 <View style={styles.tvScrubRailWrap}>
                   <View style={styles.tvScrubRail}>
-                    <View style={[styles.tvScrubFill, { width: `${Math.max(0, Math.min(100, progress))}%` as any }]} />
+                    <Animated.View
+                      style={[
+                        styles.tvScrubFill,
+                        { width: tvScrubProgress.interpolate({ inputRange: [0, 100], outputRange: ['0%', '100%'] }) },
+                      ]}
+                    />
                   </View>
                   {/* Round thumb — mirrors the phone scrubber's drag handle so
                       the seek position is visible; grows + glows when the bar
                       is selected with the D-pad. */}
-                  <View
+                   <Animated.View
                     pointerEvents="none"
                     style={[
                       styles.tvScrubThumb,
                       tvScrubFocused && styles.tvScrubThumbFocused,
-                      { left: `${Math.max(0, Math.min(100, progress))}%` as any },
+                       { left: tvScrubProgress.interpolate({ inputRange: [0, 100], outputRange: ['0%', '100%'] }) },
                     ]}
                   />
                 </View>
@@ -2443,7 +2470,7 @@ export default function PlayerScreen() {
                 style={[styles.tvSeekBounce, { right: 0, bottom: insets.bottom + 48 }]}
                 onFocus={() => {
                   holdTvScrubFocus();
-                  seek(+10);
+                  seekTvStep(+10);
                   scheduleHide();
                   setTimeout(() => requestTvFocus(tvScrubAnchorRef.current), 70);
                 }}

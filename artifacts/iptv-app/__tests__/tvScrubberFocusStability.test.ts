@@ -31,11 +31,26 @@ describe('TV scrubber visual focus stability', () => {
     expect(playerSource).toContain('tvScrubFocused && styles.tvScrubThumbFocused');
   });
 
+  it('animates the TV rail and thumb to each seek target', () => {
+    expect(playerSource).toMatch(/const tvScrubProgress = useRef\(new Animated\.Value\(0\)\)\.current/);
+    expect(playerSource).toMatch(/Animated\.timing\(tvScrubProgress,[\s\S]*?duration: 180/);
+    expect(playerSource).toMatch(/useNativeDriver: false/);
+    expect(playerSource).toContain('<Animated.View');
+    expect(playerSource).toMatch(/tvScrubProgress\.interpolate\(\{ inputRange: \[0, 100\]/);
+  });
+
+  it('updates the visual target immediately when a TV seek step begins', () => {
+    expect(playerSource).toMatch(/const seekTvStep = useCallback/);
+    expect(playerSource).toMatch(/setCurrentTime\(next\);[\s\S]*?seek\(delta\);/);
+    expect(playerSource).toMatch(/seekTvStep\(-10\)/);
+    expect(playerSource).toMatch(/seekTvStep\(\+10\)/);
+  });
+
   it('holds the visual focus state before both invisible seek targets change time', () => {
     const seekBack = playerSource.match(/ref=\{tvSeekBackRef as any\}[\s\S]*?\/>/);
     const seekForward = playerSource.match(/ref=\{tvSeekFwdRef as any\}[\s\S]*?\/>/);
 
-    expect(seekBack?.[0]).toMatch(/holdTvScrubFocus\(\);[\s\S]*?seek\(-10\)/);
-    expect(seekForward?.[0]).toMatch(/holdTvScrubFocus\(\);[\s\S]*?seek\(\+10\)/);
+    expect(seekBack?.[0]).toMatch(/holdTvScrubFocus\(\);[\s\S]*?seekTvStep\(-10\)/);
+    expect(seekForward?.[0]).toMatch(/holdTvScrubFocus\(\);[\s\S]*?seekTvStep\(\+10\)/);
   });
 });
