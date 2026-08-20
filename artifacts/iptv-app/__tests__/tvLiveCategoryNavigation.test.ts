@@ -55,6 +55,8 @@ describe('Fire TV category navigation', () => {
     expect(TV_LAYOUT).toMatch(/const focusPlayingChannel = useCallback/);
     expect(TV_LAYOUT).toMatch(/focusPlayingChannelRef\.current = focusPlayingChannel/);
     expect(TV_LAYOUT).toMatch(/nextFocusLeft=\{playingChHandle \?\? undefined\}/);
+    expect(TV_LAYOUT).toMatch(/const setPlayingChannelHandle = useCallback/);
+    expect(TV_LAYOUT).toMatch(/item\.id === selectedChannel\?\.id[\s\S]*?setPlayingChannelHandle\(nodeHandle\(node\)\)/);
     expect(TV_LAYOUT).toMatch(/guideFocusedRef\.current = true/);
     expect(TV_LAYOUT).toMatch(/focusPlayingChannel\(\)/);
     expect(LIVE_TV).toMatch(/const focusPlayingChannelRef = useRef/);

@@ -315,6 +315,11 @@ export function TVLiveLayout({
   // Preview-panel rows route left to the playing channel, which can differ from
   // the last channel the viewer merely highlighted while browsing.
   const [playingChHandle, setPlayingChHandle] = useState<number | null>(null);
+  const setPlayingChannelHandle = useCallback((handle: number | null) => {
+    // FlatList rows can mount after the preview controls. Keep the native LEFT
+    // target fresh without needlessly rerendering every visible channel row.
+    setPlayingChHandle((current) => current === handle ? current : handle);
+  }, []);
 
   useEffect(() => {
     highlightedChIdRef.current = highlightedChId;
@@ -331,8 +336,8 @@ export function TVLiveLayout({
   useEffect(() => {
     if (!Platform.isTV) return;
     const node = selectedChannel ? chRefMap.current.get(selectedChannel.id) : null;
-    setPlayingChHandle(nodeHandle(node));
-  }, [selectedChannel?.id, channels, nodeHandle]);
+    setPlayingChannelHandle(nodeHandle(node));
+  }, [selectedChannel?.id, channels, nodeHandle, setPlayingChannelHandle]);
 
   // Scroll the channel list to the selected channel when it is set from outside
   // (e.g. returning from recently-watched on the Home screen).  Also depends on
@@ -426,7 +431,7 @@ export function TVLiveLayout({
       const node = chRefMap.current.get(playingChannel.id);
       if (!node) return false;
       if (highlightedChNodeRef) highlightedChNodeRef.current = node;
-      setPlayingChHandle(nodeHandle(node));
+      setPlayingChannelHandle(nodeHandle(node));
       requestTvFocus(node);
       return true;
     };
@@ -454,6 +459,7 @@ export function TVLiveLayout({
     nodeHandle,
     onCatSelect,
     selectedChannel,
+    setPlayingChannelHandle,
     updateHighlightedChannel,
   ]);
 
@@ -687,8 +693,18 @@ export function TVLiveLayout({
       <FocusablePressable
         ref={(node: View | null) => {
           if (index === 0) (firstChRef as any).current = node;
-          if (node) chRefMap.current.set(item.id, node);
-          else chRefMap.current.delete(item.id);
+          if (node) {
+            chRefMap.current.set(item.id, node);
+            // The selected row is often virtualized in after the preview
+            // controls mount. Update their native LEFT target at that moment
+            // so Fire OS cannot spatially skip the channel panel for
+            // Categories.
+            if (Platform.isTV && item.id === selectedChannel?.id) {
+              setPlayingChannelHandle(nodeHandle(node));
+            }
+          } else {
+            chRefMap.current.delete(item.id);
+          }
         }}
         accessible
         accessibilityRole="button"
@@ -781,7 +797,7 @@ export function TVLiveLayout({
         </View>
       </FocusablePressable>
     );
-  }, [highlightedChId, nowPlayingMap, selectedChannel, epgMap, nowTs, colors, handleChFocus, onChannelSelect, onCategoryFocusChange, onExitToSidebar, categoryForChannel, markChFocused, miniPlayerRef, nodeHandle, highlightedChNodeRef, updateHighlightedChannel]);
+  }, [highlightedChId, nowPlayingMap, selectedChannel, epgMap, nowTs, colors, handleChFocus, onChannelSelect, onCategoryFocusChange, onExitToSidebar, categoryForChannel, markChFocused, miniPlayerRef, nodeHandle, highlightedChNodeRef, setPlayingChannelHandle, updateHighlightedChannel]);
 
   // ── Render ────────────────────────────────────────────────────────────────
 
