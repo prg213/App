@@ -90,21 +90,17 @@ jobs:
           EXPO_PUBLIC_BUILD_NUMBER: ${{ github.run_number }}
           GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=512m"
 
-      - name: Stage compact APKs
+      - name: Stage universal APK
         run: |
           set -euo pipefail
           OUTPUT_DIR="artifacts/iptv-app/android/app/build/outputs/apk/release"
-          ARM32_APK="$(find "$OUTPUT_DIR" -name '*armeabi-v7a*release.apk' -print -quit)"
-          ARM64_APK="$(find "$OUTPUT_DIR" -name '*arm64-v8a*release.apk' -print -quit)"
+          UNIVERSAL_APK="$(find "$OUTPUT_DIR" -name 'app-release.apk' -print -quit)"
 
-          test -n "$ARM32_APK"
-          test -n "$ARM64_APK"
+          test -n "$UNIVERSAL_APK"
 
-          # StreamVault.apk remains the stable Fire TV updater name. The
-          # arm64 asset lets phones download only their required native code.
-          cp "$ARM32_APK" StreamVault.apk
-          cp "$ARM32_APK" StreamVault-armeabi-v7a.apk
-          cp "$ARM64_APK" StreamVault-arm64-v8a.apk
+          # A single universal APK contains both ARM32 Fire TV and ARM64 mobile
+          # libraries. Keep this stable name for site and in-app downloads.
+          cp "$UNIVERSAL_APK" StreamVault.apk
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -114,13 +110,9 @@ jobs:
           body: |
             Android APK — build #${{ github.run_number }}
 
-             **Fire TV and older Android:** Download StreamVault.apk.
-
-             **Modern 64-bit Android:** StreamVault-arm64-v8a.apk is also available.
+             One universal APK for Fire TV and Android mobile devices.
           files: |
             StreamVault.apk
-             StreamVault-armeabi-v7a.apk
-             StreamVault-arm64-v8a.apk
           make_latest: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -131,8 +123,6 @@ jobs:
           name: StreamVault-release-${{ github.run_number }}
           path: |
             StreamVault.apk
-            StreamVault-armeabi-v7a.apk
-            StreamVault-arm64-v8a.apk
           retention-days: 30
 
       - name: Upload build log on failure

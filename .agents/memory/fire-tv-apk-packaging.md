@@ -1,10 +1,10 @@
 ---
 name: Fire TV APK packaging
-description: Compact Android APK release decision and update-selection rules for StreamVault.
+description: One-file universal Android APK release decision for StreamVault.
 ---
 
-Android release builds must publish compact physical-ARM APKs, never a universal VLC package: `StreamVault.apk` is the ARM32 Fire TV/older Android asset, while the named ARM64 asset serves modern Android phones. Never package emulator (`x86` / `x86_64`) libraries.
+Android release builds must publish one universal `StreamVault.apk` containing both physical ARM targets (`armeabi-v7a` and `arm64-v8a`) for Fire TV and Android mobile devices. Never package emulator (`x86` / `x86_64`) libraries or publish separate device-download assets.
 
-**Why:** Fire TV hardware can expose a 32-bit userspace even on 64-bit hardware, so an arm64-only package is not a safe generic update. A real Fire OS installation of the ARM-only 159 MB universal VLC build completed with a Done-only screen but did not install the app, consistent with staging-space failure. Separate device-specific APKs restore viable package sizes.
+**Why:** The creator has confirmed that a single APK is the expected installation experience and has previously installed it successfully on both Firestick and mobile. Multiple download choices caused an incompatible ARM32 package to be selected on mobile and made the release unnecessarily confusing.
 
-**How to apply:** Restrict React Native architectures to physical ARM targets, then build non-universal ABI splits. Do not combine Android `ndk.abiFilters` with ABI splits: Gradle rejects that configuration. Stage the ARM32 file under the stable `StreamVault.apk` name and publish both named ARM32 and ARM64 assets. Keep device-aware updater selection and legacy fallbacks so existing installs transition safely. Set Android `versionCode` from the monotonically increasing CI build number so package updates are accepted.
+**How to apply:** Restrict React Native architectures to physical ARM targets without enabling ABI splits. Stage the resulting `app-release.apk` as `StreamVault.apk` and publish only that asset. Keep the stable name for the site and in-app updater; legacy asset-selection fallbacks may remain for older releases. Set Android `versionCode` from the monotonically increasing CI build number so package updates are accepted.
