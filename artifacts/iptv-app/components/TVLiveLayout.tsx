@@ -195,7 +195,8 @@ export function TVLiveLayout({
   const firstChRef  = useRef<View>(null);
   const chRefMap = useRef(new Map<string, View>());
   // A category press selects a new (potentially async) channel list. Keep the
-  // intent until its first row has mounted so OK can focus and preview it.
+  // intent until its first row has mounted so OK can focus it without changing
+  // the currently playing preview.
   const pendingCategoryActivationRef = useRef<string | null>(null);
   const pendingPlayingChannelFocusRef = useRef<{
     channelId: string;
@@ -208,19 +209,18 @@ export function TVLiveLayout({
     try { return node ? findNodeHandle(node) : null; } catch { return null; }
   }, []);
 
-  const focusAndPlayFirstChannel = useCallback(() => {
+  const focusFirstChannel = useCallback(() => {
     const firstChannel = channels[0];
     if (!firstChannel) return false;
     pendingCategoryActivationRef.current = null;
     setHighlightedChId(firstChannel.id);
-    onChannelSelect(firstChannel);
     if (firstChannelFocusTimerRef.current) clearTimeout(firstChannelFocusTimerRef.current);
     firstChannelFocusTimerRef.current = setTimeout(() => {
       requestTvFocus(chRefMap.current.get(firstChannel.id) ?? firstChRef.current);
       firstChannelFocusTimerRef.current = null;
     }, 80);
     return true;
-  }, [channels, onChannelSelect]);
+  }, [channels]);
 
   useEffect(() => () => {
     if (firstChannelFocusTimerRef.current) clearTimeout(firstChannelFocusTimerRef.current);
@@ -259,8 +259,9 @@ export function TVLiveLayout({
     return () => clearTimeout(t);
   }, [channelsLoading, channels]);
 
-  // Category OK waits for a newly selected list to finish loading, then opens
-  // the first channel in the preview and advances remote focus to that row.
+  // Category OK waits for a newly selected list to finish loading, then
+  // highlights and focuses its first row. Playback remains an explicit channel
+  // OK action, so browsing never replaces the active preview.
   useEffect(() => {
     if (
       !Platform.isTV
@@ -269,8 +270,8 @@ export function TVLiveLayout({
     ) {
       return;
     }
-    if (!focusAndPlayFirstChannel()) pendingCategoryActivationRef.current = null;
-  }, [selectedCatId, channelsLoading, channels, focusAndPlayFirstChannel]);
+    if (!focusFirstChannel()) pendingCategoryActivationRef.current = null;
+  }, [selectedCatId, channelsLoading, channels, focusFirstChannel]);
 
   // Track which channel row is visually highlighted.
   // Updated on D-pad focus AND on successful OK press — never triggers stream load.
@@ -637,9 +638,9 @@ export function TVLiveLayout({
         onCatSelect(item.id);
         handleCatFocus(index);
         // Selecting an already-loaded category does not trigger a data update,
-        // so open its first channel immediately rather than waiting for the
-        // pending-selection effect.
-        if (item.id === selectedCatId && !channelsLoading) focusAndPlayFirstChannel();
+        // so focus its first row immediately rather than waiting for the
+        // pending-selection effect. This intentionally does not start playback.
+        if (item.id === selectedCatId && !channelsLoading) focusFirstChannel();
       }}
     >
       <Text style={[styles.catName, { color: colors.foreground }]} numberOfLines={1}>
@@ -655,7 +656,7 @@ export function TVLiveLayout({
     onCategoryFocusChange,
     wireCategoryToFirstChannel,
     channelsLoading,
-    focusAndPlayFirstChannel,
+    focusFirstChannel,
   ]);
 
   // ── Channel row ───────────────────────────────────────────────────────────

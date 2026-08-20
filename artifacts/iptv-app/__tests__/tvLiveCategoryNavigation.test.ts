@@ -3,7 +3,7 @@
  *
  * Category actions are not left to spatial-navigation heuristics:
  * - LEFT/BACK returns to the active sidebar item,
- * - OK selects, previews, and focuses the first channel,
+ * - Category OK focuses the first channel without starting it,
  * - RIGHT always targets the first row of the active channel list.
  */
 
@@ -27,11 +27,12 @@ describe('Fire TV category navigation', () => {
     expect(TV_LAYOUT).toMatch(/onBlur=\{\(\) => \{\s*onCategoryFocusChange\?\.\(false\)/);
   });
 
-  it('selects, previews, and focuses the first available channel after category OK', () => {
+  it('focuses but does not play the first available channel after category OK', () => {
     expect(TV_LAYOUT).toMatch(/pendingCategoryActivationRef\.current = item\.id/);
     expect(TV_LAYOUT).toMatch(/onCatSelect\(item\.id\)/);
     expect(TV_LAYOUT).toMatch(/const firstChannel = channels\[0\]/);
-    expect(TV_LAYOUT).toMatch(/onChannelSelect\(firstChannel\)/);
+    expect(TV_LAYOUT).toMatch(/const focusFirstChannel = useCallback/);
+    expect(TV_LAYOUT).not.toMatch(/onChannelSelect\(firstChannel\)/);
     expect(TV_LAYOUT).toMatch(/requestTvFocus\(chRefMap\.current\.get\(firstChannel\.id\) \?\? firstChRef\.current\)/);
   });
 
@@ -61,9 +62,23 @@ describe('Fire TV category navigation', () => {
     expect(LIVE_TV).toMatch(/focusPlayingChannelRef\.current\?\.\(\)/);
   });
 
-  it('stops playback only when category focus exits to the Live TV sidebar', () => {
+  it('keeps the preview playing while browsing categories or returning to the Live TV sidebar', () => {
     expect(TV_LAYOUT).toMatch(/sidebarNav\.focusedRoute === 'index'.*?onExitToSidebar/s);
-    expect(LIVE_TV).toMatch(/const handleExitToSidebar = useCallback[\s\S]*?setPlayingChannel\(null\)[\s\S]*?setSelectedChannel\(null\)/);
+    const sidebarExitStart = LIVE_TV.indexOf('const handleExitToSidebar = useCallback');
+    const sidebarExitEnd = LIVE_TV.indexOf('// Hardware BACK:', sidebarExitStart);
+    const sidebarExit = LIVE_TV.slice(sidebarExitStart, sidebarExitEnd);
+    expect(sidebarExit).not.toMatch(/setPlayingChannel\(null\)|setSelectedChannel\(null\)/);
+
+    const categorySelectStart = LIVE_TV.indexOf('const handleSelectCat = useCallback');
+    const categorySelectEnd = LIVE_TV.indexOf('// ── Reorder mode handlers', categorySelectStart);
+    const categorySelect = LIVE_TV.slice(categorySelectStart, categorySelectEnd);
+    expect(categorySelect).toMatch(/if \(!Platform\.isTV\) setSelectedChannel\(null\)/);
+    expect(categorySelect).not.toMatch(/setPlayingChannel\(null\)/);
+
+    const openAllStart = LIVE_TV.indexOf(`DeviceEventEmitter.addListener('live:open-all'`);
+    const openAllEnd = LIVE_TV.indexOf('// ── TV block/unblock confirm modal', openAllStart);
+    const openAll = LIVE_TV.slice(openAllStart, openAllEnd);
+    expect(openAll).not.toMatch(/setSelectedChannel\(null\)|setPlayingChannel\(null\)/);
     expect(LIVE_TV).toMatch(/categoryFocusedRef\.current[\s\S]*?handleExitToSidebar\(\)[\s\S]*?sidebarNav\.focus\(\)/);
   });
 });

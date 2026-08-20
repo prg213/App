@@ -323,8 +323,6 @@ export default function LiveTVScreen() {
       skipStoredCategoryRestoreRef.current = true;
       tvLiveEntryResetRef.current?.();
       setSelectedCatId(ALL_CAT_ID);
-      setSelectedChannel(null);
-      setPlayingChannel(null);
     });
     return () => sub.remove();
   }, []);
@@ -809,8 +807,6 @@ export default function LiveTVScreen() {
 
   const handleExitToSidebar = useCallback(() => {
     categoryFocusedRef.current = false;
-    setPlayingChannel(null);
-    setSelectedChannel(null);
   }, []);
 
   // Hardware BACK: pop through active states one level at a time.
@@ -831,8 +827,7 @@ export default function LiveTVScreen() {
       return true;
     }
     // Category is the leftmost Live TV panel: BACK returns to the active
-    // Live TV sidebar item and is the only browse-navigation path that stops
-    // the currently playing preview.
+    // Live TV sidebar item while keeping the current mini-preview playing.
     if (Platform.isTV && categoryFocusedRef.current) {
       handleExitToSidebar();
       sidebarNav.focus();
@@ -1125,7 +1120,10 @@ export default function LiveTVScreen() {
     StorageService.setPrefLiveCat(catId).catch(() => {});
     Haptics.selectionAsync();
     setSelectedCatId(catId);
-    setSelectedChannel(null);
+    // Phone/tablet keeps its existing category-selection behavior. TV browsing
+    // preserves the active mini-preview until the viewer explicitly picks a
+    // different channel or navigates to another sidebar destination.
+    if (!Platform.isTV) setSelectedChannel(null);
     // Exit reorder mode whenever the user switches category
     setIsReordering(false);
     // Scroll the channel list back to the top so the first channel is visible

@@ -25,10 +25,11 @@ describe('Fire TV Live TV sidebar entry', () => {
     expect(categories?.[0]).toMatch(/\{ id: ALL_CAT_ID, name: 'All Channels' \}[\s\S]*?\{ id: FAVS_CAT_ID/);
   });
 
-  it('selects All Channels and clears the old preview on the entry event', () => {
+  it('selects All Channels while keeping an existing preview active', () => {
     const entryHandler = LIVE_TV.match(/addListener\('live:open-all'[\s\S]*?\n    \}\);/);
     expect(entryHandler?.[0]).toContain('setSelectedCatId(ALL_CAT_ID)');
-    expect(entryHandler?.[0]).toContain('setSelectedChannel(null)');
+    expect(entryHandler?.[0]).not.toContain('setSelectedChannel(null)');
+    expect(entryHandler?.[0]).not.toContain('setPlayingChannel(null)');
     expect(entryHandler?.[0]).toContain('tvLiveEntryResetRef.current?.()');
   });
 
