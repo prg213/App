@@ -15,6 +15,12 @@ description: Shared sizing rule for the Fire TV category and channel panels.
 - **Why:** Fire TV already scrolls a focused FlatList natively. Starting another animation for every repeated D-pad event makes competing motions jump or skip during fast navigation.
 - **How to apply:** Let focus events update only the highlighted row. Reserve imperative, non-animated scrolling for restoring a selected channel from outside the list.
 
+## Channel list performance
+
+- **Rule:** Do not synchronously persist the channel highlight for every Fire TV focus event.
+- **Why:** Channel rows contain logos and EPG progress, so a parent-list redraw for every held D-pad event causes visible scrolling jank.
+- **How to apply:** Let the focused row paint immediately at the native level, coalesce the persistent highlight update until movement pauses, and keep the virtualized channel render window conservative.
+
 ## TV viewport safety
 
 - **Rule:** The three-panel TV layout needs a fixed overscan-safe edge margin and its mini-guide must be height-constrained.

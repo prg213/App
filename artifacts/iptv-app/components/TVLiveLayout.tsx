@@ -45,6 +45,7 @@ import { sidebarNav } from '@/lib/sidebarNav';
 // ── Constants ────────────────────────────────────────────────────────────────
 
 const FOCUS_BORDER = '#00E5FF';
+const CHANNEL_HIGHLIGHT_COMMIT_DELAY_MS = 90;
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -276,18 +277,46 @@ export function TVLiveLayout({
   const [highlightedChId, setHighlightedChId] = useState<string | null>(
     selectedChannel?.id ?? null,
   );
+  const highlightedChIdRef = useRef<string | null>(highlightedChId);
+  const highlightedChCommitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The focused row paints itself through FocusablePressable. Persist its
+  // accent after a short pause so a held D-pad press does not redraw the
+  // image/EPG-heavy channel list for every native focus event.
+  const updateHighlightedChannel = useCallback((
+    channelId: string | null,
+    deferCommit = false,
+  ) => {
+    highlightedChIdRef.current = channelId;
+    if (highlightedChCommitTimerRef.current) {
+      clearTimeout(highlightedChCommitTimerRef.current);
+      highlightedChCommitTimerRef.current = null;
+    }
+    if (!deferCommit) {
+      setHighlightedChId(channelId);
+      return;
+    }
+    highlightedChCommitTimerRef.current = setTimeout(() => {
+      setHighlightedChId(highlightedChIdRef.current);
+      highlightedChCommitTimerRef.current = null;
+    }, CHANNEL_HIGHLIGHT_COMMIT_DELAY_MS);
+  }, []);
+
+  useEffect(() => () => {
+    if (highlightedChCommitTimerRef.current) clearTimeout(highlightedChCommitTimerRef.current);
+  }, []);
 
   // Keep highlight in sync when the playing channel changes from outside
   // (e.g. prev/next channel navigation in the fullscreen player).
   useEffect(() => {
-    if (selectedChannel) setHighlightedChId(selectedChannel.id);
-  }, [selectedChannel?.id]);
+    if (selectedChannel) updateHighlightedChannel(selectedChannel.id);
+  }, [selectedChannel?.id, updateHighlightedChannel]);
 
   // Preview-panel rows route left to the playing channel, which can differ from
   // the last channel the viewer merely highlighted while browsing.
   const [playingChHandle, setPlayingChHandle] = useState<number | null>(null);
 
   useEffect(() => {
+    highlightedChIdRef.current = highlightedChId;
     if (!Platform.isTV) return;
     const node = highlightedChId ? chRefMap.current.get(highlightedChId) : null;
     // Expose highlighted channel node to the parent (for BACK handler).
@@ -330,7 +359,7 @@ export function TVLiveLayout({
   }, [allCategories, selectedCatId]);
 
   const focusCategoryForHighlightedChannel = useCallback(() => {
-    const channel = channels.find((candidate) => candidate.id === highlightedChId)
+    const channel = channels.find((candidate) => candidate.id === highlightedChIdRef.current)
       ?? selectedChannel;
     const category = channel ? categoryForChannel(channel) : null;
     if (!category) return false;
@@ -362,7 +391,6 @@ export function TVLiveLayout({
     allCategories,
     categoryForChannel,
     channels,
-    highlightedChId,
     onCategoryFocusChange,
     selectedChannel,
   ]);
@@ -392,7 +420,7 @@ export function TVLiveLayout({
       return true;
     }
 
-    setHighlightedChId(playingChannel.id);
+    updateHighlightedChannel(playingChannel.id);
     const focusPlayingNode = () => {
       const node = chRefMap.current.get(playingChannel.id);
       if (!node) return false;
@@ -425,6 +453,7 @@ export function TVLiveLayout({
     nodeHandle,
     onCatSelect,
     selectedChannel,
+    updateHighlightedChannel,
   ]);
 
   useEffect(() => {
@@ -635,8 +664,8 @@ export function TVLiveLayout({
   // start a new animation for every D-pad event and make fast navigation jump.
 
   const handleChFocus = useCallback((ch: Channel) => {
-    setHighlightedChId(ch.id);
-  }, []);
+    updateHighlightedChannel(ch.id, true);
+  }, [updateHighlightedChannel]);
 
   const renderChannel: ListRenderItem<Channel> = useCallback(({ item, index }) => {
     const nowProg = nowPlayingMap.get(item.epgId ?? item.id) ?? nowPlayingMap.get(item.id);
@@ -714,7 +743,7 @@ export function TVLiveLayout({
         }}
         onPress={() => {
           onChannelSelect(item);
-          setHighlightedChId(item.id);
+          updateHighlightedChannel(item.id);
         }}
       >
         {/* Channel number */}
@@ -760,7 +789,7 @@ export function TVLiveLayout({
         </View>
       </FocusablePressable>
     );
-  }, [highlightedChId, nowPlayingMap, selectedChannel, epgMap, nowTs, colors, handleChFocus, onChannelSelect, onCategoryFocusChange, onExitToSidebar, categoryForChannel, markChFocused, miniPlayerRef, nodeHandle, highlightedChNodeRef]);
+  }, [highlightedChId, nowPlayingMap, selectedChannel, epgMap, nowTs, colors, handleChFocus, onChannelSelect, onCategoryFocusChange, onExitToSidebar, categoryForChannel, markChFocused, miniPlayerRef, nodeHandle, highlightedChNodeRef, updateHighlightedChannel]);
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -815,6 +844,10 @@ export function TVLiveLayout({
             keyExtractor={(c) => c.id}
             renderItem={renderChannel}
             showsVerticalScrollIndicator={false}
+            initialNumToRender={10}
+            maxToRenderPerBatch={8}
+            updateCellsBatchingPeriod={16}
+            windowSize={7}
             getItemLayout={(_, i) => ({ length: CH_ITEM_H, offset: CH_ITEM_H * i, index: i })}
             onScrollToIndexFailed={() => {}}
           />

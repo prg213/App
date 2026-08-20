@@ -41,6 +41,15 @@ describe('TV Live category/channel row alignment', () => {
     expect(SOURCE.slice(start, end)).not.toMatch(/animated:\s*true/);
   });
 
+  it('coalesces channel-highlight redraws while D-pad focus moves rapidly', () => {
+    expect(SOURCE).toMatch(/const CHANNEL_HIGHLIGHT_COMMIT_DELAY_MS\s*=\s*90/);
+    expect(SOURCE).toMatch(/const updateHighlightedChannel\s*=\s*useCallback/);
+    expect(SOURCE).toMatch(/setTimeout\([\s\S]*CHANNEL_HIGHLIGHT_COMMIT_DELAY_MS/);
+    const start = SOURCE.indexOf('const handleChFocus');
+    const end = SOURCE.indexOf('const renderChannel', start);
+    expect(SOURCE.slice(start, end)).toMatch(/updateHighlightedChannel\(ch\.id,\s*true\)/);
+  });
+
   it('keeps the TV grid inside the viewport and constrains the guide height', () => {
     expect(SOURCE).toMatch(/paddingLeft:\s*Math\.max\(insets\.left,\s*12\)/);
     expect(SOURCE).toMatch(/paddingRight:\s*Math\.max\(insets\.right,\s*12\)/);
