@@ -24,7 +24,7 @@ import { LiveChannelMenu } from '@/components/LiveChannelMenu';
 import type { MenuChannelEntry } from '@/components/LiveChannelMenu';
 import * as Network from 'expo-network';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import { useVideoPlayer, VideoView } from 'expo-video';
+import { useVideoPlayer } from 'expo-video';
 import { useLivePlayer } from '@/context/LivePlayerContext';
 import type { AudioTrack, SubtitleTrack } from 'expo-video';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -44,6 +44,7 @@ import { useTVRemote } from '@/hooks/useTVRemote';
 import { requestTvFocus } from '@/lib/tvFocus';
 import CastButton from '@/components/CastButton';
 import { useBackHandler } from '@/hooks/useBackHandler';
+import { NativeStreamPlayer } from '@/components/NativeStreamPlayer';
 
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2] as const;
 const FITS = [
@@ -51,6 +52,7 @@ const FITS = [
   { value: 'cover' as const, label: 'Fill' },
   { value: 'fill' as const, label: 'Stretch' },
 ];
+const USES_NATIVE_VLC = Platform.OS === 'android';
 
 type ChannelEntry = { url: string; title: string; epgId: string; logo?: string; channelId?: string; num?: number };
 
@@ -319,6 +321,8 @@ export default function PlayerScreen() {
   // Tracks the URL currently loaded in the player so the cast hook can
   // reload the correct stream when the user switches channels.
   const [activeUrl, setActiveUrl] = useState(params.url);
+  // Source-of-truth URL for retry/reconnect paths.
+  const activeUrlRef = useRef(params.url);
 
   const { credentials, setLastWatchedUrl } = useAppContext();
   const isXtream = credentials?.type === 'xtream';
@@ -373,6 +377,13 @@ export default function PlayerScreen() {
   const [hasError, setHasError] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [isBuffering, setIsBuffering] = useState(true);
+  const [vlcReloadKey, setVlcReloadKey] = useState(0);
+  const [vlcSeekPosition, setVlcSeekPosition] = useState<number | undefined>();
+  const reloadNativeVlc = useCallback((url = activeUrlRef.current) => {
+    activeUrlRef.current = url;
+    setActiveUrl(url);
+    setVlcReloadKey((key) => key + 1);
+  }, []);
 
   // ── Auto-reconnect state (live streams only) ──────────────────────────────
   const MAX_RECONNECTS = 5;
@@ -391,8 +402,6 @@ export default function PlayerScreen() {
   const catchupFormatRef = useRef(0);
   // Keep refs in sync so the statusChange closure always reads the latest values
   useEffect(() => { reconnectAttemptRef.current = reconnectAttempt; }, [reconnectAttempt]);
-  // Source-of-truth URL ref — always points to the currently loaded stream URL
-  const activeUrlRef = useRef(params.url);
   const { width: screenWidth } = useWindowDimensions();
   const [currentTime, setCurrentTime] = useState(0);
   // Seed with the known programme duration so catch-up scrubber works immediately
@@ -566,7 +575,8 @@ export default function PlayerScreen() {
             hasErrorRef.current = false;
             setIsReconnecting(true);
             setIsBuffering(true);
-            try { player.replace(activeUrlRef.current); player.play(); } catch {}
+            if (USES_NATIVE_VLC) reloadNativeVlc();
+            else try { player.replace(activeUrlRef.current); player.play(); } catch {}
           }
         } else if (hasErrorRef.current) {
           // #31: VOD/series — if an error was suppressed while backgrounded,
@@ -574,12 +584,13 @@ export default function PlayerScreen() {
           setHasError(false);
           hasErrorRef.current = false;
           setIsBuffering(true);
-          try { player.replace(activeUrlRef.current); player.play(); } catch {}
+          if (USES_NATIVE_VLC) reloadNativeVlc();
+          else try { player.replace(activeUrlRef.current); player.play(); } catch {}
         }
       }
     });
     return () => sub.remove();
-  }, [isLive, isWeb]); // eslint-disable-line react-hooks/exhaustive-deps -- player declared after these effects; closure always has the current instance
+  }, [isLive, isWeb, reloadNativeVlc]); // eslint-disable-line react-hooks/exhaustive-deps -- player declared after these effects; closure always has the current instance
 
   // Keep hasErrorRef in sync with hasError state
   useEffect(() => { hasErrorRef.current = hasError; }, [hasError]);
@@ -625,7 +636,8 @@ export default function PlayerScreen() {
           setIsReconnecting(true);
           setIsBuffering(true);
           if (reconnectTimerRef.current) { clearTimeout(reconnectTimerRef.current); reconnectTimerRef.current = null; }
-          try { player.replace(activeUrlRef.current); player.play(); } catch {}
+          if (USES_NATIVE_VLC) reloadNativeVlc();
+          else try { player.replace(activeUrlRef.current); player.play(); } catch {}
         }
       } catch {
         // expo-network unavailable — ignore
@@ -633,7 +645,7 @@ export default function PlayerScreen() {
     }, 3000);
 
     return () => clearInterval(poll);
-  }, [isLive, isWeb, hasError, isReconnecting]); // eslint-disable-line react-hooks/exhaustive-deps -- player declared after these effects; closure always has the current instance
+  }, [isLive, isWeb, hasError, isReconnecting, reloadNativeVlc]); // eslint-disable-line react-hooks/exhaustive-deps -- player declared after these effects; closure always has the current instance
 
   // #131: Always-current credentials ref so the async re-resolve closure reads
   // the latest value even though the statusChange listener is set up once.
@@ -668,10 +680,11 @@ export default function PlayerScreen() {
       setIsReconnecting(true);
       setReconnectAttempt(0);
       reconnectAttemptRef.current = 0;
-      try { player.replace(activeUrlRef.current); player.play(); } catch {}
+      if (USES_NATIVE_VLC) reloadNativeVlc();
+      else try { player.replace(activeUrlRef.current); player.play(); } catch {}
     }, 10_000);
     return () => clearInterval(t);
-  }, [isLive, hasError, isWeb]); // eslint-disable-line react-hooks/exhaustive-deps -- player declared after these effects; closure always has the current instance
+  }, [isLive, hasError, isWeb, reloadNativeVlc]); // eslint-disable-line react-hooks/exhaustive-deps -- player declared after these effects; closure always has the current instance
 
   // Refs so interval / unmount callbacks can read latest values without stale closures
   const currentTimeRef = useRef(0);
@@ -682,6 +695,105 @@ export default function PlayerScreen() {
   const catchupSeekOffsetRef = useRef(0);
   useEffect(() => { currentTimeRef.current = currentTime; }, [currentTime]);
   useEffect(() => { durationRef.current = duration; }, [duration]);
+
+  /**
+   * Mirrors the recovery decisions from Expo's status-error listener for the
+   * Android VLC renderer. VLC owns Android decoding, so every successful
+   * recovery reloads its source state instead of starting ExoPlayer.
+   */
+  const handleNativeVlcError = useCallback(() => {
+    setIsBuffering(false);
+    setErrorMsg('VLC could not open this stream.');
+
+    // Catch-up Format B failed: reopen the provider's Format A URL at the
+    // current programme offset before surfacing an error.
+    if (
+      isCatchup &&
+      catchupFormatRef.current === 0 &&
+      catchupStreamId &&
+      catchupServerStart &&
+      catchupStartTimestamp > 0 &&
+      credentials?.type === 'xtream'
+    ) {
+      catchupFormatRef.current = 1;
+      const seekSecs = Math.floor(catchupSeekOffsetRef.current);
+      const remainingSecs = Math.max(60, knownDurationSecs - seekSecs);
+      const newDurationMins = Math.ceil(remainingSecs / 60);
+      const newStartTs = catchupStartTimestamp + seekSecs;
+      const newServerStart = addSecondsToServerTime(catchupServerStart, seekSecs);
+      const urls = getXtreamCatchupUrls(
+        { host: credentials.host!, username: credentials.username!, password: credentials.password! },
+        catchupStreamId,
+        newServerStart,
+        newDurationMins,
+        newStartTs,
+      );
+      setHasError(false);
+      setIsBuffering(true);
+      reloadNativeVlc(urls[1]);
+      return;
+    }
+
+    // Live providers can rotate channel stream URLs. Re-resolve once before
+    // the regular foreground/network retry paths fall back to the old URL.
+    if (isLive && activeChannelIdRef.current && !didResolveStaleUrlRef.current) {
+      didResolveStaleUrlRef.current = true;
+      setIsResolvingUrl(true);
+      setIsReconnecting(true);
+      setIsBuffering(true);
+      const channelId = activeChannelIdRef.current;
+      const session = resolveSessionRef.current;
+
+      (async () => {
+        try {
+          const creds = credentialsRef.current;
+          let freshUrl: string | undefined;
+          if (creds?.type === 'xtream' && creds.host && creds.username && creds.password) {
+            const streams = await getXtreamLiveStreams({
+              host: creds.host,
+              username: creds.username,
+              password: creds.password,
+            });
+            freshUrl = streams.find((channel) => channel.id === channelId)?.streamUrl;
+          } else if (creds?.m3uUrl) {
+            const parsed = await fetchAndParseM3U(creds.m3uUrl);
+            freshUrl = parsed.channels.find((channel) => channel.id === channelId)?.streamUrl;
+          }
+
+          if (session !== resolveSessionRef.current) return;
+          if (freshUrl && freshUrl !== activeUrlRef.current) {
+            setHasError(false);
+            setIsResolvingUrl(false);
+            setIsReconnecting(false);
+            setReconnectAttempt(0);
+            reconnectAttemptRef.current = 0;
+            setIsBuffering(true);
+            reloadNativeVlc(freshUrl);
+            return;
+          }
+        } catch {
+          // The regular retry paths below will retry the current source.
+        }
+
+        if (session !== resolveSessionRef.current) return;
+        setIsResolvingUrl(false);
+        setIsReconnecting(false);
+        if (!isBackgroundRef.current) setHasError(true);
+      })();
+      return;
+    }
+
+    if (!isBackgroundRef.current) setHasError(true);
+  }, [
+    isCatchup,
+    catchupStreamId,
+    catchupServerStart,
+    catchupStartTimestamp,
+    credentials,
+    knownDurationSecs,
+    isLive,
+    reloadNativeVlc,
+  ]);
 
   const controlsOpacity = useRef(new Animated.Value(0)).current;
   const infoOpacity = useRef(new Animated.Value(1)).current;
@@ -738,11 +850,8 @@ export default function PlayerScreen() {
   // ── Video player ─────────────────────────────────────────────────────────
   // For VOD/series: a local player created here (null source when live so it
   // doesn't waste resources).
-  const localPlayer = useVideoPlayer(isLive || isWeb ? null : params.url, (p) => {
+  const localPlayer = useVideoPlayer(isLive || isWeb || USES_NATIVE_VLC ? null : params.url, (p) => {
     p.loop = false;
-    // Keep Android's audio renderer active for streams whose MPEG audio layer
-    // II track is present but not marked as the default by the provider.
-    p.audioMixingMode = 'doNotMix';
     p.muted = false;
     p.volume = 1;
     // NOTE: do NOT set scrubbingModeOptions.scrubbingModeEnabled here. On
@@ -770,6 +879,11 @@ export default function PlayerScreen() {
   // If liveUrlRef matches params.url the stream is already running — don't restart.
   useEffect(() => {
     if (!isLive || isWeb) return;
+    if (USES_NATIVE_VLC) {
+      liveUrlRef.current = params.url;
+      cancelRemindersForActiveChannel({ channelId: params.channelId, epgId: params.epgId });
+      return;
+    }
     if (liveUrlRef.current === params.url) {
       // #138: always allow a fresh stale-URL re-resolve attempt when entering
       // fullscreen, even if the URL matches (stream may already be failing).
@@ -808,7 +922,7 @@ export default function PlayerScreen() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (isWeb || !player) return;
+    if (isWeb || USES_NATIVE_VLC || !player) return;
     const subs = [
       player.addListener('playingChange', ({ isPlaying: playing }) => setIsPlaying(playing)),
       player.addListener('statusChange', ({ status, error }: { status: string; error?: unknown }) => {
@@ -836,22 +950,13 @@ export default function PlayerScreen() {
             try {
               const tracks = player.availableAudioTracks ?? [];
               const subTracks = player.availableSubtitleTracks ?? [];
-              // A few IPTV providers advertise MP2 audio without marking a
-              // selected/default track. ExoPlayer then reports the track but
-              // outputs silence until one is explicitly selected. Prefer the
-              // provider's default flag, falling back to the first track.
-              const currentAudioTrack = player.audioTrack;
-              const fallbackAudioTrack =
-                currentAudioTrack ??
-                tracks.find((track) => track.isDefault) ??
-                tracks[0] ??
-                null;
-              if (!currentAudioTrack && fallbackAudioTrack) {
-                try { player.audioTrack = fallbackAudioTrack; } catch {}
-              }
               setAudioTracks(tracks);
               setSubtitleTracks(subTracks);
-              setActiveAudioTrack(player.audioTrack ?? fallbackAudioTrack);
+              // Never force an Expo/ExoPlayer audio-track assignment. Some
+              // MPEG transport streams expose a track descriptor that cannot
+              // safely be selected, which prevents the whole video source from
+              // starting. Android uses the VLC renderer for those streams.
+              setActiveAudioTrack(player.audioTrack ?? null);
               setActiveSubtitleTrack(player.subtitleTrack ?? null);
               // Auto-apply saved audio language preference
               StorageService.getPrefAudioLanguage().then((prefLang) => {
@@ -1146,27 +1251,34 @@ export default function PlayerScreen() {
     setSubtitleTracks([]);
     setActiveAudioTrack(null);
     setActiveSubtitleTrack(null);
-    try {
-      if (isLive) liveUrlRef.current = entry.url; // keep shared ref in sync
-      player.replace(entry.url);
-      player.play();
-      // TV: relocate focus to the center zone at 150 ms so the remote cursor
-      // is never stranded during the brief gap before the useEffect([channelIdx])
-      // fires at 600 ms.  Critical at channel boundaries where the adjacent
-      // left/right focus zone becomes non-focusable immediately after the switch
-      // (e.g. switching to channel 0 makes the left zone non-focusable).
-      //
-      // Wrap-around exception: when wrapAroundPendingRef is set the D-pad zone
-      // has already signalled that the useEffect will use the extended 900 ms
-      // delay.  Firing the 150 ms call here would race with ExoPlayer's longer
-      // audio-focus handoff before that guard completes, creating exactly the
-      // dead-zone this task is designed to prevent.  On the wrap path the
-      // useEffect at 900 ms (plus the 950 ms zone belt-and-suspenders) is the
-      // single authoritative focus restoration — skip the early call entirely.
-      if (Platform.isTV && isLive && !wrapAroundPendingRef.current) {
-        setTimeout(() => requestTvFocus(tvCenterRef.current), 150);
-      }
-    } catch {}
+    setVlcSeekPosition(undefined);
+    didInitialSeekRef.current = false;
+    if (USES_NATIVE_VLC) {
+      if (isLive) liveUrlRef.current = entry.url;
+      setVlcReloadKey((key) => key + 1);
+    } else {
+      try {
+        if (isLive) liveUrlRef.current = entry.url; // keep shared ref in sync
+        player.replace(entry.url);
+        player.play();
+      } catch {}
+    }
+    // TV: relocate focus to the center zone at 150 ms so the remote cursor
+    // is never stranded during the brief gap before the useEffect([channelIdx])
+    // fires at 600 ms.  Critical at channel boundaries where the adjacent
+    // left/right focus zone becomes non-focusable immediately after the switch
+    // (e.g. switching to channel 0 makes the left zone non-focusable).
+    //
+    // Wrap-around exception: when wrapAroundPendingRef is set the D-pad zone
+    // has already signalled that the useEffect will use the extended 900 ms
+    // delay.  Firing the 150 ms call here would race with ExoPlayer's longer
+    // audio-focus handoff before that guard completes, creating exactly the
+    // dead-zone this task is designed to prevent.  On the wrap path the
+    // useEffect at 900 ms (plus the 950 ms zone belt-and-suspenders) is the
+    // single authoritative focus restoration — skip the early call entirely.
+    if (Platform.isTV && isLive && !wrapAroundPendingRef.current) {
+      setTimeout(() => requestTvFocus(tvCenterRef.current), 150);
+    }
   }, [isLive, liveUrlRef, player, setLastWatchedUrl]);
 
   const navCooldownRef = useRef(false);
@@ -1997,6 +2109,8 @@ export default function PlayerScreen() {
       // Drive the remote cast device instead of the local player
       if (isPlaying) { pauseRemote(); setIsPlaying(false); }
       else           { playRemote();  setIsPlaying(true);  }
+    } else if (USES_NATIVE_VLC) {
+      setIsPlaying((playing) => !playing);
     } else {
       if (player.playing) { player.pause(); } else { player.play(); }
     }
@@ -2049,10 +2163,15 @@ export default function PlayerScreen() {
     setIsBuffering(true);
     setHasError(false);
     activeUrlRef.current = newUrl;
-    try {
-      player.replace(newUrl);
-      player.play();
-    } catch {}
+    if (USES_NATIVE_VLC) {
+      setVlcSeekPosition(undefined);
+      reloadNativeVlc(newUrl);
+    } else {
+      try {
+        player.replace(newUrl);
+        player.play();
+      } catch {}
+    }
     return true;
   }, [
     isCatchup,
@@ -2062,6 +2181,7 @@ export default function PlayerScreen() {
     credentials,
     knownDurationSecs,
     player,
+    reloadNativeVlc,
   ]);
 
   const seek = useCallback((delta: number) => {
@@ -2073,9 +2193,15 @@ export default function PlayerScreen() {
       return;
     }
     if (isCasting) { seekRemote(target); }
-    else           { player.seekBy(delta); }
+    else if (USES_NATIVE_VLC && duration > 0) {
+      setCurrentTime(target);
+      currentTimeRef.current = target;
+      setVlcSeekPosition(Math.max(0, Math.min(1, target / duration)));
+    } else {
+      player.seekBy(delta);
+    }
     scheduleHide();
-  }, [isCatchup, isCasting, player, scheduleHide, seekRemote, seekCatchupTo]);
+  }, [isCatchup, isCasting, player, scheduleHide, seekRemote, seekCatchupTo, duration]);
 
   // TV D-pad seeks are discrete, but the scrubber should visually travel to
   // each new position instead of jumping when the player reports the seek.
@@ -2195,7 +2321,12 @@ export default function PlayerScreen() {
               setErrorMsg('');
               setIsBuffering(true);
               const currentEntry = channelIdx >= 0 && channelList[channelIdx];
-              try { player.replace(currentEntry ? currentEntry.url : params.url); player.play(); } catch {}
+              if (USES_NATIVE_VLC) {
+                setActiveUrl(currentEntry ? currentEntry.url : params.url);
+                setVlcReloadKey((key) => key + 1);
+              } else {
+                try { player.replace(currentEntry ? currentEntry.url : params.url); player.play(); } catch {}
+              }
               if (Platform.isTV) {
                 setTimeout(() => {
                   if (isLive) requestTvFocus(tvCenterRef.current);
@@ -2238,17 +2369,58 @@ export default function PlayerScreen() {
           )}
         </View>
       ) : videoMounted ? (
-        <VideoView
+        <NativeStreamPlayer
+          source={activeUrl}
           player={player}
           style={StyleSheet.absoluteFill}
-          contentFit={contentFit}
-          allowsPictureInPicture
-          nativeControls={false}
-          // For live streams, signal the context overlay to fade out as soon as
-          // the native video surface has rendered its first frame.  This prevents
-          // the white/black flash that appears on slow devices when the overlay
-          // disappears before the VideoView has attached to the shared player.
-          onFirstFrameRender={isLive ? notifyPlayerReady : undefined}
+          resizeMode={contentFit}
+          paused={!isPlaying}
+          reloadKey={vlcReloadKey}
+          seekPosition={vlcSeekPosition}
+          onPlaying={() => {
+            if (reconnectTimerRef.current) {
+              clearTimeout(reconnectTimerRef.current);
+              reconnectTimerRef.current = null;
+            }
+            setIsPlaying(true);
+            setIsBuffering(false);
+            setHasError(false);
+            setIsReconnecting(false);
+            setIsResolvingUrl(false);
+            setReconnectAttempt(0);
+            reconnectAttemptRef.current = 0;
+            // A healthy VLC start re-arms one stale URL refresh for any later
+            // provider rotation, matching Expo's readyToPlay success path.
+            didResolveStaleUrlRef.current = false;
+            resolveSessionRef.current += 1;
+            if (isLive) notifyPlayerReady();
+          }}
+          onBuffering={() => setIsBuffering(true)}
+          onError={() => {
+            if (USES_NATIVE_VLC) {
+              handleNativeVlcError();
+            } else {
+              setIsBuffering(false);
+              setErrorMsg('VLC could not open this stream.');
+              setHasError(true);
+            }
+          }}
+          onProgress={(time, reportedDuration) => {
+            if (isCatchup) return;
+            setCurrentTime(time);
+            if (reportedDuration > 0 && isFinite(reportedDuration)) {
+              setDuration(reportedDuration);
+              // Expo's ready listener is intentionally disabled on Android.
+              // Apply saved VOD history once VLC has reported a usable duration.
+              if (USES_NATIVE_VLC && !didInitialSeekRef.current && startAtSecs > 0) {
+                didInitialSeekRef.current = true;
+                const resumeAt = Math.min(startAtSecs, reportedDuration);
+                setCurrentTime(resumeAt);
+                currentTimeRef.current = resumeAt;
+                setVlcSeekPosition(Math.max(0, Math.min(1, resumeAt / reportedDuration)));
+              }
+            }
+          }}
         />
       ) : null}
 
@@ -2458,6 +2630,8 @@ export default function PlayerScreen() {
                   currentTimeRef.current = t;
                   if (isCasting) {
                     seekRemote(t);
+                  } else if (USES_NATIVE_VLC && duration > 0) {
+                    setVlcSeekPosition(Math.max(0, Math.min(1, t / duration)));
                   } else {
                     player.currentTime = t;
                   }

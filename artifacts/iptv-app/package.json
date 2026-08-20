@@ -110,6 +110,7 @@
     "react": "19.2.3",
     "react-native": "0.86.2",
     "react-native-google-cast": "4.9.1",
+    "react-native-vlc-media-player": "1.0.98",
     "react-native-webview": "13.16.1"
   }
 }

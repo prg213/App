@@ -20,4 +20,4 @@
 - [Live TV row alignment](live-tv-row-alignment.md) — Category and channel FlatLists must use one shared item height so their TV grid boundaries stay inline while scrolling.
 - [FocusablePressable stable setRefs](fp-stable-setrefs.md) — setRefs MUST be stable useCallback([], []); inline function causes null→node ref churn on every render → "Maximum update depth exceeded" crash.
 - [EPG startup prefetch](epg-startup-prefetch.md) — Start Xtream XMLTV fetch before MAC verification completes; Guide shares the in-flight/cache query.
-- [Android IPTV audio compatibility](android-iptv-audio.md) — Explicitly select an unmarked default audio track and hold audio focus for MPEG Layer II streams.
+- [Android IPTV audio compatibility](android-iptv-audio.md) — Android/Fire TV IPTV uses libVLC, not Expo/ExoPlayer track-selection workarounds, for MP2 transport streams.

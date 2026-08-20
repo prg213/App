@@ -35,8 +35,8 @@ import {
   cancelReminderNotification,
 } from '@/services/notifications';
 import { DraggableFavList } from '@/components/DraggableFavList';
-import { VideoView } from 'expo-video';
 import { useLivePlayer } from '@/context/LivePlayerContext';
+import { NativeStreamPlayer } from '@/components/NativeStreamPlayer';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter, useFocusEffect } from 'expo-router';
 import * as Haptics from 'expo-haptics';
@@ -63,6 +63,7 @@ import { sidebarNav } from '@/lib/sidebarNav';
 
 const FAVS_CAT_ID = '__favs';
 const ALL_CAT_ID = '__all';
+const USES_NATIVE_VLC = Platform.OS === 'android';
 
 // Module-level variable — survives React state resets that happen when
 // router.navigate('/') triggers a blur→focus cycle on the Live TV tab.
@@ -312,6 +313,11 @@ export default function LiveTVScreen() {
   const [favorites, setFavorites] = useState<FavoriteChannel[]>([]);
   const [isBuffering, setIsBuffering] = useState(false);
   const [hasError, setHasError] = useState(false);
+  // Forces a fresh VLC instance for an explicit retry of the same URL.
+  const [vlcReloadKey, setVlcReloadKey] = useState(0);
+  // The Live TV route stays mounted below the fullscreen route. Keep a single
+  // VLC owner by unmounting its preview renderer whenever this route blurs.
+  const [isLivePreviewActive, setIsLivePreviewActive] = useState(true);
   const [nowTs, setNowTs] = useState(Date.now());
 
   // The sidebar emits this immediately before it navigates to the Live TV tab.
@@ -518,7 +524,10 @@ export default function LiveTVScreen() {
         setIsBuffering(true);
         setHasError(false);
         flashOverlayOpacity.setValue(1);
-        try {
+        if (USES_NATIVE_VLC) {
+          liveUrlRef.current = catchupPreviewToRestore.streamUrl;
+          setVlcReloadKey((key) => key + 1);
+        } else try {
           liveUrlRef.current = catchupPreviewToRestore.streamUrl;
           player.replace(catchupPreviewToRestore.streamUrl);
           player.play();
@@ -581,6 +590,16 @@ export default function LiveTVScreen() {
   useEffect(() => {
     if (isWeb || !selectedChannel?.streamUrl) return;
     const url = selectedChannel.streamUrl;
+    // Android/Fire TV renders IPTV with VLC. Do not load the same source into
+    // Expo's ExoPlayer as well: competing decoders can steal audio focus and
+    // leave one of the native surfaces black.
+    if (USES_NATIVE_VLC) {
+      if (retryTimerRef.current) { clearTimeout(retryTimerRef.current); retryTimerRef.current = null; }
+      liveUrlRef.current = url;
+      setIsBuffering(true);
+      setHasError(false);
+      return;
+    }
 
     // If the shared player already has this URL loaded (e.g. returning from
     // the fullscreen player on the same channel), just ensure it's playing —
@@ -616,7 +635,7 @@ export default function LiveTVScreen() {
   }, [selectedChannel?.streamUrl]);
 
   useEffect(() => {
-    if (isWeb || !player) return;
+    if (isWeb || USES_NATIVE_VLC || !player) return;
     const subs = [
       player.addListener('statusChange', ({ status, error }: any) => {
         if (status === 'readyToPlay') {
@@ -724,6 +743,7 @@ export default function LiveTVScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      setIsLivePreviewActive(true);
       if (!isWeb && player) {
         const curCh  = selectedChannelRef.current;
         const lastUrl = lastWatchedUrlRef.current;
@@ -754,7 +774,9 @@ export default function LiveTVScreen() {
             setIsBuffering(true);
             setHasError(false);
             flashOverlayOpacity.setValue(1);
-            try {
+            if (USES_NATIVE_VLC) {
+              setVlcReloadKey((key) => key + 1);
+            } else try {
               player.replace(curCh.streamUrl);
               player.play();
             } catch {
@@ -768,7 +790,7 @@ export default function LiveTVScreen() {
                 useNativeDriver: true,
               }).start();
             }
-          } else {
+          } else if (!USES_NATIVE_VLC) {
             try { player.play(); } catch {}
           }
         } else if (lastUrl) {
@@ -782,6 +804,10 @@ export default function LiveTVScreen() {
       }
 
       return () => {
+        // This runs before the fullscreen route renders its VLC surface.
+        // Unmounting the mini renderer here prevents two independent VLC
+        // decoders from opening the same IPTV URL during route transitions.
+        setIsLivePreviewActive(false);
         if (goingToPlayerRef.current) {
           goingToPlayerRef.current = false;
           // tabBlurredAtRef is intentionally NOT set here; liveReloadNeededRef
@@ -791,7 +817,7 @@ export default function LiveTVScreen() {
         // Record when the tab was blurred so we can decide on return whether
         // the preview is stale enough to warrant a live-edge reload.
         tabBlurredAtRef.current = Date.now();
-        if (!isWeb && player) {
+        if (!isWeb && !USES_NATIVE_VLC && player) {
           try { player.pause(); } catch {}
         }
         setSelectedChannel(null);
@@ -1529,8 +1555,20 @@ export default function LiveTVScreen() {
           insets={insets}
           player={player}
           videoKey={videoKey}
+          streamUrl={selectedChannel?.streamUrl ?? ''}
+          vlcReloadKey={vlcReloadKey}
+          isPlaybackActive={isLivePreviewActive}
           isBuffering={isBuffering}
           hasError={hasError}
+          onVlcPlaying={() => {
+            setIsBuffering(false);
+            setHasError(false);
+          }}
+          onVlcBuffering={() => setIsBuffering(true)}
+          onVlcError={() => {
+            setIsBuffering(false);
+            setHasError(true);
+          }}
           miniPlayerRef={miniPlayerRef}
           onPreviewFocusChange={handlePreviewFocusChange}
           onCatchupFocusChange={handleCatchupFocusChange}
@@ -1751,7 +1789,11 @@ export default function LiveTVScreen() {
               if (hasError && selectedChannel) {
                 setHasError(false);
                 setIsBuffering(true);
-                try { player.replace(selectedChannel.streamUrl); player.play(); } catch {}
+                if (USES_NATIVE_VLC) {
+                  setVlcReloadKey((key) => key + 1);
+                } else {
+                  try { player.replace(selectedChannel.streamUrl); player.play(); } catch {}
+                }
               } else {
                 handleWatch();
               }
@@ -1765,13 +1807,30 @@ export default function LiveTVScreen() {
               focused && styles.videoWrapFocused,
             ]}
           >
-            <VideoView
-              key={videoKey}
-              player={player}
-              style={StyleSheet.absoluteFill}
-              nativeControls={false}
-              contentFit="contain"
-            />
+            {isLivePreviewActive && (
+              <NativeStreamPlayer
+                source={playingChannel?.streamUrl ?? selectedChannel?.streamUrl ?? ''}
+                player={player}
+                style={StyleSheet.absoluteFill}
+                resizeMode="contain"
+                reloadKey={`${videoKey}:${vlcReloadKey}`}
+                onPlaying={() => {
+                  setIsBuffering(false);
+                  setHasError(false);
+                  Animated.timing(flashOverlayOpacity, {
+                    toValue: 0, duration: 200, useNativeDriver: true,
+                  }).start();
+                }}
+                onBuffering={() => setIsBuffering(true)}
+                onError={() => {
+                  setIsBuffering(false);
+                  setHasError(true);
+                  Animated.timing(flashOverlayOpacity, {
+                    toValue: 0, duration: 150, useNativeDriver: true,
+                  }).start();
+                }}
+              />
+            )}
             {/* Flash-prevention overlay — always rendered so setValue(1) takes
                 effect in the same native frame as player.replace(), before
                 the VideoView surface can show a black frame. Fades out once

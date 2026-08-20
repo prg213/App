@@ -97,10 +97,6 @@ const LivePlayerContext = createContext<LivePlayerContextValue | null>(null);
 export function LivePlayerProvider({ children }: { children: React.ReactNode }) {
   const player = useVideoPlayer(null, (p) => {
     p.loop = true;
-    // Some Android TV streams expose MPEG audio layer II without a reliable
-    // default audio-focus route. Do not mix with other apps so ExoPlayer keeps
-    // the stream's audio renderer active.
-    p.audioMixingMode = 'doNotMix';
     p.muted = false;
     p.volume = 1;
     // Keep audio when phone screen locks (same as the per-screen flag we set before)

@@ -1,8 +1,9 @@
 /**
  * Regression guards for Android IPTV streams carrying MPEG audio layer II.
  *
- * Some providers expose an audio track but do not mark it as selected. The
- * player must explicitly select a default/first track and keep audio focus.
+ * Standard Expo/ExoPlayer does not bundle the MPEG Layer II decoder required
+ * by some IPTV transport streams. Android and Fire TV must use libVLC instead
+ * of forcing an ExoPlayer track selection that can stop video playback.
  */
 
 import * as fs from 'fs';
@@ -10,23 +11,36 @@ import * as path from 'path';
 
 const playerSource = fs.readFileSync(path.resolve(__dirname, '../app/player.tsx'), 'utf8');
 const liveContextSource = fs.readFileSync(path.resolve(__dirname, '../context/LivePlayerContext.tsx'), 'utf8');
+const nativeVlcSource = fs.readFileSync(path.resolve(__dirname, '../components/NativeStreamPlayer.android.tsx'), 'utf8');
+const liveTabSource = fs.readFileSync(path.resolve(__dirname, '../app/(tabs)/index.tsx'), 'utf8');
 
 describe('MP2 audio playback', () => {
-  it('explicitly selects a default or first reported audio track', () => {
-    expect(playerSource).toContain('tracks.find((track) => track.isDefault)');
-    expect(playerSource).toContain('player.audioTrack = fallbackAudioTrack');
-    expect(playerSource).toContain('player.audioTrack ?? fallbackAudioTrack');
+  it('uses the VLC renderer on Android rather than forcing an ExoPlayer track', () => {
+    expect(playerSource).toContain("const USES_NATIVE_VLC = Platform.OS === 'android'");
+    expect(nativeVlcSource).toContain("from 'react-native-vlc-media-player'");
+    expect(nativeVlcSource).toContain('<VLCPlayer');
+    expect(playerSource).not.toContain('fallbackAudioTrack');
+    expect(playerSource).not.toContain('tracks.find((track) => track.isDefault)');
   });
 
-  it('uses doNotMix audio output for fullscreen and shared live players', () => {
-    expect((playerSource.match(/p\.audioMixingMode = 'doNotMix'/g) ?? [])).toHaveLength(1);
-    expect((liveContextSource.match(/p\.audioMixingMode = 'doNotMix'/g) ?? [])).toHaveLength(1);
+  it('does not reintroduce the audio-mixing workaround that broke video startup', () => {
+    expect(playerSource).not.toContain("p.audioMixingMode = 'doNotMix'");
+    expect(liveContextSource).not.toContain("p.audioMixingMode = 'doNotMix'");
   });
 
-  it('does not start either player muted or at zero volume', () => {
-    expect(playerSource).toContain('p.muted = false');
-    expect(playerSource).toContain('p.volume = 1');
-    expect(liveContextSource).toContain('p.muted = false');
-    expect(liveContextSource).toContain('p.volume = 1');
+  it('keeps VLC unmuted with IPTV network buffering configured', () => {
+    expect(nativeVlcSource).toContain('muted={false}');
+    expect(nativeVlcSource).toContain("'--network-caching=1200'");
+  });
+
+  it('uses seconds for VLC progress and gives fullscreen exclusive ownership', () => {
+    expect(nativeVlcSource).toContain('currentTime / 1000');
+    expect(nativeVlcSource).toContain('duration / 1000');
+    expect(playerSource).toContain('setVlcSeekPosition(Math.max(0, Math.min(1, resumeAt / reportedDuration)))');
+    expect(liveTabSource).toContain('setIsLivePreviewActive(false)');
+    expect(liveTabSource).toContain('isPlaybackActive={isLivePreviewActive}');
+    expect(playerSource).toContain('const handleNativeVlcError = useCallback');
+    expect(playerSource).toContain('reloadNativeVlc(urls[1])');
+    expect(playerSource).toContain('didResolveStaleUrlRef.current = false');
   });
 });

@@ -33,8 +33,9 @@ import {
   View,
   type ListRenderItem,
 } from 'react-native';
-import { VideoView, type VideoPlayer } from 'expo-video';
+import { type VideoPlayer } from 'expo-video';
 import { FocusablePressable } from '@/components/FocusablePressable';
+import { NativeStreamPlayer } from '@/components/NativeStreamPlayer';
 import { useFocusRestore } from '@/hooks/useFocusRestore';
 import { useTVRemote } from '@/hooks/useTVRemote';
 import type { Category, Channel, EpgProgram } from '@/types';
@@ -83,8 +84,15 @@ export interface TVLiveLayoutProps {
   insets: { top: number; bottom: number; left: number; right: number };
   player: VideoPlayer;
   videoKey: number;
+  streamUrl: string;
+  vlcReloadKey?: number;
+  /** False while fullscreen playback owns the Android VLC decoder. */
+  isPlaybackActive: boolean;
   isBuffering: boolean;
   hasError: boolean;
+  onVlcPlaying?: () => void;
+  onVlcBuffering?: () => void;
+  onVlcError?: () => void;
   /**
    * Ref to the video preview container — passed in from LivePlayerContext so
    * triggerCollapse / triggerExpand can measure this view's on-screen position
@@ -155,8 +163,14 @@ export function TVLiveLayout({
   focusPlayingChannelRef,
   player,
   videoKey,
+  streamUrl,
+  vlcReloadKey,
+  isPlaybackActive,
   isBuffering,
   hasError,
+  onVlcPlaying,
+  onVlcBuffering,
+  onVlcError,
   miniPlayerRef,
 }: TVLiveLayoutProps) {
 
@@ -893,13 +907,18 @@ export function TVLiveLayout({
               }}
               onPress={onWatchFullscreen}
             >
-              <VideoView
-                key={videoKey}
-                player={player}
-                style={StyleSheet.absoluteFill}
-                contentFit="contain"
-                nativeControls={false}
-              />
+              {isPlaybackActive && !!streamUrl && (
+                <NativeStreamPlayer
+                  source={streamUrl}
+                  player={player}
+                  style={StyleSheet.absoluteFill}
+                  resizeMode="contain"
+                  reloadKey={`${videoKey}:${vlcReloadKey ?? 0}`}
+                  onPlaying={onVlcPlaying}
+                  onBuffering={onVlcBuffering}
+                  onError={onVlcError}
+                />
+              )}
 
               {isBuffering && (
                 <View style={styles.videoOverlay}>

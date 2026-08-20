@@ -1,10 +1,10 @@
 ---
 name: Android IPTV audio compatibility
-description: Audio-track selection and focus rules for IPTV streams that expose MPEG Layer II audio on Android and Fire TV.
+description: Decoder choice and recovery rules for IPTV MPEG Layer II streams on Android and Fire TV.
 ---
 
-When Android exposes live or VOD audio tracks but the current audio track is null, explicitly select the provider-default track or the first available track. Configure both shared live and fullscreen players with non-mixing audio output.
+On Android and Fire TV, render IPTV playback with libVLC rather than relying on Expo/ExoPlayer for MPEG transport streams that carry MPEG Layer II (MP2) audio. Never reintroduce an automatic Expo audio-track selection or audio-mixing workaround for these streams.
 
-**Why:** Some IPTV providers expose MPEG audio layer II tracks without marking one as selected. The native player can report the track while outputting silence until the app selects it.
+**Why:** The standard Expo/ExoPlayer setup does not include the reliable MP2 transport-stream decoder support needed by affected providers. Forcing an advertised Expo audio track can prevent the entire source—including video—from starting. VLC decodes the audio and video together.
 
-**How to apply:** Run the fallback after each player-ready audio-track probe. Preserve any user-selected or preferred-language track; use the fallback only when no active track exists.
+**How to apply:** Keep a single VLC owner across mini-player and fullscreen transitions; on Android route retries, Catch-up URL regeneration, and stale-URL refresh through VLC source state. Convert VLC progress values from milliseconds to the app's seconds-based timeline.
