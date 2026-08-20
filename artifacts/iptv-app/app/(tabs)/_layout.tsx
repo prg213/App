@@ -409,6 +409,9 @@ export default function TabLayout() {
   // sidebar instead of returning the user to Settings — the "main BACK defect".
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      // A highlighted sidebar item already owns the TV D-pad focus. BACK must
+      // not re-focus the active route, pop a nested route, or exit the app.
+      if (Platform.isTV && sidebarNav.focusedRoute !== null) return true;
       if (router.canGoBack()) return false; // Stack has a screen to pop — let it
       sidebarNav.focus();
       return true; // nothing to pop — prevent Android from exiting the app

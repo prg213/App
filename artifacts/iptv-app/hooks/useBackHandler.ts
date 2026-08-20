@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { BackHandler, DeviceEventEmitter, Platform } from 'react-native';
 import { useFocusEffect } from 'expo-router';
+import { sidebarNav } from '@/lib/sidebarNav';
 
 // Fire OS builds do not consistently surface the remote BACK key through
 // React Native's `hardwareBackPress` event. Some send it only through the
@@ -73,6 +74,9 @@ export function useBackHandler(handler: () => boolean, enabled: boolean = true) 
         // Avoid handling the same physical Fire TV press through both event
         // systems. Returning true keeps BackHandler from falling through.
         if (Date.now() - lastHandledBackAt < 180) return true;
+        // A highlighted sidebar item already owns the TV D-pad focus. Do not
+        // let the active screen interpret BACK as navigation or cleanup.
+        if (Platform.isTV && sidebarNav.focusedRoute !== null) return true;
         const handled = handlerRef.current();
         if (handled) lastHandledBackAt = Date.now();
         return handled;
