@@ -50,6 +50,9 @@ jobs:
       - name: Typecheck tests
         run: pnpm --filter @workspace/iptv-app run typecheck:tests
 
+      - name: Verify Android packaging guards
+        run: pnpm --filter @workspace/iptv-app exec jest __tests__/androidReleasePackaging.test.ts __tests__/mp2AudioPlayback.test.ts --runInBand
+
       - name: Expo prebuild
         working-directory: artifacts/iptv-app
         run: npx expo prebuild --platform android --no-install --clean
@@ -90,21 +93,47 @@ jobs:
           EXPO_PUBLIC_BUILD_NUMBER: ${{ github.run_number }}
           GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=512m"
 
-      - name: Stage compact APKs
+      - name: Stage universal and fallback APKs
         run: |
           set -euo pipefail
           OUTPUT_DIR="artifacts/iptv-app/android/app/build/outputs/apk/release"
+          UNIVERSAL_APK="$(find "$OUTPUT_DIR" -name '*universal*release.apk' -print -quit)"
           ARM32_APK="$(find "$OUTPUT_DIR" -name '*armeabi-v7a*release.apk' -print -quit)"
           ARM64_APK="$(find "$OUTPUT_DIR" -name '*arm64-v8a*release.apk' -print -quit)"
 
+          test -n "$UNIVERSAL_APK"
           test -n "$ARM32_APK"
           test -n "$ARM64_APK"
 
-          # StreamVault.apk remains the stable Fire TV updater name. The
-          # arm64 asset lets phones download only their required native code.
-          cp "$ARM32_APK" StreamVault.apk
+          # The stable download must run on both Fire TV (ARM32) and modern
+          # Android phones (ARM64). Named split files remain only as fallback
+          # diagnostics if a device has an unusual installer limitation.
+          cp "$UNIVERSAL_APK" StreamVault.apk
           cp "$ARM32_APK" StreamVault-armeabi-v7a.apk
           cp "$ARM64_APK" StreamVault-arm64-v8a.apk
+
+      - name: Verify universal APK contents
+        run: |
+          python3 - <<'PY'
+          import zipfile
+
+          apk = zipfile.ZipFile("StreamVault.apk")
+          for abi in ("armeabi-v7a", "arm64-v8a"):
+              native_entries = [
+                  entry for entry in apk.infolist()
+                  if entry.filename.startswith(f"lib/{abi}/") and not entry.is_dir()
+              ]
+              assert native_entries, f"StreamVault.apk has no {abi} native libraries"
+              stored_entries = [
+                  entry.filename for entry in native_entries
+                  if entry.compress_type == zipfile.ZIP_STORED
+              ]
+              assert not stored_entries, (
+                  f"{abi} native libraries must be compressed to keep the universal "
+                  f"APK small enough for Fire TV: {stored_entries[:3]}"
+              )
+          print("Verified compressed ARM32 and ARM64 native libraries.")
+          PY
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -112,16 +141,23 @@ jobs:
           tag_name: build-${{ github.run_number }}
           name: StreamVault v${{ github.run_number }}
           body: |
-            Android APK — build #${{ github.run_number }}
+            Android APK test candidate — build #${{ github.run_number }}
 
-             **Fire TV and older Android:** Download StreamVault.apk.
+             **All supported Fire TV and Android phones:** Download StreamVault.apk.
 
-             **Modern 64-bit Android:** StreamVault-arm64-v8a.apk is also available.
+             This candidate uses one compressed universal APK containing both
+             ARM32 and ARM64 libraries. Test it on Fire TV and mobile before
+             promoting it to the stable latest release.
+
+             Architecture-specific files are retained only as installation fallbacks.
           files: |
             StreamVault.apk
             StreamVault-armeabi-v7a.apk
             StreamVault-arm64-v8a.apk
-          make_latest: true
+          # Keep the known-working build as "latest" until this universal
+          # candidate has been installed successfully on both device classes.
+          make_latest: false
+          prerelease: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

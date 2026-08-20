@@ -9,8 +9,8 @@
 import { Platform } from 'react-native';
 
 const REPO = 'prg213/App';
-// The release workflow keeps this stable generic name for the compact ARM32
-// Fire TV build, alongside named compact ARM32/ARM64 mobile assets.
+// The release workflow keeps this stable generic name for the universal ARM
+// build, alongside named compact ARM32/ARM64 diagnostic fallbacks.
 export const FIRE_TV_APK_NAME = 'StreamVault.apk';
 export const ARM32_APK_NAME = 'StreamVault-armeabi-v7a.apk';
 export const ARM64_APK_NAME = 'StreamVault-arm64-v8a.apk';
@@ -39,10 +39,12 @@ export function selectUpdateAsset(
   assets: ReleaseAsset[] | undefined,
   target: UpdateTarget = 'firetv',
 ): ReleaseAsset | undefined {
-  // Use the compact arm64 build for modern Android phones and the stable
-  // generic ARM32 build for Fire TV. Keep fallback names for older releases.
+  // StreamVault.apk contains both physical ARM architectures. Prefer it on
+  // every Android device so users receive the same tested release file.
+  // Keep split assets only as fallbacks for releases made before the universal
+  // package or devices with an unusual installer limitation.
   const preferredNames = target === 'android-mobile'
-    ? [ARM64_APK_NAME, ARM32_APK_NAME, FIRE_TV_APK_NAME]
+    ? [FIRE_TV_APK_NAME, ARM64_APK_NAME, ARM32_APK_NAME]
     : [FIRE_TV_APK_NAME, ARM32_APK_NAME];
   return preferredNames
     .map((name) => assets?.find((asset) => asset.name?.toLowerCase() === name.toLowerCase()))

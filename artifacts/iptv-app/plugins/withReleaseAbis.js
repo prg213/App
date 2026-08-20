@@ -7,8 +7,10 @@ const {
 const PLUGIN_NAME = 'withStreamVaultReleaseAbis';
 
 /**
- * Produce compact APKs for the two physical ARM architectures. A universal
- * VLC APK is too large for some Fire TV devices to stage during installation.
+ * Produce one universal physical-ARM APK. VLC is required on both Fire TV and
+ * Android phones for IPTV MP2 streams, so its native libraries must be present
+ * for both ABIs. Legacy JNI packaging compresses those libraries in the APK,
+ * keeping the single download below the Fire TV staging limit.
  */
 function withReleaseAbis(config) {
   config = withGradleProperties(config, (config) => {
@@ -37,7 +39,12 @@ android {
             enable true
             reset()
             include "armeabi-v7a", "arm64-v8a"
-            universalApk false
+            universalApk true
+        }
+    }
+    packagingOptions {
+        jniLibs {
+            useLegacyPackaging true
         }
     }
 }
