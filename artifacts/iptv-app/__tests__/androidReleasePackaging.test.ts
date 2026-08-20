@@ -20,6 +20,9 @@ describe('Android release packaging', () => {
     expect(abiPlugin).toContain('universalApk true');
     expect(abiPlugin).toContain("key: 'expo.useLegacyPackaging'");
     expect(workflow).toContain('MAX_UNIVERSAL_APK_BYTES=$((150 * 1024 * 1024))');
+    expect(workflow).toContain("tags:");
+    expect(workflow).toContain("'android-candidate-*'");
+    expect(workflow).toContain("startsWith(github.ref, 'refs/tags/android-candidate-')");
     expect(workflow).toContain('for ABI in armeabi-v7a arm64-v8a; do');
     expect(workflow).toContain('for VLC_LIBRARY in libvlc.so libvlcjni.so; do');
     expect(workflow).toContain('test "$COMPRESSION_METHOD" = "deflated"');
