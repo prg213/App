@@ -1,5 +1,10 @@
 import fs from 'fs';
 import path from 'path';
+
+jest.mock('react-native', () => ({
+  Platform: { OS: 'android', isTV: false },
+}));
+
 import {
   ARM32_APK_NAME,
   ARM64_APK_NAME,
@@ -28,7 +33,8 @@ describe('Android release packaging', () => {
 
   it('keeps a compact Fire TV-compatible default for in-app updates', () => {
     expect(updateService).toContain("export const FIRE_TV_APK_NAME = 'StreamVault.apk'");
-    expect(updateService).toContain('const preferredNames = [FIRE_TV_APK_NAME, ARM32_APK_NAME]');
+    expect(updateService).toContain(": [FIRE_TV_APK_NAME, ARM32_APK_NAME]");
+    expect(updateService).toContain("Platform.OS === 'android' && !Platform.isTV");
     expect(workflow).toContain('cp StreamVault-armeabi-v7a.apk StreamVault.apk');
   });
 
@@ -40,5 +46,21 @@ describe('Android release packaging', () => {
     expect(selectUpdateAsset(arm64Only)).toBeUndefined();
     expect(selectUpdateAsset(arm32)?.browser_download_url).toBe('https://example.com/arm32.apk');
     expect(selectUpdateAsset(generic)?.browser_download_url).toBe('https://example.com/fire-tv.apk');
+  });
+
+  it('selects the arm64 release asset for modern Android mobile updates', () => {
+    const arm64 = [{ name: ARM64_APK_NAME, browser_download_url: 'https://example.com/arm64.apk' }];
+    const arm32 = [{ name: ARM32_APK_NAME, browser_download_url: 'https://example.com/arm32.apk' }];
+    const both = [
+      { name: FIRE_TV_APK_NAME, browser_download_url: 'https://example.com/fire-tv.apk' },
+      { name: ARM64_APK_NAME, browser_download_url: 'https://example.com/arm64.apk' },
+    ];
+
+    expect(selectUpdateAsset(arm64, 'android-mobile')?.browser_download_url)
+      .toBe('https://example.com/arm64.apk');
+    expect(selectUpdateAsset(both, 'android-mobile')?.browser_download_url)
+      .toBe('https://example.com/arm64.apk');
+    expect(selectUpdateAsset(arm32, 'android-mobile')?.browser_download_url)
+      .toBe('https://example.com/arm32.apk');
   });
 });
