@@ -35,6 +35,7 @@ const NAV = [
   { name: 'search',    label: 'Search',    icon: '🔍' },
   { name: 'settings',  label: 'Settings',  icon: '⚙'  },
 ];
+const TV_NAV_ROW_HEIGHT = 38;
 
 // ── Upcoming reminder badge ────────────────────────────────────────────────
 
@@ -126,6 +127,7 @@ function NavItem({
   firstRef,
   nodeRef,
   onPress,
+  onFocus,
   badgeCount,
 }: {
   item: (typeof NAV)[number];
@@ -135,6 +137,7 @@ function NavItem({
   /** Per-item ref used on TV to wire D-pad nextFocus constraints. */
   nodeRef?: React.RefObject<RNView | null>;
   onPress: () => void;
+  onFocus?: () => void;
   badgeCount: number;
 }) {
   const [focused, setFocused] = useState(false);
@@ -154,6 +157,7 @@ function NavItem({
       onFocus={() => {
         setFocused(true);
         sidebarNav.focusedRoute = item.name;
+        onFocus?.();
       }}
       onBlur={() => {
         setFocused(false);
@@ -201,6 +205,7 @@ function Sidebar({ state, descriptors, navigation }: SidebarProps) {
   const serverStatus = useServerStatus();
   const upcomingReminderCount = useUpcomingReminderCount();
   const firstNavRef = useRef<RNView>(null);
+  const navScrollRef = useRef<ScrollView>(null);
 
   // TV D-pad constraints for the sidebar:
   // ─ LEFT   → nothing (sidebar is leftmost; pin to self)
@@ -210,6 +215,16 @@ function Sidebar({ state, descriptors, navigation }: SidebarProps) {
   // ─ OK     → works as-is
   // We keep one ref per visible nav item and wire them after mount.
   const navItemRefs = useRef<(RNView | null)[]>([]);
+  const revealNavItem = useCallback((index: number) => {
+    if (!Platform.isTV) return;
+    // Leave room for the brand at the top and server state footer at the
+    // bottom. This keeps the focused D-pad destination fully visible on
+    // compact Fire TV screens instead of clipping the lower entries.
+    navScrollRef.current?.scrollTo({
+      y: Math.max(0, index * TV_NAV_ROW_HEIGHT - TV_NAV_ROW_HEIGHT * 2),
+      animated: true,
+    });
+  }, []);
   // Number of routes that will actually render a NavItem (exclude unknown).
   const visibleCount = state.routes.filter((r) => NAV.find((n) => n.name === r.name)).length;
 
@@ -314,11 +329,12 @@ function Sidebar({ state, descriptors, navigation }: SidebarProps) {
 
       {/* Nav items */}
       <ScrollView
+        ref={navScrollRef}
         style={styles.nav}
         contentContainerStyle={styles.navContent}
         showsVerticalScrollIndicator={false}
         bounces={false}
-        scrollEnabled={!Platform.isTV}
+        scrollEnabled
       >
         {(() => {
           // Track a separate visible-item index so navItemRefs stays dense
@@ -351,6 +367,7 @@ function Sidebar({ state, descriptors, navigation }: SidebarProps) {
                 firstRef={firstNavRef}
                 nodeRef={Platform.isTV ? slotRef : undefined}
                 badgeCount={badgeCount}
+                onFocus={() => revealNavItem(slotIdx)}
                 onPress={() => {
                   // Fire TV entry contract: pressing OK on Live TV always
                   // opens its three-panel view on All Channels. Emit before
@@ -459,7 +476,7 @@ const styles = StyleSheet.create({
     gap: 10, paddingVertical: 10, paddingHorizontal: 12,
     borderRadius: 10, position: 'relative',
   },
-  // TV: sidebar scrolling is disabled, so all items must fit ~540dp — tighter rows.
+  // Compact Fire TV rows, with focus-driven ScrollView positioning for smaller displays.
   navItemTV: { paddingVertical: 7 },
   brandTV: { paddingBottom: 12, marginBottom: 4 },
   navItemActive: { backgroundColor: 'rgba(59,130,246,0.12)' },

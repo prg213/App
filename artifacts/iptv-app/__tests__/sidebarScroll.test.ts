@@ -18,10 +18,11 @@ describe('Sidebar ScrollView (#246)', () => {
     layoutSource = fs.readFileSync(layoutPath, 'utf8');
   });
 
-  it('does not set scrollEnabled={false} on the sidebar ScrollView', () => {
-    // The sidebar nav is the only ScrollView in _layout.tsx.
-    // scrollEnabled={false} must not appear anywhere in the file.
+  it('keeps sidebar scrolling enabled on all devices, including TV', () => {
     expect(layoutSource).not.toContain('scrollEnabled={false}');
+    expect(layoutSource).not.toContain('scrollEnabled={!Platform.isTV}');
+    expect(layoutSource).toContain('scrollEnabled');
+    expect(layoutSource).toContain('revealNavItem');
   });
 
   it('contains a ScrollView for the sidebar nav', () => {
