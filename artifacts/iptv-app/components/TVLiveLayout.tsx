@@ -32,8 +32,6 @@ import {
   Text,
   View,
   type ListRenderItem,
-  type NativeScrollEvent,
-  type NativeSyntheticEvent,
 } from 'react-native';
 import { VideoView, type VideoPlayer } from 'expo-video';
 import { FocusablePressable } from '@/components/FocusablePressable';
@@ -163,10 +161,9 @@ export function TVLiveLayout({
 
   const catListRef = useRef<FlatList<Category>>(null);
   const chListRef  = useRef<FlatList<Channel>>(null);
-  // Categories and channels are separate focusable FlatLists, but visually
-  // they are one grid. Mirror the channel scroll offset into categories so
-  // their horizontal dividers stay aligned while D-pad focus moves down.
-  const lastSyncedCategoryOffsetRef = useRef<number | null>(null);
+  // Categories and channels scroll independently. Category focus/selection
+  // controls the category list position; browsing channels must not move the
+  // category list underneath the user's selected category.
   // TV LEFT navigation refs:
   //   catRefMap — stores each mounted category node by item.id
   //   catFocusedRef — the most-recently-focused category node (LEFT target for channels)
@@ -641,18 +638,6 @@ export function TVLiveLayout({
     setHighlightedChId(ch.id);
   }, []);
 
-  const syncCategoryScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const offset = Math.max(0, event.nativeEvent.contentOffset.y);
-    if (
-      lastSyncedCategoryOffsetRef.current != null
-      && Math.abs(lastSyncedCategoryOffsetRef.current - offset) < 0.5
-    ) {
-      return;
-    }
-    lastSyncedCategoryOffsetRef.current = offset;
-    catListRef.current?.scrollToOffset({ offset, animated: false });
-  }, []);
-
   const renderChannel: ListRenderItem<Channel> = useCallback(({ item, index }) => {
     const nowProg = nowPlayingMap.get(item.epgId ?? item.id) ?? nowPlayingMap.get(item.id);
     const isHighlighted = highlightedChId === item.id;
@@ -830,8 +815,6 @@ export function TVLiveLayout({
             keyExtractor={(c) => c.id}
             renderItem={renderChannel}
             showsVerticalScrollIndicator={false}
-            onScroll={syncCategoryScroll}
-            scrollEventThrottle={16}
             getItemLayout={(_, i) => ({ length: CH_ITEM_H, offset: CH_ITEM_H * i, index: i })}
             onScrollToIndexFailed={() => {}}
           />

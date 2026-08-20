@@ -5,9 +5,9 @@ description: Shared sizing rule for the Fire TV category and channel panels.
 
 # Live TV row alignment
 
-- **Rule:** Paired category and channel grids need identical row geometry *and* the same visible scroll offset.
-- **Why:** Matching row heights prevents size-based drift, but independently-scrolled FlatLists still phase-shift their dividers as channel focus moves down the list.
-- **How to apply:** Use one fixed row-height constant and matching `getItemLayout` math for both lists. Mirror channel `onScroll` offsets into the category list; apply the same pattern to Catch-up’s paired grids.
+- **Rule:** Live TV category and channel grids need identical row geometry but independent vertical scroll positions.
+- **Why:** Mirroring channel scrolling into categories makes the selected category move unexpectedly while the viewer browses channels.
+- **How to apply:** Use one fixed row-height constant and matching `getItemLayout` math for both lists. Let category focus/selection control the category list; never mirror channel `onScroll` into it.
 
 ## Rapid D-pad channel navigation
 

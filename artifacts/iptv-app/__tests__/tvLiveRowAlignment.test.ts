@@ -26,17 +26,15 @@ describe('TV Live category/channel row alignment', () => {
     expect(SOURCE).toMatch(/height:\s*CH_ITEM_H/);
   });
 
-  it('mirrors the channel scroll offset into the category grid', () => {
-    expect(SOURCE).toMatch(/const syncCategoryScroll\s*=\s*useCallback/);
-    expect(SOURCE).toMatch(/event\.nativeEvent\.contentOffset\.y/);
-    expect(SOURCE).toMatch(/catListRef\.current\?\.scrollToOffset\(\{ offset, animated: false \}\)/);
-    expect(SOURCE).toMatch(/onScroll=\{syncCategoryScroll\}/);
-    expect(SOURCE).toMatch(/scrollEventThrottle=\{16\}/);
+  it('does not move categories when the channel list scrolls', () => {
+    expect(SOURCE).not.toMatch(/const syncCategoryScroll\s*=\s*useCallback/);
+    expect(SOURCE).not.toMatch(/onScroll=\{syncCategoryScroll\}/);
+    expect(SOURCE).not.toMatch(/catListRef\.current\?\.scrollToOffset/);
   });
 
   it('does not start an animated list scroll for every rapid channel focus event', () => {
     const start = SOURCE.indexOf('const handleChFocus');
-    const end = SOURCE.indexOf('const syncCategoryScroll', start);
+    const end = SOURCE.indexOf('const renderChannel', start);
     expect(start).toBeGreaterThan(-1);
     expect(end).toBeGreaterThan(start);
     expect(SOURCE.slice(start, end)).not.toMatch(/scrollToIndex/);
