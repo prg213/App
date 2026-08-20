@@ -4,7 +4,7 @@
  * Category actions are not left to spatial-navigation heuristics:
  * - LEFT/BACK returns to the active sidebar item,
  * - Category OK focuses the first channel without starting it,
- * - RIGHT always targets the first row of the active channel list.
+ * - LEFT/RIGHT/BACK moves between directly aligned category and channel rows.
  */
 
 import * as fs from 'fs';
@@ -36,18 +36,27 @@ describe('Fire TV category navigation', () => {
     expect(TV_LAYOUT).toMatch(/requestTvFocus\(chRefMap\.current\.get\(firstChannel\.id\) \?\? firstChRef\.current\)/);
   });
 
-  it('rewires category RIGHT to the first channel when the list mounts', () => {
-    expect(TV_LAYOUT).toMatch(/const wireCategoryToFirstChannel = useCallback/);
-    expect(TV_LAYOUT).toMatch(/setNativeProps\?\.\(\{ nextFocusRight: firstChannelHandle \}\)/);
-    expect(TV_LAYOUT).toMatch(/wireCategoryToFirstChannel\(\);\s*\n  \}, \[channels, wireCategoryToFirstChannel\]\)/);
+  it('wires category RIGHT to the channel in the directly aligned row', () => {
+    expect(TV_LAYOUT).toMatch(/const wireCategoryToOppositeChannel = useCallback/);
+    expect(TV_LAYOUT).toMatch(/const oppositeChannel = channels\[categoryIndex\]/);
+    expect(TV_LAYOUT).toMatch(/nextFocusRight: oppositeChannelHandle/);
+    expect(TV_LAYOUT).toMatch(/focusedCategoryIndexRef\.current = index/);
+    expect(TV_LAYOUT).toMatch(/wireCategoryToOppositeChannel\(index, node\)/);
+    expect(TV_LAYOUT).toMatch(/chScrollOffsetRef\.current = catScrollOffsetRef\.current/);
   });
 
-  it('returns channel LEFT and BACK to that channel’s category without clearing preview state', () => {
+  it('returns channel LEFT and BACK to the directly aligned category without clearing preview state', () => {
     expect(TV_LAYOUT).toMatch(/const categoryForChannel = useCallback/);
+    expect(TV_LAYOUT).toMatch(/const focusCategoryAtIndex = useCallback/);
+    expect(TV_LAYOUT).toMatch(/const focusChannelAtIndex = useCallback/);
     expect(TV_LAYOUT).toMatch(/const focusCategoryForHighlightedChannel = useCallback/);
     expect(TV_LAYOUT).toMatch(/focusHighlightedChCategoryRef\.current = focusCategoryForHighlightedChannel/);
-    expect(TV_LAYOUT).toMatch(/const channelCategory = categoryForChannel\(item\)/);
-    expect(TV_LAYOUT).toMatch(/useTVRemote\(\{[\s\S]*?left: \(event\)[\s\S]*?focusCategoryForHighlightedChannel\(\)/);
+    expect(TV_LAYOUT).toMatch(/focusCategoryAtIndex\(channelIndex\)/);
+    expect(TV_LAYOUT).toMatch(/const alignedCategory = allCategories\[index\]/);
+    expect(TV_LAYOUT).toMatch(/focusedChannelIndexRef\.current = index/);
+    expect(TV_LAYOUT).toMatch(/left: \(event\)[\s\S]*?focusCategoryAtIndex\(index\)/);
+    expect(TV_LAYOUT).toMatch(/right: \(event\)[\s\S]*?focusChannelAtIndex\(index\)/);
+    expect(TV_LAYOUT).toMatch(/catScrollOffsetRef\.current = chScrollOffsetRef\.current/);
     expect(LIVE_TV).toMatch(/focusHighlightedChCategoryRef\.current\?\.\(\)/);
   });
 
@@ -78,7 +87,7 @@ describe('Fire TV category navigation', () => {
     expect(TV_LAYOUT).toMatch(
       /if \(Platform\.isTV && previewPanelReturnPendingRef\.current\) \{[\s\S]*?focusPlayingChannel\(\);[\s\S]*?return;/,
     );
-    expect(TV_LAYOUT).toMatch(/previewPanelReturnPendingRef\.current = false;\s*handleChFocus/);
+    expect(TV_LAYOUT).toMatch(/previewPanelReturnPendingRef\.current = false;[\s\S]*?handleChFocus/);
   });
 
   it('creates an explicit preview-to-controls DOWN chain instead of relying on spatial focus', () => {

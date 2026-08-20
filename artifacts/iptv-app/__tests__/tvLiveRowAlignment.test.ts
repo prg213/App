@@ -35,7 +35,7 @@ describe('TV Live category/channel row alignment', () => {
     expect(SOURCE).toMatch(/import \{ computeTvVerticalFocusOffset \} from '@\/lib\/tvFocusWindow'/);
 
     const catStart = SOURCE.indexOf('const handleCatFocus');
-    const catEnd = SOURCE.indexOf('const wireCategoryToFirstChannel', catStart);
+    const catEnd = SOURCE.indexOf('const wireCategoryToOppositeChannel', catStart);
     expect(catStart).toBeGreaterThan(-1);
     expect(catEnd).toBeGreaterThan(catStart);
     const categoryFocus = SOURCE.slice(catStart, catEnd);
