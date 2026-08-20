@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   FlatList,
   Image,
@@ -15,6 +15,10 @@ import {
   RAIL_TV_HEADER_MARGIN_BOTTOM,
   RAIL_TV_HEADER_FONT_SIZE,
   RAIL_TV_CARD_HEIGHT,
+  TV_BANNER_LIST_GAP,
+  TV_BANNER_LIST_PADDING_VERTICAL,
+  TV_SECTION_MARGIN_TOP,
+  computeTvRailTrailingSpacerWidth,
 } from '@/lib/tvHomeLayout';
 import { useFocusEffect } from 'expo-router';
 import { FocusablePressable } from '@/components/FocusablePressable';
@@ -22,6 +26,7 @@ import { useColors } from '@/hooks/useColors';
 import { StorageService } from '@/services/storage';
 import { Toast } from '@/components/Toast';
 import type { Channel, RecentChannel } from '@/types';
+import { LinearGradient } from 'expo-linear-gradient';
 
 /** Convert a stored RecentChannel to a Channel so it can be passed to handlers. */
 function toChannel(rc: RecentChannel): Channel {
@@ -50,6 +55,14 @@ interface Props {
   topInset?: number;
   /** TV Home uses the first card as the sidebar RIGHT destination. */
   onFirstCardRef?: (node: View | null) => void;
+  /** Shared TV Home poster geometry and synchronized rail behavior. */
+  tvCardStyle?: any;
+  tvItemStride?: number | null;
+  tvListRef?: React.RefObject<FlatList<RecentChannel> | null>;
+  tvSharedColumnCount?: number;
+  onTvRailLayout?: (event: any) => void;
+  onTvCardFocus?: (index: number) => void;
+  onTvItemCountChange?: (count: number) => void;
 }
 
 // ── Per-card component so each card has its own measured ref ──────────────────
@@ -65,11 +78,13 @@ interface CardProps {
   onCardFocus?: () => void;
   onFirstCardRef?: (node: View | null) => void;
   isLast: boolean;
+  tvCardStyle?: any;
 }
 
-function RecentCard({ item, index, channels, nowTitle, colors, onWatchFullscreen, onRemove, onCardFocus, onFirstCardRef, isLast }: CardProps) {
+function RecentCard({ item, index, channels, nowTitle, colors, onWatchFullscreen, onRemove, onCardFocus, onFirstCardRef, isLast, tvCardStyle }: CardProps) {
   const cardRef = useRef<View>(null);
   const ch = toChannel(item);
+  const isTvPoster = Platform.isTV && tvCardStyle != null;
   const setCardRef = useCallback((el: View | null) => {
     cardRef.current = el;
     if (Platform.isTV) {
@@ -85,7 +100,7 @@ function RecentCard({ item, index, channels, nowTitle, colors, onWatchFullscreen
   return (
     <FocusablePressable
       ref={setCardRef as any}
-      style={styles.card}
+      style={isTvPoster ? tvCardStyle : styles.card}
       // TV: LEFT on the first card jumps to the sidebar nav menu
       nextFocusLeft={Platform.isTV && index === 0 ? sidebarNav.handle : undefined}
       onFocus={onCardFocus}
@@ -93,8 +108,12 @@ function RecentCard({ item, index, channels, nowTitle, colors, onWatchFullscreen
       onLongPress={() => onRemove(item.id)}
       delayLongPress={500}
     >
-      {/* Logo area — 16:9 crop */}
-      <View style={[styles.logoWrap, { backgroundColor: colors.secondary }]}>
+      {/* TV uses the shared Home poster size instead of a separate slim strip. */}
+      <View style={[
+        styles.logoWrap,
+        isTvPoster && styles.tvLogoWrap,
+        { backgroundColor: colors.secondary },
+      ]}>
         {item.logo ? (
           <Image
             source={{ uri: item.logo }}
@@ -110,16 +129,38 @@ function RecentCard({ item, index, channels, nowTitle, colors, onWatchFullscreen
         <View style={styles.liveBadge}>
           <View style={styles.liveDot} />
         </View>
+        {isTvPoster && (
+          <>
+            <LinearGradient
+              colors={['transparent', 'rgba(0,0,0,0.88)']}
+              style={styles.tvCardGrad}
+            />
+            <View style={styles.tvCardInfo}>
+              <Text style={[styles.chName, styles.tvCardText, { color: colors.foreground }]} numberOfLines={1}>
+                {item.name}
+              </Text>
+              {nowTitle ? (
+                <Text style={[styles.epgTitle, styles.tvCardText, { color: colors.mutedForeground }]} numberOfLines={1}>
+                  {nowTitle}
+                </Text>
+              ) : null}
+            </View>
+          </>
+        )}
       </View>
 
-      <Text style={[styles.chName, { color: colors.foreground }]} numberOfLines={1}>
-        {item.name}
-      </Text>
-      {nowTitle ? (
-        <Text style={[styles.epgTitle, { color: colors.mutedForeground }]} numberOfLines={1}>
-          {nowTitle}
-        </Text>
-      ) : null}
+      {!isTvPoster && (
+        <>
+          <Text style={[styles.chName, { color: colors.foreground }]} numberOfLines={1}>
+            {item.name}
+          </Text>
+          {nowTitle ? (
+            <Text style={[styles.epgTitle, { color: colors.mutedForeground }]} numberOfLines={1}>
+              {nowTitle}
+            </Text>
+          ) : null}
+        </>
+      )}
     </FocusablePressable>
   );
 }
@@ -130,14 +171,27 @@ export function RecentChannelsRail({
   onWatchFullscreen,
   topInset = 0,
   onFirstCardRef,
+  tvCardStyle,
+  tvItemStride,
+  tvListRef,
+  tvSharedColumnCount,
+  onTvRailLayout,
+  onTvCardFocus,
+  onTvItemCountChange,
 }: Props) {
   const colors = useColors();
   const [recent, setRecent] = useState<RecentChannel[]>([]);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const isTvGrid = Platform.isTV && tvCardStyle != null;
   // TV: glide the rail so the focused card stays in view (Fire OS doesn't
   // reliably auto-scroll virtualized horizontal lists on D-pad focus moves).
   const listRef = useRef<FlatList<RecentChannel>>(null);
   const CARD_STRIDE = 88 + 8; // card width + list gap
+  const activeListRef = tvListRef ?? listRef;
+
+  useEffect(() => {
+    onTvItemCountChange?.(recent.length);
+  }, [onTvItemCountChange, recent.length]);
 
   useFocusEffect(
     useCallback(() => {
@@ -168,9 +222,9 @@ export function RecentChannelsRail({
     <View
       style={[
         styles.container,
-        // TV dashboard: keep this strip as slim as possible — every saved
-        // pixel goes to the poster rows below.
-        Platform.isTV && styles.containerTV,
+        // TV dashboard: this is a full grid row with the same geometry as the
+        // movie and series rails.
+        isTvGrid && styles.containerTV,
         { borderBottomColor: colors.border, paddingTop: topInset + (Platform.isTV ? RAIL_TV_PADDING_TOP_EXTRA : 8) },
       ]}
     >
@@ -183,13 +237,30 @@ export function RecentChannelsRail({
         </FocusablePressable>
       </View>
       <FlatList
-        ref={listRef}
+        ref={activeListRef}
         data={recent}
         horizontal
         keyExtractor={(item) => item.id}
         showsHorizontalScrollIndicator={false}
-        getItemLayout={(_, i) => ({ length: CARD_STRIDE, offset: CARD_STRIDE * i, index: i })}
-        contentContainerStyle={styles.list}
+        onLayout={isTvGrid ? onTvRailLayout : undefined}
+        getItemLayout={(_, i) => {
+          const stride = isTvGrid ? (tvItemStride ?? CARD_STRIDE) : CARD_STRIDE;
+          return { length: stride, offset: stride * i, index: i };
+        }}
+        contentContainerStyle={isTvGrid ? styles.tvList : styles.list}
+        ListFooterComponent={
+          isTvGrid && tvSharedColumnCount
+            ? (() => {
+                const width = computeTvRailTrailingSpacerWidth(
+                  recent.length,
+                  tvSharedColumnCount,
+                  tvItemStride ?? CARD_STRIDE,
+                  TV_BANNER_LIST_GAP,
+                );
+                return width > 0 ? <View style={{ width, height: 1 }} /> : null;
+              })()
+            : null
+        }
         renderItem={({ item, index }) => {
           const epgKey = item.epgId ?? item.id;
           const nowTitle = nowPlayingMap.get(epgKey);
@@ -207,9 +278,16 @@ export function RecentChannelsRail({
               onRemove={handleRemove}
               onFirstCardRef={onFirstCardRef}
               isLast={index === recent.length - 1}
+              tvCardStyle={tvCardStyle}
               onCardFocus={Platform.isTV ? () => {
                 tvRowNav.focused('recent', index, { pinRightEdge: index === recent.length - 1 });
-                try { listRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.35 }); } catch {}
+                onTvCardFocus?.(index);
+                try {
+                  activeListRef.current?.scrollToOffset({
+                    offset: (tvItemStride ?? CARD_STRIDE) * index,
+                    animated: false,
+                  });
+                } catch {}
               } : undefined}
             />
           );
@@ -234,14 +312,11 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   containerTV: {
+    flex: 1,
+    minHeight: 0,
+    marginTop: TV_SECTION_MARGIN_TOP,
     paddingTop: RAIL_TV_PADDING_TOP_EXTRA,
     paddingBottom: RAIL_TV_PADDING_BOTTOM,
-    // Hard cap so the rail can never consume more than ~100dp regardless of
-    // content changes (e.g. a future EPG subtitle line or taller logo card).
-    // The flex poster-row sections below always get the remaining height.
-    // Note: no overflow:'hidden' here — the Toast child is absolutely
-    // positioned and must remain visible above the clip boundary.
-    maxHeight: 100,
   },
   sectionHeaderTV: {
     marginBottom: RAIL_TV_HEADER_MARGIN_BOTTOM,
@@ -266,6 +341,13 @@ const styles = StyleSheet.create({
   },
   list: { paddingHorizontal: 8, gap: 8 },
   card: { width: 88 },
+  tvList: {
+    flex: 1,
+    paddingHorizontal: 14,
+    paddingVertical: TV_BANNER_LIST_PADDING_VERTICAL,
+    gap: TV_BANNER_LIST_GAP,
+    alignItems: 'stretch',
+  },
 
   logoWrap: {
     width: 88,
@@ -275,6 +357,24 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     position: 'relative',
+  },
+  tvLogoWrap: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 10,
+  },
+  tvCardGrad: {
+    ...StyleSheet.absoluteFill,
+    top: '42%',
+  },
+  tvCardInfo: {
+    position: 'absolute',
+    left: 8,
+    right: 8,
+    bottom: 7,
+  },
+  tvCardText: {
+    marginTop: 0,
   },
   initials: {
     fontSize: 14,

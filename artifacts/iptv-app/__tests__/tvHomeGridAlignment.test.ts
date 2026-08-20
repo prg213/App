@@ -36,9 +36,38 @@ describe('TV Home grid alignment', () => {
 
     expect(fourAcrossHeight).toBeLessThan(twoAcrossHeight);
     expect(source).toMatch(
-      /const tvCardLayoutSlots = continueWatchingItems\.length > 0 \? 3 : TV_HOME_GRID_COLUMNS/,
+      /const tvCardLayoutSlots = actualTVSectionCount > 2 \? actualTVSectionCount : TV_HOME_GRID_COLUMNS/,
     );
     expect(source).toMatch(/computeTvGridCardHeight\(\s*bodyHeight/);
+  });
+
+  it('includes Recently Watched in the shared TV geometry and synchronized panning', () => {
+    expect(source).toMatch(/const recentListRef = useRef<FlatList<RecentChannel>>\(null\)/);
+    expect(source).toMatch(/const actualTVSectionCount =[\s\S]*recentChannelCount > 0/);
+    expect(source).toMatch(/tvListRef=\{recentListRef\}/);
+    expect(source).toMatch(/onTvCardFocus=\{scrollAllContentRows\}/);
+    expect(source).toMatch(/onTvItemCountChange=\{setRecentChannelCount\}/);
+    expect(recentRailSource).toMatch(/tvCardStyle\?: any/);
+    expect(recentRailSource).toMatch(/onTvRailLayout\?: \(event: any\) => void/);
+    expect(recentRailSource).toMatch(/onTvItemCountChange\?: \(count: number\) => void/);
+    expect(recentRailSource).toMatch(/contentContainerStyle=\{isTvGrid \? styles\.tvList : styles\.list\}/);
+    expect(recentRailSource).toMatch(/tvSharedColumnCount\?: number/);
+    expect(recentRailSource).toMatch(/computeTvRailTrailingSpacerWidth/);
+  });
+
+  it('uses Recently Watched as the shared extent when it has the most cards', () => {
+    const stride = 208;
+    const gap = 8;
+    const recentCount = 8;
+    const shorterRowCount = 4;
+    const recentExtent = recentCount * stride - gap;
+    const shorterExtent = shorterRowCount * stride
+      + computeTvRailTrailingSpacerWidth(shorterRowCount, recentCount, stride, gap);
+
+    expect(shorterExtent).toBe(recentExtent);
+    expect(source).toMatch(
+      /const tvSharedColumnCount = Math\.max\(\s*recentChannelCount,/,
+    );
   });
 
   it('moves every content rail by one shared, immediate offset', () => {

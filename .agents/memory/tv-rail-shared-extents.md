@@ -7,4 +7,4 @@ When horizontally synchronized FlatLists have different item counts, giving each
 
 **Why:** Otherwise Home card columns drift at the right edge even though each focus event requests the same offset. A footer spacer participates in the list's item gap, so its width must subtract that adjacent gap to exactly match the longest rail's final-card extent.
 
-**How to apply:** Keep the card stride, list gap, and spacer calculation derived from the same shared layout constants. Whenever a synchronized row gains a footer, verify the equal-content-extent case for unequal row lengths.
+**How to apply:** Keep the card stride, list gap, and spacer calculation derived from the same shared layout constants. Include every synchronized row — including Recently Watched — in the shared maximum using its filtered visible item count. Whenever a synchronized row gains a footer, verify the equal-content-extent case for unequal row lengths.

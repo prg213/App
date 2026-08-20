@@ -43,7 +43,7 @@ import {
 import { sidebarNav } from '@/lib/sidebarNav';
 import { tvRowNav } from '@/lib/tvRowNav';
 import { useBackHandler } from '@/hooks/useBackHandler';
-import type { Channel, Movie, Series, WatchHistoryEntry } from '@/types';
+import type { Channel, Movie, Series, WatchHistoryEntry, RecentChannel } from '@/types';
 import { requestTvFocus } from '@/lib/tvFocus';
 
 function buildCreds(c: ReturnType<typeof useAppContext>['credentials']) {
@@ -259,6 +259,7 @@ export default function HomeScreen() {
   const cwListRef     = useRef<FlatList<WatchHistoryEntry>>(null);
   const movieListRef  = useRef<FlatList<Movie>>(null);
   const seriesListRef = useRef<FlatList<Series>>(null);
+  const recentListRef = useRef<FlatList<RecentChannel>>(null);
   const tvItemStrideRef = useRef(BANNER_W + TV_BANNER_LIST_GAP);
   // Store current data lengths in refs so renderers can check isLast without
   // needing the length in their useCallback dep arrays (avoids unnecessary
@@ -266,6 +267,7 @@ export default function HomeScreen() {
   const cwCountRef     = useRef(0);
   const movieCountRef  = useRef(0);
   const seriesCountRef = useRef(0);
+  const [recentChannelCount, setRecentChannelCount] = useState(0);
   const setHomeRightCandidate = useCallback(
     (row: 'recent' | 'cw' | 'movies', node: View | null) => {
       if (Platform.isTV) sidebarNav.setHomeRightCandidate(row, node);
@@ -278,10 +280,8 @@ export default function HomeScreen() {
   );
   useEffect(() => {
     if (!Platform.isTV) return;
-      // The visual TV order includes the slim Recently Watched strip above
-      // the three main content rows so UP from Continue Watching can reach it.
-      // The content-row panning helper below still excludes Recent because it
-      // uses a different card size.
+      // Every Home row participates in one TV grid, including Recently
+      // Watched, so UP/DOWN preserves the same card column across all rails.
       tvRowNav.setOrder(['recent', 'cw', 'movies', 'series']);
     return () => {
       // Clear all row registrations on unmount so that if the Home screen
@@ -312,22 +312,21 @@ export default function HomeScreen() {
     } catch {}
   }, []);
 
-  // Synced panning: Continue Watching, Latest Movies and Latest TV Shows all
-  // move together — focusing any card in any of those three rows moves every
-  // rail to the exact same horizontal offset. Centering each list separately
+  // Synced panning: every Home content row moves together — focusing any card
+  // moves each rail to the same horizontal offset. Centering rows separately
   // makes shorter rows clamp at different positions and breaks the dashboard
-  // grid. Recently Watched is intentionally excluded (different card size).
-  // TV focus changes use an immediate scroll so three native lists cannot be
+  // grid. TV focus changes use an immediate scroll so native lists cannot be
   // caught at different points in separate animations.
   const scrollAllContentRows = useCallback((index: number) => {
     if (!Platform.isTV) return;
     const offset = tvItemStrideRef.current * index;
     [
+      { ref: recentListRef },
       { ref: cwListRef,     count: cwCountRef },
       { ref: movieListRef,  count: movieCountRef },
       { ref: seriesListRef, count: seriesCountRef },
     ].forEach(({ ref, count }) => {
-      if (count.current <= 0) return;
+      if (count && count.current <= 0) return;
       try {
         ref.current?.scrollToOffset({ offset, animated: false });
       } catch {}
@@ -466,8 +465,11 @@ export default function HomeScreen() {
   // top rows are empty, the two remaining rows still use four layout slots so
   // their posters stay compact and four cards remain visible across the TV
   // content area instead of growing into a two-card layout.
-  const actualTVSectionCount = continueWatchingItems.length > 0 ? 3 : 2;
-  const tvCardLayoutSlots = continueWatchingItems.length > 0 ? 3 : TV_HOME_GRID_COLUMNS;
+  const actualTVSectionCount =
+    2 +
+    (continueWatchingItems.length > 0 ? 1 : 0) +
+    (recentChannelCount > 0 ? 1 : 0);
+  const tvCardLayoutSlots = actualTVSectionCount > 2 ? actualTVSectionCount : TV_HOME_GRID_COLUMNS;
   const [tvCardHeight, setTvCardHeight] = useState<number | null>(null);
   const tvCardGeometryRef = useRef<{ sectionCount: number; height: number } | null>(null);
   useEffect(() => {
@@ -502,6 +504,7 @@ export default function HomeScreen() {
   const tvItemStride = tvCardWidth ? tvCardWidth + TV_BANNER_LIST_GAP : null;
   tvItemStrideRef.current = tvItemStride ?? BANNER_W + TV_BANNER_LIST_GAP;
   const tvSharedColumnCount = Math.max(
+    recentChannelCount,
     continueWatchingItems.length,
     latestMovies.length,
     latestSeries.length,
@@ -751,6 +754,13 @@ export default function HomeScreen() {
           nowPlayingMap={emptyNowPlayingMap}
           onWatchFullscreen={handleRecentChannelWatch}
           onFirstCardRef={setRecentHomeRightCandidate}
+          tvCardStyle={tvCardStyle}
+          tvItemStride={tvItemStride}
+          tvListRef={recentListRef}
+          tvSharedColumnCount={tvSharedColumnCount}
+          onTvRailLayout={handleTvRailLayout}
+          onTvCardFocus={scrollAllContentRows}
+          onTvItemCountChange={setRecentChannelCount}
         />
 
         {continueWatchingItems.length > 0 && (
