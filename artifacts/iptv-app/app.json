@@ -39,17 +39,7 @@
           }
         }
       ],
-      [
-        "react-native-vlc-media-player",
-        {
-          "android": {
-            "legacyJetifier": false
-          },
-          "ios": {
-            "includeVLCKit": false
-          }
-        }
-      ],
+      "./plugins/withVlcAndroid",
       [
         "expo-router",
         {

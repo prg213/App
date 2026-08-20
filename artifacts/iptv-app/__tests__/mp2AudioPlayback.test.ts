@@ -13,6 +13,11 @@ const playerSource = fs.readFileSync(path.resolve(__dirname, '../app/player.tsx'
 const liveContextSource = fs.readFileSync(path.resolve(__dirname, '../context/LivePlayerContext.tsx'), 'utf8');
 const nativeVlcSource = fs.readFileSync(path.resolve(__dirname, '../components/NativeStreamPlayer.android.tsx'), 'utf8');
 const liveTabSource = fs.readFileSync(path.resolve(__dirname, '../app/(tabs)/index.tsx'), 'utf8');
+const vlcAndroidPluginSource = fs.readFileSync(path.resolve(__dirname, '../plugins/withVlcAndroid.js'), 'utf8');
+const vlcGradlePatchSource = fs.readFileSync(
+  path.resolve(__dirname, '../../../patches/react-native-vlc-media-player@1.0.98.patch'),
+  'utf8',
+);
 const appConfig = JSON.parse(
   fs.readFileSync(path.resolve(__dirname, '../app.json'), 'utf8'),
 ) as { expo: { plugins: Array<string | [string, Record<string, any>]> } };
@@ -42,13 +47,15 @@ describe('MP2 audio playback', () => {
       (plugin): plugin is [string, Record<string, any>] =>
         Array.isArray(plugin) && plugin[0] === 'expo-build-properties',
     );
-    const vlcPlugin = plugins.find(
-      (plugin): plugin is [string, Record<string, any>] =>
-        Array.isArray(plugin) && plugin[0] === 'react-native-vlc-media-player',
-    );
 
     expect(buildProperties?.[1].android?.minSdkVersion).toBe(26);
-    expect(vlcPlugin?.[1].android?.legacyJetifier).toBe(false);
+    expect(plugins).toContain('./plugins/withVlcAndroid');
+    expect(vlcAndroidPluginSource).toContain("require('expo/config-plugins')");
+    expect(vlcAndroidPluginSource).toContain('jetified-react-android');
+    expect(vlcAndroidPluginSource).toContain('libc++_shared.so');
+    expect(vlcGradlePatchSource).toContain(
+      '-        classpath("com.android.tools.build:gradle:4.0.2")',
+    );
   });
 
   it('uses seconds for VLC progress and gives fullscreen exclusive ownership', () => {

@@ -124,3 +124,6 @@ overrides:
   rollup>@rollup/rollup-win32-ia32-msvc: '-'
   rollup>@rollup/rollup-win32-x64-gnu: '-'
   rollup>@rollup/rollup-win32-x64-msvc: '-'
+
+patchedDependencies:
+  react-native-vlc-media-player@1.0.98: patches/react-native-vlc-media-player@1.0.98.patch

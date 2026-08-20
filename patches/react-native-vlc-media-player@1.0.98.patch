@@ -1,0 +1,22 @@
+diff --git a/android/build.gradle b/android/build.gradle
+index 0e5cc4f50661440d6c6d73941037aa61d2981303..ca92dc036e78f88563ba46be4dbb87237f75542b 100755
+--- a/android/build.gradle
++++ b/android/build.gradle
+@@ -20,17 +20,6 @@ android {
+         }
+     }
+ }
+-buildscript {
+-    repositories {
+-        google()
+-        mavenCentral()
+-        // maven { url "https://maven.appspector.com/artifactory/android-sdk" }
+-
+-    }
+-    dependencies {
+-        classpath("com.android.tools.build:gradle:4.0.2")
+-    }
+-}
+ 
+ repositories {
+     maven {
