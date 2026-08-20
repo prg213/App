@@ -128,11 +128,12 @@ describe('Scenario 1 — zap → BACK: overlay VideoView removed before collapse
     expect(index).toMatch(/onCollapseCompleteRef\.current\s*=\s*\(\s*\)\s*=>\s*setVideoKey/);
   });
 
-  it('useFocusEffect calls setVideoKey directly (slow-nav path)', () => {
+  it('useFocusEffect only rebinds an Expo VideoView on the slow-nav path', () => {
     // Slow navigation (> 200 ms): pendingCollapseRemountRef is already false.
-    // The overlay is gone — it is safe to mount the mini-player VideoView immediately.
-    // Look for the pattern: else { setVideoKey(...) } in the collapse restore block.
-    expect(index).toMatch(/}\s*else\s*\{\s*setVideoKey\s*\(\s*\(k\)\s*=>/);
+    // The overlay is gone — it is safe to mount the mini-player Expo VideoView
+    // immediately. VLC deliberately skips this remount because it remains
+    // mounted throughout the Android fullscreen handoff.
+    expect(index).toMatch(/else if\s*\(\s*!USES_NATIVE_VLC\s*\)\s*\{\s*setVideoKey\s*\(\s*\(k\)\s*=>/);
   });
 });
 
@@ -289,17 +290,16 @@ describe('Scenario 4 — TV / Firestick: recently-watched back path sets selecte
     expect(branchBody).toMatch(/setSelectedChannel\s*\(\s*ch\s*\)/);
   });
 
-  it('shared return-handoff branch defers setVideoKey inside requestAnimationFrame', () => {
+  it('shared return-handoff branch only rebinds an Expo VideoView', () => {
     // The rAF gives the native layout a pass to measure the now-visible
-    // container before the fresh VideoView is mounted.  Without it the surface
-    // is zero-sized → audio plays, no video.
+    // container before Expo rebinds its VideoView. Android VLC deliberately
+    // keeps its one existing surface rather than creating a second decoder.
     const consumeIdx = index.indexOf('const ch = consumePendingLivePlayerReturn()');
     expect(consumeIdx).toBeGreaterThan(-1);
 
-    // 900 chars covers setPlayingChannel + setSelectedChannel + category logic
-    // + requestAnimationFrame(() => { setVideoKey(…) })
-    const branchBody = index.slice(consumeIdx, consumeIdx + 900);
-    expect(branchBody).toMatch(/requestAnimationFrame[\s\S]{0,100}setVideoKey/);
+    const branchBody = index.slice(consumeIdx, consumeIdx + 1400);
+    expect(branchBody).toMatch(/requestAnimationFrame/);
+    expect(branchBody).toMatch(/if\s*\(\s*!USES_NATIVE_VLC\s*\)\s*setVideoKey/);
   });
 
   it('normal collapse path restores D-pad focus to mini-player on TV', () => {

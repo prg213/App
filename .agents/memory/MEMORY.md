@@ -27,5 +27,5 @@
 - [Android IPTV audio compatibility](android-iptv-audio.md) — Android/Fire TV IPTV uses libVLC, not Expo/ExoPlayer track-selection workarounds, for MP2 transport streams.
 - [Playback wake-lock tags](playback-wake-lock-tags.md) — every concurrently mounted playback surface needs its own Expo keep-awake tag; shared tags are not reference-counted.
 - [VLC Android release compatibility](vlc-android-release-compat.md) — Expo 57 needs API 26, a local native-library merge plugin, and a pnpm patch for the current VLC module to build successfully.
-- [Fire TV APK packaging](fire-tv-apk-packaging.md) — publish one universal StreamVault.apk containing both physical ARM targets for Fire TV and mobile.
+- [Fire TV APK packaging](fire-tv-apk-packaging.md) — publish compact ARM split APKs; StreamVault.apk remains the Fire TV-compatible stable download.
 - [GitHub Actions release dispatch](github-actions-release-dispatch.md) — quote the workflow `on` key and retain the repository-dispatch fallback when GitHub’s manual trigger registry is stale.

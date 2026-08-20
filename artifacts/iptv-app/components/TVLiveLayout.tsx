@@ -23,6 +23,7 @@ import React, {
 import { useFocusEffect } from 'expo-router';
 import {
   ActivityIndicator,
+  Animated,
   findNodeHandle,
   FlatList,
   Image,
@@ -32,6 +33,8 @@ import {
   Text,
   View,
   type ListRenderItem,
+  type StyleProp,
+  type ViewStyle,
 } from 'react-native';
 import { type VideoPlayer } from 'expo-video';
 import { FocusablePressable } from '@/components/FocusablePressable';
@@ -87,8 +90,12 @@ export interface TVLiveLayoutProps {
   videoKey: number;
   streamUrl: string;
   vlcReloadKey?: number;
-  /** False while fullscreen playback owns the Android VLC decoder. */
+  /** True while the persistent mini-player owns live playback. */
   isPlaybackActive: boolean;
+  /** Animated transform used by Android's single VLC surface. */
+  nativeSurfaceTransform?: StyleProp<ViewStyle>;
+  /** Lets the persistent Android VLC surface escape the mini-player bounds. */
+  nativeSurfaceFullscreen?: boolean;
   isBuffering: boolean;
   hasError: boolean;
   onVlcPlaying?: () => void;
@@ -167,6 +174,8 @@ export function TVLiveLayout({
   streamUrl,
   vlcReloadKey,
   isPlaybackActive,
+  nativeSurfaceTransform,
+  nativeSurfaceFullscreen = false,
   isBuffering,
   hasError,
   onVlcPlaying,
@@ -1206,7 +1215,10 @@ export function TVLiveLayout({
               accessibilityRole="button"
               accessibilityLabel="Watch fullscreen — press OK"
               focusedStyle={styles.videoFocused}
-              style={styles.videoWrap}
+              style={[
+                styles.videoWrap,
+                nativeSurfaceFullscreen && styles.nativeSurfaceFullscreen,
+              ]}
               nextFocusLeft={playingChHandle ?? leftReturnProxyHandle ?? undefined}
               onFocus={() => {
                 previewPanelReturnPendingRef.current = true;
@@ -1220,16 +1232,24 @@ export function TVLiveLayout({
               onPress={onWatchFullscreen}
             >
               {isPlaybackActive && !!streamUrl && (
-                <NativeStreamPlayer
-                  source={streamUrl}
-                  player={player}
-                  style={StyleSheet.absoluteFill}
-                  resizeMode="contain"
-                  reloadKey={`${videoKey}:${vlcReloadKey ?? 0}`}
-                  onPlaying={onVlcPlaying}
-                  onBuffering={onVlcBuffering}
-                  onError={onVlcError}
-                />
+                <Animated.View
+                  pointerEvents="none"
+                  style={[
+                    StyleSheet.absoluteFill,
+                    Platform.OS === 'android' && nativeSurfaceTransform,
+                  ]}
+                >
+                  <NativeStreamPlayer
+                    source={streamUrl}
+                    player={player}
+                    style={StyleSheet.absoluteFill}
+                    resizeMode="contain"
+                    reloadKey={Platform.OS === 'android' ? vlcReloadKey : `${videoKey}:${vlcReloadKey ?? 0}`}
+                    onPlaying={onVlcPlaying}
+                    onBuffering={onVlcBuffering}
+                    onError={onVlcError}
+                  />
+                </Animated.View>
               )}
 
               {/* Surface reattachment can briefly report buffering when moving
@@ -1565,6 +1585,11 @@ const styles = StyleSheet.create({
 
   videoFocused: {
     borderColor: FOCUS_BORDER,
+  },
+  nativeSurfaceFullscreen: {
+    overflow: 'visible',
+    zIndex: 100,
+    elevation: 100,
   },
 
   videoOverlay: {

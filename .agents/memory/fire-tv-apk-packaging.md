@@ -1,10 +1,10 @@
 ---
 name: Fire TV APK packaging
-description: One-file universal Android APK release decision for StreamVault.
+description: Compact Android ABI split release policy for Fire TV and mobile.
 ---
 
-Android release builds must publish one universal `StreamVault.apk` containing both physical ARM targets (`armeabi-v7a` and `arm64-v8a`) for Fire TV and Android mobile devices. Never package emulator (`x86` / `x86_64`) libraries or publish separate device-download assets.
+Android release builds must publish compact ABI split APKs. `StreamVault.apk` and `StreamVault-armeabi-v7a.apk` are the ARM32 Fire TV-compatible downloads; `StreamVault-arm64-v8a.apk` is the compact modern-phone download. Never package emulator (`x86` / `x86_64`) libraries.
 
-**Why:** The creator has confirmed that a single APK is the expected installation experience and has previously installed it successfully on both Firestick and mobile. Multiple download choices caused an incompatible ARM32 package to be selected on mobile and made the release unnecessarily confusing.
+**Why:** A universal VLC APK grew from 89 MB to 152 MB when both ARM libraries were bundled and would not install on the Firestick. The previously working compact ARM32 APK remains compatible with Fire TV and compatible ARM mobile devices; a dedicated ARM64 file avoids forcing phones to download both libraries.
 
-**How to apply:** Restrict React Native architectures to physical ARM targets without enabling ABI splits. Stage the resulting `app-release.apk` as `StreamVault.apk` and publish only that asset. Keep the stable name for the site and in-app updater; legacy asset-selection fallbacks may remain for older releases. Set Android `versionCode` from the monotonically increasing CI build number so package updates are accepted.
+**How to apply:** Restrict React Native architectures to physical ARM targets and enable ABI splits without a universal APK. Stage the ARM32 release as `StreamVault.apk` plus the explicit ARM32 name, and stage the ARM64 release separately. Keep `StreamVault.apk` as the stable website and Fire TV updater link. Set Android `versionCode` from the monotonically increasing CI build number so package updates are accepted.

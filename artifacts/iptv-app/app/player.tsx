@@ -873,7 +873,24 @@ export default function PlayerScreen() {
 
   // For live TV: the shared player from context (already streaming from the
   // mini-player — reusing it means zero buffering gap on fullscreen entry).
-  const { player: sharedPlayer, activeUrlRef: liveUrlRef, triggerCollapse, notifyPlayerReady } = useLivePlayer();
+  const {
+    player: sharedPlayer,
+    activeUrlRef: liveUrlRef,
+    nativeSurfaceMode,
+    nativeSurfaceUrl,
+    setNativeSurfaceUrl,
+    transitionNativeSurface,
+    triggerCollapse,
+    notifyPlayerReady,
+  } = useLivePlayer();
+  // When Live TV already owns this Android stream, fullscreen is only a
+  // transparent controls route. Rendering another VLCPlayer here would force a
+  // second decoder to reconnect to the same channel.
+  const usesPersistentNativeSurface =
+    USES_NATIVE_VLC
+    && isLive
+    && nativeSurfaceMode === 'fullscreen'
+    && !!nativeSurfaceUrl;
 
   // Controls whether the fullscreen VideoView is mounted.  We unmount it
   // before calling triggerCollapse so that the overlay VideoView in
@@ -1223,6 +1240,11 @@ export default function PlayerScreen() {
     setActiveEpgId(entry.epgId);
     setActiveChannelNum(entry.num);
     setActiveUrl(entry.url);   // keeps cast hook in sync with the new stream
+    // Keep fullscreen on the already-mounted mini-player VLC surface while
+    // the tab receives channel:switched and replaces its source.
+    if (USES_NATIVE_VLC && nativeSurfaceMode === 'fullscreen') {
+      setNativeSurfaceUrl(entry.url);
+    }
     // Notify the Live TV tab so its mini-player title/logo stay in sync
     { const { DeviceEventEmitter } = require('react-native'); DeviceEventEmitter.emit('channel:switched', { url: entry.url, logo: entry.logo ?? '', title: entry.title }); }
     activeUrlRef.current = entry.url; // keep ref in sync so reconnect targets the right channel
@@ -1288,7 +1310,7 @@ export default function PlayerScreen() {
     if (Platform.isTV && isLive && !wrapAroundPendingRef.current) {
       setTimeout(() => requestTvFocus(tvCenterRef.current), 150);
     }
-  }, [isLive, liveUrlRef, player, setLastWatchedUrl]);
+  }, [isLive, liveUrlRef, nativeSurfaceMode, player, setLastWatchedUrl, setNativeSurfaceUrl]);
 
   const navCooldownRef = useRef(false);
   // Timestamp of the moment the OSD info bar was hidden/unmounted.  When the
@@ -1359,6 +1381,22 @@ export default function PlayerScreen() {
     const { DeviceEventEmitter: DEE } = require('react-native');
     DEE.emit('live:setPlayingChannel', returnChannel);
 
+    // Android/Fire TV keeps the original mini-player VLC view alive. Shrink
+    // that same native surface before removing this transparent controls route;
+    // do not unmount or recreate a decoder for a normal BACK handoff.
+    if (usesPersistentNativeSurface) {
+      const returnToLive = () => {
+        if (params.groupTitle && (params.fromHome === 'true' || !params.channelsJson)) {
+          StorageService.setPrefLiveCat(params.groupTitle!).catch(() => {});
+          router.navigate('/');
+        } else {
+          router.back();
+        }
+      };
+      transitionNativeSurface('mini', returnToLive);
+      return;
+    }
+
     // If launched from the Home screen (groupTitle present, and either fromHome
     // is explicitly set or no channelsJson was supplied), collapse to the
     // mini-player in the Live TV tab, pre-selecting the channel's category so
@@ -1380,6 +1418,7 @@ export default function PlayerScreen() {
     triggerCollapse(() => router.back());
   }, [params.stopOnBack, params.groupTitle, params.channelsJson, params.fromHome,
       sharedPlayer, triggerCollapse, router, controlsOpacity, infoOpacity,
+      transitionNativeSurface, usesPersistentNativeSurface,
       // Current channel state — stale params otherwise give the wrong channel on back
       channelList, channelIdx, activeTitle, activeLogo, activeEpgId, liveUrlRef]);
 
@@ -2290,7 +2329,7 @@ export default function PlayerScreen() {
   }, [isLive, isWeb, progress, tvScrubProgress]);
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, usesPersistentNativeSurface && styles.nativeSurfaceControls]}>
       <StatusBar hidden />
 
       {/* Video layer */}
@@ -2379,7 +2418,7 @@ export default function PlayerScreen() {
             </View>
           )}
         </View>
-      ) : videoMounted ? (
+      ) : videoMounted && !usesPersistentNativeSurface ? (
         <NativeStreamPlayer
           source={activeUrl}
           player={player}
@@ -3346,6 +3385,7 @@ export default function PlayerScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000' },
+  nativeSurfaceControls: { backgroundColor: 'transparent' },
 
   // ── TV / Fire TV VOD scrubber ────────────────────────────────────────────
   // Invisible bounce targets sit to the left/right of the anchor.

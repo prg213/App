@@ -29,6 +29,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  useWindowDimensions,
 } from 'react-native';
 import {
   scheduleReminderNotification,
@@ -278,6 +279,7 @@ export default function LiveTVScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const { credentials, lastWatchedUrl, deviceMac } = useAppContext();
   const { blockedChannels, blockedCategoryIds, setBlockedChannelIds, toggleBlockedCategory, pruneBlockedCategories, pruneBlockedChannelIds } = useParentalContext();
   const isWeb = Platform.OS === 'web';
@@ -391,7 +393,100 @@ export default function LiveTVScreen() {
   }, [credentials]);
 
   // ── Video player (shared from LivePlayerContext — persists across navigation) ──
-  const { player, activeUrlRef: liveUrlRef, miniPlayerRef, isCollapsingRef, collapseRestorePendingRef, pendingCollapseRemountRef, onCollapseCompleteRef, triggerExpand, triggerExpandFromRef } = useLivePlayer();
+  const {
+    player,
+    activeUrlRef: liveUrlRef,
+    miniPlayerRef,
+    nativeSurfaceMode,
+    nativeSurfaceUrl,
+    setNativeSurfaceUrl,
+    setNativeSurfaceTransitionHandler,
+    transitionNativeSurface,
+    isCollapsingRef,
+    collapseRestorePendingRef,
+    pendingCollapseRemountRef,
+    onCollapseCompleteRef,
+    triggerExpand,
+    triggerExpandFromRef,
+  } = useLivePlayer();
+
+  // Android keeps the exact same VLC view mounted and transforms that view
+  // between its mini-player bounds and the full window. Recreating VLC here
+  // would reconnect the IPTV stream on every expand/collapse.
+  const nativeTranslateX = useRef(new Animated.Value(0)).current;
+  const nativeTranslateY = useRef(new Animated.Value(0)).current;
+  const nativeScaleX = useRef(new Animated.Value(1)).current;
+  const nativeScaleY = useRef(new Animated.Value(1)).current;
+  const nativeSurfaceTransform = {
+    transform: [
+      { translateX: nativeTranslateX },
+      { translateY: nativeTranslateY },
+      { scaleX: nativeScaleX },
+      { scaleY: nativeScaleY },
+    ],
+  };
+
+  const runNativeSurfaceTransition = useCallback((mode: 'mini' | 'fullscreen' | 'hidden', onComplete: () => void) => {
+    if (mode === 'hidden') {
+      nativeTranslateX.setValue(0);
+      nativeTranslateY.setValue(0);
+      nativeScaleX.setValue(1);
+      nativeScaleY.setValue(1);
+      onComplete();
+      return;
+    }
+
+    const animateToMini = mode === 'mini';
+    const finish = () => onComplete();
+    if (animateToMini) {
+      Animated.parallel([
+        Animated.timing(nativeTranslateX, { toValue: 0, duration: 220, useNativeDriver: true }),
+        Animated.timing(nativeTranslateY, { toValue: 0, duration: 220, useNativeDriver: true }),
+        Animated.timing(nativeScaleX, { toValue: 1, duration: 220, useNativeDriver: true }),
+        Animated.timing(nativeScaleY, { toValue: 1, duration: 220, useNativeDriver: true }),
+      ]).start(finish);
+      return;
+    }
+
+    const node = miniPlayerRef.current as any;
+    if (!node) {
+      finish();
+      return;
+    }
+    node.measureInWindow((x: number, y: number, width: number, height: number) => {
+      if (!width || !height) {
+        finish();
+        return;
+      }
+      const scaleX = screenWidth / width;
+      const scaleY = screenHeight / height;
+      Animated.parallel([
+        Animated.timing(nativeTranslateX, {
+          toValue: -x + (screenWidth - width) / 2,
+          duration: 220,
+          useNativeDriver: true,
+        }),
+        Animated.timing(nativeTranslateY, {
+          toValue: -y + (screenHeight - height) / 2,
+          duration: 220,
+          useNativeDriver: true,
+        }),
+        Animated.timing(nativeScaleX, { toValue: scaleX, duration: 220, useNativeDriver: true }),
+        Animated.timing(nativeScaleY, { toValue: scaleY, duration: 220, useNativeDriver: true }),
+      ]).start(finish);
+    });
+  }, [miniPlayerRef, nativeScaleX, nativeScaleY, nativeTranslateX, nativeTranslateY, screenHeight, screenWidth]);
+
+  useEffect(() => {
+    if (!USES_NATIVE_VLC) return;
+    setNativeSurfaceTransitionHandler(runNativeSurfaceTransition);
+    return () => setNativeSurfaceTransitionHandler(null);
+  }, [runNativeSurfaceTransition, setNativeSurfaceTransitionHandler]);
+
+  useEffect(() => {
+    if (!USES_NATIVE_VLC) return;
+    setNativeSurfaceUrl(playingChannel?.streamUrl ?? selectedChannel?.streamUrl ?? '');
+  }, [playingChannel?.streamUrl, selectedChannel?.streamUrl, setNativeSurfaceUrl]);
 
   // Animated overlay that snaps to opaque synchronously (no React reconciler
   // roundtrip) before player.replace() is called, preventing the black flash
@@ -491,7 +586,9 @@ export default function LiveTVScreen() {
           StorageService.setPrefLiveCat(ch.groupTitle).catch(() => {});
         }
         requestAnimationFrame(() => {
-          setVideoKey((k) => k + 1);
+          // The Android VLC view is still mounted; remounting it here would
+          // discard the decoder we just handed back from fullscreen.
+          if (!USES_NATIVE_VLC) setVideoKey((k) => k + 1);
           if (Platform.isTV) {
             setTimeout(() => {
               // BACK from fullscreen must land on the channel that is actually
@@ -510,9 +607,9 @@ export default function LiveTVScreen() {
       // ── Normal collapse path ────────────────────────────────────────────
       // playingChannel was already set; mini-player was visible the whole
       // time.  Use the existing fast/slow timing logic for videoKey.
-      if (pendingCollapseRemountRef.current) {
+      if (!USES_NATIVE_VLC && pendingCollapseRemountRef.current) {
         onCollapseCompleteRef.current = () => setVideoKey((k) => k + 1);
-      } else {
+      } else if (!USES_NATIVE_VLC) {
         setVideoKey((k) => k + 1);
       }
       // TV: restore D-pad focus to the mini-player box so the remote cursor
@@ -552,9 +649,15 @@ export default function LiveTVScreen() {
           }).start();
         }
         // Re-bind the shared player to the returning mini-player surface.
-        requestAnimationFrame(() => setVideoKey((key) => key + 1));
+        if (!USES_NATIVE_VLC) {
+          requestAnimationFrame(() => setVideoKey((key) => key + 1));
+        }
         return;
       }
+    if (USES_NATIVE_VLC) {
+      transitionNativeSurface('mini');
+      return;
+    }
     // Normal focus return (tab switch, etc.) — show flash overlay to cover the
     // single-frame black while the VideoView remounts and re-binds the surface.
     flashOverlayOpacity.setValue(1);
@@ -820,7 +923,9 @@ export default function LiveTVScreen() {
         // This runs before the fullscreen route renders its VLC surface.
         // Unmounting the mini renderer here prevents two independent VLC
         // decoders from opening the same IPTV URL during route transitions.
-        setIsLivePreviewActive(false);
+        // Android keeps its one VLC view mounted while the fullscreen route is
+        // open. The route renders a transparent controls layer above it.
+        if (!USES_NATIVE_VLC) setIsLivePreviewActive(false);
         if (goingToPlayerRef.current) {
           goingToPlayerRef.current = false;
           // tabBlurredAtRef is intentionally NOT set here; liveReloadNeededRef
@@ -829,6 +934,10 @@ export default function LiveTVScreen() {
         }
         // Record when the tab was blurred so we can decide on return whether
         // the preview is stale enough to warrant a live-edge reload.
+        if (USES_NATIVE_VLC) {
+          transitionNativeSurface('hidden');
+          setIsLivePreviewActive(false);
+        }
         tabBlurredAtRef.current = Date.now();
         if (!isWeb && !USES_NATIVE_VLC && player) {
           try { player.pause(); } catch {}
@@ -1301,9 +1410,14 @@ export default function LiveTVScreen() {
       },
     });
 
-    // Animate the mini-player expanding to fullscreen, then navigate.
-    triggerExpand(navigate);
-  }, [selectedChannel, channels, player, router, triggerExpand]);
+    // Android/Fire TV keeps the mini-player's VLC view mounted and grows that
+    // exact native surface before showing the fullscreen controls route.
+    if (USES_NATIVE_VLC) {
+      transitionNativeSurface('fullscreen', navigate);
+    } else {
+      triggerExpand(navigate);
+    }
+  }, [selectedChannel, channels, player, router, transitionNativeSurface, triggerExpand]);
 
   /** Navigate directly to the fullscreen player from a recently-watched card.
    *  Behaves identically to handleWatch (TV menu): back collapses to mini-player,
@@ -1351,12 +1465,16 @@ export default function LiveTVScreen() {
 
     // Animate from the tapped card's position if a ref was provided,
     // otherwise fall back to the mini-player expand (or immediate navigation).
-    if (cardRef) {
+    if (USES_NATIVE_VLC) {
+      // The Live TV mini-player becomes visible on this render. Give it one
+      // layout pass before measuring and expanding its persistent VLC surface.
+      requestAnimationFrame(() => transitionNativeSurface('fullscreen', navigate));
+    } else if (cardRef) {
       triggerExpandFromRef(cardRef, navigate);
     } else {
       triggerExpand(navigate);
     }
-  }, [channels, router, triggerExpandFromRef, triggerExpand]);
+  }, [channels, router, transitionNativeSurface, triggerExpandFromRef, triggerExpand]);
 
   const renderCat = useCallback(({ item }: { item: Category }) => {
     const isBlockable = item.id !== FAVS_CAT_ID && item.id !== ALL_CAT_ID;
@@ -1480,7 +1598,7 @@ export default function LiveTVScreen() {
       groupTitle: ch.groupTitle,
     }));
     const idx = chList.findIndex((c) => c.channelId === selectedChannel.id);
-    router.push({
+    const navigate = () => router.push({
       pathname: '/player',
       params: {
         url: selectedChannel.streamUrl,
@@ -1496,7 +1614,12 @@ export default function LiveTVScreen() {
         channelIndex: String(idx),
       },
     });
-  }, [selectedChannel, channels, router]);
+    if (USES_NATIVE_VLC) {
+      transitionNativeSurface('fullscreen', navigate);
+    } else {
+      navigate();
+    }
+  }, [selectedChannel, channels, router, transitionNativeSurface]);
 
   // ── TV: play a past mini-guide programme directly (skip CatchupSheet) ─────
   // Converts an EpgProgram (which has JS Date fields) into the same catch-up
@@ -1545,7 +1668,14 @@ export default function LiveTVScreen() {
     // while Catch-up temporarily owns the shared player.
     catchupPreviewReturnRef.current = channel;
     goingToPlayerRef.current = true;
-  }, []);
+    // Catch-up deliberately replaces the live source. Unlike a live
+    // mini/fullscreen handoff, it must unmount the shared VLC view so live
+    // audio cannot continue underneath the catch-up player.
+    if (USES_NATIVE_VLC) {
+      setIsLivePreviewActive(false);
+      transitionNativeSurface('hidden');
+    }
+  }, [transitionNativeSurface]);
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -1574,6 +1704,8 @@ export default function LiveTVScreen() {
           streamUrl={selectedChannel?.streamUrl ?? ''}
           vlcReloadKey={vlcReloadKey}
           isPlaybackActive={isLivePreviewActive}
+          nativeSurfaceTransform={nativeSurfaceTransform}
+          nativeSurfaceFullscreen={nativeSurfaceMode === 'fullscreen'}
           isBuffering={isBuffering}
           hasError={hasError}
           onVlcPlaying={() => {
@@ -1820,32 +1952,43 @@ export default function LiveTVScreen() {
             style={(focused) => [
               styles.videoWrap,
               !playingChannel && { display: 'none' },
+              USES_NATIVE_VLC && nativeSurfaceMode === 'fullscreen' && styles.nativeSurfaceFullscreen,
               focused && styles.videoWrapFocused,
             ]}
           >
             {isLivePreviewActive && (
-              <NativeStreamPlayer
-                source={playingChannel?.streamUrl ?? selectedChannel?.streamUrl ?? ''}
-                player={player}
-                style={StyleSheet.absoluteFill}
-                resizeMode="contain"
-                reloadKey={`${videoKey}:${vlcReloadKey}`}
-                onPlaying={() => {
-                  setIsBuffering(false);
-                  setHasError(false);
-                  Animated.timing(flashOverlayOpacity, {
-                    toValue: 0, duration: 200, useNativeDriver: true,
-                  }).start();
-                }}
-                onBuffering={() => setIsBuffering(true)}
-                onError={() => {
-                  setIsBuffering(false);
-                  setHasError(true);
-                  Animated.timing(flashOverlayOpacity, {
-                    toValue: 0, duration: 150, useNativeDriver: true,
-                  }).start();
-                }}
-              />
+              <Animated.View
+                pointerEvents="none"
+                style={[
+                  StyleSheet.absoluteFill,
+                  USES_NATIVE_VLC && nativeSurfaceTransform,
+                ]}
+              >
+                <NativeStreamPlayer
+                  source={playingChannel?.streamUrl ?? selectedChannel?.streamUrl ?? ''}
+                  player={player}
+                  style={StyleSheet.absoluteFill}
+                  resizeMode="contain"
+                  // videoKey is an Expo VideoView surface-rebind workaround.
+                  // Including it for VLC would recreate the decoder on BACK.
+                  reloadKey={USES_NATIVE_VLC ? vlcReloadKey : `${videoKey}:${vlcReloadKey}`}
+                  onPlaying={() => {
+                    setIsBuffering(false);
+                    setHasError(false);
+                    Animated.timing(flashOverlayOpacity, {
+                      toValue: 0, duration: 200, useNativeDriver: true,
+                    }).start();
+                  }}
+                  onBuffering={() => setIsBuffering(true)}
+                  onError={() => {
+                    setIsBuffering(false);
+                    setHasError(true);
+                    Animated.timing(flashOverlayOpacity, {
+                      toValue: 0, duration: 150, useNativeDriver: true,
+                    }).start();
+                  }}
+                />
+              </Animated.View>
             )}
             {/* Flash-prevention overlay — always rendered so setValue(1) takes
                 effect in the same native frame as player.replace(), before
@@ -2247,6 +2390,11 @@ const styles = StyleSheet.create({
   },
   videoWrapFocused: {
     borderColor: '#00E5FF',
+  },
+  nativeSurfaceFullscreen: {
+    overflow: 'visible',
+    zIndex: 100,
+    elevation: 100,
   },
   expandHint: {
     position: 'absolute',

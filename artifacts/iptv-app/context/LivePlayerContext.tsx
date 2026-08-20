@@ -29,14 +29,26 @@
  * Fullscreen state: scaleX=1, scaleY=1, translateX=0, translateY=0.
  */
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { Animated, Easing, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { Animated, Easing, Platform, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import type { VideoPlayer } from 'expo-video';
+
+export type NativeSurfaceMode = 'mini' | 'fullscreen' | 'hidden';
+type NativeSurfaceTransition = (mode: NativeSurfaceMode, onComplete: () => void) => void;
 
 interface LivePlayerContextValue {
   player: VideoPlayer;
   /** Always points to the URL that is currently loaded in the shared player. */
   activeUrlRef: React.MutableRefObject<string>;
+  /**
+   * Android/Fire TV keeps its VLC renderer inside the Live TV screen.  These
+   * values coordinate that single native surface with the fullscreen route.
+   */
+  nativeSurfaceMode: NativeSurfaceMode;
+  nativeSurfaceUrl: string;
+  setNativeSurfaceUrl: (url: string) => void;
+  setNativeSurfaceTransitionHandler: (handler: NativeSurfaceTransition | null) => void;
+  transitionNativeSurface: (mode: NativeSurfaceMode, onComplete?: () => void) => void;
   /** Attach to the mini-player container View for position measurement. */
   miniPlayerRef: React.RefObject<View | null>;
   /**
@@ -106,6 +118,37 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
   // Mutable ref — not state — so reads in effects and callbacks are always current
   // without causing re-renders.
   const activeUrlRef = useRef('');
+  // libVLC cannot transfer a decoder between two mounted React views. Android
+  // therefore keeps the Live TV view alive and animates that one surface while
+  // the fullscreen route supplies only its controls.
+  const [nativeSurfaceMode, setNativeSurfaceMode] = useState<NativeSurfaceMode>('mini');
+  const [nativeSurfaceUrl, setNativeSurfaceUrl] = useState('');
+  const nativeSurfaceTransitionRef = useRef<NativeSurfaceTransition | null>(null);
+
+  const setNativeSurfaceTransitionHandler = useCallback(
+    (handler: NativeSurfaceTransition | null) => {
+      nativeSurfaceTransitionRef.current = handler;
+    },
+    [],
+  );
+
+  const transitionNativeSurface = useCallback(
+    (mode: NativeSurfaceMode, onComplete: () => void = () => {}) => {
+      setNativeSurfaceMode(mode);
+      if (Platform.OS !== 'android') {
+        onComplete();
+        return;
+      }
+      // Let the mini-player apply its overflow/z-index state before asking it
+      // to animate the already-mounted native view.
+      requestAnimationFrame(() => {
+        const transition = nativeSurfaceTransitionRef.current;
+        if (transition) transition(mode, onComplete);
+        else onComplete();
+      });
+    },
+    [],
+  );
 
   // Ref that index.tsx attaches to its mini-player container View.
   const miniPlayerRef = useRef<View>(null);
@@ -602,7 +645,7 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
 
   return (
     <LivePlayerContext.Provider
-      value={{ player, activeUrlRef, miniPlayerRef, isCollapsingRef, collapseRestorePendingRef, pendingCollapseRemountRef, onCollapseCompleteRef, notifyPlayerReady, triggerExpand, triggerExpandFromRef, triggerCollapse }}
+      value={{ player, activeUrlRef, nativeSurfaceMode, nativeSurfaceUrl, setNativeSurfaceUrl, setNativeSurfaceTransitionHandler, transitionNativeSurface, miniPlayerRef, isCollapsingRef, collapseRestorePendingRef, pendingCollapseRemountRef, onCollapseCompleteRef, notifyPlayerReady, triggerExpand, triggerExpandFromRef, triggerCollapse }}
     >
       {children}
       {/* Expanding/collapsing VideoView overlay — rendered on top of everything.

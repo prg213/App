@@ -152,7 +152,20 @@ function RootLayoutNav() {
       <Stack screenOptions={{ headerShown: false, animation: 'fade' }}>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="activation" options={{ headerShown: false, gestureEnabled: false }} />
-        <Stack.Screen name="player" options={{ headerShown: false, presentation: 'fullScreenModal', animation: 'none' }} />
+        {/*
+          Android live fullscreen can reuse the already-mounted VLC mini-player
+          underneath this route. A transparent modal lets that native surface
+          grow to the window while this screen supplies only the controls.
+        */}
+        <Stack.Screen
+          name="player"
+          options={{
+            headerShown: false,
+            presentation: Platform.OS === 'android' ? 'transparentModal' : 'fullScreenModal',
+            animation: 'none',
+            contentStyle: { backgroundColor: 'transparent' },
+          }}
+        />
         <Stack.Screen name="movie/[id]" options={{ headerShown: false, animation: 'slide_from_right', gestureEnabled: true }} />
         <Stack.Screen name="series/[id]" options={{ headerShown: false, animation: 'slide_from_right', gestureEnabled: true }} />
       </Stack>

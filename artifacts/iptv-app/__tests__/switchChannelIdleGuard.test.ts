@@ -33,9 +33,10 @@ function getSwitchChannelBody(): string {
   const start = player.indexOf(SC_ANCHOR);
   if (start === -1) throw new Error('switchChannel anchor not found in player.tsx');
 
-  // The callback deps array closes the useCallback — look for the
-  // `}, [isLive, liveUrlRef, player, setLastWatchedUrl]);` tail.
-  const closeMarker = '}, [isLive, liveUrlRef, player, setLastWatchedUrl]);';
+  // Use the next declaration as the boundary. The dependency list is an
+  // implementation detail and may legitimately grow when a channel switch
+  // needs to keep another playback surface in sync.
+  const closeMarker = '  const navCooldownRef = useRef(false);';
   const end = player.indexOf(closeMarker, start);
   if (end === -1) throw new Error('switchChannel closing deps marker not found in player.tsx');
 
