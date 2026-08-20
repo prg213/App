@@ -7,9 +7,8 @@ const {
 const PLUGIN_NAME = 'withStreamVaultReleaseAbis';
 
 /**
- * Produce one universal APK containing the two physical ARM architectures.
- * This intentionally trades APK size for a single download that works on both
- * 32-bit Fire TV userspaces and arm64 Android phones.
+ * Produce compact APKs for the two physical ARM architectures. A universal
+ * VLC APK is too large for some Fire TV devices to stage during installation.
  */
 function withReleaseAbis(config) {
   config = withGradleProperties(config, (config) => {
@@ -34,9 +33,8 @@ function withReleaseAbis(config) {
 // @generated begin ${PLUGIN_NAME} - do not modify
 android {
     defaultConfig {
-        // A universal APK otherwise also pulls the x86/x86_64 emulator
-        // libraries from React Native and VLC. Fire TV and physical Android
-        // phones are ARM devices, so retain only the two required ARM ABIs.
+        // Fire TV and physical Android phones are ARM devices, so retain only
+        // the two required ARM ABIs and never package emulator libraries.
         ndk {
             abiFilters "armeabi-v7a", "arm64-v8a"
         }
@@ -46,7 +44,7 @@ android {
             enable true
             reset()
             include "armeabi-v7a", "arm64-v8a"
-            universalApk true
+            universalApk false
         }
     }
 }
@@ -57,4 +55,4 @@ android {
   });
 }
 
-module.exports = createRunOncePlugin(withReleaseAbis, PLUGIN_NAME, '1.1.0');
+module.exports = createRunOncePlugin(withReleaseAbis, PLUGIN_NAME, '1.2.0');

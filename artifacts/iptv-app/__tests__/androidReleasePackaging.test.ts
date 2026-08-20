@@ -24,27 +24,29 @@ describe('Android release packaging', () => {
     expect(appConfig).toContain('versionCode: androidVersionCode()');
   });
 
-  it('builds one universal ARM APK for all supported Android devices', () => {
+  it('builds compact ARM split APKs for Fire TV and mobile devices', () => {
     expect(abiPlugin).toContain('include "armeabi-v7a", "arm64-v8a"');
-    expect(abiPlugin).toContain('universalApk true');
-    expect(workflow).toContain('find "$OUTPUT_DIR" -name \'*universal*release.apk\'');
-    expect(workflow).toContain('cp "$UNIVERSAL_APK" StreamVault.apk');
-    expect(workflow).not.toContain('StreamVault-armeabi-v7a.apk');
-    expect(workflow).not.toContain('StreamVault-arm64-v8a.apk');
+    expect(abiPlugin).toContain('universalApk false');
+    expect(workflow).toContain('find "$OUTPUT_DIR" -name \'*armeabi-v7a*release.apk\'');
+    expect(workflow).toContain('find "$OUTPUT_DIR" -name \'*arm64-v8a*release.apk\'');
+    expect(workflow).toContain('cp "$ARM32_APK" StreamVault.apk');
+    expect(workflow).toContain('cp "$ARM32_APK" StreamVault-armeabi-v7a.apk');
+    expect(workflow).toContain('cp "$ARM64_APK" StreamVault-arm64-v8a.apk');
   });
 
-  it('excludes emulator libraries from the universal release APK', () => {
+  it('excludes emulator libraries from compact release APKs', () => {
     expect(abiPlugin).toContain('withGradleProperties');
     expect(abiPlugin).toContain("key: 'reactNativeArchitectures'");
     expect(abiPlugin).toContain("value: 'armeabi-v7a,arm64-v8a'");
     expect(abiPlugin).toContain('abiFilters "armeabi-v7a", "arm64-v8a"');
   });
 
-  it('uses the universal APK as the single in-app update asset', () => {
+  it('uses the compact Fire TV APK and publishes a compact arm64 mobile asset', () => {
     expect(updateService).toContain("export const FIRE_TV_APK_NAME = 'StreamVault.apk'");
     expect(updateService).toContain(": [FIRE_TV_APK_NAME, ARM32_APK_NAME]");
     expect(updateService).toContain("Platform.OS === 'android' && !Platform.isTV");
-    expect(workflow).toContain('**All Android and Fire TV devices:** Download StreamVault.apk.');
+    expect(workflow).toContain('**Fire TV and older Android:** Download StreamVault.apk.');
+    expect(workflow).toContain('**Modern 64-bit Android:** StreamVault-arm64-v8a.apk is also available.');
   });
 
   it('never sends a 32-bit Fire TV updater to an arm64-only release asset', () => {
