@@ -2821,47 +2821,55 @@ export default function PlayerScreen() {
                 </Text>
               </>
             )}
-            {/* TV: Channels + Audio + CC chips inside the OSD so they're D-pad reachable */}
-            {Platform.isTV && (
-              <>
-                <FocusablePressable
-                  style={styles.infoOsdChip}
-                  focusedStyle={styles.infoOsdChipFocused}
-                  onFocus={() => { if (!infoBarUserInvokedRef.current) showInfoBarRef.current?.(); }}
-                  onPress={() => {
-                    showChannelMenuRef.current = true; // before OSD dismiss — see onMenu
-                    if (showInfoRef.current) dismissInfoBar();
-                    setShowChannelMenu(true);
-                  }}
-                >
-                  <Text style={styles.infoOsdChipText}>≡ Channels</Text>
-                </FocusablePressable>
-                <FocusablePressable
-                  style={styles.infoOsdChip}
-                  focusedStyle={styles.infoOsdChipFocused}
-                  onFocus={() => { if (!infoBarUserInvokedRef.current) showInfoBarRef.current?.(); }}
-                  onPress={() => setShowAudioPicker(true)}
-                >
-                  <Text style={styles.infoOsdChipText}>
-                    🎵 {activeAudioTrack?.label || activeAudioTrack?.language || 'Audio'}
-                  </Text>
-                </FocusablePressable>
-                <FocusablePressable
-                  style={[styles.infoOsdChip, activeSubtitleTrack !== null && styles.infoOsdChipActive]}
-                  focusedStyle={styles.infoOsdChipFocused}
-                  onFocus={() => { if (!infoBarUserInvokedRef.current) showInfoBarRef.current?.(); }}
-                  onPress={() => setShowSubPicker(true)}
-                >
-                  <Text style={[styles.infoOsdChipText, activeSubtitleTrack !== null && styles.infoOsdChipTextActive]}>
-                    CC {activeSubtitleTrack ? `· ${(activeSubtitleTrack.language || '').toUpperCase()}` : ''}
-                  </Text>
-                </FocusablePressable>
-              </>
+            {!Platform.isTV && (
+              <FocusablePressable onPress={handleBackLive} style={styles.backBtnSmall}>
+                <Text style={styles.backIcon}>←</Text>
+              </FocusablePressable>
             )}
-            <FocusablePressable onPress={handleBackLive} style={styles.backBtnSmall}>
-              <Text style={styles.backIcon}>←</Text>
-            </FocusablePressable>
           </View>
+
+          {/* TV controls get their own row so long channel/program/audio
+              labels cannot push the menu or Back button off-screen. */}
+          {Platform.isTV && (
+            <View style={styles.infoTvControls}>
+              {/* Keep the chips inside the OSD so they're D-pad reachable. */}
+              <FocusablePressable
+                style={styles.infoOsdChip}
+                focusedStyle={styles.infoOsdChipFocused}
+                onFocus={() => { if (!infoBarUserInvokedRef.current) showInfoBarRef.current?.(); }}
+                onPress={() => {
+                  showChannelMenuRef.current = true; // before OSD dismiss — see onMenu
+                  if (showInfoRef.current) dismissInfoBar();
+                  setShowChannelMenu(true);
+                }}
+              >
+                <Text style={styles.infoOsdChipText}>≡ Channels</Text>
+              </FocusablePressable>
+              <FocusablePressable
+                style={styles.infoOsdChip}
+                focusedStyle={styles.infoOsdChipFocused}
+                onFocus={() => { if (!infoBarUserInvokedRef.current) showInfoBarRef.current?.(); }}
+                onPress={() => setShowAudioPicker(true)}
+              >
+                <Text style={styles.infoOsdChipText} numberOfLines={1} ellipsizeMode="tail">
+                  🎵 {activeAudioTrack?.label || activeAudioTrack?.language || 'Audio'}
+                </Text>
+              </FocusablePressable>
+              <FocusablePressable
+                style={[styles.infoOsdChip, activeSubtitleTrack !== null && styles.infoOsdChipActive]}
+                focusedStyle={styles.infoOsdChipFocused}
+                onFocus={() => { if (!infoBarUserInvokedRef.current) showInfoBarRef.current?.(); }}
+                onPress={() => setShowSubPicker(true)}
+              >
+                <Text style={[styles.infoOsdChipText, activeSubtitleTrack !== null && styles.infoOsdChipTextActive]}>
+                  CC {activeSubtitleTrack ? `· ${(activeSubtitleTrack.language || '').toUpperCase()}` : ''}
+                </Text>
+              </FocusablePressable>
+              <FocusablePressable onPress={handleBackLive} style={styles.backBtnSmall}>
+                <Text style={styles.backIcon}>←</Text>
+              </FocusablePressable>
+            </View>
+          )}
 
           {/* Programme progress bar — thin bar showing how far through the current show */}
           {currentProg && (
@@ -3575,6 +3583,14 @@ const styles = StyleSheet.create({
     gap: 10,
     marginBottom: 4,
   },
+  infoTvControls: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    gap: 8,
+    paddingTop: 2,
+  },
   livePill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -3893,6 +3909,7 @@ const styles = StyleSheet.create({
   infoOsdChip: {
     paddingHorizontal: 10,
     paddingVertical: 5,
+    maxWidth: 180,
     borderRadius: 8,
     backgroundColor: 'rgba(255,255,255,0.10)',
     borderWidth: StyleSheet.hairlineWidth,
