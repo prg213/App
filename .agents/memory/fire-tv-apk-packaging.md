@@ -1,10 +1,23 @@
 ---
 name: Fire TV APK packaging
-description: Compact Android ABI split release policy for Fire TV and mobile.
+description: Safe universal Android APK release policy for Fire TV and modern phones.
 ---
 
-Android release builds must publish compact ABI split APKs. `StreamVault.apk` and `StreamVault-armeabi-v7a.apk` are the ARM32 Fire TV-compatible downloads; `StreamVault-arm64-v8a.apk` is the compact modern-phone download. Never package emulator (`x86` / `x86_64`) libraries.
+## Rule
 
-**Why:** A universal VLC APK grew from 89 MB to 152 MB when both ARM libraries were bundled and would not install on the Firestick. The previously working compact ARM32 APK remains compatible with Fire TV and compatible ARM mobile devices; a dedicated ARM64 file avoids forcing phones to download both libraries.
+`StreamVault.apk` is the primary universal download and must contain only
+`armeabi-v7a` and `arm64-v8a`. Native libraries are legacy-packaged (compressed)
+and the candidate must stay at or below 130 MiB. Split assets remain diagnostic
+fallbacks only.
 
-**How to apply:** Restrict React Native architectures to physical ARM targets and enable ABI splits without a universal APK. Stage the ARM32 release as `StreamVault.apk` plus the explicit ARM32 name, and stage the ARM64 release separately. Keep `StreamVault.apk` as the stable website and Fire TV updater link. Set Android `versionCode` from the monotonically increasing CI build number so package updates are accepted.
+**Why:** An earlier universal VLC build reached 152 MB and could not stage on the
+Firestick. Both physical ARM payloads are nevertheless required for one download
+to update Fire TV and modern phones. Compression materially reduces that payload
+without removing VLC's MP2 support.
+
+**How to apply:** Build a candidate first; CI must inspect its size, ABI contents,
+compressed JNI entries, VLC libraries, package/version, and signer continuity.
+Test that artifact on the target Firestick and modern phone (upgrade, launch, MP2
+playback), then promote that exact Actions artifact with the recorded result.
+Never rebuild between validation and public release. Keep emulator ABIs excluded
+and use the CI build number as the Android version code.
