@@ -60,16 +60,15 @@ import type { Channel, Category, EpgProgram, FavoriteChannel } from '@/types';
 import { normaliseStr } from '@/utils/normalise';
 import { requestTvFocus } from '@/lib/tvFocus';
 import { sidebarNav } from '@/lib/sidebarNav';
+import {
+  consumePendingLivePlayerReturn,
+  getPendingLivePlayerReturn,
+  setPendingLivePlayerReturn,
+} from '@/lib/livePlayerHandoff';
 
 const FAVS_CAT_ID = '__favs';
 const ALL_CAT_ID = '__all';
 const USES_NATIVE_VLC = Platform.OS === 'android';
-
-// Module-level variable — survives React state resets that happen when
-// router.navigate('/') triggers a blur→focus cycle on the Live TV tab.
-// The player writes here before collapsing; the collapse-restore useFocusEffect
-// reads it back and calls setPlayingChannel after the tab regains focus.
-let _pendingPlayingChannel: Channel | null = null;
 
 function buildCreds(c: ReturnType<typeof useAppContext>['credentials']) {
   return { host: c!.host!, username: c!.username!, password: c!.password! };
@@ -413,7 +412,7 @@ export default function LiveTVScreen() {
       // player before ever visiting the Live TV tab), we must NOT skip — fall
       // through to the collapseRestorePendingRef block to set selectedChannel.
       // For all other first-focus cases, return as before.
-      if (!_pendingPlayingChannel) return;
+      if (!getPendingLivePlayerReturn()) return;
     }
     // Returning from a fullscreen session started via recently-watched — the
     // player was paused in handleBackLive; just clear the playing channel so
@@ -444,7 +443,7 @@ export default function LiveTVScreen() {
       //   gone.  Call setVideoKey directly — it's safe to mount now.
       collapseRestorePendingRef.current = false;
 
-      if (_pendingPlayingChannel) {
+      if (getPendingLivePlayerReturn()) {
         // ── Recently-watched back path ──────────────────────────────────────
         // The channel was launched directly from the Home screen, bypassing
         // the Live TV tab entirely.  Two separate problems must be solved:
@@ -470,8 +469,8 @@ export default function LiveTVScreen() {
         //        → native layout pass runs → container has real pixel dimensions
         // Step 2 — rAF → setVideoKey mounts a fresh VideoView onto the
         //           properly-sized surface → video appears on both platforms.
-        const ch = _pendingPlayingChannel;
-        _pendingPlayingChannel = null;
+        const ch = consumePendingLivePlayerReturn();
+        if (!ch) return;
         setPlayingChannel(ch);
         setSelectedChannel(ch);
         // Switch to the channel's own category so it appears (and is
@@ -707,9 +706,9 @@ export default function LiveTVScreen() {
       // Set state immediately so the mini-player is visible before
       // triggerCollapse measures its position.
       setPlayingChannel(ch);
-      // Also write to the module-level variable so it survives any state
-      // reset that the subsequent router.navigate('/') may trigger.
-      _pendingPlayingChannel = ch;
+      // Also write to the shared handoff so it survives a direct Home → player
+      // → Live TV return where this tab did not exist when the event fired.
+      setPendingLivePlayerReturn(ch);
     });
     return () => sub.remove();
   }, []);

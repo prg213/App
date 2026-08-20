@@ -37,11 +37,12 @@ import { cancelRemindersForActiveChannel } from '@/services/notifications';
 import { getXtreamXmltvUrl, getXtreamCatchupUrls, getXtreamLiveStreams } from '@/services/xtreamApi';
 import { fetchAndParseM3U } from '@/services/m3uParser';
 import { fetchAndParseXmltv } from '@/services/epgService';
-import type { EpgProgram } from '@/types';
+import type { Channel, EpgProgram } from '@/types';
 import { Image } from 'expo-image';
 import { useCast } from '@/hooks/useCast';
 import { useTVRemote } from '@/hooks/useTVRemote';
 import { requestTvFocus } from '@/lib/tvFocus';
+import { setPendingLivePlayerReturn } from '@/lib/livePlayerHandoff';
 import CastButton from '@/components/CastButton';
 import { useBackHandler } from '@/hooks/useBackHandler';
 import { NativeStreamPlayer } from '@/components/NativeStreamPlayer';
@@ -1348,14 +1349,19 @@ export default function PlayerScreen() {
       // shows the channel the user is actually watching — which may differ
       // from the original params when they zapped channels during the session.
       const _nowId = channelList[channelIdx]?.channelId ?? params.channelId ?? '';
-      DEE.emit('live:setPlayingChannel', {
+      const returnChannel: Channel = {
         id:        _nowId,
         name:      activeTitle  ?? params.title  ?? '',
         logo:      activeLogo   ?? params.logo   ?? '',
         streamUrl: liveUrlRef.current || params.url || '',
         epgId:     activeEpgId  ?? _nowId,
         groupTitle: params.groupTitle ?? '',
-      });
+      };
+      // Set the shared handoff before emitting. If the Live TV tab has not
+      // mounted yet, it cannot hear the event, but it will consume this target
+      // as soon as router.navigate('/') brings it into focus.
+      setPendingLivePlayerReturn(returnChannel);
+      DEE.emit('live:setPlayingChannel', returnChannel);
       // Two rAFs: first lets React commit the setPlayingChannel state update;
       // second lets the native layout pass update the mini-player's rect so
       // triggerCollapse's measureInWindow gets real pixel dimensions.

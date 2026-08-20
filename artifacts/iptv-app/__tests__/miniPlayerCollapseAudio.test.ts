@@ -273,15 +273,15 @@ describe('Scenario 3 — recently-watched early-back: audio is stopped before na
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('Scenario 4 — TV / Firestick: recently-watched back path sets selectedChannel', () => {
-  it('_pendingPlayingChannel branch calls setSelectedChannel(ch) as well as setPlayingChannel(ch)', () => {
+  it('shared return-handoff branch calls setSelectedChannel(ch) as well as setPlayingChannel(ch)', () => {
     // On TV, TVLiveLayout only mounts its VideoView when selectedChannel is set.
-    // Both calls must appear inside the _pendingPlayingChannel branch so the
+    // Both calls must appear inside the return-handoff branch so the
     // VideoView exists before requestAnimationFrame fires setVideoKey.
-    const pendingIdx = index.indexOf('_pendingPlayingChannel');
+    const pendingIdx = index.indexOf('consumePendingLivePlayerReturn');
     expect(pendingIdx).toBeGreaterThan(-1);
 
-    // Find the section that consumes _pendingPlayingChannel
-    const consumeIdx = index.indexOf('_pendingPlayingChannel = null', pendingIdx);
+    // Find the section that consumes the shared return handoff.
+    const consumeIdx = index.indexOf('const ch = consumePendingLivePlayerReturn()', pendingIdx);
     expect(consumeIdx).toBeGreaterThan(-1);
 
     const branchBody = index.slice(consumeIdx, consumeIdx + 400);
@@ -289,11 +289,11 @@ describe('Scenario 4 — TV / Firestick: recently-watched back path sets selecte
     expect(branchBody).toMatch(/setSelectedChannel\s*\(\s*ch\s*\)/);
   });
 
-  it('_pendingPlayingChannel branch defers setVideoKey inside requestAnimationFrame', () => {
+  it('shared return-handoff branch defers setVideoKey inside requestAnimationFrame', () => {
     // The rAF gives the native layout a pass to measure the now-visible
     // container before the fresh VideoView is mounted.  Without it the surface
     // is zero-sized → audio plays, no video.
-    const consumeIdx = index.indexOf('_pendingPlayingChannel = null');
+    const consumeIdx = index.indexOf('const ch = consumePendingLivePlayerReturn()');
     expect(consumeIdx).toBeGreaterThan(-1);
 
     // 900 chars covers setPlayingChannel + setSelectedChannel + category logic
@@ -316,16 +316,28 @@ describe('Scenario 4 — TV / Firestick: recently-watched back path sets selecte
   });
 
   it('recently-watched collapse path also restores D-pad focus to mini-player on TV', () => {
-    // The _pendingPlayingChannel branch needs the same focus-restore so that
+    // The shared return-handoff branch needs the same focus-restore so that
     // returning from recently-watched on TV doesn't strand the cursor.
-    const consumeIdx = index.indexOf('_pendingPlayingChannel = null');
+    const consumeIdx = index.indexOf('const ch = consumePendingLivePlayerReturn()');
     expect(consumeIdx).toBeGreaterThan(-1);
 
-    // 1 100 chars covers the full _pendingPlayingChannel branch including the
+    // 1 100 chars covers the full return-handoff branch including the
     // Platform.isTV focus-restore that appears after requestAnimationFrame.
     const branchBody = index.slice(consumeIdx, consumeIdx + 1100);
     expect(branchBody).toMatch(/Platform\.isTV/);
     expect(branchBody).toMatch(/requestTvFocus\(\s*miniPlayerRef\.current/);
+  });
+
+  it('stores the return channel before emitting the legacy Live TV event', () => {
+    const player = fs.readFileSync(
+      path.join(__dirname, '../app/player.tsx'),
+      'utf8',
+    );
+    const storeIdx = player.indexOf('setPendingLivePlayerReturn(returnChannel)');
+    const emitIdx = player.indexOf("DEE.emit('live:setPlayingChannel', returnChannel)");
+
+    expect(storeIdx).toBeGreaterThan(-1);
+    expect(emitIdx).toBeGreaterThan(storeIdx);
   });
 
   it('expand ready-gate cancelled before collapse takes ownership of overlay (ctx)', () => {
