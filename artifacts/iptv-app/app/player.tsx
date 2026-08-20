@@ -2907,23 +2907,17 @@ export default function PlayerScreen() {
           OSD's 300 ms fade-out, so users saw two stacked bottom overlays. */}
 
       {/* ── TV / Fire TV D-pad zones ─────────────────────────────────────────
-          Three transparent full-screen strips. Android TV's focus engine moves
-          focus between them when the user presses D-pad left / right.
-          • Left zone  → onFocus triggers prev-channel switch
-          • Center zone → hasTVPreferredFocus; OK (select) shows the info bar
-          • Right zone → onFocus triggers next-channel switch
-          After a switch the center zone reclaims focus after the nav cooldown.
+          The center zone is the only player focus target. LEFT/RIGHT are
+          intentionally non-focusable so they cannot change channels; the
+          shared remote handler below reserves channel zapping for UP/DOWN.
           ────────────────────────────────────────────────────────────────── */}
       {Platform.isTV && isLive && !hasError && !isWeb && (
         <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
-          {/* Left third — D-pad left lands here → show prev-channel preview, then switch.
-              Always focusable (unconditional) so this zone is never in a non-focusable
-              state while it holds D-pad focus.  On Fire OS a view that becomes
-              non-focusable while focused creates a dead zone where the remote stops
-              responding.  Instead, onFocus bounces focus to center when there is no
-              previous channel to switch to. */}
+          {/* Left third — transparent layout layer only.
+              Deliberately excluded from
+              the TV focus graph so LEFT cannot zap a channel. */}
           <Pressable
-            focusable
+            focusable={false}
             style={styles.tvZoneLeft}
             onPress={showInfo ? dismissInfoBar : () => showInfoBar()}
             onBlur={() => setTvZoneFocused(null)}
@@ -3019,11 +3013,11 @@ export default function PlayerScreen() {
               }
             }}
           />
-          {/* Right third — D-pad right lands here → show next-channel preview, then switch.
-              Always focusable for the same reason as the left zone above — prevents
-              a dead zone at the last channel when this zone becomes non-focusable. */}
+          {/* Right third — transparent layout layer only.
+              Deliberately excluded from
+              the TV focus graph so RIGHT cannot zap a channel. */}
           <Pressable
-            focusable
+            focusable={false}
             style={styles.tvZoneRight}
             onPress={showInfo ? dismissInfoBar : () => showInfoBar()}
             onBlur={() => setTvZoneFocused(null)}

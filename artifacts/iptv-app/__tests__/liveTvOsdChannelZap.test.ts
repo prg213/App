@@ -31,4 +31,15 @@ describe('Live TV OSD vertical channel zapping', () => {
       /showChannelMenuRef\.current\s*\|\|\s*showAudioPickerRef\.current\s*\|\|\s*showSubPickerRef\.current/,
     );
   });
+
+  it('does not make the horizontal player zones focusable', () => {
+    const zonesStart = PLAYER.indexOf('{/* ── TV / Fire TV D-pad zones');
+    const previewStart = PLAYER.indexOf('{Platform.isTV && isLive && !hasError && !isWeb && tvPreviewChannel');
+    expect(zonesStart).toBeGreaterThan(-1);
+    expect(previewStart).toBeGreaterThan(zonesStart);
+
+    const zones = PLAYER.slice(zonesStart, previewStart);
+    expect(zones).toMatch(/focusable=\{false\}[\s\S]*style=\{styles\.tvZoneLeft\}/);
+    expect(zones).toMatch(/focusable=\{false\}[\s\S]*style=\{styles\.tvZoneRight\}/);
+  });
 });
