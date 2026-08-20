@@ -303,14 +303,16 @@ export default function HomeScreen() {
   const scrollRowToIndex = useCallback((listRef: React.RefObject<FlatList<any> | null>, index: number) => {
     if (!Platform.isTV) return;
     try {
-      listRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.35 });
+      listRef.current?.scrollToIndex({ index, animated: false, viewPosition: 0.35 });
     } catch {}
   }, []);
 
   // Synced panning: Continue Watching, Latest Movies and Latest TV Shows all
-  // glide together — focusing any card in any of those three rows scrolls all
-  // three to the same column, just like the EPG grid.  Recently Watched is
+  // move together — focusing any card in any of those three rows scrolls all
+  // three to the same column, just like the EPG grid. Recently Watched is
   // intentionally excluded (different card size / different content type).
+  // TV focus changes use an immediate scroll so three native lists cannot be
+  // caught at different points in separate animations.
   const scrollAllContentRows = useCallback((index: number) => {
     if (!Platform.isTV) return;
     [
@@ -322,7 +324,7 @@ export default function HomeScreen() {
       // out-of-bounds error when the focused row has more items.
       const safeIdx = Math.min(index, Math.max(0, count.current - 1));
       try {
-        ref.current?.scrollToIndex({ index: safeIdx, animated: true, viewPosition: 0.35 });
+        ref.current?.scrollToIndex({ index: safeIdx, animated: false, viewPosition: 0.35 });
       } catch {}
     });
   }, []);
@@ -455,6 +457,44 @@ export default function HomeScreen() {
     [allSeries],
   );
 
+  // All three poster rails must use one measured card geometry. Letting each
+  // row derive width from its own flex-rounded height creates a 1dp difference
+  // that compounds across columns as the lists scroll.
+  const visibleTVSectionCount = continueWatchingItems.length > 0 ? 3 : 2;
+  const [tvCardHeight, setTvCardHeight] = useState<number | null>(null);
+  const tvCardGeometryRef = useRef<{ sectionCount: number; height: number } | null>(null);
+  useEffect(() => {
+    if (tvCardGeometryRef.current?.sectionCount === visibleTVSectionCount) return;
+    tvCardGeometryRef.current = null;
+    setTvCardHeight(null);
+  }, [visibleTVSectionCount]);
+
+  const handleTvRailLayout = useCallback((event: any) => {
+    if (!Platform.isTV) return;
+    const bodyHeight = Number(event?.nativeEvent?.layout?.height ?? 0);
+    const cardHeight = Math.max(1, Math.round(bodyHeight - 2 * TV_BANNER_LIST_PADDING_VERTICAL));
+    if (!Number.isFinite(cardHeight) || cardHeight <= 0) return;
+    if (tvCardGeometryRef.current?.sectionCount === visibleTVSectionCount) return;
+    tvCardGeometryRef.current = { sectionCount: visibleTVSectionCount, height: cardHeight };
+    setTvCardHeight(cardHeight);
+  }, [visibleTVSectionCount]);
+
+  const tvCardWidth = tvCardHeight
+    ? Math.round(tvCardHeight * BANNER_W / BANNER_H)
+    : null;
+  const tvCardStyle = useMemo(
+    () => tvCardWidth && tvCardHeight
+      ? [styles.tvBannerOuter, { width: tvCardWidth, height: tvCardHeight }]
+      : styles.tvBannerOuter,
+    [tvCardHeight, tvCardWidth],
+  );
+  const tvItemStride = tvCardWidth ? tvCardWidth + 8 : null;
+  const getTvItemLayout = useCallback((_: unknown, index: number) => ({
+    length: tvItemStride ?? BANNER_W + 8,
+    offset: (tvItemStride ?? BANNER_W + 8) * index,
+    index,
+  }), [tvItemStride]);
+
   const handleMoviePress = useCallback((movie: Movie) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (Platform.isTV) lastNavRowRef.current = 'movies';
@@ -578,7 +618,7 @@ export default function HomeScreen() {
           tvRowNav.register('cw', index, el);
           if (index === 0) setHomeRightCandidate('cw', el);
         }) as any : undefined}
-        style={Platform.isTV ? styles.tvBannerOuter : [styles.bannerOuter, tabletCardStyle]}
+        style={Platform.isTV ? tvCardStyle : [styles.bannerOuter, tabletCardStyle]}
         focusedStyle={styles.bannerFocused}
         // TV: LEFT on the first card jumps to the sidebar nav menu
         nextFocusLeft={Platform.isTV && index === 0 ? sidebarNav.handle : undefined}
@@ -615,7 +655,7 @@ export default function HomeScreen() {
         </View>
       </FocusablePressable>
     );
-  }, [colors, handleHistoryItemPress, movieProgressMap, seriesProgressMap, scrollAllContentRows, setHomeRightCandidate, tabletCardStyle]);
+  }, [colors, handleHistoryItemPress, movieProgressMap, seriesProgressMap, scrollAllContentRows, setHomeRightCandidate, tabletCardStyle, tvCardStyle]);
 
   const renderMovie = useCallback(({ item, index }: { item: Movie; index: number }) => (
     // The first movie card is the final fallback for Home sidebar RIGHT.
@@ -626,7 +666,7 @@ export default function HomeScreen() {
       }}
       movie={item}
       colors={colors}
-      cardStyle={Platform.isTV ? styles.tvBannerOuter : tabletCardStyle && [styles.bannerOuter, tabletCardStyle]}
+      cardStyle={Platform.isTV ? tvCardStyle : tabletCardStyle && [styles.bannerOuter, tabletCardStyle]}
       nextFocusLeft={Platform.isTV && index === 0 ? sidebarNav.handle : undefined}
       onCardFocus={() => {
         tvRowNav.focused('movies', index);
@@ -635,14 +675,14 @@ export default function HomeScreen() {
       }}
       onPress={() => handleMoviePress(item)}
     />
-  ), [colors, handleMoviePress, scrollAllContentRows, setHomeRightCandidate, tabletCardStyle]);
+  ), [colors, handleMoviePress, scrollAllContentRows, setHomeRightCandidate, tabletCardStyle, tvCardStyle]);
 
   const renderSeries = useCallback(({ item, index }: { item: Series; index: number }) => (
     <SeriesBanner
       ref={Platform.isTV ? ((el: View | null) => tvRowNav.register('series', index, el)) : undefined}
       series={item}
       colors={colors}
-      cardStyle={Platform.isTV ? styles.tvBannerOuter : tabletCardStyle && [styles.bannerOuter, tabletCardStyle]}
+      cardStyle={Platform.isTV ? tvCardStyle : tabletCardStyle && [styles.bannerOuter, tabletCardStyle]}
       nextFocusLeft={Platform.isTV && index === 0 ? sidebarNav.handle : undefined}
       onCardFocus={() => {
         tvRowNav.focused('series', index);
@@ -651,7 +691,7 @@ export default function HomeScreen() {
       }}
       onPress={() => handleSeriesPress(item)}
     />
-  ), [colors, handleSeriesPress, scrollAllContentRows, tabletCardStyle]);
+  ), [colors, handleSeriesPress, scrollAllContentRows, tabletCardStyle, tvCardStyle]);
 
   if (!isXtream) {
     return (
@@ -694,8 +734,9 @@ export default function HomeScreen() {
           <Section title="Continue Watching" isLoading={false} colors={colors} tv>
             <FlatList
               ref={cwListRef}
+              onLayout={handleTvRailLayout}
               onScrollToIndexFailed={(info) => {
-                try { cwListRef.current?.scrollToOffset({ offset: info.averageItemLength * info.index, animated: true }); } catch {}
+                try { cwListRef.current?.scrollToOffset({ offset: info.averageItemLength * info.index, animated: false }); } catch {}
               }}
               data={continueWatchingItems}
               keyExtractor={(e) => e.id}
@@ -704,6 +745,7 @@ export default function HomeScreen() {
               showsHorizontalScrollIndicator={false}
               style={styles.tvRail}
               contentContainerStyle={styles.tvBannerList}
+              getItemLayout={tvItemStride ? getTvItemLayout : undefined}
               initialNumToRender={8}
               maxToRenderPerBatch={8}
               removeClippedSubviews={false}
@@ -714,8 +756,9 @@ export default function HomeScreen() {
         <Section title="Latest Movies" isLoading={moviesLoading} colors={colors} tv>
           <FlatList
             ref={movieListRef}
+            onLayout={handleTvRailLayout}
             onScrollToIndexFailed={(info) => {
-              try { movieListRef.current?.scrollToOffset({ offset: info.averageItemLength * info.index, animated: true }); } catch {}
+              try { movieListRef.current?.scrollToOffset({ offset: info.averageItemLength * info.index, animated: false }); } catch {}
             }}
             data={latestMovies}
             keyExtractor={(m) => m.id}
@@ -724,6 +767,7 @@ export default function HomeScreen() {
             showsHorizontalScrollIndicator={false}
             style={styles.tvRail}
             contentContainerStyle={styles.tvBannerList}
+            getItemLayout={tvItemStride ? getTvItemLayout : undefined}
             initialNumToRender={8}
             maxToRenderPerBatch={8}
             removeClippedSubviews={false}
@@ -733,8 +777,9 @@ export default function HomeScreen() {
         <Section title="Latest TV Shows" isLoading={seriesLoading} colors={colors} tv>
           <FlatList
             ref={seriesListRef}
+            onLayout={handleTvRailLayout}
             onScrollToIndexFailed={(info) => {
-              try { seriesListRef.current?.scrollToOffset({ offset: info.averageItemLength * info.index, animated: true }); } catch {}
+              try { seriesListRef.current?.scrollToOffset({ offset: info.averageItemLength * info.index, animated: false }); } catch {}
             }}
             data={latestSeries}
             keyExtractor={(s) => s.id}
@@ -743,6 +788,7 @@ export default function HomeScreen() {
             showsHorizontalScrollIndicator={false}
             style={styles.tvRail}
             contentContainerStyle={styles.tvBannerList}
+            getItemLayout={tvItemStride ? getTvItemLayout : undefined}
             initialNumToRender={8}
             maxToRenderPerBatch={8}
             removeClippedSubviews={false}
