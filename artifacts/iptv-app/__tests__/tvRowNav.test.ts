@@ -286,6 +286,25 @@ describe('tvRowNav — horizontal sibling routing', () => {
   });
 });
 
+describe('tvRowNav — right-edge anti-wrap routing', () => {
+  beforeEach(() => { mockFindNodeHandle(); });
+
+  it('pins the final card to itself in the same focus patch when requested', () => {
+    const nav = loadTvRowNav();
+    const first = makeNode(801);
+    const last = makeNode(802);
+    nav.setOrder(['recent']);
+    nav.register('recent', 0, first);
+    nav.register('recent', 1, last);
+
+    nav.focused('recent', 1, { pinRightEdge: true });
+
+    const call = last.setNativeProps.mock.calls[0][0];
+    expect(call.nextFocusRight).toBe(802);
+    expect(call.nextFocusRight).not.toBe(801);
+  });
+});
+
 // =============================================================================
 // 5. Empty-row skip
 // =============================================================================

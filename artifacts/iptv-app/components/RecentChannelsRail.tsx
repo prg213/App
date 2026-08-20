@@ -200,9 +200,8 @@ export function RecentChannelsRail({
               onRemove={handleRemove}
               onFirstCardRef={onFirstCardRef}
               onCardFocus={Platform.isTV ? () => {
-                tvRowNav.focused('recent', index);
+                tvRowNav.focused('recent', index, { pinRightEdge: index === recent.length - 1 });
                 try { listRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.35 }); } catch {}
-                if (index === recent.length - 1) tvRowNav.pinRightEdge('recent', index);
               } : undefined}
             />
           );

@@ -9,5 +9,6 @@ description: Fire TV Home fixed non-scrolling dashboard layout and the tvRowNav 
 - **Rule:** rows glide on focus — every card's onFocus calls `scrollToIndex({viewPosition:0.35})` on its own FlatList (try/catch + `onScrollToIndexFailed` fallback; missing that prop throws → release crash).
 - **tvRowNav** (`lib/tvRowNav.ts`): Home's visual row order is Recently Watched, Continue Watching, Latest Movies, Latest TV Shows. Cards register nodes by (rowId,index); UP/DOWN preserves the current column and clamps to the nearest available card in a shorter row, pinned at edges.
 - **Home sidebar entry:** Selecting Home keeps focus on the Home sidebar item; only RIGHT enters dashboard content, prioritising Recently Watched, Continue Watching, then Latest Movies.
+- **Right edges:** The final card in a TV row must pin RIGHT to itself in the same native focus patch as its other routes; a follow-up patch can leave a brief window for FlatList focus to wrap.
 - **Why:** Fire OS native spatial focus can't move UP/DOWN between independently virtualized horizontal FlatLists (same limitation as the EPG grid); declarative props are unreliable.
 - **How to apply:** any new carousel screen on TV should reuse tvRowNav + focus-glide instead of relying on native focus search.

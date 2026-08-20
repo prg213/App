@@ -121,12 +121,13 @@ export const tvRowNav = {
   },
 
   /**
-   * Call from the card's onFocus.  Records the row's position and wires the
+   * Call from the card's onFocus. Records the row's position and wires the
    * focused card's UP/DOWN to the adjacent rows' same-column cards. If the
    * destination row is shorter, the nearest mounted card at or before that
-   * column is used.
+   * column is used. `pinRightEdge` makes the right-edge guard part of the
+   * same native patch as sibling routing, avoiding a transient FlatList wrap.
    */
-  focused(rowId: string, index: number) {
+  focused(rowId: string, index: number, options?: { pinRightEdge?: boolean }) {
     const r = rows.get(rowId);
     if (!r) return;
     r.lastIndex = index;
@@ -181,7 +182,8 @@ export const tvRowNav = {
       const previousHandle = previous ? findNodeHandle(previous) : null;
       const nextHandle = next ? findNodeHandle(next) : null;
       if (previousHandle != null) patch.nextFocusLeft = previousHandle;
-      if (nextHandle != null) patch.nextFocusRight = nextHandle;
+      if (options?.pinRightEdge) patch.nextFocusRight = selfHandle;
+      else if (nextHandle != null) patch.nextFocusRight = nextHandle;
 
       (self as any).setNativeProps?.(patch);
     } catch {}
