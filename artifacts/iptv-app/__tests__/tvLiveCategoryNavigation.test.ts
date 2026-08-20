@@ -99,6 +99,19 @@ describe('Fire TV category navigation', () => {
     expect(TV_LAYOUT).toMatch(/retryFocusPlayingNode\(attemptsRemaining - 1\)/);
   });
 
+  it('uses each list’s current offset so UP moves through visible rows before scrolling', () => {
+    expect(TV_LAYOUT).toMatch(/const catScrollOffsetRef = useRef\(0\)/);
+    expect(TV_LAYOUT).toMatch(/const chScrollOffsetRef = useRef\(0\)/);
+    expect(TV_LAYOUT).toMatch(
+      /computeTvVerticalFocusOffset\(\s*index,\s*CAT_ITEM_H,\s*catViewportHeightRef\.current,\s*catScrollOffsetRef\.current/,
+    );
+    expect(TV_LAYOUT).toMatch(
+      /computeTvVerticalFocusOffset\(\s*index,\s*CH_ITEM_H,\s*chViewportHeightRef\.current,\s*chScrollOffsetRef\.current/,
+    );
+    expect(TV_LAYOUT).toMatch(/catScrollOffsetRef\.current = event\.nativeEvent\.contentOffset\.y/);
+    expect(TV_LAYOUT).toMatch(/chScrollOffsetRef\.current = event\.nativeEvent\.contentOffset\.y/);
+  });
+
   it('drops a recycled native LEFT target when FlatList unmounts the playing row', () => {
     const channelStart = TV_LAYOUT.indexOf('const renderChannel');
     const channelRefStart = TV_LAYOUT.indexOf('ref={(node: View | null) => {', channelStart);

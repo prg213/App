@@ -14,6 +14,7 @@
 - [TV input hooks convention](tv-input-hooks.md) — screens must use shared useBackHandler/useTVRemote/useFocusRestore hooks, never hand-rolled BackHandler/onHWKeyEvent listeners; hooks accept both `playPause` and `onPlayPause` handler names.
 - [Live TV OSD architecture](live-tv-osd.md) — showInfoBarRef pattern for cross-hook call; OSD 6s auto-dismiss on TV; Audio/CC chips inside info bar on TV; zap preview has EPG data via epgMap lookup; TVLiveLayout renderChannel has EPG progress bars + LIVE badge.
 - [TV EPG D-pad & synced panning](tv-epg-dpad-sync.md) — imperative setNativeProps focus routing; time-based (not pixel) row sync with debounced broadcast + expected-offset loop guard.
+- [TV list focus window](tv-list-focus-window.md) — Preserve each list’s current visible rows while D-pad focus remains inside them; scroll only when focus crosses an edge.
 - [TV Home dashboard & row nav](tv-home-dashboard.md) — fixed non-scrolling Home on TV; tvRowNav registry for D-pad UP/DOWN between carousels (native focus can't cross virtualized rails).
 - [TV rail shared scroll extents](tv-rail-shared-extents.md) — synchronized Home FlatLists need equal content extents, including footer gap math, to stay column-aligned.
 - [TV horizontal rail sizing](tv-horizontal-rail-sizing.md) — put flex sizing on the FlatList viewport, not its horizontal content container, or focus-driven offsets can be clamped.

@@ -182,6 +182,11 @@ export function TVLiveLayout({
   // bottom-edge focus window instead of re-centering on every row.
   const catViewportHeightRef = useRef(0);
   const chViewportHeightRef = useRef(0);
+  // Keep the current first-visible row for each independent TV list. The
+  // focus-window helper uses these values to avoid scrolling while the D-pad
+  // highlight is still moving through rows already visible on screen.
+  const catScrollOffsetRef = useRef(0);
+  const chScrollOffsetRef = useRef(0);
   // Categories and channels scroll independently. Category focus/selection
   // controls the category list position; browsing channels must not move the
   // category list underneath the user's selected category.
@@ -650,12 +655,15 @@ export function TVLiveLayout({
 
   const handleCatFocus = useCallback((index: number) => {
     try {
+      const nextOffset = computeTvVerticalFocusOffset(
+        index,
+        CAT_ITEM_H,
+        catViewportHeightRef.current,
+        catScrollOffsetRef.current,
+      );
+      catScrollOffsetRef.current = nextOffset;
       catListRef.current?.scrollToOffset({
-        offset: computeTvVerticalFocusOffset(
-          index,
-          CAT_ITEM_H,
-          catViewportHeightRef.current,
-        ),
+        offset: nextOffset,
         animated: false,
       });
     } catch (_) {}
@@ -778,12 +786,15 @@ export function TVLiveLayout({
   const handleChFocus = useCallback((ch: Channel, index: number) => {
     updateHighlightedChannel(ch.id, true);
     try {
+      const nextOffset = computeTvVerticalFocusOffset(
+        index,
+        CH_ITEM_H,
+        chViewportHeightRef.current,
+        chScrollOffsetRef.current,
+      );
+      chScrollOffsetRef.current = nextOffset;
       chListRef.current?.scrollToOffset({
-        offset: computeTvVerticalFocusOffset(
-          index,
-          CH_ITEM_H,
-          chViewportHeightRef.current,
-        ),
+        offset: nextOffset,
         animated: false,
       });
     } catch {}
@@ -956,6 +967,10 @@ export function TVLiveLayout({
           onLayout={(event) => {
             catViewportHeightRef.current = event.nativeEvent.layout.height;
           }}
+          onScroll={(event) => {
+            catScrollOffsetRef.current = event.nativeEvent.contentOffset.y;
+          }}
+          scrollEventThrottle={16}
           onScrollToIndexFailed={() => {}}
         />
       </View>
@@ -987,6 +1002,10 @@ export function TVLiveLayout({
             onLayout={(event) => {
               chViewportHeightRef.current = event.nativeEvent.layout.height;
             }}
+            onScroll={(event) => {
+              chScrollOffsetRef.current = event.nativeEvent.contentOffset.y;
+            }}
+            scrollEventThrottle={16}
             onScrollToIndexFailed={() => {}}
           />
         )}
