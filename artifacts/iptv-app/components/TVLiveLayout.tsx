@@ -183,6 +183,11 @@ export function TVLiveLayout({
   onVlcError,
   miniPlayerRef,
 }: TVLiveLayoutProps) {
+  // Fullscreen Android playback keeps the VLC surface mounted in this layout
+  // while the player route supplies its controls. Hide the surrounding Live TV
+  // chrome without hiding its parent, otherwise the native surface is covered
+  // by the category and channel panels on Fire TV.
+  const hideLiveChromeForFullscreen = nativeSurfaceFullscreen && Platform.OS === 'android';
 
   const catListRef = useRef<FlatList<Category>>(null);
   const chListRef  = useRef<FlatList<Channel>>(null);
@@ -1127,7 +1132,14 @@ export function TVLiveLayout({
       ]}
     >
       {/* ═══ Panel 1 — Categories ═══════════════════════════════════════════ */}
-      <View style={[styles.catPanel, { borderRightColor: colors.border }]}>
+      <View
+        pointerEvents={hideLiveChromeForFullscreen ? 'none' : 'auto'}
+        style={[
+          styles.catPanel,
+          hideLiveChromeForFullscreen && styles.fullscreenChromeHidden,
+          { borderRightColor: colors.border },
+        ]}
+      >
         <Text style={[styles.panelHeader, { color: colors.mutedForeground, borderBottomColor: colors.border }]}>
           CATEGORIES
         </Text>
@@ -1150,7 +1162,14 @@ export function TVLiveLayout({
       </View>
 
       {/* ═══ Panel 2 — Channels ══════════════════════════════════════════════ */}
-      <View style={[styles.chPanel, { borderRightColor: colors.border }]}>
+      <View
+        pointerEvents={hideLiveChromeForFullscreen ? 'none' : 'auto'}
+        style={[
+          styles.chPanel,
+          hideLiveChromeForFullscreen && styles.fullscreenChromeHidden,
+          { borderRightColor: colors.border },
+        ]}
+      >
         <Text style={[styles.panelHeader, { color: colors.mutedForeground, borderBottomColor: colors.border }]}>
           {channelsLoading ? 'LOADING…' : `CHANNELS · ${channels.length}`}
         </Text>
@@ -1273,7 +1292,14 @@ export function TVLiveLayout({
             </FocusablePressable>
 
             {/* Channel name + current programme + progress bar */}
-            <View style={[styles.infoBar, { backgroundColor: colors.card, borderTopColor: colors.border }]}>
+            <View
+              pointerEvents={hideLiveChromeForFullscreen ? 'none' : 'auto'}
+              style={[
+                styles.infoBar,
+                hideLiveChromeForFullscreen && styles.fullscreenChromeHidden,
+                { backgroundColor: colors.card, borderTopColor: colors.border },
+              ]}
+            >
               <Text style={[styles.infoChannelName, { color: colors.foreground }]} numberOfLines={1}>
                 {selectedChannel.name}
               </Text>
@@ -1302,7 +1328,13 @@ export function TVLiveLayout({
                 accessibilityRole="button"
                 accessibilityLabel="Open catch-up TV"
                 focusedStyle={styles.focusedItem}
-                style={[styles.catchupRow, { backgroundColor: colors.card, borderColor: colors.border }]}
+                focusable={!hideLiveChromeForFullscreen}
+                pointerEvents={hideLiveChromeForFullscreen ? 'none' : 'auto'}
+                style={[
+                  styles.catchupRow,
+                  hideLiveChromeForFullscreen && styles.fullscreenChromeHidden,
+                  { backgroundColor: colors.card, borderColor: colors.border },
+                ]}
                 // TV LEFT / BACK: return to the channel that is playing.
                 nextFocusLeft={playingChHandle ?? leftReturnProxyHandle ?? undefined}
                 onFocus={() => {
@@ -1334,7 +1366,14 @@ export function TVLiveLayout({
                 scroll this panel and everything below the fold was
                 inaccessible on Firestick). */}
             {channelEpg.length > 0 ? (
-              <View style={[styles.guideWrap, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <View
+                pointerEvents={hideLiveChromeForFullscreen ? 'none' : 'auto'}
+                style={[
+                  styles.guideWrap,
+                  hideLiveChromeForFullscreen && styles.fullscreenChromeHidden,
+                  { backgroundColor: colors.card, borderColor: colors.border },
+                ]}
+              >
                 <Text style={[styles.guideHeader, { color: colors.mutedForeground, borderBottomColor: colors.border }]}>
                     TV GUIDE{guideChannel ? ` · ${guideChannel.name}` : ''}
                 </Text>
@@ -1590,6 +1629,12 @@ const styles = StyleSheet.create({
     overflow: 'visible',
     zIndex: 100,
     elevation: 100,
+  },
+
+  // Keep the persistent native player mounted, but remove all surrounding Live
+  // TV chrome while that player is transformed to fullscreen bounds.
+  fullscreenChromeHidden: {
+    opacity: 0,
   },
 
   videoOverlay: {

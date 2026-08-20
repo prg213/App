@@ -31,6 +31,14 @@ describe('Android live VLC surface transitions', () => {
     expect(tvLayout).toContain("reloadKey={Platform.OS === 'android' ? vlcReloadKey");
   });
 
+  it('hides Live TV panels while the persistent surface is fullscreen', () => {
+    expect(tvLayout).toContain("const hideLiveChromeForFullscreen = nativeSurfaceFullscreen && Platform.OS === 'android'");
+    expect(tvLayout).toContain("pointerEvents={hideLiveChromeForFullscreen ? 'none' : 'auto'}");
+    expect(tvLayout).toContain('hideLiveChromeForFullscreen && styles.fullscreenChromeHidden');
+    expect(tvLayout).toContain('fullscreenChromeHidden: {');
+    expect(tvLayout).toContain('opacity: 0');
+  });
+
   it('keeps the existing Android surface for only its fullscreen route lifetime', () => {
     const ownershipStart = fullscreenPlayer.indexOf('const usesPersistentNativeSurface');
     const ownershipBlock = fullscreenPlayer.slice(ownershipStart, ownershipStart + 500);
