@@ -38,12 +38,11 @@ import {
   TV_BANNER_LIST_PADDING_VERTICAL,
   TV_BANNER_LIST_GAP,
   computeTvGridCardHeight,
-  computeTvRailTrailingSpacerWidth,
 } from '@/lib/tvHomeLayout';
 import { sidebarNav } from '@/lib/sidebarNav';
 import { tvRowNav } from '@/lib/tvRowNav';
 import { useBackHandler } from '@/hooks/useBackHandler';
-import type { Channel, Movie, Series, WatchHistoryEntry, RecentChannel } from '@/types';
+import type { Channel, Movie, Series, WatchHistoryEntry } from '@/types';
 import { requestTvFocus } from '@/lib/tvFocus';
 
 function buildCreds(c: ReturnType<typeof useAppContext>['credentials']) {
@@ -259,7 +258,6 @@ export default function HomeScreen() {
   const cwListRef     = useRef<FlatList<WatchHistoryEntry>>(null);
   const movieListRef  = useRef<FlatList<Movie>>(null);
   const seriesListRef = useRef<FlatList<Series>>(null);
-  const recentListRef = useRef<FlatList<RecentChannel>>(null);
   const tvItemStrideRef = useRef(BANNER_W + TV_BANNER_LIST_GAP);
   // Store current data lengths in refs so renderers can check isLast without
   // needing the length in their useCallback dep arrays (avoids unnecessary
@@ -312,25 +310,17 @@ export default function HomeScreen() {
     } catch {}
   }, []);
 
-  // Synced panning: every Home content row moves together — focusing any card
-  // moves each rail to the same horizontal offset. Centering rows separately
-  // makes shorter rows clamp at different positions and breaks the dashboard
-  // grid. TV focus changes use an immediate scroll so native lists cannot be
-  // caught at different points in separate animations.
-  const scrollAllContentRows = useCallback((index: number) => {
+  // TV: keep only the focused rail in view. Each Home row owns its own
+  // horizontal position; moving across one row must not move its siblings.
+  const scrollFocusedRowToIndex = useCallback((
+    listRef: React.RefObject<FlatList<any> | null>,
+    index: number,
+  ) => {
     if (!Platform.isTV) return;
     const offset = tvItemStrideRef.current * index;
-    [
-      { ref: recentListRef },
-      { ref: cwListRef,     count: cwCountRef },
-      { ref: movieListRef,  count: movieCountRef },
-      { ref: seriesListRef, count: seriesCountRef },
-    ].forEach(({ ref, count }) => {
-      if (count && count.current <= 0) return;
-      try {
-        ref.current?.scrollToOffset({ offset, animated: false });
-      } catch {}
-    });
+    try {
+      listRef.current?.scrollToOffset({ offset, animated: false });
+    } catch {}
   }, []);
 
   // ── Watch history (for Continue Watching rail) ─────────────────────────────
@@ -503,21 +493,6 @@ export default function HomeScreen() {
   );
   const tvItemStride = tvCardWidth ? tvCardWidth + TV_BANNER_LIST_GAP : null;
   tvItemStrideRef.current = tvItemStride ?? BANNER_W + TV_BANNER_LIST_GAP;
-  const tvSharedColumnCount = Math.max(
-    recentChannelCount,
-    continueWatchingItems.length,
-    latestMovies.length,
-    latestSeries.length,
-  );
-  const renderTvTrailingSpacer = useCallback((itemCount: number) => {
-    const width = computeTvRailTrailingSpacerWidth(
-      itemCount,
-      tvSharedColumnCount,
-      tvItemStride ?? BANNER_W + TV_BANNER_LIST_GAP,
-      TV_BANNER_LIST_GAP,
-    );
-    return width > 0 ? <View style={{ width, height: 1 }} /> : null;
-  }, [tvItemStride, tvSharedColumnCount]);
   const getTvItemLayout = useCallback((_: unknown, index: number) => ({
     length: tvItemStride ?? BANNER_W + TV_BANNER_LIST_GAP,
     offset: (tvItemStride ?? BANNER_W + TV_BANNER_LIST_GAP) * index,
@@ -653,7 +628,7 @@ export default function HomeScreen() {
         nextFocusLeft={Platform.isTV && index === 0 ? sidebarNav.handle : undefined}
         onFocus={() => {
           tvRowNav.focused('cw', index, { pinRightEdge: index === cwCountRef.current - 1 });
-          scrollAllContentRows(index);
+          scrollFocusedRowToIndex(cwListRef, index);
         }}
         onPress={() => handleHistoryItemPress(item)}
       >
@@ -683,7 +658,7 @@ export default function HomeScreen() {
         </View>
       </FocusablePressable>
     );
-  }, [colors, handleHistoryItemPress, movieProgressMap, seriesProgressMap, scrollAllContentRows, setHomeRightCandidate, tabletCardStyle, tvCardStyle]);
+  }, [colors, handleHistoryItemPress, movieProgressMap, seriesProgressMap, scrollFocusedRowToIndex, setHomeRightCandidate, tabletCardStyle, tvCardStyle]);
 
   const renderMovie = useCallback(({ item, index }: { item: Movie; index: number }) => (
     // The first movie card is the final fallback for Home sidebar RIGHT.
@@ -698,11 +673,11 @@ export default function HomeScreen() {
       nextFocusLeft={Platform.isTV && index === 0 ? sidebarNav.handle : undefined}
       onCardFocus={() => {
         tvRowNav.focused('movies', index, { pinRightEdge: index === movieCountRef.current - 1 });
-        scrollAllContentRows(index);
+        scrollFocusedRowToIndex(movieListRef, index);
       }}
       onPress={() => handleMoviePress(item)}
     />
-  ), [colors, handleMoviePress, scrollAllContentRows, setHomeRightCandidate, tabletCardStyle, tvCardStyle]);
+  ), [colors, handleMoviePress, scrollFocusedRowToIndex, setHomeRightCandidate, tabletCardStyle, tvCardStyle]);
 
   const renderSeries = useCallback(({ item, index }: { item: Series; index: number }) => (
     <SeriesBanner
@@ -713,11 +688,11 @@ export default function HomeScreen() {
       nextFocusLeft={Platform.isTV && index === 0 ? sidebarNav.handle : undefined}
       onCardFocus={() => {
         tvRowNav.focused('series', index, { pinRightEdge: index === seriesCountRef.current - 1 });
-        scrollAllContentRows(index);
+        scrollFocusedRowToIndex(seriesListRef, index);
       }}
       onPress={() => handleSeriesPress(item)}
     />
-  ), [colors, handleSeriesPress, scrollAllContentRows, tabletCardStyle, tvCardStyle]);
+  ), [colors, handleSeriesPress, scrollFocusedRowToIndex, tabletCardStyle, tvCardStyle]);
 
   if (!isXtream) {
     return (
@@ -756,10 +731,7 @@ export default function HomeScreen() {
           onFirstCardRef={setRecentHomeRightCandidate}
           tvCardStyle={tvCardStyle}
           tvItemStride={tvItemStride}
-          tvListRef={recentListRef}
-          tvSharedColumnCount={tvSharedColumnCount}
           onTvRailLayout={handleTvRailLayout}
-          onTvCardFocus={scrollAllContentRows}
           onTvItemCountChange={setRecentChannelCount}
         />
 
@@ -779,7 +751,6 @@ export default function HomeScreen() {
               style={styles.tvRail}
               contentContainerStyle={styles.tvBannerList}
               getItemLayout={tvItemStride ? getTvItemLayout : undefined}
-              ListFooterComponent={renderTvTrailingSpacer(continueWatchingItems.length)}
               initialNumToRender={8}
               maxToRenderPerBatch={8}
               removeClippedSubviews={false}
@@ -802,7 +773,6 @@ export default function HomeScreen() {
             style={styles.tvRail}
             contentContainerStyle={styles.tvBannerList}
             getItemLayout={tvItemStride ? getTvItemLayout : undefined}
-            ListFooterComponent={renderTvTrailingSpacer(latestMovies.length)}
             initialNumToRender={8}
             maxToRenderPerBatch={8}
             removeClippedSubviews={false}
@@ -824,7 +794,6 @@ export default function HomeScreen() {
             style={styles.tvRail}
             contentContainerStyle={styles.tvBannerList}
             getItemLayout={tvItemStride ? getTvItemLayout : undefined}
-            ListFooterComponent={renderTvTrailingSpacer(latestSeries.length)}
             initialNumToRender={8}
             maxToRenderPerBatch={8}
             removeClippedSubviews={false}

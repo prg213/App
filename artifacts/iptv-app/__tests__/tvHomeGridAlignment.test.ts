@@ -8,7 +8,6 @@ import * as fs from 'fs';
 import * as path from 'path';
 import {
   computeTvGridCardHeight,
-  computeTvRailTrailingSpacerWidth,
 } from '../lib/tvHomeLayout';
 
 const source = fs.readFileSync(path.resolve(__dirname, '../app/(tabs)/home.tsx'), 'utf8');
@@ -41,61 +40,27 @@ describe('TV Home grid alignment', () => {
     expect(source).toMatch(/computeTvGridCardHeight\(\s*bodyHeight/);
   });
 
-  it('includes Recently Watched in the shared TV geometry and synchronized panning', () => {
-    expect(source).toMatch(/const recentListRef = useRef<FlatList<RecentChannel>>\(null\)/);
+  it('keeps the shared TV card geometry while giving each rail its own scroll position', () => {
     expect(source).toMatch(/const actualTVSectionCount =[\s\S]*recentChannelCount > 0/);
-    expect(source).toMatch(/tvListRef=\{recentListRef\}/);
-    expect(source).toMatch(/onTvCardFocus=\{scrollAllContentRows\}/);
     expect(source).toMatch(/onTvItemCountChange=\{setRecentChannelCount\}/);
     expect(recentRailSource).toMatch(/tvCardStyle\?: any/);
     expect(recentRailSource).toMatch(/onTvRailLayout\?: \(event: any\) => void/);
     expect(recentRailSource).toMatch(/onTvItemCountChange\?: \(count: number\) => void/);
     expect(recentRailSource).toMatch(/contentContainerStyle=\{isTvGrid \? styles\.tvList : styles\.list\}/);
-    expect(recentRailSource).toMatch(/tvSharedColumnCount\?: number/);
-    expect(recentRailSource).toMatch(/computeTvRailTrailingSpacerWidth/);
+    expect(source).toMatch(/const scrollFocusedRowToIndex = useCallback/);
+    expect(source).toMatch(/scrollFocusedRowToIndex\(cwListRef, index\)/);
+    expect(source).toMatch(/scrollFocusedRowToIndex\(movieListRef, index\)/);
+    expect(source).toMatch(/scrollFocusedRowToIndex\(seriesListRef, index\)/);
+    expect(source).not.toContain('scrollAllContentRows');
+    expect(source).not.toContain('tvSharedColumnCount');
+    expect(recentRailSource).not.toContain('onTvCardFocus');
+    expect(recentRailSource).not.toContain('tvSharedColumnCount');
   });
 
-  it('uses Recently Watched as the shared extent when it has the most cards', () => {
-    const stride = 208;
-    const gap = 8;
-    const recentCount = 8;
-    const shorterRowCount = 4;
-    const recentExtent = recentCount * stride - gap;
-    const shorterExtent = shorterRowCount * stride
-      + computeTvRailTrailingSpacerWidth(shorterRowCount, recentCount, stride, gap);
-
-    expect(shorterExtent).toBe(recentExtent);
-    expect(source).toMatch(
-      /const tvSharedColumnCount = Math\.max\(\s*recentChannelCount,/,
-    );
-  });
-
-  it('moves every content rail by one shared, immediate offset', () => {
-    const syncScroll = source.slice(
-      source.indexOf('const scrollAllContentRows'),
-      source.indexOf('// ── Watch history'),
-    );
-    expect(syncScroll).toContain('tvItemStrideRef.current * index');
-    expect(syncScroll).toContain('scrollToOffset');
-    expect(syncScroll).toContain('animated: false');
-    expect(syncScroll).not.toContain('animated: true');
-  });
-
-  it('gives shorter rails enough trailing width to realize the shared offset', () => {
-    const stride = 208;
-    const gap = 8;
-    const longestRail = 30;
-    const shortRail = 20;
-    // A footer receives the FlatList gap before it; a final card does not.
-    const shortRailExtent = shortRail * stride
-      + computeTvRailTrailingSpacerWidth(shortRail, longestRail, stride, gap);
-    const longRailExtent = longestRail * stride - gap;
-
-    expect(shortRailExtent).toBe(longRailExtent);
-    expect(computeTvRailTrailingSpacerWidth(shortRail, longestRail, stride, gap)).toBe(10 * stride - gap);
-    expect(source).toMatch(/ListFooterComponent=\{renderTvTrailingSpacer\(continueWatchingItems\.length\)\}/);
-    expect(source).toMatch(/ListFooterComponent=\{renderTvTrailingSpacer\(latestMovies\.length\)\}/);
-    expect(source).toMatch(/ListFooterComponent=\{renderTvTrailingSpacer\(latestSeries\.length\)\}/);
+  it('does not pad a short rail with empty cards from another row', () => {
+    expect(source).not.toContain('renderTvTrailingSpacer');
+    expect(source).not.toContain('ListFooterComponent');
+    expect(recentRailSource).not.toContain('computeTvRailTrailingSpacerWidth');
   });
 
   it('pins Recently Watched RIGHT before the final card can receive focus', () => {

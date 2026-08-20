@@ -18,7 +18,6 @@ import {
   TV_BANNER_LIST_GAP,
   TV_BANNER_LIST_PADDING_VERTICAL,
   TV_SECTION_MARGIN_TOP,
-  computeTvRailTrailingSpacerWidth,
 } from '@/lib/tvHomeLayout';
 import { useFocusEffect } from 'expo-router';
 import { FocusablePressable } from '@/components/FocusablePressable';
@@ -55,13 +54,10 @@ interface Props {
   topInset?: number;
   /** TV Home uses the first card as the sidebar RIGHT destination. */
   onFirstCardRef?: (node: View | null) => void;
-  /** Shared TV Home poster geometry and synchronized rail behavior. */
+  /** Shared TV Home poster geometry. */
   tvCardStyle?: any;
   tvItemStride?: number | null;
-  tvListRef?: React.RefObject<FlatList<RecentChannel> | null>;
-  tvSharedColumnCount?: number;
   onTvRailLayout?: (event: any) => void;
-  onTvCardFocus?: (index: number) => void;
   onTvItemCountChange?: (count: number) => void;
 }
 
@@ -173,10 +169,7 @@ export function RecentChannelsRail({
   onFirstCardRef,
   tvCardStyle,
   tvItemStride,
-  tvListRef,
-  tvSharedColumnCount,
   onTvRailLayout,
-  onTvCardFocus,
   onTvItemCountChange,
 }: Props) {
   const colors = useColors();
@@ -187,7 +180,6 @@ export function RecentChannelsRail({
   // reliably auto-scroll virtualized horizontal lists on D-pad focus moves).
   const listRef = useRef<FlatList<RecentChannel>>(null);
   const CARD_STRIDE = 88 + 8; // card width + list gap
-  const activeListRef = tvListRef ?? listRef;
 
   useEffect(() => {
     onTvItemCountChange?.(recent.length);
@@ -237,7 +229,7 @@ export function RecentChannelsRail({
         </FocusablePressable>
       </View>
       <FlatList
-        ref={activeListRef}
+        ref={listRef}
         data={recent}
         horizontal
         keyExtractor={(item) => item.id}
@@ -248,19 +240,6 @@ export function RecentChannelsRail({
           return { length: stride, offset: stride * i, index: i };
         }}
         contentContainerStyle={isTvGrid ? styles.tvList : styles.list}
-        ListFooterComponent={
-          isTvGrid && tvSharedColumnCount
-            ? (() => {
-                const width = computeTvRailTrailingSpacerWidth(
-                  recent.length,
-                  tvSharedColumnCount,
-                  tvItemStride ?? CARD_STRIDE,
-                  TV_BANNER_LIST_GAP,
-                );
-                return width > 0 ? <View style={{ width, height: 1 }} /> : null;
-              })()
-            : null
-        }
         renderItem={({ item, index }) => {
           const epgKey = item.epgId ?? item.id;
           const nowTitle = nowPlayingMap.get(epgKey);
@@ -281,9 +260,8 @@ export function RecentChannelsRail({
               tvCardStyle={tvCardStyle}
               onCardFocus={Platform.isTV ? () => {
                 tvRowNav.focused('recent', index, { pinRightEdge: index === recent.length - 1 });
-                onTvCardFocus?.(index);
                 try {
-                  activeListRef.current?.scrollToOffset({
+                  listRef.current?.scrollToOffset({
                     offset: (tvItemStride ?? CARD_STRIDE) * index,
                     animated: false,
                   });
