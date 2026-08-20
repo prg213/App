@@ -45,3 +45,7 @@ The "mutually exclusive" ambient strip (!showInfo) overlapped the OSD's 300ms fa
 ## Fullscreen live BACK return
 - Every live BACK must hand the currently active zapped channel (including its category) back to Live TV before collapse—not only Home-origin launches. On TV, resolve that channel through the virtualized channel-list focus routine so it selects the right category, scrolls to the row, highlights it, and retries focus until it mounts; the mini-player is only a fallback.
 - **Why:** fullscreen state can diverge from its launch params after UP/DOWN zapping, and a generic collapse leaves the cursor on the old row or preview instead of the stream the viewer is now watching.
+
+## Channel-list guide preview
+- On TV, the mini guide follows the channel row currently under D-pad focus rather than the playing channel. This is browse-only: do not replace playback until OK is pressed; keep catch-up actions limited to the channel actually playing.
+- **Why:** viewers need to inspect what is on another channel while scrolling without disrupting the current stream or accidentally opening catch-up for the wrong channel.

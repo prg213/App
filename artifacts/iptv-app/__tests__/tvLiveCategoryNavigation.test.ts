@@ -73,6 +73,16 @@ describe('Fire TV category navigation', () => {
     expect(LIVE_TV).toMatch(/focusPlayingChannelRef\.current\?\.\(\)/);
   });
 
+  it('shows the focused channel guide while browsing without changing playback', () => {
+    expect(TV_LAYOUT).toMatch(/const \[guideChannelId, setGuideChannelId\] = useState<string \| null>/);
+    expect(TV_LAYOUT).toMatch(/const guideChannel = useMemo\(/);
+    expect(TV_LAYOUT).toMatch(/setGuideChannelId\(\(current\) => current === ch\.id \? current : ch\.id\)/);
+    expect(TV_LAYOUT).toMatch(/const key = guideChannel\.epgId \?\? guideChannel\.id/);
+    expect(TV_LAYOUT).toMatch(/TV GUIDE\{guideChannel \? ` · \$\{guideChannel\.name\}` : ''\}/);
+    expect(TV_LAYOUT).toMatch(/guideHasCatchup/);
+    expect(TV_LAYOUT).toMatch(/onChannelSelect\(item\)/);
+  });
+
   it('restores the currently zapped fullscreen channel to its TV list row on BACK', () => {
     const PLAYER = fs.readFileSync(path.resolve(__dirname, '../app/player.tsx'), 'utf8');
 

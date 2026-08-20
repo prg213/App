@@ -327,6 +327,12 @@ export function TVLiveLayout({
   const [highlightedChId, setHighlightedChId] = useState<string | null>(
     selectedChannel?.id ?? null,
   );
+  // The guide follows the channel currently under the TV D-pad, not the
+  // channel that is playing. Browsing must update programme data without
+  // starting playback; OK remains the only action that changes the stream.
+  const [guideChannelId, setGuideChannelId] = useState<string | null>(
+    selectedChannel?.id ?? null,
+  );
   const highlightedChIdRef = useRef<string | null>(highlightedChId);
   const highlightedChCommitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // The focused row paints itself through FocusablePressable. Persist its
@@ -359,6 +365,7 @@ export function TVLiveLayout({
   // (e.g. prev/next channel navigation in the fullscreen player).
   useEffect(() => {
     if (selectedChannel) updateHighlightedChannel(selectedChannel.id);
+    setGuideChannelId(selectedChannel?.id ?? null);
   }, [selectedChannel?.id, updateHighlightedChannel]);
 
   // Preview-panel rows route left to the playing channel, which can differ from
@@ -652,12 +659,18 @@ export function TVLiveLayout({
     },
   });
 
-  // EPG for the currently playing channel (panel 3 mini-guide).
+  // EPG for the channel currently under D-pad focus (panel 3 mini-guide).
+  // This intentionally differs from selectedChannel: browsing the channel
+  // list previews that channel's guide without changing playback.
+  const guideChannel = useMemo(
+    () => channels.find((channel) => channel.id === guideChannelId) ?? selectedChannel,
+    [channels, guideChannelId, selectedChannel],
+  );
   // Include up to 2 recently-ended programmes before the current one so that
   // past rows are present in the list and can be pressed for catch-up on TV.
   const channelEpg = useMemo(() => {
-    if (!selectedChannel || !epgMap) return [];
-    const key = selectedChannel.epgId ?? selectedChannel.id;
+    if (!guideChannel || !epgMap) return [];
+    const key = guideChannel.epgId ?? guideChannel.id;
     const progs = epgMap.get(key) ?? [];
     // Index of the first programme that hasn't fully ended yet (current or future)
     const nowIdx = progs.findIndex((p) => p.end.getTime() > nowTs);
@@ -668,7 +681,7 @@ export function TVLiveLayout({
     // Start 2 slots before the current programme so recently-aired shows appear
     const startIdx = Math.max(0, nowIdx - 2);
     return progs.slice(startIdx, startIdx + 10);
-  }, [selectedChannel, epgMap, nowTs]);
+  }, [guideChannel, epgMap, nowTs]);
 
   const currentProg = useMemo(
     () => channelEpg.find((p) => p.start.getTime() <= nowTs && nowTs < p.end.getTime()) ?? null,
@@ -676,6 +689,10 @@ export function TVLiveLayout({
   );
 
   const hasCatchup = channelHasCatchup(selectedChannel);
+  // Catch-up actions still belong to the playing channel. Do not expose a
+  // clickable catch-up row for a merely browsed channel until playback has
+  // actually been changed with OK.
+  const guideHasCatchup = guideChannel?.id === selectedChannel?.id && hasCatchup;
 
   // The preview panel is a deliberate vertical D-pad chain:
   // preview → Catch-up (when present) → first guide row. Native spatial
@@ -725,7 +742,7 @@ export function TVLiveLayout({
         nextFocusLeft: playingOrReturnProxy,
       });
     });
-  }, [channelEpg.length, hasCatchup, leftReturnProxyHandle, miniPlayerRef, nodeHandle, playingChHandle, selectedChannel?.id]);
+  }, [channelEpg.length, guideChannel?.id, hasCatchup, leftReturnProxyHandle, miniPlayerRef, nodeHandle, playingChHandle, selectedChannel?.id]);
 
   // ── Category row ──────────────────────────────────────────────────────────
   // onFocus: scroll only — category changes on OK press.
@@ -910,6 +927,7 @@ export function TVLiveLayout({
   // start a new animation for every D-pad event and make fast navigation jump.
 
   const handleChFocus = useCallback((ch: Channel, index: number) => {
+    setGuideChannelId((current) => current === ch.id ? current : ch.id);
     updateHighlightedChannel(ch.id, true);
     try {
       const nextOffset = computeTvVerticalFocusOffset(
@@ -1294,7 +1312,7 @@ export function TVLiveLayout({
             {channelEpg.length > 0 ? (
               <View style={[styles.guideWrap, { backgroundColor: colors.card, borderColor: colors.border }]}>
                 <Text style={[styles.guideHeader, { color: colors.mutedForeground, borderBottomColor: colors.border }]}>
-                  TV GUIDE
+                    TV GUIDE{guideChannel ? ` · ${guideChannel.name}` : ''}
                 </Text>
                 <ScrollView
                   style={{ flex: 1, minHeight: 0 }}
@@ -1306,7 +1324,7 @@ export function TVLiveLayout({
                     const isPast = prog.end.getTime() <= nowTs;
                     // On TV: past programmes on a catch-up channel are pressable
                     // so the user can open catch-up directly for that show.
-                    const isCatchupPlayable = isCatchupRowPlayable(prog, nowTs, Platform.isTV, hasCatchup, !!onOpenCatchupProg);
+                    const isCatchupPlayable = isCatchupRowPlayable(prog, nowTs, Platform.isTV, guideHasCatchup, !!onOpenCatchupProg);
                     const Row = (Platform.isTV ? FocusablePressable : View) as any;
                     const isLastGuideRow = i === channelEpg.length - 1;
                     return (
