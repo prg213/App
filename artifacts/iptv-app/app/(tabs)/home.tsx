@@ -273,11 +273,11 @@ export default function HomeScreen() {
   );
   useEffect(() => {
     if (!Platform.isTV) return;
-     // The main Home content is a 4-column × 3-row TV grid:
-     // Continue Watching → Latest Movies → Latest TV Shows.
-     // Recently Watched is a separate strip above this grid and has its own
-     // focus behaviour, so it must not become a vertical destination here.
-     tvRowNav.setOrder(['cw', 'movies', 'series']);
+      // The visual TV order includes the slim Recently Watched strip above
+      // the three main content rows so UP from Continue Watching can reach it.
+      // The content-row panning helper below still excludes Recent because it
+      // uses a different card size.
+      tvRowNav.setOrder(['recent', 'cw', 'movies', 'series']);
     return () => {
       // Clear all row registrations on unmount so that if the Home screen
       // remounts (e.g. after a navigation away and back), the registry starts

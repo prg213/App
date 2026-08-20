@@ -31,4 +31,8 @@ describe('Home sidebar RIGHT entry on TV', () => {
     expect(home).toContain("setHomeRightCandidate('cw', el)");
     expect(home).toContain("setHomeRightCandidate('movies', el)");
   });
+
+  it('includes Recently Watched above Continue Watching for vertical UP navigation', () => {
+    expect(home).toContain("tvRowNav.setOrder(['recent', 'cw', 'movies', 'series'])");
+  });
 });
