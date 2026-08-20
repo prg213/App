@@ -1232,7 +1232,11 @@ export function TVLiveLayout({
                 />
               )}
 
-              {isBuffering && (
+              {/* Surface reattachment can briefly report buffering when moving
+                  between fullscreen and this mini-player. On TV that overlay
+                  obscures the channel with a distracting "Loading…" message,
+                  so live loading stays silent while real errors remain visible. */}
+              {isBuffering && !Platform.isTV && (
                 <View style={styles.videoOverlay}>
                   <ActivityIndicator color="#fff" size="large" />
                   <Text style={styles.videoOverlayText}>Loading…</Text>

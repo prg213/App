@@ -83,6 +83,14 @@ describe('Fire TV category navigation', () => {
     expect(TV_LAYOUT).toMatch(/onChannelSelect\(item\)/);
   });
 
+  it('keeps live surface handoffs silent on TV while retaining stream errors', () => {
+    expect(TV_LAYOUT).toMatch(/\{isBuffering && !Platform\.isTV && \(/);
+    expect(TV_LAYOUT).toMatch(/\{hasError && !isBuffering && \(/);
+    expect(LIVE_TV).toMatch(
+      /collapseRestorePendingRef\.current = false;[\s\S]*?setIsBuffering\(false\)/,
+    );
+  });
+
   it('restores the currently zapped fullscreen channel to its TV list row on BACK', () => {
     const PLAYER = fs.readFileSync(path.resolve(__dirname, '../app/player.tsx'), 'utf8');
 

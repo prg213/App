@@ -2439,7 +2439,7 @@ export default function PlayerScreen() {
           Shown during initial load and every channel switch.  Covers the blank
           VideoView so the user never sees a frozen/empty player surface.
           pointerEvents="none" keeps Back and D-pad zones fully active. */}
-      {isBuffering && !isReconnecting && !isResolvingUrl && !hasError && !isWeb && !(isLive && hasZapped) && (
+      {isBuffering && !isReconnecting && !isResolvingUrl && !hasError && !isWeb && !(isLive && (hasZapped || Platform.isTV)) && (
         <View style={styles.loadingOverlay} pointerEvents="none">
           <View style={styles.loadingContent}>
             {!!activeLogo && (

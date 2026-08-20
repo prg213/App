@@ -49,3 +49,7 @@ The "mutually exclusive" ambient strip (!showInfo) overlapped the OSD's 300ms fa
 ## Channel-list guide preview
 - On TV, the mini guide follows the channel row currently under D-pad focus rather than the playing channel. This is browse-only: do not replace playback until OK is pressed; keep catch-up actions limited to the channel actually playing.
 - **Why:** viewers need to inspect what is on another channel while scrolling without disrupting the current stream or accidentally opening catch-up for the wrong channel.
+
+## Silent TV surface handoffs
+- Fire TV live fullscreen ↔ mini-player transitions must not show “Connecting to stream” or “Loading…” cards. Reattaching a VLC surface can emit transient buffering even when the stream is healthy; clear stale buffering on collapse and keep TV live loading overlays hidden, while retaining real stream-error UI.
+- **Why:** transition overlays obscure the picture and make an already-running channel feel slower without helping the viewer recover from an error.

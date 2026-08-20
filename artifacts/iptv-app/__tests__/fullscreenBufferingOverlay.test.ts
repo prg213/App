@@ -276,3 +276,11 @@ describe('Structural invariants — overlay-clear block scope and comment', () =
     expect(listenerBody).toMatch(/setIsBuffering\s*\(\s*false\s*\)/);
   });
 });
+
+describe('Fire TV live playback stays visually silent during surface handoffs', () => {
+  it('suppresses the fullscreen Connecting card for live TV on a TV device', () => {
+    expect(player).toMatch(
+      /!\(isLive && \(hasZapped \|\| Platform\.isTV\)\)/,
+    );
+  });
+});

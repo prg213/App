@@ -442,6 +442,12 @@ export default function LiveTVScreen() {
       //   setOverlayVisible(false) has already committed, so the overlay is
       //   gone.  Call setVideoKey directly — it's safe to mount now.
       collapseRestorePendingRef.current = false;
+      // A fullscreen → mini-player handoff reuses the same live stream. VLC can
+      // emit a transient buffering callback while its surface is reattached even
+      // though playback is already healthy, leaving the mini-player covered by
+      // a stale "Loading…" card. Keep this transition silent; a genuine player
+      // failure still sets hasError and remains visible to the viewer.
+      setIsBuffering(false);
 
       if (getPendingLivePlayerReturn()) {
         // ── Recently-watched back path ──────────────────────────────────────
