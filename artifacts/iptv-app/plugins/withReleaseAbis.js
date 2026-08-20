@@ -32,13 +32,6 @@ function withReleaseAbis(config) {
 
 // @generated begin ${PLUGIN_NAME} - do not modify
 android {
-    defaultConfig {
-        // Fire TV and physical Android phones are ARM devices, so retain only
-        // the two required ARM ABIs and never package emulator libraries.
-        ndk {
-            abiFilters "armeabi-v7a", "arm64-v8a"
-        }
-    }
     splits {
         abi {
             enable true

@@ -38,7 +38,7 @@ describe('Android release packaging', () => {
     expect(abiPlugin).toContain('withGradleProperties');
     expect(abiPlugin).toContain("key: 'reactNativeArchitectures'");
     expect(abiPlugin).toContain("value: 'armeabi-v7a,arm64-v8a'");
-    expect(abiPlugin).toContain('abiFilters "armeabi-v7a", "arm64-v8a"');
+    expect(abiPlugin).not.toContain('abiFilters');
   });
 
   it('uses the compact Fire TV APK and publishes a compact arm64 mobile asset', () => {
