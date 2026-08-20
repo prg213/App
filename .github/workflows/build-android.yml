@@ -1,6 +1,5 @@
 name: Build Android APK
 "on":
-  workflow_call:
   workflow_dispatch:
     inputs:
       release_action:
@@ -24,10 +23,7 @@ jobs:
   build:
     name: Build Release APK
     runs-on: ubuntu-latest
-    if: >-
-      github.event_name == 'repository_dispatch' ||
-      inputs.release_action == 'build-candidate' ||
-      github.event_name == 'workflow_call'
+    if: github.event_name == 'repository_dispatch' || inputs.release_action == 'build-candidate'
     permissions: { contents: read }
     steps:
       - uses: actions/checkout@v4
