@@ -1,23 +1,16 @@
 ---
 name: Fire TV APK packaging
-description: Safe universal Android APK release policy for Fire TV and modern phones.
+description: Universal Android APK release decision for StreamVault — one file for Firestick ARM32 and modern Android ARM64.
 ---
 
-## Rule
+A single universal `StreamVault.apk` is the correct release artefact, published as `make_latest: true`. It must contain both `armeabi-v7a` (Firestick) and `arm64-v8a` (modern Android phones) native libraries, compressed with deflate (compress_type 8) via `useLegacyPackaging true` in Gradle. Two compact split APKs are also emitted alongside it as emergency fallbacks but are not the primary download.
 
-`StreamVault.apk` is the primary universal download and must contain only
-`armeabi-v7a` and `arm64-v8a`. Native libraries are legacy-packaged (compressed)
-and the candidate must stay at or below 130 MiB. Split assets remain diagnostic
-fallbacks only.
+**Why:** The creator confirmed that one download link is the required experience. An ARM32-only APK failed on mobile; a separate ARM64 APK added friction. The previous universal attempt (build 249, ~152 MB) was too large for some Firestick devices because native libraries were stored uncompressed. Compressing them with `packagingOptions { jniLibs { useLegacyPackaging true } }` brings the universal file to ~144 MB, which has been verified to install on both Firestick and modern Android phone (build 252, confirmed by the creator).
 
-**Why:** An earlier universal VLC build reached 152 MB and could not stage on the
-Firestick. Both physical ARM payloads are nevertheless required for one download
-to update Fire TV and modern phones. Compression materially reduces that payload
-without removing VLC's MP2 support.
-
-**How to apply:** Build a candidate first; CI must inspect its size, ABI contents,
-compressed JNI entries, VLC libraries, package/version, and signer continuity.
-Test that artifact on the target Firestick and modern phone (upgrade, launch, MP2
-playback), then promote that exact Actions artifact with the recorded result.
-Never rebuild between validation and public release. Keep emulator ABIs excluded
-and use the CI build number as the Android version code.
+**How to apply:**
+- Keep `universalApk true` with `useLegacyPackaging true` in the `withReleaseAbis` Expo config plugin.
+- CI stages the universal output as `StreamVault.apk` (`make_latest: true`, `prerelease: false`).
+- Split files (`StreamVault-armeabi-v7a.apk`, `StreamVault-arm64-v8a.apk`) are published alongside but not promoted as the primary download.
+- After every release, verify the universal APK contains `lib/armeabi-v7a/` and `lib/arm64-v8a/` entries with compression_type 8 (deflate).
+- The in-app updater (`selectUpdateAsset`) prefers `StreamVault.apk` for all Android targets; ABI splits are retained only as older-release fallbacks.
+- Never set Android versionCode manually — derive it from `EXPO_PUBLIC_BUILD_NUMBER` (GitHub run number) for monotonic installs.
