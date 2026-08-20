@@ -50,6 +50,14 @@ describe('TV Live category/channel row alignment', () => {
     expect(SOURCE.slice(start, end)).toMatch(/updateHighlightedChannel\(ch\.id,\s*true\)/);
   });
 
+  it('gives the channel logo and live badge the full row width', () => {
+    const start = SOURCE.indexOf('const renderChannel');
+    const end = SOURCE.indexOf('// ── Render', start);
+    const channelRows = SOURCE.slice(start, end);
+    expect(channelRows).not.toMatch(/styles\.chNum/);
+    expect(SOURCE).not.toMatch(/chNum:\s*\{/);
+  });
+
   it('keeps the TV grid inside the viewport and constrains the guide height', () => {
     expect(SOURCE).toMatch(/paddingLeft:\s*Math\.max\(insets\.left,\s*12\)/);
     expect(SOURCE).toMatch(/paddingRight:\s*Math\.max\(insets\.right,\s*12\)/);

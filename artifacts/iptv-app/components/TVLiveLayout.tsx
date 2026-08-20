@@ -747,15 +747,6 @@ export function TVLiveLayout({
           updateHighlightedChannel(item.id);
         }}
       >
-        {/* Channel number */}
-        {item.num != null && (
-          <Text
-            style={[styles.chNum, { color: isHighlighted ? FOCUS_BORDER : colors.mutedForeground }]}
-            numberOfLines={1}
-          >
-            {item.num}
-          </Text>
-        )}
         {item.logo ? (
           <Image source={{ uri: item.logo }} style={styles.chLogo} resizeMode="contain" />
         ) : (
@@ -1312,16 +1303,6 @@ const styles = StyleSheet.create({
     minWidth: 0,
     fontSize: 12,
     fontFamily: 'Inter_400Regular',
-  },
-
-  // ── Channel number ──
-  chNum: {
-    fontSize: 11,
-    fontFamily: 'Inter_600SemiBold',
-    width: 26,
-    textAlign: 'right',
-    flexShrink: 0,
-    marginRight: 2,
   },
 
   // ── Channel name row (name + LIVE badge) ──
