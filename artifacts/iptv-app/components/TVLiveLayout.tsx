@@ -194,6 +194,11 @@ export function TVLiveLayout({
   const previewFocusedRef = useRef(false);
   const catchupFocusedLocalRef = useRef(false);
   const guideFocusedRef = useRef(false);
+  // Fire OS can ignore a cross-panel nextFocusLeft target and move focus to the
+  // category column before the hardware-key fallback receives the event. Keep a
+  // sticky source marker so a category that receives focus directly from any
+  // preview-panel control can immediately redirect to the playing channel.
+  const previewPanelReturnPendingRef = useRef(false);
   // TV no-wrap UP/DOWN edge refs for yellow panel
   const catchupRowRef   = useRef<View | null>(null);
   const leftReturnProxyRef = useRef<View | null>(null);
@@ -691,6 +696,17 @@ export function TVLiveLayout({
       // TV LEFT: category panel is leftmost content — go to the sidebar.
       nextFocusLeft={Platform.isTV ? (sidebarNav.handle ?? undefined) : undefined}
       onFocus={() => {
+        // Native Android TV focus occasionally skips the requested channel
+        // target when leaving the preview panel and lands here instead. Treat
+        // that arrival as the failed LEFT route it is, not as a real category
+        // selection, then restore the channel before this row can remain
+        // highlighted.
+        if (Platform.isTV && previewPanelReturnPendingRef.current) {
+          previewPanelReturnPendingRef.current = false;
+          focusPlayingChannel();
+          return;
+        }
+        previewPanelReturnPendingRef.current = false;
         handleCatFocus(index);
         onCategoryFocusChange?.(true);
         sidebarNav.focusedRoute = null;
@@ -751,6 +767,7 @@ export function TVLiveLayout({
     wireCategoryToFirstChannel,
     channelsLoading,
     focusFirstChannel,
+    focusPlayingChannel,
   ]);
 
   // ── Channel row ───────────────────────────────────────────────────────────
@@ -822,6 +839,7 @@ export function TVLiveLayout({
           isHighlighted && { borderLeftColor: FOCUS_BORDER, borderLeftWidth: 3 },
         ]}
         onFocus={() => {
+          previewPanelReturnPendingRef.current = false;
           handleChFocus(item, index);
           onCategoryFocusChange?.(false);
           sidebarNav.focusedRoute = null;
@@ -1007,6 +1025,7 @@ export function TVLiveLayout({
               style={styles.videoWrap}
               nextFocusLeft={playingChHandle ?? leftReturnProxyHandle ?? undefined}
               onFocus={() => {
+                previewPanelReturnPendingRef.current = true;
                 previewFocusedRef.current = true;
                 onPreviewFocusChange?.(true);
               }}
@@ -1079,6 +1098,7 @@ export function TVLiveLayout({
                 // TV LEFT / BACK: return to the channel that is playing.
                 nextFocusLeft={playingChHandle ?? leftReturnProxyHandle ?? undefined}
                 onFocus={() => {
+                  previewPanelReturnPendingRef.current = true;
                   catchupFocusedLocalRef.current = true;
                   onCatchupFocusChange?.(true);
                 }}
@@ -1152,6 +1172,7 @@ export function TVLiveLayout({
                         {...(Platform.isTV
                           ? {
                               onFocus: () => {
+                                previewPanelReturnPendingRef.current = true;
                                 guideFocusedRef.current = true;
                                 onGuideFocusChange?.(true);
                               },

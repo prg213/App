@@ -72,6 +72,15 @@ describe('Fire TV category navigation', () => {
     expect(TV_LAYOUT).toMatch(/nextFocusLeft=\{playingChHandle \?\? leftReturnProxyHandle \?\? undefined\}/);
   });
 
+  it('redirects a category that Fire OS incorrectly focuses from the preview panel back to the playing channel', () => {
+    expect(TV_LAYOUT).toMatch(/const previewPanelReturnPendingRef = useRef\(false\)/);
+    expect(TV_LAYOUT).toMatch(/previewPanelReturnPendingRef\.current = true/);
+    expect(TV_LAYOUT).toMatch(
+      /if \(Platform\.isTV && previewPanelReturnPendingRef\.current\) \{[\s\S]*?focusPlayingChannel\(\);[\s\S]*?return;/,
+    );
+    expect(TV_LAYOUT).toMatch(/previewPanelReturnPendingRef\.current = false;\s*handleChFocus/);
+  });
+
   it('creates an explicit preview-to-controls DOWN chain instead of relying on spatial focus', () => {
     expect(TV_LAYOUT).toMatch(/const firstGuideRowRef = useRef<View \| null>\(null\)/);
     expect(TV_LAYOUT).toMatch(
