@@ -11,13 +11,15 @@ const androidPlayerSource = fs.readFileSync(
 );
 
 describe('stream playback wake lock', () => {
-  it('keeps the standard player awake while mounted', () => {
+  it('keeps the standard player awake with a per-surface tag', () => {
     expect(playerSource).toContain("import { useKeepAwake } from 'expo-keep-awake'");
-    expect(playerSource).toContain("useKeepAwake('streamvault-playback')");
+    expect(playerSource).toContain('useKeepAwake();');
+    expect(playerSource).not.toContain('streamvault-playback');
   });
 
-  it('keeps the Android/VLC player awake while mounted', () => {
+  it('keeps the Android/VLC player awake with a per-surface tag', () => {
     expect(androidPlayerSource).toContain("import { useKeepAwake } from 'expo-keep-awake'");
-    expect(androidPlayerSource).toContain("useKeepAwake('streamvault-playback')");
+    expect(androidPlayerSource).toContain('useKeepAwake();');
+    expect(androidPlayerSource).not.toContain('streamvault-playback');
   });
 });

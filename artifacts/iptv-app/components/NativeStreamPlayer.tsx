@@ -32,9 +32,10 @@ export function NativeStreamPlayer({
   style,
   onPlaying,
 }: NativeStreamPlayerProps) {
-  // Keep the device awake while a stream surface is mounted. This is scoped
-  // to playback so leaving the player releases the wake lock normally.
-  useKeepAwake('streamvault-playback');
+  // Each mounted playback surface needs its own wake-lock tag. The mini-player
+  // and fullscreen player overlap briefly during handoff; sharing a tag lets
+  // the old surface clear the lock while the new one is still playing.
+  useKeepAwake();
 
   return (
     <VideoView

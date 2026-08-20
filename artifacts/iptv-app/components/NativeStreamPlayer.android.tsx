@@ -24,8 +24,10 @@ export function NativeStreamPlayer({
   onProgress,
 }: NativeStreamPlayerProps) {
   // Fire TV ignores this harmlessly; on phones it prevents the screen from
-  // timing out while the viewer is actively watching the stream.
-  useKeepAwake('streamvault-playback');
+  // timing out while the viewer is actively watching the stream. Do not share
+  // a tag with the mini-player/fullscreen sibling: Expo removes a tag when
+  // either surface unmounts instead of reference-counting that tag.
+  useKeepAwake();
 
   return (
     <VLCPlayer
