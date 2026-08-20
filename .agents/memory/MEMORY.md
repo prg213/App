@@ -16,6 +16,7 @@
 - [TV EPG D-pad & synced panning](tv-epg-dpad-sync.md) — imperative setNativeProps focus routing; time-based (not pixel) row sync with debounced broadcast + expected-offset loop guard.
 - [TV Home dashboard & row nav](tv-home-dashboard.md) — fixed non-scrolling Home on TV; tvRowNav registry for D-pad UP/DOWN between carousels (native focus can't cross virtualized rails).
 - [TV rail shared scroll extents](tv-rail-shared-extents.md) — synchronized Home FlatLists need equal content extents, including footer gap math, to stay column-aligned.
+- [TV horizontal rail sizing](tv-horizontal-rail-sizing.md) — put flex sizing on the FlatList viewport, not its horizontal content container, or focus-driven offsets can be clamped.
 - [Live Channel Menu](live-channel-menu.md) — LiveChannelMenu overlay; Menu button opens/closes; fetchAndParseM3U returns {channels,categories} not array; zap list is mutable useState; BACK priority order.
 - [Live TV sidebar entry](live-tv-sidebar-entry.md) — On TV, one OK press on Live TV opens All Channels with remote focus on its category and its list loading immediately.
 - [Live TV row alignment](live-tv-row-alignment.md) — Category and channel FlatLists must use one shared item height so their TV grid boundaries stay inline while scrolling.
