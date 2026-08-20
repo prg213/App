@@ -12,12 +12,15 @@ describe('Android live VLC surface transitions', () => {
     expect(liveContext).toContain("export type NativeSurfaceMode = 'mini' | 'fullscreen' | 'hidden'");
     expect(liveContext).toContain('transitionNativeSurface');
     expect(liveContext).toContain('setNativeSurfaceTransitionHandler');
+    expect(liveContext).toContain('beginNativeSurfaceHandoff');
+    expect(liveContext).toContain('endNativeSurfaceHandoff');
   });
 
   it('expands the mounted mini-player VLC surface instead of calling the Expo overlay transition', () => {
     const watchStart = liveTab.indexOf('const handleWatch = useCallback');
-    const watchBlock = liveTab.slice(watchStart, watchStart + 2200);
+    const watchBlock = liveTab.slice(watchStart, watchStart + 3000);
 
+    expect(watchBlock).toContain('setNativeSurfaceUrl(selectedChannel.streamUrl)');
     expect(watchBlock).toContain("transitionNativeSurface('fullscreen', navigate)");
     expect(watchBlock).toContain('triggerExpand(navigate)');
     expect(watchBlock).toMatch(/if\s*\(\s*USES_NATIVE_VLC\s*\)/);
@@ -28,10 +31,39 @@ describe('Android live VLC surface transitions', () => {
     expect(tvLayout).toContain("reloadKey={Platform.OS === 'android' ? vlcReloadKey");
   });
 
-  it('uses the existing Android surface as the fullscreen video layer', () => {
-    expect(fullscreenPlayer).toContain("nativeSurfaceMode === 'fullscreen'");
+  it('keeps the existing Android surface for only its fullscreen route lifetime', () => {
+    const ownershipStart = fullscreenPlayer.indexOf('const usesPersistentNativeSurface');
+    const ownershipBlock = fullscreenPlayer.slice(ownershipStart, ownershipStart + 500);
+
+    expect(ownershipBlock).toContain('USES_NATIVE_VLC');
+    expect(ownershipBlock).toContain('&& isLive');
+    expect(ownershipBlock).toContain('nativeSurfaceHandoff?.id === nativeSurfaceHandoffId');
+    // BACK sets the shared visual mode to mini before this route is removed.
+    // Ownership must survive that transition or player.tsx mounts a second VLC
+    // decoder in the closing route and restarts playback.
+    expect(ownershipBlock).not.toContain("nativeSurfaceMode === 'fullscreen'");
+    expect(fullscreenPlayer).toContain('endNativeSurfaceHandoff(nativeSurfaceHandoffId)');
     expect(fullscreenPlayer).toContain('videoMounted && !usesPersistentNativeSurface');
     expect(fullscreenPlayer).toContain("transitionNativeSurface('mini', returnToLive)");
+  });
+
+  it('publishes native ownership before every Android fullscreen entry point', () => {
+    const watchStart = liveTab.indexOf('const handleWatch = useCallback');
+    const watchChannelStart = liveTab.indexOf('const handleWatchChannel = useCallback');
+    const tvWatchStart = liveTab.indexOf('const handleTVWatch = useCallback');
+
+    expect(liveTab.slice(watchStart, watchStart + 3000))
+      .toContain('setNativeSurfaceUrl(selectedChannel.streamUrl)');
+    expect(liveTab.slice(watchStart, watchStart + 3000))
+      .toContain('beginNativeSurfaceHandoff(selectedChannel.streamUrl)');
+    expect(liveTab.slice(watchChannelStart, watchChannelStart + 2600))
+      .toContain('setNativeSurfaceUrl(ch.streamUrl)');
+    expect(liveTab.slice(watchChannelStart, watchChannelStart + 2600))
+      .toContain('beginNativeSurfaceHandoff(ch.streamUrl)');
+    expect(liveTab.slice(tvWatchStart, tvWatchStart + 1800))
+      .toContain('setNativeSurfaceUrl(selectedChannel.streamUrl)');
+    expect(liveTab.slice(tvWatchStart, tvWatchStart + 1800))
+      .toContain('beginNativeSurfaceHandoff(selectedChannel.streamUrl)');
   });
 
   it('updates the persistent source on a real channel zap without mounting fullscreen VLC', () => {
@@ -39,6 +71,7 @@ describe('Android live VLC surface transitions', () => {
     const switchBlock = fullscreenPlayer.slice(switchStart, switchStart + 3600);
 
     expect(switchBlock).toContain('setNativeSurfaceUrl(entry.url)');
+    expect(switchBlock).toContain('updateNativeSurfaceHandoffUrl(nativeSurfaceHandoffId, entry.url)');
     expect(switchBlock).toContain("DeviceEventEmitter.emit('channel:switched'");
   });
 });

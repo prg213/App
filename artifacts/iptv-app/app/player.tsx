@@ -314,6 +314,8 @@ export default function PlayerScreen() {
      *  the Back handler to do the Live TV category handoff even when
      *  channelsJson is also present (for prev/next navigation). */
     fromHome?: string;
+    /** Route-scoped proof that this live route is borrowing Live TV's mounted VLC surface. */
+    nativeSurfaceHandoffId?: string;
   }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -879,18 +881,29 @@ export default function PlayerScreen() {
     nativeSurfaceMode,
     nativeSurfaceUrl,
     setNativeSurfaceUrl,
+    nativeSurfaceHandoff,
+    updateNativeSurfaceHandoffUrl,
+    endNativeSurfaceHandoff,
     transitionNativeSurface,
     triggerCollapse,
     notifyPlayerReady,
   } = useLivePlayer();
-  // When Live TV already owns this Android stream, fullscreen is only a
-  // transparent controls route. Rendering another VLCPlayer here would force a
-  // second decoder to reconnect to the same channel.
+  const nativeSurfaceHandoffId = typeof params.nativeSurfaceHandoffId === 'string'
+    ? params.nativeSurfaceHandoffId
+    : null;
+  // When Live TV already owns this Android stream, this route is controls-only.
+  // The visual surface mode changes to `mini` before BACK removes this route,
+  // so ownership must outlive the visual mode. A route-scoped handoff ID avoids
+  // treating a retained URL as ownership: direct Home/recently-watched launches
+  // have no ID and must mount their own VLC renderer.
   const usesPersistentNativeSurface =
     USES_NATIVE_VLC
     && isLive
-    && nativeSurfaceMode === 'fullscreen'
-    && !!nativeSurfaceUrl;
+    && nativeSurfaceHandoff?.id === nativeSurfaceHandoffId;
+
+  useEffect(() => () => {
+    if (nativeSurfaceHandoffId) endNativeSurfaceHandoff(nativeSurfaceHandoffId);
+  }, [endNativeSurfaceHandoff, nativeSurfaceHandoffId]);
 
   // Controls whether the fullscreen VideoView is mounted.  We unmount it
   // before calling triggerCollapse so that the overlay VideoView in
@@ -1242,8 +1255,9 @@ export default function PlayerScreen() {
     setActiveUrl(entry.url);   // keeps cast hook in sync with the new stream
     // Keep fullscreen on the already-mounted mini-player VLC surface while
     // the tab receives channel:switched and replaces its source.
-    if (USES_NATIVE_VLC && nativeSurfaceMode === 'fullscreen') {
+    if (usesPersistentNativeSurface && nativeSurfaceHandoffId) {
       setNativeSurfaceUrl(entry.url);
+      updateNativeSurfaceHandoffUrl(nativeSurfaceHandoffId, entry.url);
     }
     // Notify the Live TV tab so its mini-player title/logo stay in sync
     { const { DeviceEventEmitter } = require('react-native'); DeviceEventEmitter.emit('channel:switched', { url: entry.url, logo: entry.logo ?? '', title: entry.title }); }
@@ -1310,7 +1324,7 @@ export default function PlayerScreen() {
     if (Platform.isTV && isLive && !wrapAroundPendingRef.current) {
       setTimeout(() => requestTvFocus(tvCenterRef.current), 150);
     }
-  }, [isLive, liveUrlRef, nativeSurfaceMode, player, setLastWatchedUrl, setNativeSurfaceUrl]);
+  }, [isLive, liveUrlRef, nativeSurfaceHandoffId, player, setLastWatchedUrl, setNativeSurfaceUrl, updateNativeSurfaceHandoffUrl, usesPersistentNativeSurface]);
 
   const navCooldownRef = useRef(false);
   // Timestamp of the moment the OSD info bar was hidden/unmounted.  When the

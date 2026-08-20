@@ -35,6 +35,10 @@ import type { VideoPlayer } from 'expo-video';
 
 export type NativeSurfaceMode = 'mini' | 'fullscreen' | 'hidden';
 type NativeSurfaceTransition = (mode: NativeSurfaceMode, onComplete: () => void) => void;
+export interface NativeSurfaceHandoff {
+  id: string;
+  url: string;
+}
 
 interface LivePlayerContextValue {
   player: VideoPlayer;
@@ -47,6 +51,15 @@ interface LivePlayerContextValue {
   nativeSurfaceMode: NativeSurfaceMode;
   nativeSurfaceUrl: string;
   setNativeSurfaceUrl: (url: string) => void;
+  /**
+   * Identifies the one fullscreen route that is borrowing the mounted Android
+   * VLC surface. Direct player launches intentionally have no handoff ID and
+   * mount their own renderer.
+   */
+  nativeSurfaceHandoff: NativeSurfaceHandoff | null;
+  beginNativeSurfaceHandoff: (url: string) => string;
+  updateNativeSurfaceHandoffUrl: (id: string, url: string) => void;
+  endNativeSurfaceHandoff: (id: string) => void;
   setNativeSurfaceTransitionHandler: (handler: NativeSurfaceTransition | null) => void;
   transitionNativeSurface: (mode: NativeSurfaceMode, onComplete?: () => void) => void;
   /** Attach to the mini-player container View for position measurement. */
@@ -123,7 +136,27 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
   // the fullscreen route supplies only its controls.
   const [nativeSurfaceMode, setNativeSurfaceMode] = useState<NativeSurfaceMode>('mini');
   const [nativeSurfaceUrl, setNativeSurfaceUrl] = useState('');
+  const [nativeSurfaceHandoff, setNativeSurfaceHandoff] = useState<NativeSurfaceHandoff | null>(null);
   const nativeSurfaceTransitionRef = useRef<NativeSurfaceTransition | null>(null);
+  const nextNativeSurfaceHandoffIdRef = useRef(0);
+
+  const beginNativeSurfaceHandoff = useCallback((url: string) => {
+    const id = String(++nextNativeSurfaceHandoffIdRef.current);
+    setNativeSurfaceHandoff({ id, url });
+    return id;
+  }, []);
+
+  const updateNativeSurfaceHandoffUrl = useCallback((id: string, url: string) => {
+    setNativeSurfaceHandoff((current) => (
+      current?.id === id ? { ...current, url } : current
+    ));
+  }, []);
+
+  const endNativeSurfaceHandoff = useCallback((id: string) => {
+    setNativeSurfaceHandoff((current) => (
+      current?.id === id ? null : current
+    ));
+  }, []);
 
   const setNativeSurfaceTransitionHandler = useCallback(
     (handler: NativeSurfaceTransition | null) => {
@@ -645,7 +678,7 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
 
   return (
     <LivePlayerContext.Provider
-      value={{ player, activeUrlRef, nativeSurfaceMode, nativeSurfaceUrl, setNativeSurfaceUrl, setNativeSurfaceTransitionHandler, transitionNativeSurface, miniPlayerRef, isCollapsingRef, collapseRestorePendingRef, pendingCollapseRemountRef, onCollapseCompleteRef, notifyPlayerReady, triggerExpand, triggerExpandFromRef, triggerCollapse }}
+      value={{ player, activeUrlRef, nativeSurfaceMode, nativeSurfaceUrl, setNativeSurfaceUrl, nativeSurfaceHandoff, beginNativeSurfaceHandoff, updateNativeSurfaceHandoffUrl, endNativeSurfaceHandoff, setNativeSurfaceTransitionHandler, transitionNativeSurface, miniPlayerRef, isCollapsingRef, collapseRestorePendingRef, pendingCollapseRemountRef, onCollapseCompleteRef, notifyPlayerReady, triggerExpand, triggerExpandFromRef, triggerCollapse }}
     >
       {children}
       {/* Expanding/collapsing VideoView overlay — rendered on top of everything.

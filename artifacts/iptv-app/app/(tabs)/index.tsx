@@ -400,6 +400,7 @@ export default function LiveTVScreen() {
     nativeSurfaceMode,
     nativeSurfaceUrl,
     setNativeSurfaceUrl,
+    beginNativeSurfaceHandoff,
     setNativeSurfaceTransitionHandler,
     transitionNativeSurface,
     isCollapsingRef,
@@ -1395,6 +1396,7 @@ export default function LiveTVScreen() {
     }));
     // Index must be from the sorted list, not the original array.
     const idx = chList.findIndex((c) => c.channelId === selectedChannel.id);
+    let nativeSurfaceHandoffId: string | undefined;
 
     const navigate = () => router.push({
       pathname: '/player',
@@ -1407,17 +1409,25 @@ export default function LiveTVScreen() {
         channelId: selectedChannel.id,
         channelsJson: JSON.stringify(chList),
         channelIndex: String(idx),
+        nativeSurfaceHandoffId,
       },
     });
 
     // Android/Fire TV keeps the mini-player's VLC view mounted and grows that
     // exact native surface before showing the fullscreen controls route.
     if (USES_NATIVE_VLC) {
+      // Do not rely on the selected-channel effect to publish this value: a
+      // remote press can enter fullscreen before that effect has committed.
+      // The controls route uses this as its proof that the mini-player already
+      // owns the live decoder, so it must be set in the same update as the
+      // surface-mode transition.
+      setNativeSurfaceUrl(selectedChannel.streamUrl);
+      nativeSurfaceHandoffId = beginNativeSurfaceHandoff(selectedChannel.streamUrl);
       transitionNativeSurface('fullscreen', navigate);
     } else {
       triggerExpand(navigate);
     }
-  }, [selectedChannel, channels, player, router, transitionNativeSurface, triggerExpand]);
+  }, [selectedChannel, channels, player, router, beginNativeSurfaceHandoff, setNativeSurfaceUrl, transitionNativeSurface, triggerExpand]);
 
   /** Navigate directly to the fullscreen player from a recently-watched card.
    *  Behaves identically to handleWatch (TV menu): back collapses to mini-player,
@@ -1446,6 +1456,7 @@ export default function LiveTVScreen() {
       groupTitle: c.groupTitle,
     }));
     const idx = chList.findIndex((c) => c.channelId === ch.id);
+    let nativeSurfaceHandoffId: string | undefined;
 
     const navigate = () => router.push({
       pathname: '/player',
@@ -1460,6 +1471,7 @@ export default function LiveTVScreen() {
         // No stopOnBack — BACK collapses to mini-player just like a normal watch.
         channelsJson: idx >= 0 ? JSON.stringify(chList) : '[]',
         channelIndex: String(idx),
+        nativeSurfaceHandoffId,
       },
     });
 
@@ -1468,13 +1480,15 @@ export default function LiveTVScreen() {
     if (USES_NATIVE_VLC) {
       // The Live TV mini-player becomes visible on this render. Give it one
       // layout pass before measuring and expanding its persistent VLC surface.
+      setNativeSurfaceUrl(ch.streamUrl);
+      nativeSurfaceHandoffId = beginNativeSurfaceHandoff(ch.streamUrl);
       requestAnimationFrame(() => transitionNativeSurface('fullscreen', navigate));
     } else if (cardRef) {
       triggerExpandFromRef(cardRef, navigate);
     } else {
       triggerExpand(navigate);
     }
-  }, [channels, router, transitionNativeSurface, triggerExpandFromRef, triggerExpand]);
+  }, [channels, router, beginNativeSurfaceHandoff, setNativeSurfaceUrl, transitionNativeSurface, triggerExpandFromRef, triggerExpand]);
 
   const renderCat = useCallback(({ item }: { item: Category }) => {
     const isBlockable = item.id !== FAVS_CAT_ID && item.id !== ALL_CAT_ID;
@@ -1598,6 +1612,7 @@ export default function LiveTVScreen() {
       groupTitle: ch.groupTitle,
     }));
     const idx = chList.findIndex((c) => c.channelId === selectedChannel.id);
+    let nativeSurfaceHandoffId: string | undefined;
     const navigate = () => router.push({
       pathname: '/player',
       params: {
@@ -1612,14 +1627,19 @@ export default function LiveTVScreen() {
         // via onCollapseCompleteRef → setVideoKey, matching the phone flow.
         channelsJson: JSON.stringify(chList),
         channelIndex: String(idx),
+        nativeSurfaceHandoffId,
       },
     });
     if (USES_NATIVE_VLC) {
+      // Publish ownership before navigation so player.tsx stays a controls-only
+      // route even when Fire OS commits the route faster than effects run.
+      setNativeSurfaceUrl(selectedChannel.streamUrl);
+      nativeSurfaceHandoffId = beginNativeSurfaceHandoff(selectedChannel.streamUrl);
       transitionNativeSurface('fullscreen', navigate);
     } else {
       navigate();
     }
-  }, [selectedChannel, channels, router, transitionNativeSurface]);
+  }, [selectedChannel, channels, router, beginNativeSurfaceHandoff, setNativeSurfaceUrl, transitionNativeSurface]);
 
   // ── TV: play a past mini-guide programme directly (skip CatchupSheet) ─────
   // Converts an EpgProgram (which has JS Date fields) into the same catch-up
