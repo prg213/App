@@ -315,16 +315,16 @@ describe('Scenario 4 — TV / Firestick: recently-watched back path sets selecte
     expect(focusBlock).toMatch(/requestTvFocus\(\s*miniPlayerRef\.current/);
   });
 
-  it('recently-watched collapse path also restores D-pad focus to mini-player on TV', () => {
-    // The shared return-handoff branch needs the same focus-restore so that
-    // returning from recently-watched on TV doesn't strand the cursor.
+  it('return handoff restores the playing channel row, with mini-player as fallback on TV', () => {
+    // The shared return-handoff branch must return focus to the live channel
+    // that is actually playing. If the virtualized row cannot mount, it falls
+    // back to the mini-player so the remote is never stranded.
     const consumeIdx = index.indexOf('const ch = consumePendingLivePlayerReturn()');
     expect(consumeIdx).toBeGreaterThan(-1);
 
-    // 1 100 chars covers the full return-handoff branch including the
-    // Platform.isTV focus-restore that appears after requestAnimationFrame.
-    const branchBody = index.slice(consumeIdx, consumeIdx + 1100);
+    const branchBody = index.slice(consumeIdx, consumeIdx + 1700);
     expect(branchBody).toMatch(/Platform\.isTV/);
+    expect(branchBody).toMatch(/focusPlayingChannelRef\.current\?\.\(\)/);
     expect(branchBody).toMatch(/requestTvFocus\(\s*miniPlayerRef\.current/);
   });
 

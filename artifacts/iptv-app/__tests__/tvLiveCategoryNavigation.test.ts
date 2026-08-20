@@ -73,6 +73,18 @@ describe('Fire TV category navigation', () => {
     expect(LIVE_TV).toMatch(/focusPlayingChannelRef\.current\?\.\(\)/);
   });
 
+  it('restores the currently zapped fullscreen channel to its TV list row on BACK', () => {
+    const PLAYER = fs.readFileSync(path.resolve(__dirname, '../app/player.tsx'), 'utf8');
+
+    expect(PLAYER).toMatch(/const currentEntry = channelList\[channelIdx\]/);
+    expect(PLAYER).toMatch(/groupTitle: currentEntry\?\.groupTitle \?\? params\.groupTitle \?\? ''/);
+    expect(PLAYER).toMatch(/setPendingLivePlayerReturn\(returnChannel\)[\s\S]*?DEE\.emit\('live:setPlayingChannel', returnChannel\)/);
+    expect(PLAYER).toMatch(/DEE\.emit\('live:setPlayingChannel', returnChannel\)[\s\S]*?triggerCollapse\(\(\) => router\.back\(\)\)/);
+    expect(LIVE_TV).toMatch(
+      /focusPlayingChannelRef\.current\?\.\(\)[\s\S]*?requestTvFocus\(miniPlayerRef\.current\)/,
+    );
+  });
+
   it('uses the BACK resolver when LEFT cannot directly target an unmounted playing row', () => {
     expect(TV_LAYOUT).toMatch(/const \[leftReturnProxyHandle, setLeftReturnProxyHandle\] = useState<number \| null>\(null\)/);
     expect(TV_LAYOUT).toMatch(/ref=\{setLeftReturnProxyRef as any\}/);

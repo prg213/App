@@ -487,7 +487,15 @@ export default function LiveTVScreen() {
         requestAnimationFrame(() => {
           setVideoKey((k) => k + 1);
           if (Platform.isTV) {
-            setTimeout(() => requestTvFocus(miniPlayerRef.current), 400);
+            setTimeout(() => {
+              // BACK from fullscreen must land on the channel that is actually
+              // playing now. This callback scrolls the virtualized channel list
+              // to the current row, highlights it, and retries focus until that
+              // row has mounted after a category change.
+              if (!focusPlayingChannelRef.current?.()) {
+                requestTvFocus(miniPlayerRef.current);
+              }
+            }, 400);
           }
         });
         return;
@@ -1268,6 +1276,7 @@ export default function LiveTVScreen() {
       logo: ch.logo ?? '',
       channelId: ch.id,
       num: ch.num,
+      groupTitle: ch.groupTitle,
     }));
     // Index must be from the sorted list, not the original array.
     const idx = chList.findIndex((c) => c.channelId === selectedChannel.id);
@@ -1314,6 +1323,7 @@ export default function LiveTVScreen() {
       logo: c.logo ?? '',
       channelId: c.id,
       num: c.num,
+      groupTitle: c.groupTitle,
     }));
     const idx = chList.findIndex((c) => c.channelId === ch.id);
 
@@ -1461,6 +1471,7 @@ export default function LiveTVScreen() {
       logo: ch.logo ?? '',
       channelId: ch.id,
       num: ch.num,
+      groupTitle: ch.groupTitle,
     }));
     const idx = chList.findIndex((c) => c.channelId === selectedChannel.id);
     router.push({

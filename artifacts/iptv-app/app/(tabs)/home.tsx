@@ -581,6 +581,7 @@ export default function HomeScreen() {
         epgId: c.epgId ?? c.id,
         logo: c.logo ?? '',
         channelId: c.id,
+        groupTitle: c.groupTitle ?? '',
       }));
       router.push({
         pathname: '/player',

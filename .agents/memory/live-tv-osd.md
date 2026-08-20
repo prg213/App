@@ -41,3 +41,7 @@ The "mutually exclusive" ambient strip (!showInfo) overlapped the OSD's 300ms fa
 ## Channel-browser open crash (Aug 2026)
 - Rule: never issue focus() at the player layer (tvCenterRef etc.) while the channel browser is open or opening — competing focus commands across the two layers hard-crashed Fire OS release builds when the menu appeared. Set showChannelMenuRef.current = true BEFORE dismissInfoBar() in every menu-open path, and gate all deferred OSD focus restores on that ref.
 - Rule: any code inside a bare setTimeout (focus, scrollToIndex/scrollToOffset) must be try/catch-wrapped — timer exceptions bypass ErrorBoundaries and kill release builds.
+
+## Fullscreen live BACK return
+- Every live BACK must hand the currently active zapped channel (including its category) back to Live TV before collapse—not only Home-origin launches. On TV, resolve that channel through the virtualized channel-list focus routine so it selects the right category, scrolls to the row, highlights it, and retries focus until it mounts; the mini-player is only a fallback.
+- **Why:** fullscreen state can diverge from its launch params after UP/DOWN zapping, and a generic collapse leaves the cursor on the old row or preview instead of the stream the viewer is now watching.

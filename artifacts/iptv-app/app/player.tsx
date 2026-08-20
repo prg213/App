@@ -55,7 +55,15 @@ const FITS = [
 ];
 const USES_NATIVE_VLC = Platform.OS === 'android';
 
-type ChannelEntry = { url: string; title: string; epgId: string; logo?: string; channelId?: string; num?: number };
+type ChannelEntry = {
+  url: string;
+  title: string;
+  epgId: string;
+  logo?: string;
+  channelId?: string;
+  num?: number;
+  groupTitle?: string;
+};
 
 function buildCreds(c: ReturnType<typeof useAppContext>['credentials']) {
   return { host: c!.host!, username: c!.username!, password: c!.password! };
@@ -1331,6 +1339,26 @@ export default function PlayerScreen() {
     // measureInWindow + rAF chain runs and setOverlayVisible(true) fires,
     // this state update will already have committed to the native layer.
     setVideoMounted(false);
+    // Always hand back the channel that is playing now, not the channel that
+    // originally opened fullscreen. The Live TV screen remains mounted while
+    // fullscreen is open, but its channel row can be virtualized or the user
+    // may have zapped since launch. Persisting the current channel makes the
+    // receiving screen select its category, scroll the list, and focus that row.
+    const currentEntry = channelList[channelIdx];
+    const returnChannel: Channel = {
+      id:        currentEntry?.channelId ?? params.channelId ?? '',
+      name:      activeTitle  ?? currentEntry?.title ?? params.title  ?? '',
+      logo:      activeLogo   ?? currentEntry?.logo  ?? params.logo   ?? '',
+      streamUrl: liveUrlRef.current || currentEntry?.url || params.url || '',
+      epgId:     activeEpgId  ?? currentEntry?.epgId ?? params.channelId ?? '',
+      groupTitle: currentEntry?.groupTitle ?? params.groupTitle ?? '',
+    };
+    // Store before emitting so the Live TV tab can recover even if it was
+    // temporarily unmounted or has not yet regained route focus.
+    setPendingLivePlayerReturn(returnChannel);
+    const { DeviceEventEmitter: DEE } = require('react-native');
+    DEE.emit('live:setPlayingChannel', returnChannel);
+
     // If launched from the Home screen (groupTitle present, and either fromHome
     // is explicitly set or no channelsJson was supplied), collapse to the
     // mini-player in the Live TV tab, pre-selecting the channel's category so
@@ -1339,29 +1367,6 @@ export default function PlayerScreen() {
     // handoff when both params are present.
     if (params.groupTitle && (params.fromHome === 'true' || !params.channelsJson)) {
       StorageService.setPrefLiveCat(params.groupTitle!).catch(() => {});
-      // Tell the Live TV tab to show this channel in the mini-player BEFORE
-      // triggerCollapse runs.  The mini-player has display:none when
-      // playingChannel is null, so measureInWindow returns zeros and the
-      // collapse animation is skipped entirely.  Emitting first makes the
-      // mini-player visible and sized so triggerCollapse can hit it.
-      const { DeviceEventEmitter: DEE } = require('react-native');
-      // Emit CURRENT active channel (not stale params) so the mini-player
-      // shows the channel the user is actually watching — which may differ
-      // from the original params when they zapped channels during the session.
-      const _nowId = channelList[channelIdx]?.channelId ?? params.channelId ?? '';
-      const returnChannel: Channel = {
-        id:        _nowId,
-        name:      activeTitle  ?? params.title  ?? '',
-        logo:      activeLogo   ?? params.logo   ?? '',
-        streamUrl: liveUrlRef.current || params.url || '',
-        epgId:     activeEpgId  ?? _nowId,
-        groupTitle: params.groupTitle ?? '',
-      };
-      // Set the shared handoff before emitting. If the Live TV tab has not
-      // mounted yet, it cannot hear the event, but it will consume this target
-      // as soon as router.navigate('/') brings it into focus.
-      setPendingLivePlayerReturn(returnChannel);
-      DEE.emit('live:setPlayingChannel', returnChannel);
       // Two rAFs: first lets React commit the setPlayingChannel state update;
       // second lets the native layout pass update the mini-player's rect so
       // triggerCollapse's measureInWindow gets real pixel dimensions.
