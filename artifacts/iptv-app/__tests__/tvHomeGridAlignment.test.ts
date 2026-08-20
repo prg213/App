@@ -8,6 +8,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import {
   computeTvGridCardHeight,
+  computeTvRailFocusOffset,
 } from '../lib/tvHomeLayout';
 
 const source = fs.readFileSync(path.resolve(__dirname, '../app/(tabs)/home.tsx'), 'utf8');
@@ -69,6 +70,18 @@ describe('TV Home grid alignment', () => {
     expect(source).toMatch(/focusedStyle=\{Platform\.isTV \? styles\.tvBannerFocused : styles\.bannerFocused\}/);
     expect(recentRailSource).toMatch(/focusedStyle=\{Platform\.isTV \? styles\.tvCardFocused : undefined\}/);
     expect(recentRailSource).toMatch(/tvCardFocused:[\s\S]*borderColor: '#00E5FF'/);
+  });
+
+  it('holds the first four cards and advances only on the fifth card', () => {
+    const stride = 208;
+    expect(computeTvRailFocusOffset(0, stride)).toBe(0);
+    expect(computeTvRailFocusOffset(1, stride)).toBe(0);
+    expect(computeTvRailFocusOffset(2, stride)).toBe(0);
+    expect(computeTvRailFocusOffset(3, stride)).toBe(0);
+    expect(computeTvRailFocusOffset(4, stride)).toBe(stride);
+    expect(computeTvRailFocusOffset(5, stride)).toBe(stride * 2);
+    expect(source).toContain('computeTvRailFocusOffset(index, tvItemStrideRef.current)');
+    expect(recentRailSource).toContain('computeTvRailFocusOffset(index, tvItemStride ?? CARD_STRIDE)');
   });
 
   it('pins Recently Watched RIGHT before the final card can receive focus', () => {

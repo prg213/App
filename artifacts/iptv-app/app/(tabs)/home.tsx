@@ -38,6 +38,7 @@ import {
   TV_BANNER_LIST_PADDING_VERTICAL,
   TV_BANNER_LIST_GAP,
   computeTvGridCardHeight,
+  computeTvRailFocusOffset,
 } from '@/lib/tvHomeLayout';
 import { sidebarNav } from '@/lib/sidebarNav';
 import { tvRowNav } from '@/lib/tvRowNav';
@@ -317,7 +318,7 @@ export default function HomeScreen() {
     index: number,
   ) => {
     if (!Platform.isTV) return;
-    const offset = tvItemStrideRef.current * index;
+    const offset = computeTvRailFocusOffset(index, tvItemStrideRef.current);
     try {
       listRef.current?.scrollToOffset({ offset, animated: false });
     } catch {}

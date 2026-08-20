@@ -88,6 +88,22 @@ export const TV_SECTION_HEADER_H =
   TV_SECTION_TITLE_LINE_HEIGHT + TV_SECTION_HEADER_MARGIN_BOTTOM; // 19 + 3 = 22
 
 /**
+ * Keep the focused card inside a four-column TV rail window.
+ *
+ * Cards 0–3 stay at the initial offset. Focusing card 4 advances the row by
+ * one card, so the focused card appears in the fourth visible position rather
+ * than making every RIGHT press move the row.
+ */
+export function computeTvRailFocusOffset(
+  index: number,
+  itemStride: number,
+  visibleColumns: number = TV_HOME_GRID_COLUMNS,
+): number {
+  const firstVisibleIndex = Math.max(0, index - Math.max(1, visibleColumns) + 1);
+  return firstVisibleIndex * itemStride;
+}
+
+/**
  * Compute the rendered poster-card height for a TV Home dashboard row.
  *
  * This is the height a banner card actually gets, accounting for:

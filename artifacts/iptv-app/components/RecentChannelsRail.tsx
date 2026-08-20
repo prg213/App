@@ -18,6 +18,7 @@ import {
   TV_BANNER_LIST_GAP,
   TV_BANNER_LIST_PADDING_VERTICAL,
   TV_SECTION_MARGIN_TOP,
+  computeTvRailFocusOffset,
 } from '@/lib/tvHomeLayout';
 import { useFocusEffect } from 'expo-router';
 import { FocusablePressable } from '@/components/FocusablePressable';
@@ -263,7 +264,7 @@ export function RecentChannelsRail({
                 tvRowNav.focused('recent', index, { pinRightEdge: index === recent.length - 1 });
                 try {
                   listRef.current?.scrollToOffset({
-                    offset: (tvItemStride ?? CARD_STRIDE) * index,
+                    offset: computeTvRailFocusOffset(index, tvItemStride ?? CARD_STRIDE),
                     animated: false,
                   });
                 } catch {}
