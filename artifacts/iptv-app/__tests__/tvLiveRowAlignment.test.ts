@@ -26,31 +26,37 @@ describe('TV Live category/channel row alignment', () => {
     expect(SOURCE).toMatch(/height:\s*CH_ITEM_H/);
   });
 
-  it('does not move categories when the channel list scrolls', () => {
+  it('does not couple category scrolling to channel-list movement', () => {
     expect(SOURCE).not.toMatch(/const syncCategoryScroll\s*=\s*useCallback/);
     expect(SOURCE).not.toMatch(/onScroll=\{syncCategoryScroll\}/);
-    expect(SOURCE).not.toMatch(/catListRef\.current\?\.scrollToOffset/);
   });
 
-  it('positions category and channel focus using the same immediate viewport line', () => {
+  it('keeps category and channel focus in their own bottom-edge windows', () => {
+    expect(SOURCE).toMatch(/import \{ computeTvVerticalFocusOffset \} from '@\/lib\/tvFocusWindow'/);
+
     const catStart = SOURCE.indexOf('const handleCatFocus');
     const catEnd = SOURCE.indexOf('const wireCategoryToFirstChannel', catStart);
     expect(catStart).toBeGreaterThan(-1);
     expect(catEnd).toBeGreaterThan(catStart);
     const categoryFocus = SOURCE.slice(catStart, catEnd);
-    expect(categoryFocus).toMatch(/scrollToIndex/);
+    expect(categoryFocus).toMatch(/scrollToOffset/);
     expect(categoryFocus).toMatch(/animated:\s*false/);
-    expect(categoryFocus).toMatch(/viewPosition:\s*TV_LIST_FOCUS_VIEW_POSITION/);
+    expect(categoryFocus).toMatch(/computeTvVerticalFocusOffset\(\s*index,\s*CAT_ITEM_H,\s*catViewportHeightRef\.current/);
 
     const start = SOURCE.indexOf('const handleChFocus');
     const end = SOURCE.indexOf('const renderChannel', start);
     expect(start).toBeGreaterThan(-1);
     expect(end).toBeGreaterThan(start);
     const channelFocus = SOURCE.slice(start, end);
-    expect(channelFocus).toMatch(/scrollToIndex/);
+    expect(channelFocus).toMatch(/scrollToOffset/);
     expect(channelFocus).toMatch(/animated:\s*false/);
-    expect(channelFocus).toMatch(/viewPosition:\s*TV_LIST_FOCUS_VIEW_POSITION/);
+    expect(channelFocus).toMatch(/computeTvVerticalFocusOffset\(\s*index,\s*CH_ITEM_H,\s*chViewportHeightRef\.current/);
     expect(channelFocus).not.toMatch(/animated:\s*true/);
+  });
+
+  it('measures each panel independently before calculating its focus window', () => {
+    expect(SOURCE).toMatch(/catViewportHeightRef\.current = event\.nativeEvent\.layout\.height/);
+    expect(SOURCE).toMatch(/chViewportHeightRef\.current = event\.nativeEvent\.layout\.height/);
   });
 
   it('coalesces channel-highlight redraws while D-pad focus moves rapidly', () => {

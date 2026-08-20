@@ -41,6 +41,7 @@ import { useTVRemote } from '@/hooks/useTVRemote';
 import type { Category, Channel, EpgProgram } from '@/types';
 import { channelHasCatchup, isCatchupRowPlayable } from '@/utils/catchup';
 import { requestTvFocus } from '@/lib/tvFocus';
+import { computeTvVerticalFocusOffset } from '@/lib/tvFocusWindow';
 import { sidebarNav } from '@/lib/sidebarNav';
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -176,6 +177,11 @@ export function TVLiveLayout({
 
   const catListRef = useRef<FlatList<Category>>(null);
   const chListRef  = useRef<FlatList<Channel>>(null);
+  // The two lists have different available heights, so measure each viewport
+  // independently. D-pad focus uses these measurements to keep a stable
+  // bottom-edge focus window instead of re-centering on every row.
+  const catViewportHeightRef = useRef(0);
+  const chViewportHeightRef = useRef(0);
   // Categories and channels scroll independently. Category focus/selection
   // controls the category list position; browsing channels must not move the
   // category list underneath the user's selected category.
@@ -628,10 +634,13 @@ export function TVLiveLayout({
 
   const handleCatFocus = useCallback((index: number) => {
     try {
-      catListRef.current?.scrollToIndex({
-        index,
+      catListRef.current?.scrollToOffset({
+        offset: computeTvVerticalFocusOffset(
+          index,
+          CAT_ITEM_H,
+          catViewportHeightRef.current,
+        ),
         animated: false,
-        viewPosition: TV_LIST_FOCUS_VIEW_POSITION,
       });
     } catch (_) {}
   }, []);
@@ -741,10 +750,13 @@ export function TVLiveLayout({
   const handleChFocus = useCallback((ch: Channel, index: number) => {
     updateHighlightedChannel(ch.id, true);
     try {
-      chListRef.current?.scrollToIndex({
-        index,
+      chListRef.current?.scrollToOffset({
+        offset: computeTvVerticalFocusOffset(
+          index,
+          CH_ITEM_H,
+          chViewportHeightRef.current,
+        ),
         animated: false,
-        viewPosition: TV_LIST_FOCUS_VIEW_POSITION,
       });
     } catch {}
   }, [updateHighlightedChannel]);
@@ -912,6 +924,9 @@ export function TVLiveLayout({
           renderItem={renderCat}
           showsVerticalScrollIndicator={false}
           getItemLayout={(_, i) => ({ length: CAT_ITEM_H, offset: CAT_ITEM_H * i, index: i })}
+          onLayout={(event) => {
+            catViewportHeightRef.current = event.nativeEvent.layout.height;
+          }}
           onScrollToIndexFailed={() => {}}
         />
       </View>
@@ -940,6 +955,9 @@ export function TVLiveLayout({
             updateCellsBatchingPeriod={16}
             windowSize={7}
             getItemLayout={(_, i) => ({ length: CH_ITEM_H, offset: CH_ITEM_H * i, index: i })}
+            onLayout={(event) => {
+              chViewportHeightRef.current = event.nativeEvent.layout.height;
+            }}
             onScrollToIndexFailed={() => {}}
           />
         )}
