@@ -52,6 +52,38 @@ function getRow(rowId: string): Row {
   return r;
 }
 
+/**
+ * Explicitly link a newly mounted card to its immediate siblings.
+ *
+ * A FlatList can focus its first card before the next item has mounted. If the
+ * second card registers later, relying on the first card's next onFocus event
+ * leaves RIGHT to Fire OS spatial navigation, which can jump past that card.
+ * Rewiring both sides at registration keeps every mounted pair sequential.
+ */
+function wireHorizontalSiblings(row: Row, index: number) {
+  const self = row.cards.get(index);
+  if (!self) return;
+  const selfHandle = findNodeHandle(self);
+  if (selfHandle == null) return;
+
+  const previous = index > 0 ? row.cards.get(index - 1) : null;
+  const next = row.cards.get(index + 1);
+  const previousHandle = previous ? findNodeHandle(previous) : null;
+  const nextHandle = next ? findNodeHandle(next) : null;
+
+  try {
+    // Preserve index 0's declarative LEFT route to the sidebar.
+    if (previousHandle != null) {
+      (self as any).setNativeProps?.({ nextFocusLeft: previousHandle });
+      (previous as any).setNativeProps?.({ nextFocusRight: selfHandle });
+    }
+    if (nextHandle != null) {
+      (self as any).setNativeProps?.({ nextFocusRight: nextHandle });
+      (next as any).setNativeProps?.({ nextFocusLeft: selfHandle });
+    }
+  } catch {}
+}
+
 export const tvRowNav = {
   /**
    * Declare the vertical order of rows for the current screen.
@@ -84,6 +116,7 @@ export const tvRowNav = {
       r.cards.set(index, node);
       // Mark this row as current-generation so neighbour lookup trusts it.
       r.gen = generation;
+      wireHorizontalSiblings(r, index);
     } else {
       r.cards.delete(index);
     }

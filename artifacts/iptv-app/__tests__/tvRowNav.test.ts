@@ -284,6 +284,29 @@ describe('tvRowNav — horizontal sibling routing', () => {
     nav.focused('rowA', 1);
     expect(second.setNativeProps.mock.calls[0][0].nextFocusLeft).toBe(701);
   });
+
+  it('rewires the first card when its immediate neighbour mounts after focus', () => {
+    const nav = loadTvRowNav();
+    const first = makeNode(711);
+    const second = makeNode(712);
+    const third = makeNode(713);
+    nav.setOrder(['recent']);
+    nav.register('recent', 0, first);
+
+    // This models the first card receiving sidebar RIGHT before the FlatList
+    // has finished mounting its adjacent card.
+    nav.focused('recent', 0);
+    first.setNativeProps.mockClear();
+
+    nav.register('recent', 1, second);
+    expect(first.setNativeProps).toHaveBeenLastCalledWith({ nextFocusRight: 712 });
+    expect(second.setNativeProps).toHaveBeenLastCalledWith({ nextFocusLeft: 711 });
+
+    second.setNativeProps.mockClear();
+    nav.register('recent', 2, third);
+    expect(second.setNativeProps).toHaveBeenLastCalledWith({ nextFocusRight: 713 });
+    expect(third.setNativeProps).toHaveBeenLastCalledWith({ nextFocusLeft: 712 });
+  });
 });
 
 describe('tvRowNav — right-edge anti-wrap routing', () => {
@@ -299,7 +322,7 @@ describe('tvRowNav — right-edge anti-wrap routing', () => {
 
     nav.focused('recent', 1, { pinRightEdge: true });
 
-    const call = last.setNativeProps.mock.calls[0][0];
+    const call = last.setNativeProps.mock.calls.at(-1)?.[0];
     expect(call.nextFocusRight).toBe(802);
     expect(call.nextFocusRight).not.toBe(801);
   });
