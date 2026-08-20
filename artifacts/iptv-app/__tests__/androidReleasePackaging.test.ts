@@ -9,6 +9,7 @@ import {
 
 const appRoot = path.resolve(__dirname, '..');
 const workflow = fs.readFileSync(path.resolve(appRoot, '../../.github/workflows/build-android.yml'), 'utf8');
+const candidateWorkflow = fs.readFileSync(path.resolve(appRoot, '../../.github/workflows/build-android-candidate.yml'), 'utf8');
 const appConfig = fs.readFileSync(path.resolve(appRoot, 'app.config.js'), 'utf8');
 const abiPlugin = fs.readFileSync(path.resolve(appRoot, 'plugins/withReleaseAbis.js'), 'utf8');
 const updateService = fs.readFileSync(path.resolve(appRoot, 'services/updateService.ts'), 'utf8');
@@ -20,13 +21,16 @@ describe('Android release packaging', () => {
     expect(abiPlugin).toContain('universalApk true');
     expect(abiPlugin).toContain("key: 'expo.useLegacyPackaging'");
     expect(workflow).toContain('MAX_UNIVERSAL_APK_BYTES=$((150 * 1024 * 1024))');
-    expect(workflow).toContain("tags:");
-    expect(workflow).toContain("'android-candidate-*'");
-    expect(workflow).toContain("startsWith(github.ref, 'refs/tags/android-candidate-')");
     expect(workflow).toContain('for ABI in armeabi-v7a arm64-v8a; do');
     expect(workflow).toContain('for VLC_LIBRARY in libvlc.so libvlcjni.so; do');
     expect(workflow).toContain('test "$COMPRESSION_METHOD" = "deflated"');
     expect(workflow).toContain('x86|x86_64');
+  });
+
+  it('only starts an emergency candidate build from an explicit tag', () => {
+    expect(workflow).toContain('workflow_call:');
+    expect(candidateWorkflow).toContain("'android-candidate-*'");
+    expect(candidateWorkflow).toContain('uses: ./.github/workflows/build-android.yml');
   });
 
   it('validates APK identity, signer continuity, and VLC regression coverage', () => {

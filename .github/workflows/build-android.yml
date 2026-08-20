@@ -1,5 +1,6 @@
 name: Build Android APK
 "on":
+  workflow_call:
   workflow_dispatch:
     inputs:
       release_action:
@@ -18,12 +19,6 @@ name: Build Android APK
         type: string
   repository_dispatch:
     types: [build-android]
-  # GitHub's workflow-dispatch registry can be stale after a workflow merge.
-  # A uniquely named tag provides a deterministic candidate-build fallback
-  # without starting a release on ordinary source-code pushes.
-  push:
-    tags:
-      - 'android-candidate-*'
 
 jobs:
   build:
@@ -32,7 +27,7 @@ jobs:
     if: >-
       github.event_name == 'repository_dispatch' ||
       inputs.release_action == 'build-candidate' ||
-      startsWith(github.ref, 'refs/tags/android-candidate-')
+      github.event_name == 'workflow_call'
     permissions: { contents: read }
     steps:
       - uses: actions/checkout@v4

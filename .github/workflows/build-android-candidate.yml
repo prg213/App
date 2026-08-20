@@ -1,0 +1,15 @@
+name: Build Android Candidate
+
+"on":
+  workflow_dispatch:
+  # Explicit candidate tags are the emergency fallback when GitHub's
+  # workflow-dispatch registry is stale. Ordinary source pushes never enter
+  # this workflow.
+  push:
+    tags:
+      - 'android-candidate-*'
+
+jobs:
+  build:
+    uses: ./.github/workflows/build-android.yml
+    secrets: inherit
