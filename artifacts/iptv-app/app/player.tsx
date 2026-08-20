@@ -740,6 +740,11 @@ export default function PlayerScreen() {
   // doesn't waste resources).
   const localPlayer = useVideoPlayer(isLive || isWeb ? null : params.url, (p) => {
     p.loop = false;
+    // Keep Android's audio renderer active for streams whose MPEG audio layer
+    // II track is present but not marked as the default by the provider.
+    p.audioMixingMode = 'doNotMix';
+    p.muted = false;
+    p.volume = 1;
     // NOTE: do NOT set scrubbingModeOptions.scrubbingModeEnabled here. On
     // Android, enabling scrubbing mode SUPPRESSES playback (it's designed to
     // be toggled on only while the user drags a seek bar, then off again).
@@ -831,9 +836,22 @@ export default function PlayerScreen() {
             try {
               const tracks = player.availableAudioTracks ?? [];
               const subTracks = player.availableSubtitleTracks ?? [];
+              // A few IPTV providers advertise MP2 audio without marking a
+              // selected/default track. ExoPlayer then reports the track but
+              // outputs silence until one is explicitly selected. Prefer the
+              // provider's default flag, falling back to the first track.
+              const currentAudioTrack = player.audioTrack;
+              const fallbackAudioTrack =
+                currentAudioTrack ??
+                tracks.find((track) => track.isDefault) ??
+                tracks[0] ??
+                null;
+              if (!currentAudioTrack && fallbackAudioTrack) {
+                try { player.audioTrack = fallbackAudioTrack; } catch {}
+              }
               setAudioTracks(tracks);
               setSubtitleTracks(subTracks);
-              setActiveAudioTrack(player.audioTrack ?? null);
+              setActiveAudioTrack(player.audioTrack ?? fallbackAudioTrack);
               setActiveSubtitleTrack(player.subtitleTrack ?? null);
               // Auto-apply saved audio language preference
               StorageService.getPrefAudioLanguage().then((prefLang) => {
