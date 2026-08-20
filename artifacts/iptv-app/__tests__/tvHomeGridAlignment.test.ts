@@ -20,8 +20,18 @@ const recentRailSource = fs.readFileSync(
 describe('TV Home grid alignment', () => {
   it('measures one shared card height and derives one shared width', () => {
     expect(source).toMatch(/const \[tvCardHeight, setTvCardHeight\] = useState<number \| null>\(null\)/);
-    expect(source).toMatch(/const tvCardWidth = tvCardHeight[\s\S]*?Math\.round\(tvCardHeight \* BANNER_W \/ BANNER_H\)/);
+    expect(source).toMatch(/const \[tvCardWidthMeasured, setTvCardWidthMeasured\] = useState<number \| null>\(null\)/);
+    expect(source).toMatch(/const tvCardWidth = tvCardWidthMeasured \?\?/);
+    expect(source).toMatch(/tvCardHeight \? Math\.round\(tvCardHeight \* BANNER_W \/ BANNER_H\)/);
     expect(source).toMatch(/\[styles\.tvBannerOuter, \{ width: tvCardWidth, height: tvCardHeight \}\]/);
+  });
+
+  it('caps TV card width so four cards fit the measured content viewport', () => {
+    expect(source).toMatch(/const bodyWidth = Number\(event\?\.nativeEvent\?\.layout\?\.width \?\? 0\)/);
+    expect(source).toMatch(/const widthForFourColumns = \([\s\S]*TV_BANNER_LIST_PADDING_HORIZONTAL[\s\S]*TV_BANNER_LIST_GAP[\s\S]*TV_HOME_GRID_COLUMNS/);
+    expect(source).toMatch(/Math\.min\(widthFromVerticalLayout, widthForFourColumns\)/);
+    expect(source).toMatch(/const cardHeight = Math\.max\(1, Math\.round\(cardWidth \* BANNER_H \/ BANNER_W\)\)/);
+    expect(source).not.toMatch(/onTvRailLayout=\{handleTvRailLayout\}/);
   });
 
   it('uses the same deterministic item layout for every TV content rail', () => {

@@ -44,6 +44,7 @@ export const TV_HOME_GRID_COLUMNS            = 4;  // target visible poster colu
 // 3dp on each side (top + bottom) = 6dp total, giving focus-ring clearance so
 // the ring is not flush against the FlatList clip boundary.
 export const TV_BANNER_LIST_PADDING_VERTICAL = 3;  // home.tsx › tvBannerList.paddingVertical
+export const TV_BANNER_LIST_PADDING_HORIZONTAL = 14; // home.tsx › tvBannerList.paddingHorizontal
 export const TV_BANNER_LIST_GAP = 8;               // home.tsx › tvBannerList.gap
 
 // ─── RecentChannelsRail (TV) ──────────────────────────────────────────────────

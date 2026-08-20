@@ -36,6 +36,7 @@ import {
   TV_SECTION_TITLE_FONT_SIZE,
   TV_HOME_GRID_COLUMNS,
   TV_BANNER_LIST_PADDING_VERTICAL,
+  TV_BANNER_LIST_PADDING_HORIZONTAL,
   TV_BANNER_LIST_GAP,
   computeTvGridCardHeight,
   computeTvRailFocusOffset,
@@ -462,30 +463,59 @@ export default function HomeScreen() {
     (recentChannelCount > 0 ? 1 : 0);
   const tvCardLayoutSlots = actualTVSectionCount > 2 ? actualTVSectionCount : TV_HOME_GRID_COLUMNS;
   const [tvCardHeight, setTvCardHeight] = useState<number | null>(null);
-  const tvCardGeometryRef = useRef<{ sectionCount: number; height: number } | null>(null);
+  const [tvCardWidthMeasured, setTvCardWidthMeasured] = useState<number | null>(null);
+  const tvCardGeometryRef = useRef<{ sectionCount: number; width: number; height: number } | null>(null);
   useEffect(() => {
     if (tvCardGeometryRef.current?.sectionCount === tvCardLayoutSlots) return;
     tvCardGeometryRef.current = null;
     setTvCardHeight(null);
+    setTvCardWidthMeasured(null);
   }, [tvCardLayoutSlots]);
 
   const handleTvRailLayout = useCallback((event: any) => {
     if (!Platform.isTV) return;
+    const bodyWidth = Number(event?.nativeEvent?.layout?.width ?? 0);
     const bodyHeight = Number(event?.nativeEvent?.layout?.height ?? 0);
-    const cardHeight = computeTvGridCardHeight(
+    const heightFromVerticalLayout = computeTvGridCardHeight(
       bodyHeight,
       actualTVSectionCount,
       tvCardLayoutSlots,
     );
-    if (!Number.isFinite(cardHeight) || cardHeight <= 0) return;
-    if (tvCardGeometryRef.current?.sectionCount === tvCardLayoutSlots) return;
-    tvCardGeometryRef.current = { sectionCount: tvCardLayoutSlots, height: cardHeight };
+    if (!Number.isFinite(heightFromVerticalLayout) || heightFromVerticalLayout <= 0) return;
+
+    // The old geometry used only vertical height, which made cards too wide
+    // when the TV sidebar reduced the content viewport. Cap the poster width
+    // to the measured rail width so exactly four cards fit across the Home
+    // content area while retaining the 16:9 banner ratio.
+    const widthFromVerticalLayout = heightFromVerticalLayout * BANNER_W / BANNER_H;
+    const widthForFourColumns = (
+      bodyWidth
+      - TV_BANNER_LIST_PADDING_HORIZONTAL * 2
+      - TV_BANNER_LIST_GAP * (TV_HOME_GRID_COLUMNS - 1)
+    ) / TV_HOME_GRID_COLUMNS;
+    const cardWidth = Math.max(
+      1,
+      Math.round(
+        bodyWidth > 0
+          ? Math.min(widthFromVerticalLayout, widthForFourColumns)
+          : widthFromVerticalLayout,
+      ),
+    );
+    const cardHeight = Math.max(1, Math.round(cardWidth * BANNER_H / BANNER_W));
+    const previous = tvCardGeometryRef.current;
+    if (
+      previous?.sectionCount === tvCardLayoutSlots
+      && Math.abs(previous.width - cardWidth) < 1
+      && Math.abs(previous.height - cardHeight) < 1
+    ) return;
+    tvCardGeometryRef.current = { sectionCount: tvCardLayoutSlots, width: cardWidth, height: cardHeight };
     setTvCardHeight(cardHeight);
+    setTvCardWidthMeasured(cardWidth);
   }, [actualTVSectionCount, tvCardLayoutSlots]);
 
-  const tvCardWidth = tvCardHeight
-    ? Math.round(tvCardHeight * BANNER_W / BANNER_H)
-    : null;
+  const tvCardWidth = tvCardWidthMeasured ?? (
+    tvCardHeight ? Math.round(tvCardHeight * BANNER_W / BANNER_H) : null
+  );
   const tvCardStyle = useMemo(
     () => tvCardWidth && tvCardHeight
       ? [styles.tvBannerOuter, { width: tvCardWidth, height: tvCardHeight }]
@@ -732,7 +762,6 @@ export default function HomeScreen() {
           onFirstCardRef={setRecentHomeRightCandidate}
           tvCardStyle={tvCardStyle}
           tvItemStride={tvItemStride}
-          onTvRailLayout={handleTvRailLayout}
           onTvItemCountChange={setRecentChannelCount}
         />
 
@@ -923,7 +952,7 @@ const styles = StyleSheet.create({
   // clearance so it is not flush against the FlatList clip boundary.
   // At 720p (~640dp usable) with all 4 sections the body is ~154dp before
   // this inset and ~148dp after — well above the ~80dp legibility floor.
-  tvBannerList: { paddingHorizontal: 14, paddingVertical: TV_BANNER_LIST_PADDING_VERTICAL, gap: TV_BANNER_LIST_GAP, alignItems: 'stretch' },
+  tvBannerList: { paddingHorizontal: TV_BANNER_LIST_PADDING_HORIZONTAL, paddingVertical: TV_BANNER_LIST_PADDING_VERTICAL, gap: TV_BANNER_LIST_GAP, alignItems: 'stretch' },
   // Card fills its row's height (minus the 3dp inset on each side);
   // width follows from the banner aspect ratio.
   tvBannerOuter: {
