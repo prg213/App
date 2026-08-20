@@ -9,10 +9,8 @@
 import { Platform } from 'react-native';
 
 const REPO = 'prg213/App';
-// The release workflow publishes this name as the compact armeabi-v7a APK.
-// Fire TV devices support this ABI, including 64-bit models running a
-// 32-bit Fire OS userspace. The named arm64 asset remains available for
-// manual installs on modern Android devices.
+// The release workflow publishes this name as the universal ARM APK. It
+// contains both physical ABIs so one download works on Fire TV and mobile.
 export const FIRE_TV_APK_NAME = 'StreamVault.apk';
 export const ARM32_APK_NAME = 'StreamVault-armeabi-v7a.apk';
 export const ARM64_APK_NAME = 'StreamVault-arm64-v8a.apk';
@@ -41,11 +39,9 @@ export function selectUpdateAsset(
   assets: ReleaseAsset[] | undefined,
   target: UpdateTarget = 'firetv',
 ): ReleaseAsset | undefined {
-  // Fire TV devices must stay on the generic ARM32 APK: some Fire TV models
-  // run a 32-bit userspace and cannot install the arm64-only asset.
-  //
-  // Modern Android phones need the arm64 APK. Keep the ARM32 names as
-  // fallbacks for older releases or partially published releases.
+  // New releases use the universal generic asset. Keep the architecture-
+  // specific names in the legacy preference lists so devices can still update
+  // from the existing split releases during the transition.
   const preferredNames = target === 'android-mobile'
     ? [ARM64_APK_NAME, ARM32_APK_NAME, FIRE_TV_APK_NAME]
     : [FIRE_TV_APK_NAME, ARM32_APK_NAME];

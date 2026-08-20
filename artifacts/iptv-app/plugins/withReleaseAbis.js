@@ -6,9 +6,9 @@ const {
 const PLUGIN_NAME = 'withStreamVaultReleaseAbis';
 
 /**
- * Produce one compact APK per physical Android architecture. A universal APK
- * bundles VLC four times (including emulator-only x86 binaries), which is too
- * large for many Fire TV devices to stage during an update.
+ * Produce one universal APK containing the two physical ARM architectures.
+ * This intentionally trades APK size for a single download that works on both
+ * 32-bit Fire TV userspaces and arm64 Android phones.
  */
 function withReleaseAbis(config) {
   return withAppBuildGradle(config, (config) => {
@@ -25,7 +25,7 @@ android {
             enable true
             reset()
             include "armeabi-v7a", "arm64-v8a"
-            universalApk false
+            universalApk true
         }
     }
 }

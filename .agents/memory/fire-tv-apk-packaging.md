@@ -1,10 +1,10 @@
 ---
 name: Fire TV APK packaging
-description: Release packaging and update-selection rules for StreamVault on Fire TV.
+description: Universal Android APK release decision and update-selection rules for StreamVault.
 ---
 
-Android release builds must generate separate `armeabi-v7a` and `arm64-v8a` APKs instead of a universal APK. The generic `StreamVault.apk` update asset is the `armeabi-v7a` build; the app’s in-app updater must not fall back to an arm64-only asset.
+Android release builds must publish one universal `StreamVault.apk` containing both `armeabi-v7a` and `arm64-v8a` native libraries. The in-app updater uses that generic asset for the universal release, while retaining architecture-specific fallback selection for older split releases.
 
-**Why:** LibVLC makes a universal APK too large for many Fire TV devices to download and stage. Fire TV hardware can expose a 32-bit userspace even on 64-bit hardware, so an arm64-only package is not a safe generic update.
+**Why:** The creator explicitly prioritizes one download that works on both Fire TV and mobile, accepting the larger VLC-inclusive APK and the known Fire TV installation risk. Fire TV hardware can expose a 32-bit userspace even on 64-bit hardware, so an arm64-only package is not a safe generic update.
 
-**How to apply:** Build both physical ARM assets in CI, keep the generic download name mapped to ARMv7, and set Android `versionCode` from the monotonically increasing CI build number so package updates are accepted.
+**How to apply:** Build the two physical ARM targets into a universal APK, stage and release only `StreamVault.apk`, and keep the generic update asset available. Keep legacy split-asset fallback behavior so existing installs can transition safely. Set Android `versionCode` from the monotonically increasing CI build number so package updates are accepted.

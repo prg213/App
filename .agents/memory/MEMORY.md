@@ -23,5 +23,5 @@
 - [EPG startup prefetch](epg-startup-prefetch.md) — Start Xtream XMLTV fetch before MAC verification completes; Guide shares the in-flight/cache query.
 - [Android IPTV audio compatibility](android-iptv-audio.md) — Android/Fire TV IPTV uses libVLC, not Expo/ExoPlayer track-selection workarounds, for MP2 transport streams.
 - [VLC Android release compatibility](vlc-android-release-compat.md) — Expo 57 needs API 26, a local native-library merge plugin, and a pnpm patch for the current VLC module to build successfully.
-- [Fire TV APK packaging](fire-tv-apk-packaging.md) — publish compact ARM splits; the generic in-app update asset is ARMv7 for Fire TV compatibility, never a universal VLC APK.
+- [Fire TV APK packaging](fire-tv-apk-packaging.md) — one universal ARM APK is the approved release format despite its larger VLC footprint.
 - [GitHub Actions release dispatch](github-actions-release-dispatch.md) — quote the workflow `on` key and retain the repository-dispatch fallback when GitHub’s manual trigger registry is stale.

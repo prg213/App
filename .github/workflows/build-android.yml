@@ -94,16 +94,11 @@ jobs:
         run: |
           set -euo pipefail
           OUTPUT_DIR="artifacts/iptv-app/android/app/build/outputs/apk/release"
-          ARM32_APK="$(find "$OUTPUT_DIR" -name '*armeabi-v7a*release.apk' -print -quit)"
-          ARM64_APK="$(find "$OUTPUT_DIR" -name '*arm64-v8a*release.apk' -print -quit)"
+          UNIVERSAL_APK="$(find "$OUTPUT_DIR" -name '*universal*release.apk' -print -quit)"
 
-          test -n "$ARM32_APK"
-          test -n "$ARM64_APK"
+          test -n "$UNIVERSAL_APK"
 
-          cp "$ARM32_APK" StreamVault-armeabi-v7a.apk
-          cp "$ARM64_APK" StreamVault-arm64-v8a.apk
-          # The in-app updater downloads this Fire TV-compatible ARM build.
-          cp StreamVault-armeabi-v7a.apk StreamVault.apk
+          cp "$UNIVERSAL_APK" StreamVault.apk
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -113,13 +108,9 @@ jobs:
           body: |
             Android APK — build #${{ github.run_number }}
 
-             **Fire TV and older Android:** Download StreamVault.apk.
-
-             **Modern 64-bit Android:** StreamVault-arm64-v8a.apk is also available.
+             **All Android and Fire TV devices:** Download StreamVault.apk.
           files: |
             StreamVault.apk
-            StreamVault-armeabi-v7a.apk
-            StreamVault-arm64-v8a.apk
           make_latest: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -130,8 +121,6 @@ jobs:
           name: StreamVault-release-${{ github.run_number }}
           path: |
             StreamVault.apk
-            StreamVault-armeabi-v7a.apk
-            StreamVault-arm64-v8a.apk
           retention-days: 30
 
       - name: Upload build log on failure
