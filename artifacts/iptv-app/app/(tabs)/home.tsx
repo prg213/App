@@ -83,7 +83,7 @@ const MovieBanner = React.memo(React.forwardRef(function MovieBanner({
     <FocusablePressable
       ref={ref}
       style={cardStyle ?? styles.bannerOuter}
-      focusedStyle={styles.bannerFocused}
+      focusedStyle={Platform.isTV ? styles.tvBannerFocused : styles.bannerFocused}
       nextFocusLeft={nextFocusLeft}
       onFocus={onCardFocus}
       onPress={onPress}
@@ -137,7 +137,7 @@ const SeriesBanner = React.memo(React.forwardRef(function SeriesBanner({
     <FocusablePressable
       ref={ref}
       style={cardStyle ?? styles.bannerOuter}
-      focusedStyle={styles.bannerFocused}
+      focusedStyle={Platform.isTV ? styles.tvBannerFocused : styles.bannerFocused}
       nextFocusLeft={nextFocusLeft}
       onFocus={onCardFocus}
       onPress={onPress}
@@ -623,7 +623,7 @@ export default function HomeScreen() {
           if (index === 0) setHomeRightCandidate('cw', el);
         }) as any : undefined}
         style={Platform.isTV ? tvCardStyle : [styles.bannerOuter, tabletCardStyle]}
-        focusedStyle={styles.bannerFocused}
+        focusedStyle={Platform.isTV ? styles.tvBannerFocused : styles.bannerFocused}
         // TV: LEFT on the first card jumps to the sidebar nav menu
         nextFocusLeft={Platform.isTV && index === 0 ? sidebarNav.handle : undefined}
         onFocus={() => {
@@ -929,6 +929,10 @@ const styles = StyleSheet.create({
     height: '100%',
     aspectRatio: BANNER_W / BANNER_H,
     borderRadius: 10,
+    // Reserve the focus-ring space even when unfocused. Adding a border only
+    // after focus changes the measured card box and lets tight TV rows clip it.
+    borderWidth: 3,
+    borderColor: 'transparent',
   },
 
   // ── Sections ──
@@ -947,8 +951,13 @@ const styles = StyleSheet.create({
   // Fire OS bug: overflow:hidden + borderRadius + borderWidth on the same
   // ReactViewGroup collapses the clip rect when borderWidth is added, making
   // absolute-positioned image children invisible on focus.
-  // 4dp ring is clearly visible at couch distance without clipping card content.
+  // On TV, the reserved 3dp border becomes cyan without changing the card box.
   bannerFocused: { borderWidth: 4, borderColor: '#00E5FF' },
+  tvBannerFocused: {
+    borderColor: '#00E5FF',
+    zIndex: 2,
+    elevation: 4,
+  },
 
   // ── Banner card ──
   // Outer Pressable: owns the dimensions and borderRadius for the focus ring.

@@ -63,6 +63,14 @@ describe('TV Home grid alignment', () => {
     expect(recentRailSource).not.toContain('computeTvRailTrailingSpacerWidth');
   });
 
+  it('reserves and shares a visible focus ring across every TV rail', () => {
+    expect(source).toMatch(/tvBannerOuter:[\s\S]*borderWidth: 3[\s\S]*borderColor: 'transparent'/);
+    expect(source).toMatch(/tvBannerFocused:[\s\S]*borderColor: '#00E5FF'/);
+    expect(source).toMatch(/focusedStyle=\{Platform\.isTV \? styles\.tvBannerFocused : styles\.bannerFocused\}/);
+    expect(recentRailSource).toMatch(/focusedStyle=\{Platform\.isTV \? styles\.tvCardFocused : undefined\}/);
+    expect(recentRailSource).toMatch(/tvCardFocused:[\s\S]*borderColor: '#00E5FF'/);
+  });
+
   it('pins Recently Watched RIGHT before the final card can receive focus', () => {
     expect(recentRailSource).toMatch(
       /if \(el && isLast\) tvRowNav\.pinRightEdge\('recent', index\)/,

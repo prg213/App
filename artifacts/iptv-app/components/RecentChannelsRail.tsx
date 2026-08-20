@@ -97,6 +97,7 @@ function RecentCard({ item, index, channels, nowTitle, colors, onWatchFullscreen
     <FocusablePressable
       ref={setCardRef as any}
       style={isTvPoster ? tvCardStyle : styles.card}
+      focusedStyle={Platform.isTV ? styles.tvCardFocused : undefined}
       // TV: LEFT on the first card jumps to the sidebar nav menu
       nextFocusLeft={Platform.isTV && index === 0 ? sidebarNav.handle : undefined}
       onFocus={onCardFocus}
@@ -340,6 +341,11 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
     borderRadius: 10,
+  },
+  tvCardFocused: {
+    borderColor: '#00E5FF',
+    zIndex: 2,
+    elevation: 4,
   },
   tvCardGrad: {
     ...StyleSheet.absoluteFill,
