@@ -6,7 +6,10 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { computeTvRailTrailingSpacerWidth } from '../lib/tvHomeLayout';
+import {
+  computeTvGridCardHeight,
+  computeTvRailTrailingSpacerWidth,
+} from '../lib/tvHomeLayout';
 
 const source = fs.readFileSync(path.resolve(__dirname, '../app/(tabs)/home.tsx'), 'utf8');
 const recentRailSource = fs.readFileSync(
@@ -24,6 +27,18 @@ describe('TV Home grid alignment', () => {
   it('uses the same deterministic item layout for every TV content rail', () => {
     expect((source.match(/getItemLayout=\{tvItemStride \? getTvItemLayout : undefined\}/g) ?? [])).toHaveLength(3);
     expect((source.match(/onLayout=\{handleTvRailLayout\}/g) ?? [])).toHaveLength(3);
+  });
+
+  it('keeps Movies and Series four-across when optional top rows are empty', () => {
+    const twoRowBody = 240;
+    const twoAcrossHeight = computeTvGridCardHeight(twoRowBody, 2, 2);
+    const fourAcrossHeight = computeTvGridCardHeight(twoRowBody, 2, 4);
+
+    expect(fourAcrossHeight).toBeLessThan(twoAcrossHeight);
+    expect(source).toMatch(
+      /const tvCardLayoutSlots = continueWatchingItems\.length > 0 \? 3 : TV_HOME_GRID_COLUMNS/,
+    );
+    expect(source).toMatch(/computeTvGridCardHeight\(\s*bodyHeight/);
   });
 
   it('moves every content rail by one shared, immediate offset', () => {

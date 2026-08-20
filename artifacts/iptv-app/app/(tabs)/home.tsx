@@ -34,8 +34,10 @@ import {
   TV_SECTION_MARGIN_TOP,
   TV_SECTION_HEADER_MARGIN_BOTTOM,
   TV_SECTION_TITLE_FONT_SIZE,
+  TV_HOME_GRID_COLUMNS,
   TV_BANNER_LIST_PADDING_VERTICAL,
   TV_BANNER_LIST_GAP,
+  computeTvGridCardHeight,
   computeTvRailTrailingSpacerWidth,
 } from '@/lib/tvHomeLayout';
 import { sidebarNav } from '@/lib/sidebarNav';
@@ -460,27 +462,33 @@ export default function HomeScreen() {
     [allSeries],
   );
 
-  // All three poster rails must use one measured card geometry. Letting each
-  // row derive width from its own flex-rounded height creates a 1dp difference
-  // that compounds across columns as the lists scroll.
-  const visibleTVSectionCount = continueWatchingItems.length > 0 ? 3 : 2;
+  // All poster rails must use one measured card geometry. When the optional
+  // top rows are empty, the two remaining rows still use four layout slots so
+  // their posters stay compact and four cards remain visible across the TV
+  // content area instead of growing into a two-card layout.
+  const actualTVSectionCount = continueWatchingItems.length > 0 ? 3 : 2;
+  const tvCardLayoutSlots = continueWatchingItems.length > 0 ? 3 : TV_HOME_GRID_COLUMNS;
   const [tvCardHeight, setTvCardHeight] = useState<number | null>(null);
   const tvCardGeometryRef = useRef<{ sectionCount: number; height: number } | null>(null);
   useEffect(() => {
-    if (tvCardGeometryRef.current?.sectionCount === visibleTVSectionCount) return;
+    if (tvCardGeometryRef.current?.sectionCount === tvCardLayoutSlots) return;
     tvCardGeometryRef.current = null;
     setTvCardHeight(null);
-  }, [visibleTVSectionCount]);
+  }, [tvCardLayoutSlots]);
 
   const handleTvRailLayout = useCallback((event: any) => {
     if (!Platform.isTV) return;
     const bodyHeight = Number(event?.nativeEvent?.layout?.height ?? 0);
-    const cardHeight = Math.max(1, Math.round(bodyHeight - 2 * TV_BANNER_LIST_PADDING_VERTICAL));
+    const cardHeight = computeTvGridCardHeight(
+      bodyHeight,
+      actualTVSectionCount,
+      tvCardLayoutSlots,
+    );
     if (!Number.isFinite(cardHeight) || cardHeight <= 0) return;
-    if (tvCardGeometryRef.current?.sectionCount === visibleTVSectionCount) return;
-    tvCardGeometryRef.current = { sectionCount: visibleTVSectionCount, height: cardHeight };
+    if (tvCardGeometryRef.current?.sectionCount === tvCardLayoutSlots) return;
+    tvCardGeometryRef.current = { sectionCount: tvCardLayoutSlots, height: cardHeight };
     setTvCardHeight(cardHeight);
-  }, [visibleTVSectionCount]);
+  }, [actualTVSectionCount, tvCardLayoutSlots]);
 
   const tvCardWidth = tvCardHeight
     ? Math.round(tvCardHeight * BANNER_W / BANNER_H)

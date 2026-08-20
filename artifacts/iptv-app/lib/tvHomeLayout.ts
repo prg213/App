@@ -38,6 +38,7 @@ export const TV_SECTION_MARGIN_TOP  = 4;   // home.tsx › tvSection.marginTop
 // ─── tvSectionHeader ─────────────────────────────────────────────────────────
 export const TV_SECTION_HEADER_MARGIN_BOTTOM = 3;  // home.tsx › tvSectionHeader.marginBottom
 export const TV_SECTION_TITLE_FONT_SIZE      = 15; // home.tsx › tvSectionTitle.fontSize
+export const TV_HOME_GRID_COLUMNS            = 4;  // target visible poster columns on TV
 
 // ─── tvBannerList (poster FlatList content container) ────────────────────────
 // 3dp on each side (top + bottom) = 6dp total, giving focus-ring clearance so
@@ -116,6 +117,26 @@ export function computeTvPosterCardHeight(
   // contentContainerStyle applies paddingVertical on both sides.
   const posterCardH   = sectionBodyH - 2 * TV_BANNER_LIST_PADDING_VERTICAL;
   return posterCardH;
+}
+
+/**
+ * Keep poster cards compact when optional Home rows are absent.
+ *
+ * The visible section bodies still flex across the full screen, but their
+ * posters should be sized as if the dashboard had its normal number of layout
+ * slots. This prevents Movies/Series from growing to two-across cards when
+ * Recently Watched and Continue Watching are both empty.
+ */
+export function computeTvGridCardHeight(
+  bodyHeight: number,
+  actualSectionCount: number,
+  layoutSlotCount: number,
+): number {
+  if (actualSectionCount <= 0 || layoutSlotCount <= 0) return 1;
+  const sectionBodyHeight =
+    ((bodyHeight + TV_SECTION_HEADER_H) * actualSectionCount / layoutSlotCount)
+    - TV_SECTION_HEADER_H;
+  return Math.max(1, Math.round(sectionBodyHeight - 2 * TV_BANNER_LIST_PADDING_VERTICAL));
 }
 
 /**
