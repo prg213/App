@@ -1,5 +1,6 @@
 import type { VideoPlayer } from 'expo-video';
 import { VideoView } from 'expo-video';
+import { useKeepAwake } from 'expo-keep-awake';
 import type { StyleProp, ViewStyle } from 'react-native';
 
 export type StreamResizeMode = 'contain' | 'cover' | 'fill';
@@ -31,6 +32,10 @@ export function NativeStreamPlayer({
   style,
   onPlaying,
 }: NativeStreamPlayerProps) {
+  // Keep the device awake while a stream surface is mounted. This is scoped
+  // to playback so leaving the player releases the wake lock normally.
+  useKeepAwake('streamvault-playback');
+
   return (
     <VideoView
       player={player}

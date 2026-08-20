@@ -1,4 +1,5 @@
 import React from 'react';
+import { useKeepAwake } from 'expo-keep-awake';
 import { VLCPlayer } from 'react-native-vlc-media-player';
 import type { NativeStreamPlayerProps } from './NativeStreamPlayer';
 
@@ -22,6 +23,10 @@ export function NativeStreamPlayer({
   onError,
   onProgress,
 }: NativeStreamPlayerProps) {
+  // Fire TV ignores this harmlessly; on phones it prevents the screen from
+  // timing out while the viewer is actively watching the stream.
+  useKeepAwake('streamvault-playback');
+
   return (
     <VLCPlayer
       key={`${source}:${reloadKey ?? 0}`}
