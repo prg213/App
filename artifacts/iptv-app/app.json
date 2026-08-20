@@ -32,6 +32,25 @@
     },
     "plugins": [
       [
+        "expo-build-properties",
+        {
+          "android": {
+            "minSdkVersion": 26
+          }
+        }
+      ],
+      [
+        "react-native-vlc-media-player",
+        {
+          "android": {
+            "legacyJetifier": false
+          },
+          "ios": {
+            "includeVLCKit": false
+          }
+        }
+      ],
+      [
         "expo-router",
         {
           "origin": "https://replit.com/"

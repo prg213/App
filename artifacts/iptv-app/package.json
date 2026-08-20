@@ -100,6 +100,7 @@
   "dependencies": {
     "expo": "~57.0.9",
     "expo-application": "~57.0.2",
+    "expo-build-properties": "~57.0.12",
     "expo-clipboard": "^57.0.1",
     "expo-file-system": "^57.0.1",
     "expo-intent-launcher": "^57.0.1",

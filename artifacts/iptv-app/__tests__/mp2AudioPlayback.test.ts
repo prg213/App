@@ -13,6 +13,9 @@ const playerSource = fs.readFileSync(path.resolve(__dirname, '../app/player.tsx'
 const liveContextSource = fs.readFileSync(path.resolve(__dirname, '../context/LivePlayerContext.tsx'), 'utf8');
 const nativeVlcSource = fs.readFileSync(path.resolve(__dirname, '../components/NativeStreamPlayer.android.tsx'), 'utf8');
 const liveTabSource = fs.readFileSync(path.resolve(__dirname, '../app/(tabs)/index.tsx'), 'utf8');
+const appConfig = JSON.parse(
+  fs.readFileSync(path.resolve(__dirname, '../app.json'), 'utf8'),
+) as { expo: { plugins: Array<string | [string, Record<string, any>]> } };
 
 describe('MP2 audio playback', () => {
   it('uses the VLC renderer on Android rather than forcing an ExoPlayer track', () => {
@@ -31,6 +34,21 @@ describe('MP2 audio playback', () => {
   it('keeps VLC unmuted with IPTV network buffering configured', () => {
     expect(nativeVlcSource).toContain('muted={false}');
     expect(nativeVlcSource).toContain("'--network-caching=1200'");
+  });
+
+  it('configures the Android build for the VLC native dependency', () => {
+    const plugins = appConfig.expo.plugins;
+    const buildProperties = plugins.find(
+      (plugin): plugin is [string, Record<string, any>] =>
+        Array.isArray(plugin) && plugin[0] === 'expo-build-properties',
+    );
+    const vlcPlugin = plugins.find(
+      (plugin): plugin is [string, Record<string, any>] =>
+        Array.isArray(plugin) && plugin[0] === 'react-native-vlc-media-player',
+    );
+
+    expect(buildProperties?.[1].android?.minSdkVersion).toBe(26);
+    expect(vlcPlugin?.[1].android?.legacyJetifier).toBe(false);
   });
 
   it('uses seconds for VLC progress and gives fullscreen exclusive ownership', () => {
