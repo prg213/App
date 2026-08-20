@@ -6,7 +6,7 @@
  *   2. On confirm: APK is downloaded to the cache dir with a progress bar
  *      (expo-file-system v57 DownloadTask API)
  *   3. On completion: Android package installer launched via expo-intent-launcher
- *      using getContentUriAsync (FileProvider, works Android 7+)
+ *      using ACTION_INSTALL_PACKAGE + getContentUriAsync (FileProvider, Android 7+)
  *
  * Works on Android phones and Fire TV (D-pad navigable).
  * Requires android.permission.REQUEST_INSTALL_PACKAGES in the manifest.
@@ -35,6 +35,15 @@ interface Props {
 }
 
 type Stage = 'prompt' | 'downloading' | 'ready' | 'error';
+
+const INSTALL_PACKAGE_ACTION = 'android.intent.action.INSTALL_PACKAGE';
+const APK_MIME_TYPE = 'application/vnd.android.package-archive';
+const INSTALLER_FLAGS = 0x10000001; // GRANT_READ_URI_PERMISSION | ACTIVITY_NEW_TASK
+
+function isUnknownSourcePermissionError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /unknown sources|unknown apps|request_install_packages|not allowed to install/i.test(message);
+}
 
 export function UpdateModal({ update, onDismiss }: Props) {
   const [stage, setStage] = useState<Stage>('prompt');
@@ -114,28 +123,31 @@ export function UpdateModal({ update, onDismiss }: Props) {
     if (!file) return;
     try {
       // getContentUriAsync converts file:// → content:// via FileProvider.
-      // Flags:
-      //   FLAG_GRANT_READ_URI_PERMISSION = 0x00000001 (let installer read the file)
-      //   FLAG_ACTIVITY_NEW_TASK         = 0x10000000 (required on Fire OS / Android 11+
-      //                                               to launch an activity from a non-
-      //                                               activity context)
+      // INSTALL_PACKAGE is the Android installer-specific intent. The generic
+      // VIEW action is not handled consistently by Fire OS package installers.
       const contentUri = await getContentUriAsync(file.uri);
-      await startActivityAsync('android.intent.action.VIEW', {
+      await startActivityAsync(INSTALL_PACKAGE_ACTION, {
         data: contentUri,
-        flags: 0x10000001, // FLAG_GRANT_READ_URI_PERMISSION | FLAG_ACTIVITY_NEW_TASK
-        type: 'application/vnd.android.package-archive',
+        flags: INSTALLER_FLAGS,
+        type: APK_MIME_TYPE,
       });
     } catch (e) {
       console.warn('[UpdateModal] install intent failed', e);
+      const permissionBlocked = isUnknownSourcePermissionError(e);
       Alert.alert(
         'Install Failed',
-        Platform.isTV
-          ? 'StreamVault needs permission to install updates.\n\n' +
-            'Go to:\nSettings → My Fire TV → Developer Options → Install Unknown Apps → StreamVault → Allow\n\n' +
-            'Then press "Install Now" again.'
-          : 'Could not open the installer.\n\n' +
-            'Go to Settings → Apps → Special App Access → Install Unknown Apps → StreamVault → Allow',
-        [{ text: 'OK' }],
+        permissionBlocked
+          ? Platform.isTV
+            ? 'StreamVault is not allowed to install updates on this device.\n\n' +
+              'Go to:\nSettings → My Fire TV → Developer Options → Install Unknown Apps → StreamVault → Allow\n\n' +
+              'Then press "Install Now" again.'
+            : 'StreamVault is not allowed to install updates.\n\n' +
+              'Go to Settings → Apps → Special App Access → Install Unknown Apps → StreamVault → Allow.'
+          : 'The update downloaded successfully, but Android did not open its installer.\n\n' +
+            'Select “Try Again” to reopen the installer. If it still does not open, restart the device and try again.',
+        permissionBlocked
+          ? [{ text: 'OK' }]
+          : [{ text: 'Try Again', onPress: installApk }, { text: 'Cancel', style: 'cancel' }],
       );
     }
   };
