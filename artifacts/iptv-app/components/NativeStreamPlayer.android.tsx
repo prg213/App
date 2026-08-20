@@ -43,11 +43,27 @@ export function NativeStreamPlayer({
       muted={false}
       resizeMode={resizeMode}
       onPlaying={onPlaying}
-      onBuffering={onBuffering}
+      onBuffering={(event) => {
+        // LibVLC reports a final `Buffering` event at 100% after some live
+        // streams have already entered Playing. Treating that terminal event
+        // as a new stall leaves the first fullscreen channel behind the
+        // "Connecting to stream" layer because no second Playing event is
+        // guaranteed. Only surface genuine, incomplete buffering.
+        const bufferRate = (event as { bufferRate?: number }).bufferRate;
+        if (bufferRate === undefined || bufferRate < 100) onBuffering?.();
+      }}
       onError={onError}
       // LibVLC reports milliseconds; StreamVault controls, history, and
-      // catch-up offsets consistently use seconds.
-      onProgress={({ currentTime, duration }) => onProgress?.(currentTime / 1000, duration / 1000)}
+      // catch-up offsets consistently use seconds. Native progress events also
+      // carry `isPlaying` at runtime (the library's typings omit it). This is
+      // the durable readiness fallback when the initial Playing event happens
+      // before React Native has attached the JS event listener during the first
+      // fullscreen surface mount.
+      onProgress={(event) => {
+        const { currentTime, duration } = event;
+        if ((event as typeof event & { isPlaying?: boolean }).isPlaying) onPlaying?.();
+        onProgress?.(currentTime / 1000, duration / 1000);
+      }}
     />
   );
 }

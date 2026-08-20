@@ -41,6 +41,18 @@ describe('MP2 audio playback', () => {
     expect(nativeVlcSource).toContain("'--network-caching=1200'");
   });
 
+  it('uses VLC playback progress to recover the first fullscreen start signal', () => {
+    // The native Playing event can arrive before the first fullscreen React
+    // listener is attached. Progress includes isPlaying at runtime, so it
+    // provides a second path to clear the Connecting overlay.
+    expect(nativeVlcSource).toContain('isPlaying?: boolean');
+    expect(nativeVlcSource).toContain('isPlaying) onPlaying?.()');
+  });
+
+  it('does not mistake VLC’s terminal 100% buffering notification for a stall', () => {
+    expect(nativeVlcSource).toContain('bufferRate < 100');
+  });
+
   it('configures the Android build for the VLC native dependency', () => {
     const plugins = appConfig.expo.plugins;
     const buildProperties = plugins.find(
