@@ -48,6 +48,8 @@ describe('TV Home grid alignment', () => {
     expect(recentRailSource).toMatch(/onTvRailLayout\?: \(event: any\) => void/);
     expect(recentRailSource).toMatch(/onTvItemCountChange\?: \(count: number\) => void/);
     expect(recentRailSource).toMatch(/contentContainerStyle=\{isTvGrid \? styles\.tvList : styles\.list\}/);
+    expect(recentRailSource).toMatch(/style=\{isTvGrid \? styles\.listTV : undefined\}/);
+    expect(recentRailSource).not.toMatch(/tvList:\s*\{[\s\S]*?flex:\s*1/);
     expect(source).toMatch(/const scrollFocusedRowToIndex = useCallback/);
     expect(source).toMatch(/scrollFocusedRowToIndex\(cwListRef, index\)/);
     expect(source).toMatch(/scrollFocusedRowToIndex\(movieListRef, index\)/);

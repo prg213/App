@@ -234,6 +234,7 @@ export function RecentChannelsRail({
         ref={listRef}
         data={recent}
         horizontal
+        style={isTvGrid ? styles.listTV : undefined}
         keyExtractor={(item) => item.id}
         showsHorizontalScrollIndicator={false}
         onLayout={isTvGrid ? onTvRailLayout : undefined}
@@ -298,6 +299,9 @@ const styles = StyleSheet.create({
     paddingTop: RAIL_TV_PADDING_TOP_EXTRA,
     paddingBottom: RAIL_TV_PADDING_BOTTOM,
   },
+  listTV: {
+    flex: 1,
+  },
   sectionHeaderTV: {
     marginBottom: RAIL_TV_HEADER_MARGIN_BOTTOM,
   },
@@ -322,7 +326,6 @@ const styles = StyleSheet.create({
   list: { paddingHorizontal: 8, gap: 8 },
   card: { width: 88 },
   tvList: {
-    flex: 1,
     paddingHorizontal: 14,
     paddingVertical: TV_BANNER_LIST_PADDING_VERTICAL,
     gap: TV_BANNER_LIST_GAP,
