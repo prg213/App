@@ -1,0 +1,44 @@
+import fs from 'fs';
+import path from 'path';
+import {
+  ARM32_APK_NAME,
+  ARM64_APK_NAME,
+  FIRE_TV_APK_NAME,
+  selectUpdateAsset,
+} from '@/services/updateService';
+
+const appRoot = path.resolve(__dirname, '..');
+const workflow = fs.readFileSync(path.resolve(appRoot, '../../.github/workflows/build-android.yml'), 'utf8');
+const appConfig = fs.readFileSync(path.resolve(appRoot, 'app.config.js'), 'utf8');
+const abiPlugin = fs.readFileSync(path.resolve(appRoot, 'plugins/withReleaseAbis.js'), 'utf8');
+const updateService = fs.readFileSync(path.resolve(appRoot, 'services/updateService.ts'), 'utf8');
+
+describe('Android release packaging', () => {
+  it('uses the CI build number as Android’s monotonically increasing version code', () => {
+    expect(appConfig).toContain('process.env.EXPO_PUBLIC_BUILD_NUMBER');
+    expect(appConfig).toContain('versionCode: androidVersionCode()');
+  });
+
+  it('builds only physical ARM APK outputs instead of a VLC-heavy universal APK', () => {
+    expect(abiPlugin).toContain('include "armeabi-v7a", "arm64-v8a"');
+    expect(abiPlugin).toContain('universalApk false');
+    expect(workflow).toContain('StreamVault-armeabi-v7a.apk');
+    expect(workflow).toContain('StreamVault-arm64-v8a.apk');
+  });
+
+  it('keeps a compact Fire TV-compatible default for in-app updates', () => {
+    expect(updateService).toContain("export const FIRE_TV_APK_NAME = 'StreamVault.apk'");
+    expect(updateService).toContain('const preferredNames = [FIRE_TV_APK_NAME, ARM32_APK_NAME]');
+    expect(workflow).toContain('cp StreamVault-armeabi-v7a.apk StreamVault.apk');
+  });
+
+  it('never sends a 32-bit Fire TV updater to an arm64-only release asset', () => {
+    const arm64Only = [{ name: ARM64_APK_NAME, browser_download_url: 'https://example.com/arm64.apk' }];
+    const arm32 = [{ name: ARM32_APK_NAME, browser_download_url: 'https://example.com/arm32.apk' }];
+    const generic = [{ name: FIRE_TV_APK_NAME, browser_download_url: 'https://example.com/fire-tv.apk' }];
+
+    expect(selectUpdateAsset(arm64Only)).toBeUndefined();
+    expect(selectUpdateAsset(arm32)?.browser_download_url).toBe('https://example.com/arm32.apk');
+    expect(selectUpdateAsset(generic)?.browser_download_url).toBe('https://example.com/fire-tv.apk');
+  });
+});

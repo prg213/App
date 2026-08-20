@@ -27,6 +27,7 @@ import { getContentUriAsync } from 'expo-file-system/legacy';
 import { startActivityAsync } from 'expo-intent-launcher';
 import type { UpdateInfo } from '@/services/updateService';
 import { CURRENT_BUILD } from '@/services/updateService';
+import { classifyUpdateFailure } from '@/services/updateInstallFailure';
 import { requestTvFocus } from '@/lib/tvFocus';
 
 interface Props {
@@ -35,19 +36,14 @@ interface Props {
 }
 
 type Stage = 'prompt' | 'downloading' | 'ready' | 'error';
-
 const INSTALL_PACKAGE_ACTION = 'android.intent.action.INSTALL_PACKAGE';
 const APK_MIME_TYPE = 'application/vnd.android.package-archive';
 const INSTALLER_FLAGS = 0x10000001; // GRANT_READ_URI_PERMISSION | ACTIVITY_NEW_TASK
 
-function isUnknownSourcePermissionError(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error);
-  return /unknown sources|unknown apps|request_install_packages|not allowed to install/i.test(message);
-}
-
 export function UpdateModal({ update, onDismiss }: Props) {
   const [stage, setStage] = useState<Stage>('prompt');
   const [progress, setProgress] = useState(0);
+  const [errorMessage, setErrorMessage] = useState('');
   const progressAnim = useRef(new Animated.Value(0)).current;
   const taskRef = useRef<DownloadTask | null>(null);
   const apkFileRef = useRef<File | null>(null);
@@ -85,6 +81,7 @@ export function UpdateModal({ update, onDismiss }: Props) {
 
   const startDownload = async () => {
     setStage('downloading');
+    setErrorMessage('');
     updateProgress(0);
 
     try {
@@ -114,6 +111,11 @@ export function UpdateModal({ update, onDismiss }: Props) {
     } catch (e) {
       console.warn('[UpdateModal] download failed', e);
       taskRef.current = null;
+      setErrorMessage(
+        classifyUpdateFailure(e) === 'storage'
+          ? 'There is not enough free storage to download this update. Free some space, then try again.'
+          : 'Download failed. Check your connection and try again.',
+      );
       setStage('error');
     }
   };
@@ -133,19 +135,22 @@ export function UpdateModal({ update, onDismiss }: Props) {
       });
     } catch (e) {
       console.warn('[UpdateModal] install intent failed', e);
-      const permissionBlocked = isUnknownSourcePermissionError(e);
+      const failureKind = classifyUpdateFailure(e);
       Alert.alert(
         'Install Failed',
-        permissionBlocked
+        failureKind === 'permission'
           ? Platform.isTV
             ? 'StreamVault is not allowed to install updates on this device.\n\n' +
               'Go to:\nSettings → My Fire TV → Developer Options → Install Unknown Apps → StreamVault → Allow\n\n' +
               'Then press "Install Now" again.'
             : 'StreamVault is not allowed to install updates.\n\n' +
               'Go to Settings → Apps → Special App Access → Install Unknown Apps → StreamVault → Allow.'
+          : failureKind === 'storage'
+            ? 'There is not enough free storage to stage this update.\n\n' +
+              'Free some device storage, then select “Try Again”.'
           : 'The update downloaded successfully, but Android did not open its installer.\n\n' +
-            'Select “Try Again” to reopen the installer. If it still does not open, restart the device and try again.',
-        permissionBlocked
+            'Select “Try Again” to reopen the installer. If it still does not open, keep the downloaded file and install it with Downloader.',
+        failureKind === 'permission'
           ? [{ text: 'OK' }]
           : [{ text: 'Try Again', onPress: installApk }, { text: 'Cancel', style: 'cancel' }],
       );
@@ -202,7 +207,7 @@ export function UpdateModal({ update, onDismiss }: Props) {
           {/* ── Error message ── */}
           {stage === 'error' && (
             <Text style={styles.errorText}>
-              Download failed. Check your connection and try again.
+              {errorMessage || 'Download failed. Check your connection and try again.'}
             </Text>
           )}
 

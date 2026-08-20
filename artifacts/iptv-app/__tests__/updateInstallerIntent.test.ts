@@ -1,8 +1,13 @@
 import fs from 'fs';
 import path from 'path';
+import { classifyUpdateFailure } from '@/services/updateInstallFailure';
 
 const source = fs.readFileSync(
   path.resolve(__dirname, '../components/UpdateModal.tsx'),
+  'utf8',
+);
+const failureSource = fs.readFileSync(
+  path.resolve(__dirname, '../services/updateInstallFailure.ts'),
   'utf8',
 );
 
@@ -20,8 +25,20 @@ describe('in-app Android updater installer hand-off', () => {
   });
 
   it('shows unknown-app permission guidance only for a matching installer error', () => {
-    expect(source).toContain('const permissionBlocked = isUnknownSourcePermissionError(e)');
-    expect(source).toContain('permissionBlocked');
+    expect(source).toContain("failureKind === 'permission'");
+    expect(failureSource).toContain('unknown sources|unknown apps|request_install_packages|canrequestpackageinstalls');
+    expect(failureSource).not.toContain('not allowed to install/i.test(');
     expect(source).toContain("'Try Again', onPress: installApk");
+  });
+
+  it('classifies only actual permission denials as unknown-app guidance', () => {
+    expect(classifyUpdateFailure(new Error('REQUEST_INSTALL_PACKAGES denied'))).toBe('permission');
+    expect(classifyUpdateFailure(new Error('installer not allowed to install this package'))).toBe('installer');
+  });
+
+  it('classifies storage failures for both download and installer staging', () => {
+    expect(classifyUpdateFailure(new Error('INSTALL_FAILED_INSUFFICIENT_STORAGE'))).toBe('storage');
+    expect(source).toContain('There is not enough free storage to download this update.');
+    expect(source).toContain('There is not enough free storage to stage this update.');
   });
 });
