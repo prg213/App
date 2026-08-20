@@ -35,6 +35,8 @@ import {
   TV_SECTION_HEADER_MARGIN_BOTTOM,
   TV_SECTION_TITLE_FONT_SIZE,
   TV_BANNER_LIST_PADDING_VERTICAL,
+  TV_BANNER_LIST_GAP,
+  computeTvRailTrailingSpacerWidth,
 } from '@/lib/tvHomeLayout';
 import { sidebarNav } from '@/lib/sidebarNav';
 import { tvRowNav } from '@/lib/tvRowNav';
@@ -255,6 +257,7 @@ export default function HomeScreen() {
   const cwListRef     = useRef<FlatList<WatchHistoryEntry>>(null);
   const movieListRef  = useRef<FlatList<Movie>>(null);
   const seriesListRef = useRef<FlatList<Series>>(null);
+  const tvItemStrideRef = useRef(BANNER_W + TV_BANNER_LIST_GAP);
   // Store current data lengths in refs so renderers can check isLast without
   // needing the length in their useCallback dep arrays (avoids unnecessary
   // renderer recreation every time data loads more items).
@@ -308,23 +311,23 @@ export default function HomeScreen() {
   }, []);
 
   // Synced panning: Continue Watching, Latest Movies and Latest TV Shows all
-  // move together — focusing any card in any of those three rows scrolls all
-  // three to the same column, just like the EPG grid. Recently Watched is
-  // intentionally excluded (different card size / different content type).
+  // move together — focusing any card in any of those three rows moves every
+  // rail to the exact same horizontal offset. Centering each list separately
+  // makes shorter rows clamp at different positions and breaks the dashboard
+  // grid. Recently Watched is intentionally excluded (different card size).
   // TV focus changes use an immediate scroll so three native lists cannot be
   // caught at different points in separate animations.
   const scrollAllContentRows = useCallback((index: number) => {
     if (!Platform.isTV) return;
+    const offset = tvItemStrideRef.current * index;
     [
       { ref: cwListRef,     count: cwCountRef },
       { ref: movieListRef,  count: movieCountRef },
       { ref: seriesListRef, count: seriesCountRef },
     ].forEach(({ ref, count }) => {
-      // Clamp to the row's own length so a short row doesn't throw an
-      // out-of-bounds error when the focused row has more items.
-      const safeIdx = Math.min(index, Math.max(0, count.current - 1));
+      if (count.current <= 0) return;
       try {
-        ref.current?.scrollToIndex({ index: safeIdx, animated: false, viewPosition: 0.35 });
+        ref.current?.scrollToOffset({ offset, animated: false });
       } catch {}
     });
   }, []);
@@ -488,10 +491,25 @@ export default function HomeScreen() {
       : styles.tvBannerOuter,
     [tvCardHeight, tvCardWidth],
   );
-  const tvItemStride = tvCardWidth ? tvCardWidth + 8 : null;
+  const tvItemStride = tvCardWidth ? tvCardWidth + TV_BANNER_LIST_GAP : null;
+  tvItemStrideRef.current = tvItemStride ?? BANNER_W + TV_BANNER_LIST_GAP;
+  const tvSharedColumnCount = Math.max(
+    continueWatchingItems.length,
+    latestMovies.length,
+    latestSeries.length,
+  );
+  const renderTvTrailingSpacer = useCallback((itemCount: number) => {
+    const width = computeTvRailTrailingSpacerWidth(
+      itemCount,
+      tvSharedColumnCount,
+      tvItemStride ?? BANNER_W + TV_BANNER_LIST_GAP,
+      TV_BANNER_LIST_GAP,
+    );
+    return width > 0 ? <View style={{ width, height: 1 }} /> : null;
+  }, [tvItemStride, tvSharedColumnCount]);
   const getTvItemLayout = useCallback((_: unknown, index: number) => ({
-    length: tvItemStride ?? BANNER_W + 8,
-    offset: (tvItemStride ?? BANNER_W + 8) * index,
+    length: tvItemStride ?? BANNER_W + TV_BANNER_LIST_GAP,
+    offset: (tvItemStride ?? BANNER_W + TV_BANNER_LIST_GAP) * index,
     index,
   }), [tvItemStride]);
 
@@ -623,9 +641,8 @@ export default function HomeScreen() {
         // TV: LEFT on the first card jumps to the sidebar nav menu
         nextFocusLeft={Platform.isTV && index === 0 ? sidebarNav.handle : undefined}
         onFocus={() => {
-          tvRowNav.focused('cw', index);
+          tvRowNav.focused('cw', index, { pinRightEdge: index === cwCountRef.current - 1 });
           scrollAllContentRows(index);
-          if (Platform.isTV && index === cwCountRef.current - 1) tvRowNav.pinRightEdge('cw', index);
         }}
         onPress={() => handleHistoryItemPress(item)}
       >
@@ -669,9 +686,8 @@ export default function HomeScreen() {
       cardStyle={Platform.isTV ? tvCardStyle : tabletCardStyle && [styles.bannerOuter, tabletCardStyle]}
       nextFocusLeft={Platform.isTV && index === 0 ? sidebarNav.handle : undefined}
       onCardFocus={() => {
-        tvRowNav.focused('movies', index);
+        tvRowNav.focused('movies', index, { pinRightEdge: index === movieCountRef.current - 1 });
         scrollAllContentRows(index);
-        if (Platform.isTV && index === movieCountRef.current - 1) tvRowNav.pinRightEdge('movies', index);
       }}
       onPress={() => handleMoviePress(item)}
     />
@@ -685,9 +701,8 @@ export default function HomeScreen() {
       cardStyle={Platform.isTV ? tvCardStyle : tabletCardStyle && [styles.bannerOuter, tabletCardStyle]}
       nextFocusLeft={Platform.isTV && index === 0 ? sidebarNav.handle : undefined}
       onCardFocus={() => {
-        tvRowNav.focused('series', index);
+        tvRowNav.focused('series', index, { pinRightEdge: index === seriesCountRef.current - 1 });
         scrollAllContentRows(index);
-        if (Platform.isTV && index === seriesCountRef.current - 1) tvRowNav.pinRightEdge('series', index);
       }}
       onPress={() => handleSeriesPress(item)}
     />
@@ -746,6 +761,7 @@ export default function HomeScreen() {
               style={styles.tvRail}
               contentContainerStyle={styles.tvBannerList}
               getItemLayout={tvItemStride ? getTvItemLayout : undefined}
+              ListFooterComponent={renderTvTrailingSpacer(continueWatchingItems.length)}
               initialNumToRender={8}
               maxToRenderPerBatch={8}
               removeClippedSubviews={false}
@@ -768,6 +784,7 @@ export default function HomeScreen() {
             style={styles.tvRail}
             contentContainerStyle={styles.tvBannerList}
             getItemLayout={tvItemStride ? getTvItemLayout : undefined}
+            ListFooterComponent={renderTvTrailingSpacer(latestMovies.length)}
             initialNumToRender={8}
             maxToRenderPerBatch={8}
             removeClippedSubviews={false}
@@ -789,6 +806,7 @@ export default function HomeScreen() {
             style={styles.tvRail}
             contentContainerStyle={styles.tvBannerList}
             getItemLayout={tvItemStride ? getTvItemLayout : undefined}
+            ListFooterComponent={renderTvTrailingSpacer(latestSeries.length)}
             initialNumToRender={8}
             maxToRenderPerBatch={8}
             removeClippedSubviews={false}
@@ -917,7 +935,7 @@ const styles = StyleSheet.create({
   // clearance so it is not flush against the FlatList clip boundary.
   // At 720p (~640dp usable) with all 4 sections the body is ~154dp before
   // this inset and ~148dp after — well above the ~80dp legibility floor.
-  tvBannerList: { paddingHorizontal: 14, paddingVertical: TV_BANNER_LIST_PADDING_VERTICAL, gap: 8, alignItems: 'stretch' },
+  tvBannerList: { paddingHorizontal: 14, paddingVertical: TV_BANNER_LIST_PADDING_VERTICAL, gap: TV_BANNER_LIST_GAP, alignItems: 'stretch' },
   // Card fills its row's height (minus the 3dp inset on each side);
   // width follows from the banner aspect ratio.
   tvBannerOuter: {

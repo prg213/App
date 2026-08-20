@@ -15,6 +15,7 @@
 - [Live TV OSD architecture](live-tv-osd.md) — showInfoBarRef pattern for cross-hook call; OSD 6s auto-dismiss on TV; Audio/CC chips inside info bar on TV; zap preview has EPG data via epgMap lookup; TVLiveLayout renderChannel has EPG progress bars + LIVE badge.
 - [TV EPG D-pad & synced panning](tv-epg-dpad-sync.md) — imperative setNativeProps focus routing; time-based (not pixel) row sync with debounced broadcast + expected-offset loop guard.
 - [TV Home dashboard & row nav](tv-home-dashboard.md) — fixed non-scrolling Home on TV; tvRowNav registry for D-pad UP/DOWN between carousels (native focus can't cross virtualized rails).
+- [TV rail shared scroll extents](tv-rail-shared-extents.md) — synchronized Home FlatLists need equal content extents, including footer gap math, to stay column-aligned.
 - [Live Channel Menu](live-channel-menu.md) — LiveChannelMenu overlay; Menu button opens/closes; fetchAndParseM3U returns {channels,categories} not array; zap list is mutable useState; BACK priority order.
 - [Live TV sidebar entry](live-tv-sidebar-entry.md) — On TV, one OK press on Live TV opens All Channels with remote focus on its category and its list loading immediately.
 - [Live TV row alignment](live-tv-row-alignment.md) — Category and channel FlatLists must use one shared item height so their TV grid boundaries stay inline while scrolling.

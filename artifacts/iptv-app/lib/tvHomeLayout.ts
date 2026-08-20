@@ -43,6 +43,7 @@ export const TV_SECTION_TITLE_FONT_SIZE      = 15; // home.tsx › tvSectionTitl
 // 3dp on each side (top + bottom) = 6dp total, giving focus-ring clearance so
 // the ring is not flush against the FlatList clip boundary.
 export const TV_BANNER_LIST_PADDING_VERTICAL = 3;  // home.tsx › tvBannerList.paddingVertical
+export const TV_BANNER_LIST_GAP = 8;               // home.tsx › tvBannerList.gap
 
 // ─── RecentChannelsRail (TV) ──────────────────────────────────────────────────
 // Extra paddingTop added on TV after the safe-area topInset (which is 0 on TV).
@@ -115,4 +116,23 @@ export function computeTvPosterCardHeight(
   // contentContainerStyle applies paddingVertical on both sides.
   const posterCardH   = sectionBodyH - 2 * TV_BANNER_LIST_PADDING_VERTICAL;
   return posterCardH;
+}
+
+/**
+ * Give shorter synchronized Home rails the same scrollable width as the
+ * longest rail. Without this trailing space, FlatList clamps a short rail
+ * before its sibling rows and their card columns no longer line up.
+ */
+export function computeTvRailTrailingSpacerWidth(
+  itemCount: number,
+  sharedColumnCount: number,
+  itemStride: number,
+  itemGap: number,
+): number {
+  const missingColumns = Math.max(0, sharedColumnCount - itemCount);
+  if (missingColumns === 0) return 0;
+  // The footer is a FlatList child, so the list inserts one item gap before
+  // it. Subtract that gap to make its total extent match a full rail, whose
+  // final card has no trailing gap.
+  return Math.max(0, missingColumns * itemStride - itemGap);
 }

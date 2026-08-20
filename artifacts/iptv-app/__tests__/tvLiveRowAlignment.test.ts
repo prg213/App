@@ -32,13 +32,25 @@ describe('TV Live category/channel row alignment', () => {
     expect(SOURCE).not.toMatch(/catListRef\.current\?\.scrollToOffset/);
   });
 
-  it('does not start an animated list scroll for every rapid channel focus event', () => {
+  it('positions category and channel focus using the same immediate viewport line', () => {
+    const catStart = SOURCE.indexOf('const handleCatFocus');
+    const catEnd = SOURCE.indexOf('const wireCategoryToFirstChannel', catStart);
+    expect(catStart).toBeGreaterThan(-1);
+    expect(catEnd).toBeGreaterThan(catStart);
+    const categoryFocus = SOURCE.slice(catStart, catEnd);
+    expect(categoryFocus).toMatch(/scrollToIndex/);
+    expect(categoryFocus).toMatch(/animated:\s*false/);
+    expect(categoryFocus).toMatch(/viewPosition:\s*TV_LIST_FOCUS_VIEW_POSITION/);
+
     const start = SOURCE.indexOf('const handleChFocus');
     const end = SOURCE.indexOf('const renderChannel', start);
     expect(start).toBeGreaterThan(-1);
     expect(end).toBeGreaterThan(start);
-    expect(SOURCE.slice(start, end)).not.toMatch(/scrollToIndex/);
-    expect(SOURCE.slice(start, end)).not.toMatch(/animated:\s*true/);
+    const channelFocus = SOURCE.slice(start, end);
+    expect(channelFocus).toMatch(/scrollToIndex/);
+    expect(channelFocus).toMatch(/animated:\s*false/);
+    expect(channelFocus).toMatch(/viewPosition:\s*TV_LIST_FOCUS_VIEW_POSITION/);
+    expect(channelFocus).not.toMatch(/animated:\s*true/);
   });
 
   it('coalesces channel-highlight redraws while D-pad focus moves rapidly', () => {
@@ -64,5 +76,9 @@ describe('TV Live category/channel row alignment', () => {
     expect(SOURCE).toMatch(/minWidth:\s*0/);
     expect(SOURCE).toMatch(/style=\{\{ flex: 1, minHeight: 0 \}\}/);
     expect(SOURCE).toMatch(/contentContainerStyle=\{\{ paddingBottom: 4 \}\}/);
+  });
+
+  it('keeps focused rows at the same measured width as unfocused rows', () => {
+    expect(SOURCE).toMatch(/focusedItem:[\s\S]*?borderLeftWidth:\s*3/);
   });
 });

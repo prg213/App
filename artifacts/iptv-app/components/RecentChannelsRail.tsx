@@ -64,16 +64,23 @@ interface CardProps {
   onRemove: (id: string) => void;
   onCardFocus?: () => void;
   onFirstCardRef?: (node: View | null) => void;
+  isLast: boolean;
 }
 
-function RecentCard({ item, index, channels, nowTitle, colors, onWatchFullscreen, onRemove, onCardFocus, onFirstCardRef }: CardProps) {
+function RecentCard({ item, index, channels, nowTitle, colors, onWatchFullscreen, onRemove, onCardFocus, onFirstCardRef, isLast }: CardProps) {
   const cardRef = useRef<View>(null);
   const ch = toChannel(item);
   const setCardRef = useCallback((el: View | null) => {
     cardRef.current = el;
-    if (Platform.isTV) tvRowNav.register('recent', index, el);
+    if (Platform.isTV) {
+      tvRowNav.register('recent', index, el);
+      // Install the right-edge route as soon as the final native card mounts,
+      // not only after it receives focus. This prevents Fire OS from briefly
+      // applying its default wrap-to-first behavior on a fast D-pad press.
+      if (el && isLast) tvRowNav.pinRightEdge('recent', index);
+    }
     if (index === 0) onFirstCardRef?.(el);
-  }, [index, onFirstCardRef]);
+  }, [index, isLast, onFirstCardRef]);
 
   return (
     <FocusablePressable
@@ -199,6 +206,7 @@ export function RecentChannelsRail({
               onWatchFullscreen={onWatchFullscreen}
               onRemove={handleRemove}
               onFirstCardRef={onFirstCardRef}
+              isLast={index === recent.length - 1}
               onCardFocus={Platform.isTV ? () => {
                 tvRowNav.focused('recent', index, { pinRightEdge: index === recent.length - 1 });
                 try { listRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.35 }); } catch {}

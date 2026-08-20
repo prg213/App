@@ -6,8 +6,13 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { computeTvRailTrailingSpacerWidth } from '../lib/tvHomeLayout';
 
 const source = fs.readFileSync(path.resolve(__dirname, '../app/(tabs)/home.tsx'), 'utf8');
+const recentRailSource = fs.readFileSync(
+  path.resolve(__dirname, '../components/RecentChannelsRail.tsx'),
+  'utf8',
+);
 
 describe('TV Home grid alignment', () => {
   it('measures one shared card height and derives one shared width', () => {
@@ -21,12 +26,40 @@ describe('TV Home grid alignment', () => {
     expect((source.match(/onLayout=\{handleTvRailLayout\}/g) ?? [])).toHaveLength(3);
   });
 
-  it('does not animate synchronized focus scrolling', () => {
+  it('moves every content rail by one shared, immediate offset', () => {
     const syncScroll = source.slice(
       source.indexOf('const scrollAllContentRows'),
       source.indexOf('// ── Watch history'),
     );
+    expect(syncScroll).toContain('tvItemStrideRef.current * index');
+    expect(syncScroll).toContain('scrollToOffset');
     expect(syncScroll).toContain('animated: false');
     expect(syncScroll).not.toContain('animated: true');
+  });
+
+  it('gives shorter rails enough trailing width to realize the shared offset', () => {
+    const stride = 208;
+    const gap = 8;
+    const longestRail = 30;
+    const shortRail = 20;
+    // A footer receives the FlatList gap before it; a final card does not.
+    const shortRailExtent = shortRail * stride
+      + computeTvRailTrailingSpacerWidth(shortRail, longestRail, stride, gap);
+    const longRailExtent = longestRail * stride - gap;
+
+    expect(shortRailExtent).toBe(longRailExtent);
+    expect(computeTvRailTrailingSpacerWidth(shortRail, longestRail, stride, gap)).toBe(10 * stride - gap);
+    expect(source).toMatch(/ListFooterComponent=\{renderTvTrailingSpacer\(continueWatchingItems\.length\)\}/);
+    expect(source).toMatch(/ListFooterComponent=\{renderTvTrailingSpacer\(latestMovies\.length\)\}/);
+    expect(source).toMatch(/ListFooterComponent=\{renderTvTrailingSpacer\(latestSeries\.length\)\}/);
+  });
+
+  it('pins Recently Watched RIGHT before the final card can receive focus', () => {
+    expect(recentRailSource).toMatch(
+      /if \(el && isLast\) tvRowNav\.pinRightEdge\('recent', index\)/,
+    );
+    expect(recentRailSource).toMatch(
+      /tvRowNav\.focused\('recent', index, \{ pinRightEdge: index === recent\.length - 1 \}\)/,
+    );
   });
 });

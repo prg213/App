@@ -190,7 +190,9 @@ export function TVLiveLayout({
   const guideFocusedRef = useRef(false);
   // TV no-wrap UP/DOWN edge refs for yellow panel
   const catchupRowRef   = useRef<View | null>(null);
+  const firstGuideRowRef = useRef<View | null>(null);
   const lastGuideRowRef = useRef<View | null>(null);
+  const guideRowRefMap = useRef(new Map<number, View>());
   // Count refs so renderers can check isFirst/isLast without breaking memoization
   const catCountRef = useRef(0);
   const chCountRef  = useRef(0);
@@ -239,6 +241,7 @@ export function TVLiveLayout({
   useEffect(() => () => {
     if (firstChannelFocusTimerRef.current) clearTimeout(firstChannelFocusTimerRef.current);
     if (categoryFocusTimerRef.current) clearTimeout(categoryFocusTimerRef.current);
+    if (playingChannelFocusTimerRef.current) clearTimeout(playingChannelFocusTimerRef.current);
   }, []);
 
   // The sidebar emits its entry intent before React Navigation focuses this
@@ -361,7 +364,11 @@ export function TVLiveLayout({
     const index = channels.findIndex((c) => c.id === selectedChannel.id);
     if (index < 0) return;
     try {
-      chListRef.current?.scrollToIndex({ index, animated: false, viewPosition: 0.5 });
+      chListRef.current?.scrollToIndex({
+        index,
+        animated: false,
+        viewPosition: TV_LIST_FOCUS_VIEW_POSITION,
+      });
     } catch (_) {}
   }, [selectedChannel?.id, channels]);
 
@@ -389,7 +396,7 @@ export function TVLiveLayout({
     catListRef.current?.scrollToIndex({
       index: categoryIndex,
       animated: false,
-      viewPosition: 0.3,
+      viewPosition: TV_LIST_FOCUS_VIEW_POSITION,
     });
 
     const focusCategory = () => {
@@ -455,16 +462,29 @@ export function TVLiveLayout({
       chListRef.current?.scrollToIndex({
         index: playingIndex,
         animated: false,
-        viewPosition: 0.35,
+        viewPosition: TV_LIST_FOCUS_VIEW_POSITION,
       });
     } catch {}
     if (playingChannelFocusTimerRef.current) {
       clearTimeout(playingChannelFocusTimerRef.current);
     }
-    playingChannelFocusTimerRef.current = setTimeout(() => {
-      focusPlayingNode();
-      playingChannelFocusTimerRef.current = null;
-    }, 120);
+    // A FlatList can take several render batches to remount a row after a
+    // preview-panel LEFT/BACK. Keep trying until the target exists instead of
+    // letting the one-shot timeout leave Fire OS free to focus Categories.
+    const retryFocusPlayingNode = (attemptsRemaining: number) => {
+      if (focusPlayingNode() || attemptsRemaining <= 0) {
+        playingChannelFocusTimerRef.current = null;
+        return;
+      }
+      playingChannelFocusTimerRef.current = setTimeout(
+        () => retryFocusPlayingNode(attemptsRemaining - 1),
+        PLAYING_CHANNEL_FOCUS_RETRY_DELAY_MS,
+      );
+    };
+    playingChannelFocusTimerRef.current = setTimeout(
+      () => retryFocusPlayingNode(PLAYING_CHANNEL_FOCUS_RETRY_ATTEMPTS),
+      PLAYING_CHANNEL_FOCUS_RETRY_DELAY_MS,
+    );
     return true;
   }, [
     categoryForChannel,
@@ -549,25 +569,55 @@ export function TVLiveLayout({
 
   const hasCatchup = channelHasCatchup(selectedChannel);
 
-  // TV no-wrap edges for yellow panel — runs after hasCatchup & channelEpg are known.
-  // Preview box is always the TOP element (UP → self).
-  // Bottom-most focusable element (last guide row → catchup → preview) DOWN → self.
+  // The preview panel is a deliberate vertical D-pad chain:
+  // preview → Catch-up (when present) → first guide row. Native spatial
+  // navigation regularly skips these controls on Fire OS because the video
+  // surface overlaps their measured bounds. Pin LEFT to the current element
+  // while the playing row is virtualized so the remote never falls back to the
+  // category panel before focusPlayingChannel can restore the selected row.
   useEffect(() => {
     if (!Platform.isTV) return;
-    const previewNode = miniPlayerRef?.current as any;
+    const previewNode = miniPlayerRef?.current as View | null | undefined;
     if (!previewNode) return;
-    try {
-      const previewH = findNodeHandle(previewNode);
-      if (previewH == null) return;
-      previewNode.setNativeProps?.({ nextFocusUp: previewH });
-      const bottomNode: any =
-        lastGuideRowRef.current ?? catchupRowRef.current ?? previewNode;
-      const bottomH = bottomNode === previewNode
-        ? previewH
-        : (() => { try { return findNodeHandle(bottomNode); } catch { return null; } })();
-      if (bottomH != null) bottomNode.setNativeProps?.({ nextFocusDown: bottomH });
-    } catch {}
-  }, [miniPlayerRef, selectedChannel, hasCatchup, channelEpg.length]);
+    const previewH = nodeHandle(previewNode);
+    if (previewH == null) return;
+    const catchupNode = catchupRowRef.current;
+    const firstGuideNode = firstGuideRowRef.current;
+    const lastGuideNode = lastGuideRowRef.current;
+    const playingOrSelf = (node: View | null) =>
+      node ? playingChHandle ?? nodeHandle(node) : null;
+    const patch = (node: View | null, props: Record<string, number | null>) => {
+      if (!node) return;
+      const usable = Object.fromEntries(
+        Object.entries(props).filter(([, handle]) => handle != null),
+      ) as Record<string, number>;
+      if (Object.keys(usable).length) {
+        try { (node as any).setNativeProps?.(usable); } catch {}
+      }
+    };
+
+    patch(previewNode, {
+      nextFocusUp: previewH,
+      nextFocusDown: nodeHandle(catchupNode) ?? nodeHandle(firstGuideNode) ?? previewH,
+      nextFocusLeft: playingOrSelf(previewNode),
+    });
+    patch(catchupNode, {
+      nextFocusUp: previewH,
+      nextFocusDown: nodeHandle(firstGuideNode) ?? nodeHandle(catchupNode),
+      nextFocusLeft: playingOrSelf(catchupNode),
+    });
+    guideRowRefMap.current.forEach((node, index) => {
+      patch(node, {
+        ...(index === 0
+          ? { nextFocusUp: nodeHandle(catchupNode) ?? previewH }
+          : {}),
+        ...(node === lastGuideNode
+          ? { nextFocusDown: nodeHandle(lastGuideNode) }
+          : {}),
+        nextFocusLeft: playingOrSelf(node),
+      });
+    });
+  }, [channelEpg.length, hasCatchup, miniPlayerRef, nodeHandle, playingChHandle, selectedChannel?.id]);
 
   // ── Category row ──────────────────────────────────────────────────────────
   // onFocus: scroll only — category changes on OK press.
@@ -578,7 +628,11 @@ export function TVLiveLayout({
 
   const handleCatFocus = useCallback((index: number) => {
     try {
-      catListRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.3 });
+      catListRef.current?.scrollToIndex({
+        index,
+        animated: false,
+        viewPosition: TV_LIST_FOCUS_VIEW_POSITION,
+      });
     } catch (_) {}
   }, []);
 
@@ -684,8 +738,15 @@ export function TVLiveLayout({
   // Stream loads on OK press only.  An imperative animated scroll here would
   // start a new animation for every D-pad event and make fast navigation jump.
 
-  const handleChFocus = useCallback((ch: Channel) => {
+  const handleChFocus = useCallback((ch: Channel, index: number) => {
     updateHighlightedChannel(ch.id, true);
+    try {
+      chListRef.current?.scrollToIndex({
+        index,
+        animated: false,
+        viewPosition: TV_LIST_FOCUS_VIEW_POSITION,
+      });
+    } catch {}
   }, [updateHighlightedChannel]);
 
   const renderChannel: ListRenderItem<Channel> = useCallback(({ item, index }) => {
@@ -718,6 +779,14 @@ export function TVLiveLayout({
             }
           } else {
             chRefMap.current.delete(item.id);
+            // Virtualized lists recycle native handles. If the playing row
+            // leaves the render window, clear its route immediately so
+            // preview-panel LEFT self-pins until focusPlayingChannel remounts
+            // and restores the selected row instead of targeting a recycled
+            // channel/category view.
+            if (Platform.isTV && item.id === selectedChannel?.id) {
+              setPlayingChannelHandle(null);
+            }
           }
         }}
         accessible
@@ -730,7 +799,7 @@ export function TVLiveLayout({
           isHighlighted && { borderLeftColor: FOCUS_BORDER, borderLeftWidth: 3 },
         ]}
         onFocus={() => {
-          handleChFocus(item);
+          handleChFocus(item, index);
           onCategoryFocusChange?.(false);
           sidebarNav.focusedRoute = null;
           channelFocusedRef.current = true;
@@ -1017,8 +1086,18 @@ export function TVLiveLayout({
                     return (
                       <Row
                         key={i}
-                        ref={Platform.isTV && isLastGuideRow
-                          ? (n: View | null) => { lastGuideRowRef.current = n; }
+                        ref={Platform.isTV
+                          ? (n: View | null) => {
+                              if (n) {
+                                guideRowRefMap.current.set(i, n);
+                                if (i === 0) firstGuideRowRef.current = n;
+                                if (isLastGuideRow) lastGuideRowRef.current = n;
+                              } else {
+                                guideRowRefMap.current.delete(i);
+                                if (i === 0) firstGuideRowRef.current = null;
+                                if (isLastGuideRow) lastGuideRowRef.current = null;
+                              }
+                            }
                           : undefined}
                         focusedStyle={Platform.isTV ? { backgroundColor: colors.secondary } : undefined}
                         style={[
@@ -1086,6 +1165,9 @@ export function TVLiveLayout({
 const TV_LIST_ROW_H = 58;
 const CAT_ITEM_H = TV_LIST_ROW_H;
 const CH_ITEM_H  = TV_LIST_ROW_H;
+const TV_LIST_FOCUS_VIEW_POSITION = 0.3;
+const PLAYING_CHANNEL_FOCUS_RETRY_ATTEMPTS = 6;
+const PLAYING_CHANNEL_FOCUS_RETRY_DELAY_MS = 80;
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 
@@ -1405,7 +1487,9 @@ const styles = StyleSheet.create({
   // immediately obvious from across the room on a Firestick / Android TV.
   focusedItem: {
     backgroundColor: 'rgba(0, 229, 255, 0.22)',
-    borderLeftWidth: 4,
+    // Matches the unfocused row's left-border width so focus never changes the
+    // measured row geometry and shifts the category/channel grid out of line.
+    borderLeftWidth: 3,
     borderLeftColor: FOCUS_BORDER,
   },
 });

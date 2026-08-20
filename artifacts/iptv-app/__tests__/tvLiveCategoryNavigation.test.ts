@@ -64,6 +64,36 @@ describe('Fire TV category navigation', () => {
     expect(LIVE_TV).toMatch(/focusPlayingChannelRef\.current\?\.\(\)/);
   });
 
+  it('creates an explicit preview-to-controls DOWN chain instead of relying on spatial focus', () => {
+    expect(TV_LAYOUT).toMatch(/const firstGuideRowRef = useRef<View \| null>\(null\)/);
+    expect(TV_LAYOUT).toMatch(
+      /nextFocusDown: nodeHandle\(catchupNode\) \?\? nodeHandle\(firstGuideNode\) \?\? previewH/,
+    );
+    expect(TV_LAYOUT).toMatch(
+      /nextFocusUp: previewH,[\s\S]*?nextFocusDown: nodeHandle\(firstGuideNode\) \?\? nodeHandle\(catchupNode\)/,
+    );
+    expect(TV_LAYOUT).toMatch(/guideRowRefMap\.current\.forEach/);
+  });
+
+  it('keeps restoring the selected channel until FlatList remounts its row', () => {
+    expect(TV_LAYOUT).toMatch(/const retryFocusPlayingNode = \(attemptsRemaining: number\)/);
+    expect(TV_LAYOUT).toMatch(/PLAYING_CHANNEL_FOCUS_RETRY_ATTEMPTS = 6/);
+    expect(TV_LAYOUT).toMatch(/PLAYING_CHANNEL_FOCUS_RETRY_DELAY_MS = 80/);
+    expect(TV_LAYOUT).toMatch(/retryFocusPlayingNode\(attemptsRemaining - 1\)/);
+  });
+
+  it('drops a recycled native LEFT target when FlatList unmounts the playing row', () => {
+    const channelStart = TV_LAYOUT.indexOf('const renderChannel');
+    const channelRefStart = TV_LAYOUT.indexOf('ref={(node: View | null) => {', channelStart);
+    const channelRefEnd = TV_LAYOUT.indexOf('accessible', channelRefStart);
+    expect(channelRefStart).toBeGreaterThan(-1);
+    expect(channelRefEnd).toBeGreaterThan(channelRefStart);
+    const channelRef = TV_LAYOUT.slice(channelRefStart, channelRefEnd);
+    expect(channelRef).toMatch(
+      /else \{[\s\S]*?chRefMap\.current\.delete\(item\.id\);[\s\S]*?item\.id === selectedChannel\?\.id[\s\S]*?setPlayingChannelHandle\(null\)/,
+    );
+  });
+
   it('keeps the preview playing while browsing categories or returning to the Live TV sidebar', () => {
     expect(TV_LAYOUT).toMatch(/sidebarNav\.focusedRoute === 'index'.*?onExitToSidebar/s);
     const sidebarExitStart = LIVE_TV.indexOf('const handleExitToSidebar = useCallback');
