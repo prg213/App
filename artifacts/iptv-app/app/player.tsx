@@ -2935,50 +2935,10 @@ export default function PlayerScreen() {
                 return;
               }
               setTvZoneFocused('left');
-              // OSD is user-pinned (viewer pressed OK to open it):
-              // keep focus on the centre zone — the nav cards were removed,
-              // so LEFT must not zap while the viewer is reading the overlay.
-              if (infoBarUserInvokedRef.current && showInfoRef.current) {
-                setTimeout(() => requestTvFocus(tvCenterRef.current), 50);
-                return;
-              }
-              // Focus arrived here from the OSD bar unmounting (spatial
-              // reassignment), not a deliberate LEFT press — bounce, don't zap.
-              if (Date.now() - osdHiddenAtRef.current < 800) {
-                setTimeout(() => requestTvFocus(tvCenterRef.current), 50);
-                return;
-              }
-              if (!prevChannel || !tvNavReadyRef.current) {
-                // No previous channel or nav not yet settled — immediately bounce
-                // D-pad focus to center so the remote stays responsive.
-                setTimeout(() => requestTvFocus(tvCenterRef.current), 50);
-                return;
-              }
-              if (navCooldownRef.current) {
-                // Previous channel switch has not settled yet.  Bounce focus
-                // back to centre so the remote always has a working target —
-                // a bare `return` leaves focus stranded on this side zone,
-                // making OK / LEFT / RIGHT feel completely dead.
-                setTimeout(() => requestTvFocus(tvCenterRef.current), 50);
-                return;
-              }
-              // Claim the cooldown upfront so rapid D-pad presses during the preview are ignored
-              navCooldownRef.current = true;
-              setTimeout(() => { navCooldownRef.current = false; }, 1400);
-              const targetChannel = prevChannel;
-              const targetIdx = (channelIdx - 1 + channelList.length) % channelList.length;
-              // Detect wrap-around (ch 0 → last) so switchChannel can flag the
-              // extended focus-restoration delay and suppress the early 150 ms call.
-              const isWrap = channelIdx === 0;
-              showTvChannelPreview(targetChannel, 'prev', () => {
-                switchChannel(targetChannel, targetIdx, isWrap);
-                // Belt-and-suspenders: also request focus explicitly here in addition
-                // to the useEffect[channelIdx] handler, in case the effect fires before
-                // the native layer has settled after player.replace().
-                // Use a longer delay for wrap-around switches to match the extended
-                // useEffect guard (900 ms vs 600 ms for adjacent-channel switches).
-                setTimeout(() => requestTvFocus(tvCenterRef.current), isWrap ? 950 : 700);
-              });
+              // Fire OS can still send focus to a `focusable={false}` Pressable.
+              // LEFT must remain inert during fullscreen live playback, so
+              // always return to the centre target instead of zapping.
+              setTimeout(() => requestTvFocus(tvCenterRef.current), 50);
             }}
           />
           {/* Centre — explicit focus target; OK shows/hides info bar + controls.
@@ -3035,38 +2995,9 @@ export default function PlayerScreen() {
                 return;
               }
               setTvZoneFocused('right');
-              // OSD is user-pinned: keep focus on the centre zone (nav cards removed).
-              if (infoBarUserInvokedRef.current && showInfoRef.current) {
-                setTimeout(() => requestTvFocus(tvCenterRef.current), 50);
-                return;
-              }
-              // Focus arrived here from the OSD bar unmounting (spatial
-              // reassignment), not a deliberate RIGHT press — bounce, don't zap.
-              if (Date.now() - osdHiddenAtRef.current < 800) {
-                setTimeout(() => requestTvFocus(tvCenterRef.current), 50);
-                return;
-              }
-              if (!nextChannel || !tvNavReadyRef.current) {
-                // No next channel or nav not yet settled — bounce focus to center.
-                setTimeout(() => requestTvFocus(tvCenterRef.current), 50);
-                return;
-              }
-              if (navCooldownRef.current) {
-                // Same guard as the left zone: bounce to centre rather than
-                // leaving the remote stranded on this non-navigating side zone.
-                setTimeout(() => requestTvFocus(tvCenterRef.current), 50);
-                return;
-              }
-              navCooldownRef.current = true;
-              setTimeout(() => { navCooldownRef.current = false; }, 1400);
-              const targetChannel = nextChannel;
-              const targetIdx = (channelIdx + 1) % channelList.length;
-              // Detect wrap-around (last → ch 0); switchChannel handles the flag.
-              const isWrap = channelIdx === channelList.length - 1;
-              showTvChannelPreview(targetChannel, 'next', () => {
-                switchChannel(targetChannel, targetIdx, isWrap);
-                setTimeout(() => requestTvFocus(tvCenterRef.current), isWrap ? 950 : 700);
-              });
+              // Same protection for RIGHT. Fullscreen live zapping is reserved
+              // for UP/DOWN and dedicated channel-up/channel-down media keys.
+              setTimeout(() => requestTvFocus(tvCenterRef.current), 50);
             }}
           />
           {/* ── TV zone focus indicators ─────────────────────────────────────

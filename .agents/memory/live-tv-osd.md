@@ -25,7 +25,7 @@ description: Professional IPTV OSD patterns in player.tsx and TVLiveLayout.tsx �
 
 ## Bottom OSD unified (Aug 2026)
 - Prev/next channel nav cards removed from the info bar — the minimal NOW/NEXT strip is the only bottom menu; refs/styles (chNav*, prevChBtnRef/nextChBtnRef) deleted.
-- Zapping inputs: TV D-pad UP=next / DOWN=prev via useTVRemote onHWKeyEvent fallback; the visible info bar does not suppress zapping, but the channel browser and Audio/CC pickers retain exclusive D-pad control. Touch swipe LEFT=next / RIGHT=prev; vertical swipe zap kept.
+- Zapping inputs: fullscreen TV D-pad UP=next / DOWN=prev via useTVRemote onHWKeyEvent fallback; LEFT/RIGHT are always inert and return focus to the centre player target. The visible info bar does not suppress vertical zapping, but the channel browser and Audio/CC pickers retain exclusive D-pad control. Touch swipe LEFT=next / RIGHT=prev; vertical swipe zap kept.
 - First-channel-never-loads fix: tab loader writes liveUrlRef before replaceAsync commits, so fullscreen mount can see URL equality while player status is 'idle'/'error' — in that case force player.replace(url)+play() instead of just play().
 
 ## Stuck "Connecting to stream" on fullscreen expand
@@ -35,7 +35,8 @@ The fullscreen live screen mounts with `isBuffering=true` and clears it only on 
 The "mutually exclusive" ambient strip (!showInfo) overlapped the OSD's 300ms fade-out → users saw two stacked bottom overlays. Strip deleted; the full OSD info bar is the only bottom overlay. LiveChannelMenu is now wrapped in an error boundary (closes overlay on any render error) — a release-build JS error kills the whole app otherwise.
 
 ## OSD hide focus-safety (Aug 2026)
-- When the OSD bar hides while a chip inside it holds D-pad focus, Fire OS spatially reassigns focus BEFORE any explicit focus() call — it can land on a side zap zone and change channel on its own. Fixes: focus tvCenterRef immediately at fade start (before unmount) + backstop after; osdHiddenAtRef timestamp makes side zones bounce (not zap) within 800 ms of a bar hide.
+- When the OSD bar hides while a chip inside it holds D-pad focus, Fire OS spatially reassigns focus BEFORE any explicit focus() call. Focus the centre player target immediately at fade start (before unmount) and again afterward.
+- Fire OS can still emit `onFocus` for a horizontal layout zone marked `focusable={false}`. Those LEFT/RIGHT zone handlers must therefore always bounce to the centre and must never contain channel-switch logic. Fullscreen live zapping belongs only to UP/DOWN and dedicated channel media keys.
 
 ## Channel-browser open crash (Aug 2026)
 - Rule: never issue focus() at the player layer (tvCenterRef etc.) while the channel browser is open or opening — competing focus commands across the two layers hard-crashed Fire OS release builds when the menu appeared. Set showChannelMenuRef.current = true BEFORE dismissInfoBar() in every menu-open path, and gate all deferred OSD focus restores on that ref.
