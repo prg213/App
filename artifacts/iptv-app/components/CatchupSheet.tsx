@@ -37,6 +37,11 @@ export interface CatchupSheetProps {
   epgMap?: Map<string, EpgProgram[]>;
   onClose: () => void;
   /**
+   * Runs immediately before the full-screen catch-up player opens. The Live TV
+   * screen uses this to preserve its existing mini-preview for the return trip.
+   */
+  onStartPlayback?: (channel: Channel) => void;
+  /**
    * When set the sheet opens directly on the day that contains this programme.
    * Passed from the mini TV guide when the user presses OK on a past row.
    */
@@ -89,6 +94,7 @@ export function CatchupSheet({
   creds,
   epgMap,
   onClose,
+  onStartPlayback,
   initialProg,
 }: CatchupSheetProps) {
   const colors = useColors();
@@ -378,6 +384,7 @@ export function CatchupSheet({
       prog.startTimestamp,
     );
 
+    onStartPlayback?.(channel);
     onClose();
     router.push({
       pathname: '/player',

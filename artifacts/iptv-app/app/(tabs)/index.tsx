@@ -340,6 +340,10 @@ export default function LiveTVScreen() {
   const [showCatchup, setShowCatchup] = useState(false);
   // When opened from the mini TV guide, holds the programme to deep-link to.
   const [catchupInitialProg, setCatchupInitialProg] = useState<EpgProgram | null>(null);
+  // The live stream to resume after the user leaves full-screen Catch-up.
+  // Catch-up replaces the shared player source, so this must survive the
+  // temporary player route rather than relying on its last watched URL.
+  const catchupPreviewReturnRef = useRef<Channel | null>(null);
 
   // ── Reorder mode ─────────────────────────────────────────────────────────
   const [isReordering, setIsReordering] = useState(false);
@@ -502,6 +506,33 @@ export default function LiveTVScreen() {
       }
       return;
     }
+      const catchupPreviewToRestore = catchupPreviewReturnRef.current;
+      if (catchupPreviewToRestore) {
+        // Catch-up opens in the shared full-screen player and therefore
+        // replaces the live stream source. Return to the pre-existing live
+        // preview rather than leaving the TV panel empty or showing catch-up
+        // audio/video in the small player.
+        catchupPreviewReturnRef.current = null;
+        setSelectedChannel(catchupPreviewToRestore);
+        setPlayingChannel(catchupPreviewToRestore);
+        setIsBuffering(true);
+        setHasError(false);
+        flashOverlayOpacity.setValue(1);
+        try {
+          liveUrlRef.current = catchupPreviewToRestore.streamUrl;
+          player.replace(catchupPreviewToRestore.streamUrl);
+          player.play();
+        } catch {
+          setHasError(true);
+          setIsBuffering(false);
+          Animated.timing(flashOverlayOpacity, {
+            toValue: 0, duration: 150, useNativeDriver: true,
+          }).start();
+        }
+        // Re-bind the shared player to the returning mini-player surface.
+        requestAnimationFrame(() => setVideoKey((key) => key + 1));
+        return;
+      }
     // Normal focus return (tab switch, etc.) — show flash overlay to cover the
     // single-frame black while the VideoView remounts and re-binds the surface.
     flashOverlayOpacity.setValue(1);
@@ -1467,6 +1498,13 @@ export default function LiveTVScreen() {
     setCatchupInitialProg(null);
   }, []);
 
+  const handleStartCatchupPlayback = useCallback((channel: Channel) => {
+    // Prevent Live TV's tab-blur cleanup from clearing its selected channel
+    // while Catch-up temporarily owns the shared player.
+    catchupPreviewReturnRef.current = channel;
+    goingToPlayerRef.current = true;
+  }, []);
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   // On Fire TV / Android TV use the 3-panel D-pad layout.
@@ -1513,6 +1551,7 @@ export default function LiveTVScreen() {
             epgMap={epgMap}
             initialProg={catchupInitialProg ?? undefined}
             onClose={handleTVCloseCatchup}
+            onStartPlayback={handleStartCatchupPlayback}
           />
         )}
       </View>
@@ -1956,6 +1995,7 @@ export default function LiveTVScreen() {
           creds={creds}
           epgMap={epgMap}
           onClose={() => setShowCatchup(false)}
+          onStartPlayback={handleStartCatchupPlayback}
         />
       )}
 

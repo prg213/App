@@ -10,6 +10,7 @@
 - [TV input & navigation system](tv-input-system.md) — useBackHandler/useTVRemote/useFocusRestore hooks; which screens migrated; player media keys; scheduleHide no-op on TV.
 - [TV scrubber focus stability](tv-scrubber-focus-stability.md) — focus-bounce seek controls must latch visual focus through transient native blur events to prevent flashing.
 - [Catch-up scrubber seeking](catchup-scrubber-seeking.md) — Timeshift HLS needs a regenerated provider URL per seek; do not rely on expo-video currentTime or seekBy.
+- [Catch-up preview return](catchup-preview-return.md) — Catch-up replaces the shared player; preserve and reload the live mini-preview when returning.
 - [TV input hooks convention](tv-input-hooks.md) — screens must use shared useBackHandler/useTVRemote/useFocusRestore hooks, never hand-rolled BackHandler/onHWKeyEvent listeners; hooks accept both `playPause` and `onPlayPause` handler names.
 - [Live TV OSD architecture](live-tv-osd.md) — showInfoBarRef pattern for cross-hook call; OSD 6s auto-dismiss on TV; Audio/CC chips inside info bar on TV; zap preview has EPG data via epgMap lookup; TVLiveLayout renderChannel has EPG progress bars + LIVE badge.
 - [TV EPG D-pad & synced panning](tv-epg-dpad-sync.md) — imperative setNativeProps focus routing; time-based (not pixel) row sync with debounced broadcast + expected-offset loop guard.
