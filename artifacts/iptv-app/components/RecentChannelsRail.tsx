@@ -48,6 +48,8 @@ interface Props {
   onWatchFullscreen: (ch: Channel, channels: Channel[], index: number, cardRef: React.RefObject<View | null>) => void;
   /** Safe-area top inset — applied as paddingTop so the rail clears the status bar. */
   topInset?: number;
+  /** TV Home uses the first card as the sidebar RIGHT destination. */
+  onFirstCardRef?: (node: View | null) => void;
 }
 
 // ── Per-card component so each card has its own measured ref ──────────────────
@@ -61,18 +63,21 @@ interface CardProps {
   onWatchFullscreen: (ch: Channel, channels: Channel[], index: number, cardRef: React.RefObject<View | null>) => void;
   onRemove: (id: string) => void;
   onCardFocus?: () => void;
+  onFirstCardRef?: (node: View | null) => void;
 }
 
-function RecentCard({ item, index, channels, nowTitle, colors, onWatchFullscreen, onRemove, onCardFocus }: CardProps) {
+function RecentCard({ item, index, channels, nowTitle, colors, onWatchFullscreen, onRemove, onCardFocus, onFirstCardRef }: CardProps) {
   const cardRef = useRef<View>(null);
   const ch = toChannel(item);
+  const setCardRef = useCallback((el: View | null) => {
+    cardRef.current = el;
+    if (Platform.isTV) tvRowNav.register('recent', index, el);
+    if (index === 0) onFirstCardRef?.(el);
+  }, [index, onFirstCardRef]);
 
   return (
     <FocusablePressable
-      ref={((el: any) => {
-        cardRef.current = el;
-        if (Platform.isTV) tvRowNav.register('recent', index, el);
-      }) as any}
+      ref={setCardRef as any}
       style={styles.card}
       // TV: LEFT on the first card jumps to the sidebar nav menu
       nextFocusLeft={Platform.isTV && index === 0 ? sidebarNav.handle : undefined}
@@ -117,6 +122,7 @@ export function RecentChannelsRail({
   nowPlayingMap,
   onWatchFullscreen,
   topInset = 0,
+  onFirstCardRef,
 }: Props) {
   const colors = useColors();
   const [recent, setRecent] = useState<RecentChannel[]>([]);
@@ -192,6 +198,7 @@ export function RecentChannelsRail({
               colors={colors}
               onWatchFullscreen={onWatchFullscreen}
               onRemove={handleRemove}
+              onFirstCardRef={onFirstCardRef}
               onCardFocus={Platform.isTV ? () => {
                 tvRowNav.focused('recent', index);
                 try { listRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.35 }); } catch {}

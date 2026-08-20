@@ -240,10 +240,9 @@ function Sidebar({ state, descriptors, navigation }: SidebarProps) {
   // Register sidebarNav.focus so per-screen BackHandlers can return focus to
   // the sidebar when the user presses BACK from inside a screen's content.
   //
-  // We intentionally do NOT auto-focus the sidebar on startup.  The Home
-  // screen manages its own initial content focus via useFocusEffect, so the
-  // D-pad remote lands directly on the first Home item rather than on the
-  // sidebar nav item (which would require an extra RIGHT press to enter content).
+  // We intentionally do NOT auto-focus the sidebar on startup. The Home
+  // screen keeps focus on the selected sidebar item after OK and wires its
+  // RIGHT target to the first available content card.
   useEffect(() => {
     // retryTimer lives in the effect closure so the effect cleanup can cancel
     // it if the Sidebar unmounts while a retry sequence is in flight.
@@ -287,6 +286,7 @@ function Sidebar({ state, descriptors, navigation }: SidebarProps) {
   useEffect(() => {
     if (!Platform.isTV) return;
     const activeNode = navItemRefs.current[state.index] ?? firstNavRef.current;
+    sidebarNav.setActiveRoute(state.routes[state.index]?.name ?? null, activeNode);
     try { sidebarNav.handle = findNodeHandle(activeNode); } catch {}
     sidebarNav.focus = () => requestTvFocus(activeNode);
   });

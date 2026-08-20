@@ -241,13 +241,6 @@ export default function HomeScreen() {
   // #229: blocked-channel set for the RecentChannelsRail
   const blockedIdSet = useMemo(() => new Set(blockedChannels), [blockedChannels]);
 
-  // ── TV: first-content ref ─────────────────────────────────────────────────
-  // On Fire TV / Android TV, the D-pad remote needs an explicit focus target
-  // when the Home tab loads.  This ref is attached to the first Latest Movies
-  // card.  useFocusEffect calls .focus() every time the Home tab becomes the
-  // active screen.
-  const firstItemRef = useRef<View>(null);
-
   // ── TV: focus restoration after Back from movie / series / CW detail ──────
   // Records which carousel row the user navigated away from so that on return
   // (useFocusEffect) we can restore D-pad focus to exactly that card instead
@@ -268,6 +261,16 @@ export default function HomeScreen() {
   const cwCountRef     = useRef(0);
   const movieCountRef  = useRef(0);
   const seriesCountRef = useRef(0);
+  const setHomeRightCandidate = useCallback(
+    (row: 'recent' | 'cw' | 'movies', node: View | null) => {
+      if (Platform.isTV) sidebarNav.setHomeRightCandidate(row, node);
+    },
+    [],
+  );
+  const setRecentHomeRightCandidate = useCallback(
+    (node: View | null) => setHomeRightCandidate('recent', node),
+    [setHomeRightCandidate],
+  );
   useEffect(() => {
     if (!Platform.isTV) return;
      // The main Home content is a 4-column × 3-row TV grid:
@@ -284,6 +287,7 @@ export default function HomeScreen() {
       tvRowNav.clearRow('cw');
       tvRowNav.clearRow('movies');
       tvRowNav.clearRow('series');
+      sidebarNav.clearHomeRightCandidates();
     };
   }, []);
 
@@ -362,9 +366,9 @@ export default function HomeScreen() {
     refetchSeries();
   }, [credentials, isXtream, refetchMovies, refetchSeries]));
 
-  // ── TV: restore D-pad focus when Home becomes active ─────────────────────
-  // • First visit (lastNavRowRef === null): focus the first Latest Movies card
-  //   (same behaviour as before — gives the D-pad a guaranteed landing target).
+  // ── TV: restore D-pad focus after returning from content ───────────────────
+  // • Initial Home entry deliberately keeps focus on the sidebar after OK.
+  //   RIGHT enters the first available rail instead.
   // • Returning via Back from a movie / series / CW detail
   //   (lastNavRowRef is 'movies' | 'series' | 'cw'): scroll the originating
   //   row to the card the user came from and request focus on that card so
@@ -375,6 +379,7 @@ export default function HomeScreen() {
 
     const row = lastNavRowRef.current;
     lastNavRowRef.current = null; // consume — next visit defaults to first card
+    if (!row) return;
 
     let focusTarget: View | null = null;
     let listRef: React.RefObject<FlatList<any> | null> | null = null;
@@ -390,15 +395,12 @@ export default function HomeScreen() {
       listRef = cwListRef;
     }
 
-    // Fall back to the first card when no remembered card is available.
-    const target = focusTarget ?? firstItemRef.current;
-
     const t = setTimeout(() => {
       // Scroll the row so the target card is visible before focusing.
       if (row && listRef) {
         scrollRowToIndex(listRef, tvRowNav.getLastIndex(row));
       }
-      requestTvFocus(target);
+      requestTvFocus(focusTarget);
     }, 200);
 
     return () => clearTimeout(t);
@@ -572,7 +574,10 @@ export default function HomeScreen() {
     const pct = progress != null ? Math.max(2, Math.min(100, progress * 100)) : 0;
     return (
       <FocusablePressable
-        ref={Platform.isTV ? ((el: any) => tvRowNav.register('cw', index, el)) as any : undefined}
+        ref={Platform.isTV ? ((el: any) => {
+          tvRowNav.register('cw', index, el);
+          if (index === 0) setHomeRightCandidate('cw', el);
+        }) as any : undefined}
         style={Platform.isTV ? styles.tvBannerOuter : [styles.bannerOuter, tabletCardStyle]}
         focusedStyle={styles.bannerFocused}
         // TV: LEFT on the first card jumps to the sidebar nav menu
@@ -610,15 +615,14 @@ export default function HomeScreen() {
         </View>
       </FocusablePressable>
     );
-  }, [colors, handleHistoryItemPress, movieProgressMap, seriesProgressMap, scrollAllContentRows, tabletCardStyle]);
+  }, [colors, handleHistoryItemPress, movieProgressMap, seriesProgressMap, scrollAllContentRows, setHomeRightCandidate, tabletCardStyle]);
 
   const renderMovie = useCallback(({ item, index }: { item: Movie; index: number }) => (
-    // First movie card carries the TV focus ref now that the hero banner is
-    // gone — the D-pad needs an initial focus target when Home becomes active.
+    // The first movie card is the final fallback for Home sidebar RIGHT.
     <MovieBanner
       ref={(el: View | null) => {
         if (Platform.isTV) tvRowNav.register('movies', index, el);
-        if (index === 0) (firstItemRef as React.MutableRefObject<View | null>).current = el;
+        if (index === 0) setHomeRightCandidate('movies', el);
       }}
       movie={item}
       colors={colors}
@@ -631,7 +635,7 @@ export default function HomeScreen() {
       }}
       onPress={() => handleMoviePress(item)}
     />
-  ), [colors, handleMoviePress, scrollAllContentRows, tabletCardStyle]);
+  ), [colors, handleMoviePress, scrollAllContentRows, setHomeRightCandidate, tabletCardStyle]);
 
   const renderSeries = useCallback(({ item, index }: { item: Series; index: number }) => (
     <SeriesBanner
@@ -658,6 +662,7 @@ export default function HomeScreen() {
           nowPlayingMap={emptyNowPlayingMap}
           onWatchFullscreen={handleRecentChannelWatch}
           topInset={insets.top}
+          onFirstCardRef={setRecentHomeRightCandidate}
         />
         <View style={styles.empty}>
           <Text style={{ fontSize: 40, marginBottom: 12 }}>🏠</Text>
@@ -682,6 +687,7 @@ export default function HomeScreen() {
           blockedIds={blockedIdSet}
           nowPlayingMap={emptyNowPlayingMap}
           onWatchFullscreen={handleRecentChannelWatch}
+          onFirstCardRef={setRecentHomeRightCandidate}
         />
 
         {continueWatchingItems.length > 0 && (
@@ -762,6 +768,7 @@ export default function HomeScreen() {
         blockedIds={blockedIdSet}
         nowPlayingMap={emptyNowPlayingMap}
         onWatchFullscreen={handleRecentChannelWatch}
+        onFirstCardRef={setRecentHomeRightCandidate}
       />
 
       {/* ── Continue Watching ── */}
