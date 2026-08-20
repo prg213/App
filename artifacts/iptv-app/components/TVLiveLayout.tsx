@@ -196,6 +196,7 @@ export function TVLiveLayout({
   const guideFocusedRef = useRef(false);
   // TV no-wrap UP/DOWN edge refs for yellow panel
   const catchupRowRef   = useRef<View | null>(null);
+  const leftReturnProxyRef = useRef<View | null>(null);
   const firstGuideRowRef = useRef<View | null>(null);
   const lastGuideRowRef = useRef<View | null>(null);
   const guideRowRefMap = useRef(new Map<number, View>());
@@ -230,6 +231,16 @@ export function TVLiveLayout({
   const nodeHandle = useCallback((node: View | null | undefined): number | null => {
     try { return node ? findNodeHandle(node) : null; } catch { return null; }
   }, []);
+  // When the playing channel belongs to a different category than the channel
+  // list currently on screen, its row is not mounted and Fire OS falls back to
+  // spatial LEFT navigation (which lands on Categories). This relay stays
+  // mounted in the preview panel and runs the same resolver as BACK instead.
+  const [leftReturnProxyHandle, setLeftReturnProxyHandle] = useState<number | null>(null);
+  const setLeftReturnProxyRef = useCallback((node: View | null) => {
+    leftReturnProxyRef.current = node;
+    const nextHandle = nodeHandle(node);
+    setLeftReturnProxyHandle((current) => current === nextHandle ? current : nextHandle);
+  }, [nodeHandle]);
 
   const focusFirstChannel = useCallback(() => {
     const firstChannel = channels[0];
@@ -578,9 +589,10 @@ export function TVLiveLayout({
   // The preview panel is a deliberate vertical D-pad chain:
   // preview → Catch-up (when present) → first guide row. Native spatial
   // navigation regularly skips these controls on Fire OS because the video
-  // surface overlaps their measured bounds. Pin LEFT to the current element
-  // while the playing row is virtualized so the remote never falls back to the
-  // category panel before focusPlayingChannel can restore the selected row.
+  // surface overlaps their measured bounds. When the playing row is
+  // virtualized, pin LEFT to a focus relay that invokes focusPlayingChannel
+  // (the same resolver used by BACK), rather than allowing spatial navigation
+  // to jump straight to the category panel.
   useEffect(() => {
     if (!Platform.isTV) return;
     const previewNode = miniPlayerRef?.current as View | null | undefined;
@@ -590,8 +602,7 @@ export function TVLiveLayout({
     const catchupNode = catchupRowRef.current;
     const firstGuideNode = firstGuideRowRef.current;
     const lastGuideNode = lastGuideRowRef.current;
-    const playingOrSelf = (node: View | null) =>
-      node ? playingChHandle ?? nodeHandle(node) : null;
+    const playingOrReturnProxy = playingChHandle ?? leftReturnProxyHandle;
     const patch = (node: View | null, props: Record<string, number | null>) => {
       if (!node) return;
       const usable = Object.fromEntries(
@@ -605,12 +616,12 @@ export function TVLiveLayout({
     patch(previewNode, {
       nextFocusUp: previewH,
       nextFocusDown: nodeHandle(catchupNode) ?? nodeHandle(firstGuideNode) ?? previewH,
-      nextFocusLeft: playingOrSelf(previewNode),
+      nextFocusLeft: playingOrReturnProxy,
     });
     patch(catchupNode, {
       nextFocusUp: previewH,
       nextFocusDown: nodeHandle(firstGuideNode) ?? nodeHandle(catchupNode),
-      nextFocusLeft: playingOrSelf(catchupNode),
+      nextFocusLeft: playingOrReturnProxy,
     });
     guideRowRefMap.current.forEach((node, index) => {
       patch(node, {
@@ -620,10 +631,10 @@ export function TVLiveLayout({
         ...(node === lastGuideNode
           ? { nextFocusDown: nodeHandle(lastGuideNode) }
           : {}),
-        nextFocusLeft: playingOrSelf(node),
+        nextFocusLeft: playingOrReturnProxy,
       });
     });
-  }, [channelEpg.length, hasCatchup, miniPlayerRef, nodeHandle, playingChHandle, selectedChannel?.id]);
+  }, [channelEpg.length, hasCatchup, leftReturnProxyHandle, miniPlayerRef, nodeHandle, playingChHandle, selectedChannel?.id]);
 
   // ── Category row ──────────────────────────────────────────────────────────
   // onFocus: scroll only — category changes on OK press.
@@ -974,6 +985,17 @@ export function TVLiveLayout({
           </View>
         ) : (
           <>
+            {/* This is only a native D-pad relay. It is invisible and cannot be
+                reached through normal spatial navigation; preview-panel LEFT
+                targets it only when the playing channel row is unmounted. */}
+            <FocusablePressable
+              ref={setLeftReturnProxyRef as any}
+              focusable={Platform.isTV}
+              accessible={false}
+              pointerEvents="none"
+              style={styles.leftReturnProxy}
+              onFocus={() => { focusPlayingChannel(); }}
+            />
             {/* 3a — Video preview (OK = full screen) */}
             <FocusablePressable
               ref={miniPlayerRef as any}
@@ -983,7 +1005,7 @@ export function TVLiveLayout({
               accessibilityLabel="Watch fullscreen — press OK"
               focusedStyle={styles.videoFocused}
               style={styles.videoWrap}
-              nextFocusLeft={playingChHandle ?? undefined}
+              nextFocusLeft={playingChHandle ?? leftReturnProxyHandle ?? undefined}
               onFocus={() => {
                 previewFocusedRef.current = true;
                 onPreviewFocusChange?.(true);
@@ -1055,7 +1077,7 @@ export function TVLiveLayout({
                 focusedStyle={styles.focusedItem}
                 style={[styles.catchupRow, { backgroundColor: colors.card, borderColor: colors.border }]}
                 // TV LEFT / BACK: return to the channel that is playing.
-                nextFocusLeft={playingChHandle ?? undefined}
+                nextFocusLeft={playingChHandle ?? leftReturnProxyHandle ?? undefined}
                 onFocus={() => {
                   catchupFocusedLocalRef.current = true;
                   onCatchupFocusChange?.(true);
@@ -1190,6 +1212,14 @@ const PLAYING_CHANNEL_FOCUS_RETRY_DELAY_MS = 80;
 // ── Styles ────────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
+  leftReturnProxy: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: 1,
+    height: 1,
+    opacity: 0,
+  },
   root: {
     flex: 1,
     flexDirection: 'row',

@@ -54,7 +54,7 @@ describe('Fire TV category navigation', () => {
   it('returns preview, Catch-up, and mini-guide LEFT/BACK to the playing channel', () => {
     expect(TV_LAYOUT).toMatch(/const focusPlayingChannel = useCallback/);
     expect(TV_LAYOUT).toMatch(/focusPlayingChannelRef\.current = focusPlayingChannel/);
-    expect(TV_LAYOUT).toMatch(/nextFocusLeft=\{playingChHandle \?\? undefined\}/);
+    expect(TV_LAYOUT).toMatch(/nextFocusLeft=\{playingChHandle \?\? leftReturnProxyHandle \?\? undefined\}/);
     expect(TV_LAYOUT).toMatch(/const setPlayingChannelHandle = useCallback/);
     expect(TV_LAYOUT).toMatch(/item\.id === selectedChannel\?\.id[\s\S]*?setPlayingChannelHandle\(nodeHandle\(node\)\)/);
     expect(TV_LAYOUT).toMatch(/guideFocusedRef\.current = true/);
@@ -62,6 +62,14 @@ describe('Fire TV category navigation', () => {
     expect(LIVE_TV).toMatch(/const focusPlayingChannelRef = useRef/);
     expect(LIVE_TV).toMatch(/previewFocusedRef\.current \|\| catchupFocusedRef\.current \|\| guideFocusedRef\.current/);
     expect(LIVE_TV).toMatch(/focusPlayingChannelRef\.current\?\.\(\)/);
+  });
+
+  it('uses the BACK resolver when LEFT cannot directly target an unmounted playing row', () => {
+    expect(TV_LAYOUT).toMatch(/const \[leftReturnProxyHandle, setLeftReturnProxyHandle\] = useState<number \| null>\(null\)/);
+    expect(TV_LAYOUT).toMatch(/ref=\{setLeftReturnProxyRef as any\}/);
+    expect(TV_LAYOUT).toMatch(/onFocus=\{\(\) => \{ focusPlayingChannel\(\); \}\}/);
+    expect(TV_LAYOUT).toMatch(/nextFocusLeft: playingOrReturnProxy/);
+    expect(TV_LAYOUT).toMatch(/nextFocusLeft=\{playingChHandle \?\? leftReturnProxyHandle \?\? undefined\}/);
   });
 
   it('creates an explicit preview-to-controls DOWN chain instead of relying on spatial focus', () => {
