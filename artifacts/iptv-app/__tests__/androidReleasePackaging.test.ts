@@ -33,6 +33,13 @@ describe('Android release packaging', () => {
     expect(workflow).not.toContain('StreamVault-arm64-v8a.apk');
   });
 
+  it('excludes emulator libraries from the universal release APK', () => {
+    expect(abiPlugin).toContain('withGradleProperties');
+    expect(abiPlugin).toContain("key: 'reactNativeArchitectures'");
+    expect(abiPlugin).toContain("value: 'armeabi-v7a,arm64-v8a'");
+    expect(abiPlugin).toContain('abiFilters "armeabi-v7a", "arm64-v8a"');
+  });
+
   it('uses the universal APK as the single in-app update asset', () => {
     expect(updateService).toContain("export const FIRE_TV_APK_NAME = 'StreamVault.apk'");
     expect(updateService).toContain(": [FIRE_TV_APK_NAME, ARM32_APK_NAME]");
