@@ -21,3 +21,4 @@
 - [FocusablePressable stable setRefs](fp-stable-setrefs.md) — setRefs MUST be stable useCallback([], []); inline function causes null→node ref churn on every render → "Maximum update depth exceeded" crash.
 - [EPG startup prefetch](epg-startup-prefetch.md) — Start Xtream XMLTV fetch before MAC verification completes; Guide shares the in-flight/cache query.
 - [Android IPTV audio compatibility](android-iptv-audio.md) — Android/Fire TV IPTV uses libVLC, not Expo/ExoPlayer track-selection workarounds, for MP2 transport streams.
+- [VLC Android release compatibility](vlc-android-release-compat.md) — Expo 57 needs API 26, a local native-library merge plugin, and a pnpm patch for the current VLC module to build successfully.
