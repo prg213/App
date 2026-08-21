@@ -1,0 +1,13 @@
+name: Dispatch Probe
+on:
+  workflow_dispatch:
+    inputs:
+      message:
+        description: Test message
+        required: false
+        type: string
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "workflow_dispatch works"
