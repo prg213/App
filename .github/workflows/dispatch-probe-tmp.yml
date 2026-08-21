@@ -120,13 +120,13 @@ jobs:
           # Signer-continuity check: compare cert with the latest release APK.
           # This is advisory only (non-fatal) because the installed APK may be from
           # EAS or a different keystore era; the operator must verify manually.
-          CANDIDATE_CERT_SHA256="$("$APKSIGNER" verify --print-certs "$APK" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -1)"
+          CANDIDATE_CERT_SHA256="$("$APKSIGNER" verify --print-certs "$APK" | sed -n 's/.*certificate SHA-256 digest: //p' | head -1)"
           echo "CANDIDATE cert SHA-256: $CANDIDATE_CERT_SHA256"
           PREVIOUS_ASSET_ID="$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq '.assets[] | select(.name == "StreamVault.apk") | .id' | head -1 || true)"
           if [ -n "$PREVIOUS_ASSET_ID" ]; then
             gh api -H "Accept: application/octet-stream" "repos/$GITHUB_REPOSITORY/releases/assets/$PREVIOUS_ASSET_ID" > Installed-StreamVault.apk 2>/dev/null || true
             if [ -s Installed-StreamVault.apk ]; then
-              INSTALLED_CERT_SHA256="$("$APKSIGNER" verify --print-certs Installed-StreamVault.apk | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -1 || true)"
+              INSTALLED_CERT_SHA256="$("$APKSIGNER" verify --print-certs Installed-StreamVault.apk | sed -n 's/.*certificate SHA-256 digest: //p' | head -1 || true)"
               echo "INSTALLED cert SHA-256 (latest release): $INSTALLED_CERT_SHA256"
               if [ -n "$INSTALLED_CERT_SHA256" ]; then
                 # Advisory check only — non-fatal so recovery builds aren't blocked.
