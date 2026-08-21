@@ -28,4 +28,5 @@
 - [Playback wake-lock tags](playback-wake-lock-tags.md) — every concurrently mounted playback surface needs its own Expo keep-awake tag; shared tags are not reference-counted.
 - [VLC Android release compatibility](vlc-android-release-compat.md) — Expo 57 needs API 26, a local native-library merge plugin, and a pnpm patch for the current VLC module to build successfully.
 - [Fire TV APK packaging](fire-tv-apk-packaging.md) — StreamVault.apk is a gated compressed universal ARM release; promote only the exact device-validated candidate.
-- [GitHub Actions release dispatch](github-actions-release-dispatch.md) — quote the workflow `on` key and retain the repository-dispatch fallback when GitHub’s manual trigger registry is stale.
+- [GitHub Actions release dispatch](github-actions-release-dispatch.md) — registry breaks permanently after workflow_call or rapid edits; use GitHub UI or EAS Build instead.
+- [EAS Build fallback](eas-build-fallback.md) — one-liner to build signed APK via EAS when GitHub Actions is broken; uses prg123s-team/iptv-app project + existing credentials KYpC-gXKPE.

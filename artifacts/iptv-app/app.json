@@ -76,6 +76,12 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": false
+    },
+    "owner": "prg123s-team",
+    "extra": {
+      "eas": {
+        "projectId": "59c1a73f-acee-4b59-b359-e64f696ac921"
+      }
     }
   }
 }
