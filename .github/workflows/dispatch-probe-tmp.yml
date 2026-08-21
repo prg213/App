@@ -1,16 +1,15 @@
 name: Build Android APK
 # dispatch-probe-tmp.yml — this filename has a clean workflow_dispatch registry entry.
-# Do NOT rename this file — renaming inherits the stale push-trigger registry of the old name.
-# Do NOT add workflow_call — it poisons GitHub's dispatch registry.
+# Do NOT rename this file. Do NOT add workflow_call.
+# Inputs use type: string (not type: choice) to avoid GitHub dispatch parser issues.
 on:
   workflow_dispatch:
     inputs:
       release_action:
-        description: Build a candidate, or promote a device-validated candidate.
-        required: true
-        type: choice
+        description: "build-candidate or promote-candidate"
+        required: false
+        type: string
         default: build-candidate
-        options: [build-candidate, promote-candidate]
       candidate_run_id:
         description: Successful candidate workflow run ID to promote.
         required: false
@@ -26,15 +25,20 @@ jobs:
   build:
     name: Build Release APK
     runs-on: ubuntu-latest
-    permissions: { contents: read }
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
-        with: { java-version: "17", distribution: temurin }
+        with:
+          java-version: "17"
+          distribution: temurin
       - uses: actions/setup-node@v4
-        with: { node-version: 22 }
+        with:
+          node-version: 22
       - uses: pnpm/action-setup@v4
-        with: { version: 9 }
+        with:
+          version: 9
       - run: pnpm install --no-frozen-lockfile
       - run: pnpm --filter @workspace/iptv-app run lint
       - run: bash artifacts/iptv-app/scripts/check-epg-scroll-not-persisted.sh
@@ -48,7 +52,11 @@ jobs:
       - name: Expo prebuild
         working-directory: artifacts/iptv-app
         run: npx expo prebuild --platform android --no-install --clean
-        env: { CI: 1, EXPO_PUBLIC_DOMAIN: streamvault.rip, EXPO_PUBLIC_TMDB_API_KEY: 312ee14dd7f250471da1174324be2bda, EXPO_PUBLIC_BUILD_NUMBER: ${{ github.run_number }} }
+        env:
+          CI: 1
+          EXPO_PUBLIC_DOMAIN: streamvault.rip
+          EXPO_PUBLIC_TMDB_API_KEY: 312ee14dd7f250471da1174324be2bda
+          EXPO_PUBLIC_BUILD_NUMBER: ${{ github.run_number }}
       - name: Install NDK
         run: echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "ndk;27.1.12297006" "cmake;3.22.1" --sdk_root=$ANDROID_HOME
       - name: Restore signing keystore
@@ -56,8 +64,20 @@ jobs:
         run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > release.keystore
       - name: Build release APK
         working-directory: artifacts/iptv-app/android
-        run: ./gradlew assembleRelease -Pandroid.injected.signing.store.file=$(pwd)/release.keystore -Pandroid.injected.signing.store.password=streamvault123 -Pandroid.injected.signing.key.alias=streamvault -Pandroid.injected.signing.key.password=streamvault123 -x lintVitalAnalyzeRelease -x lintAnalyzeRelease --stacktrace --no-daemon
-        env: { ANDROID_NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/27.1.12297006, EXPO_PUBLIC_DOMAIN: streamvault.rip, EXPO_PUBLIC_TMDB_API_KEY: 312ee14dd7f250471da1174324be2bda, EXPO_PUBLIC_BUILD_NUMBER: ${{ github.run_number }}, GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=512m" }
+        run: |
+          ./gradlew assembleRelease \
+            -Pandroid.injected.signing.store.file=$(pwd)/release.keystore \
+            -Pandroid.injected.signing.store.password=streamvault123 \
+            -Pandroid.injected.signing.key.alias=streamvault \
+            -Pandroid.injected.signing.key.password=streamvault123 \
+            -x lintVitalAnalyzeRelease -x lintAnalyzeRelease \
+            --stacktrace --no-daemon
+        env:
+          ANDROID_NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/27.1.12297006
+          EXPO_PUBLIC_DOMAIN: streamvault.rip
+          EXPO_PUBLIC_TMDB_API_KEY: 312ee14dd7f250471da1174324be2bda
+          EXPO_PUBLIC_BUILD_NUMBER: ${{ github.run_number }}
+          GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=512m"
       - name: Stage universal and fallback APKs
         run: |
           set -euo pipefail
@@ -70,7 +90,8 @@ jobs:
           cp "$ARM32_APK" StreamVault-armeabi-v7a.apk
           cp "$ARM64_APK" StreamVault-arm64-v8a.apk
       - name: Validate universal APK
-        env: { GH_TOKEN: ${{ github.token }} }
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           APK=StreamVault.apk
@@ -83,51 +104,72 @@ jobs:
               COMPRESSION_METHOD="$(zipinfo -v "$APK" "$ABI_LIBRARY" | awk -F: '/compression method:/{gsub(/^[[:space:]]+/, "", $2); print $2; exit}')"
               test "$COMPRESSION_METHOD" = "deflated"
             done
-            for VLC_LIBRARY in libvlc.so libvlcjni.so; do printf '%s\n' "${ABI_LIBRARIES[@]}" | grep -qx "lib/$ABI/$VLC_LIBRARY"; done
+            for VLC_LIBRARY in libvlc.so libvlcjni.so; do
+              printf '%s\n' "${ABI_LIBRARIES[@]}" | grep -qx "lib/$ABI/$VLC_LIBRARY"
+            done
           done
           ! zipinfo -1 "$APK" | grep -Eq '^lib/(x86|x86_64)/'
           TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -V | tail -1)"
-          AAPT2="$ANDROID_HOME/build-tools/$TOOLS/aapt2"; APKSIGNER="$ANDROID_HOME/build-tools/$TOOLS/apksigner"
-          BADGING="$("$AAPT2" dump badging "$APK")"; VERSION_CODE="$(printf '%s\n' "$BADGING" | sed -n "s/.*versionCode='\([^']*\)'.*/\1/p" | head -1)"
-          printf '%s\n' "$BADGING" | grep -q "package: name='com.prg213.streamvault'"; test "$VERSION_CODE" = "$GITHUB_RUN_NUMBER"
+          AAPT2="$ANDROID_HOME/build-tools/$TOOLS/aapt2"
+          APKSIGNER="$ANDROID_HOME/build-tools/$TOOLS/apksigner"
+          BADGING="$("$AAPT2" dump badging "$APK")"
+          VERSION_CODE="$(printf '%s\n' "$BADGING" | sed -n "s/.*versionCode='\([^']*\)'.*/\1/p" | head -1)"
+          printf '%s\n' "$BADGING" | grep -q "package: name='com.prg213.streamvault'"
+          test "$VERSION_CODE" = "$GITHUB_RUN_NUMBER"
           "$APKSIGNER" verify --verbose --print-certs "$APK"
           PREVIOUS_ASSET_ID="$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq '.assets[] | select(.name == "StreamVault.apk") | .id' | head -1)"
-          test -n "$PREVIOUS_ASSET_ID"; gh api -H "Accept: application/octet-stream" "repos/$GITHUB_REPOSITORY/releases/assets/$PREVIOUS_ASSET_ID" > Installed-StreamVault.apk
+          test -n "$PREVIOUS_ASSET_ID"
+          gh api -H "Accept: application/octet-stream" "repos/$GITHUB_REPOSITORY/releases/assets/$PREVIOUS_ASSET_ID" > Installed-StreamVault.apk
           CANDIDATE_CERT_SHA256="$("$APKSIGNER" verify --print-certs "$APK" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -1)"
           INSTALLED_CERT_SHA256="$("$APKSIGNER" verify --print-certs Installed-StreamVault.apk | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -1)"
-          test -n "$CANDIDATE_CERT_SHA256"; test "$CANDIDATE_CERT_SHA256" = "$INSTALLED_CERT_SHA256"
+          test -n "$CANDIDATE_CERT_SHA256"
+          test "$CANDIDATE_CERT_SHA256" = "$INSTALLED_CERT_SHA256"
       - name: Upload validated APK candidate
         uses: actions/upload-artifact@v4
         with:
           name: StreamVault-release-${{ github.run_number }}
           path: StreamVault*.apk
           retention-days: 30
+
   promote:
     name: Promote Device-Validated APK
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch' && inputs.release_action == 'promote-candidate'
-    permissions: { actions: read, contents: write }
+    permissions:
+      actions: read
+      contents: write
     steps:
       - id: candidate
-        env: { GH_TOKEN: ${{ github.token }}, CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}, DEVICE_VALIDATION_NOTES: ${{ inputs.device_validation_notes }} }
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+          DEVICE_VALIDATION_NOTES: ${{ inputs.device_validation_notes }}
         run: |
           set -euo pipefail
-          test -n "$CANDIDATE_RUN_ID"; NOTES_LOWER="${DEVICE_VALIDATION_NOTES,,}"
-          for REQUIRED_RESULT in fire android upgrade launch mp2; do [[ "$NOTES_LOWER" == *"$REQUIRED_RESULT"* ]]; done
+          test -n "$CANDIDATE_RUN_ID"
+          NOTES_LOWER="${DEVICE_VALIDATION_NOTES,,}"
+          for REQUIRED_RESULT in fire android upgrade launch mp2; do
+            [[ "$NOTES_LOWER" == *"$REQUIRED_RESULT"* ]]
+          done
           test "$(gh run view "$CANDIDATE_RUN_ID" --repo "$GITHUB_REPOSITORY" --json conclusion --jq .conclusion)" = success
           test "$(gh run view "$CANDIDATE_RUN_ID" --repo "$GITHUB_REPOSITORY" --json workflowName --jq .workflowName)" = "Build Android APK"
           CANDIDATE_EVENT="$(gh run view "$CANDIDATE_RUN_ID" --repo "$GITHUB_REPOSITORY" --json event --jq .event)"
           case "$CANDIDATE_EVENT" in workflow_dispatch|repository_dispatch) ;; *) exit 1 ;; esac
           CANDIDATE_RUN_NUMBER="$(gh run view "$CANDIDATE_RUN_ID" --repo "$GITHUB_REPOSITORY" --json number --jq .number)"
-          CANDIDATE_ARTIFACT_ID="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$CANDIDATE_RUN_ID/artifacts" --jq ".artifacts[] | select(.name == \"StreamVault-release-$CANDIDATE_RUN_NUMBER\" and .expired == false) | .id" | head -1)"
-          test -n "$CANDIDATE_ARTIFACT_ID"; echo "run_number=$CANDIDATE_RUN_NUMBER" >> "$GITHUB_OUTPUT"; echo "artifact_id=$CANDIDATE_ARTIFACT_ID" >> "$GITHUB_OUTPUT"
+          CANDIDATE_ARTIFACT_ID="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$CANDIDATE_RUN_ID/artifacts" \
+            --jq ".artifacts[] | select(.name == \"StreamVault-release-$CANDIDATE_RUN_NUMBER\" and .expired == false) | .id" | head -1)"
+          test -n "$CANDIDATE_ARTIFACT_ID"
+          echo "run_number=$CANDIDATE_RUN_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "artifact_id=$CANDIDATE_ARTIFACT_ID" >> "$GITHUB_OUTPUT"
       - run: |
-          gh api -H "Accept: application/vnd.github+json" "repos/$GITHUB_REPOSITORY/actions/artifacts/${{ steps.candidate.outputs.artifact_id }}/zip" > candidate.zip
+          gh api -H "Accept: application/vnd.github+json" \
+            "repos/$GITHUB_REPOSITORY/actions/artifacts/${{ steps.candidate.outputs.artifact_id }}/zip" > candidate.zip
           unzip -q candidate.zip -d release-assets
           test -s release-assets/StreamVault.apk
           test -s release-assets/StreamVault-armeabi-v7a.apk
           test -s release-assets/StreamVault-arm64-v8a.apk
-        env: { GH_TOKEN: ${{ github.token }} }
+        env:
+          GH_TOKEN: ${{ github.token }}
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ steps.candidate.outputs.run_number }}
@@ -135,8 +177,9 @@ jobs:
           body: |
             Android APK — build #${{ steps.candidate.outputs.run_number }}
             **All supported Fire TV and Android phones:** Download StreamVault.apk.
-            This exact candidate was validated on the target Firestick and modern Android phone before promotion:
+            Validated on target devices before promotion:
             ${{ inputs.device_validation_notes }}
           files: release-assets/StreamVault*.apk
           make_latest: true
-        env: { GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} }
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
