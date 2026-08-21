@@ -3,7 +3,7 @@ name: Build Android APK
 # Do NOT add workflow_call — it poisons GitHub's dispatch registry for this file.
 # Emergency fallback: push a branch matching release-trigger/* to bypass a stale
 # dispatch registry (delete the branch once the run is confirmed in progress).
-"on":
+on:
   workflow_dispatch:
     inputs:
       release_action:

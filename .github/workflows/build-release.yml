@@ -6,7 +6,7 @@ name: Build Android APK
 #   that made workflow_dispatch return 422 despite a valid workflow_dispatch trigger).
 # Emergency fallback: push a branch matching release-trigger/* to bypass a stale
 # dispatch registry (delete the branch once the run is confirmed in progress).
-"on":
+on:
   workflow_dispatch:
     inputs:
       release_action:
@@ -23,6 +23,9 @@ name: Build Android APK
         description: Firestick and phone model/OS plus upgrade, launch, and MP2 results.
         required: false
         type: string
+  repository_dispatch:
+    types: [build-android]
+
 jobs:
   build:
     name: Build Release APK
