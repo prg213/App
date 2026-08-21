@@ -1,4 +1,8 @@
 name: Build Android APK
+# Safe triggers: workflow_dispatch + repository_dispatch only.
+# Do NOT add workflow_call — it poisons GitHub's dispatch registry for this file.
+# Run .github/scripts/verify-dispatch.sh (types: verify-dispatch) to confirm the
+# registry is live before starting a full build.
 "on":
   workflow_dispatch:
     inputs:

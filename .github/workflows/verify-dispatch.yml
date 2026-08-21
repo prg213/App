@@ -1,0 +1,20 @@
+name: Verify Dispatch
+# Lightweight canary used by .github/scripts/verify-dispatch.sh.
+# Fires in seconds so the script can confirm GitHub's repository_dispatch
+# registry is live before triggering a 30-minute Android build.
+# Do NOT add workflow_call or push/pull_request triggers.
+"on":
+  repository_dispatch:
+    types: [verify-dispatch]
+
+jobs:
+  verify:
+    name: Dispatch canary
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Confirm dispatch is live
+        run: |
+          echo "repository_dispatch is working."
+          echo "run_id=${GITHUB_RUN_ID}"
+          echo "triggered_by=${{ github.event.client_payload.triggered_by || 'unknown' }}"
