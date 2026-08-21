@@ -30,7 +30,6 @@ jobs:
   build:
     name: Build Release APK
     runs-on: ubuntu-latest
-    if: github.event_name == 'repository_dispatch' || github.event_name == 'push' || inputs.release_action == 'build-candidate'
     permissions: { contents: read }
     steps:
       - uses: actions/checkout@v4
