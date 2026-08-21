@@ -23,9 +23,6 @@ name: Build Android APK
         description: Firestick and phone model/OS plus upgrade, launch, and MP2 results.
         required: false
         type: string
-  repository_dispatch:
-    types: [build-android]
-
 jobs:
   build:
     name: Build Release APK
