@@ -1,88 +1,94 @@
-/**
- * Stable device MAC for StreamVault.
- *
- * Priority:
- *  1. SecureStore — persists across app updates (signing key unchanged).
- *     Cleared only on full uninstall or "Clear Data".
- *  2. Android ID — scoped to (device × signing key). With a persistent
- *     keystore, this is stable forever on the same device, including after
- *     a reinstall. Only changes on factory reset.
- *  3. Random fallback — written to SecureStore immediately so it is stable
- *     for the lifetime of that install.
- */
-
-import * as Application from 'expo-application';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 
-const SECURE_MAC_KEY = 'sv_device_mac';
+const MAC_KEY = 'streamvault_device_mac';
+// Legacy key used by builds that switched to SecureStore — migrated on first read
+const LEGACY_SECURE_KEY = 'sv_device_mac';
 
-/** djb2-based deterministic MAC from any seed string. */
-function deriveMacFromSeed(seed: string): string {
-  const bytes: number[] = [];
-  for (let b = 0; b < 6; b++) {
-    let hash = 5381 + b * 1000003;
-    for (let i = 0; i < seed.length; i++) {
-      hash = Math.imul(hash, 31) ^ seed.charCodeAt(i);
-    }
-    hash ^= (b + 1) * 2654435761;
-    bytes.push(Math.abs(hash) & 0xff);
-  }
-  return bytes.map((b) => b.toString(16).toUpperCase().padStart(2, '0')).join(':');
-}
-
-function randomMac(): string {
+function generateMac(): string {
   const hex = '0123456789ABCDEF';
-  return Array.from({ length: 6 }, () =>
-    hex[Math.floor(Math.random() * 16)] + hex[Math.floor(Math.random() * 16)],
-  ).join(':');
+  const parts: string[] = [];
+  for (let i = 0; i < 6; i++) {
+    parts.push(
+      hex[Math.floor(Math.random() * 16)] +
+      hex[Math.floor(Math.random() * 16)],
+    );
+  }
+  return parts.join(':');
 }
 
+// In-memory cache — stable for the lifetime of the JS runtime
 let cached: string | null = null;
 
-async function readSecure(): Promise<string | null> {
-  try { return await SecureStore.getItemAsync(SECURE_MAC_KEY); } catch { return null; }
+async function tryRead(): Promise<string | null> {
+  try {
+    return await AsyncStorage.getItem(MAC_KEY);
+  } catch {
+    return null;
+  }
 }
 
-async function writeSecure(mac: string): Promise<void> {
-  try { await SecureStore.setItemAsync(SECURE_MAC_KEY, mac); } catch { /* best-effort */ }
+async function trySave(mac: string): Promise<void> {
+  try {
+    await AsyncStorage.setItem(MAC_KEY, mac);
+  } catch {
+    // best-effort; cached still prevents regeneration within this session
+  }
+}
+
+async function migrateFromSecureStore(): Promise<string | null> {
+  // One-time migration: if a previous build stored the MAC in SecureStore,
+  // move it to AsyncStorage so we don't lose it on the first launch after update.
+  try {
+    const legacy = await SecureStore.getItemAsync(LEGACY_SECURE_KEY);
+    if (legacy) {
+      await trySave(legacy);
+      await SecureStore.deleteItemAsync(LEGACY_SECURE_KEY).catch(() => {});
+      return legacy;
+    }
+  } catch {
+    // SecureStore unavailable or key absent — not an error
+  }
+  return null;
 }
 
 export async function getDeviceMac(): Promise<string> {
+  // 1. Return in-memory cache if already loaded this session
   if (cached) return cached;
 
-  // 1. SecureStore — most stable across Expo Go reloads and app updates
-  const stored = await readSecure();
-  if (stored) { cached = stored; return stored; }
+  // 2. Try AsyncStorage (primary store)
+  const stored = await tryRead();
+  if (stored) {
+    cached = stored;
+    return stored;
+  }
 
-  // 2. Android ID — deterministic per device + signing key.
-  //    Stable across reinstalls as long as the signing key doesn't change.
-  try {
-    const androidId: string | null = Application.getAndroidId();
-    if (androidId && androidId.length > 0) {
-      const mac = deriveMacFromSeed(androidId);
-      cached = mac;
-      await writeSecure(mac);
-      return mac;
-    }
-  } catch { /* fall through */ }
+  // 3. One-time migration from legacy SecureStore builds
+  const migrated = await migrateFromSecureStore();
+  if (migrated) {
+    cached = migrated;
+    return migrated;
+  }
 
-  // 3. Random fallback — persisted immediately so it never changes this install
-  const mac = randomMac();
+  // 4. Nothing stored — generate, persist, and cache
+  const mac = generateMac();
   cached = mac;
-  await writeSecure(mac);
+  await trySave(mac);
+
+  // Verify the write landed; if not, try once more
+  const verify = await tryRead();
+  if (!verify) {
+    await trySave(mac);
+  }
+
   return mac;
 }
 
-/**
- * Override the stored MAC (e.g. to restore a previous value after a signing-key
- * change).  Validates format, updates SecureStore, and clears the in-memory cache
- * so getDeviceMac() returns the new value immediately.
- */
-export async function overrideDeviceMac(mac: string): Promise<void> {
-  if (!/^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$/.test(mac)) {
-    throw new Error('Use format XX:XX:XX:XX:XX:XX');
+export async function clearDeviceMac(): Promise<void> {
+  cached = null;
+  try {
+    await AsyncStorage.removeItem(MAC_KEY);
+  } catch {
+    // best-effort
   }
-  const upper = mac.toUpperCase();
-  cached = upper;
-  await writeSecure(upper);
 }

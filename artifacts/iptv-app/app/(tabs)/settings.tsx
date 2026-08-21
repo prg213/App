@@ -34,7 +34,6 @@ import { clearReminderRefreshCache } from '@/services/reminderUrlCache';
 import { checkForUpdate, CURRENT_BUILD, type UpdateInfo } from '@/services/updateService';
 import type { MaxRating } from '@/types';
 import { requestTvFocus } from '@/lib/tvFocus';
-import { overrideDeviceMac } from '@/services/macAddress';
 
 const LEAD_TIME_OPTIONS: { value: 5 | 10 | 15; label: string }[] = [
   { value: 5,  label: '5 minutes before' },
@@ -79,20 +78,6 @@ export default function SettingsScreen() {
   const [showSubtitleLangSheet, setShowSubtitleLangSheet] = useState(false);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [pendingUpdate, setPendingUpdate] = useState<UpdateInfo | null>(null);
-  const [showMacRestore, setShowMacRestore] = useState(false);
-  const [macRestoreInput, setMacRestoreInput] = useState('');
-  const [macRestoreError, setMacRestoreError] = useState('');
-
-  const handleMacRestore = useCallback(async () => {
-    try {
-      await overrideDeviceMac(macRestoreInput.trim());
-      setShowMacRestore(false);
-      Alert.alert('MAC Restored', 'Force-close and reopen the app for the new MAC to take effect everywhere.');
-    } catch (e: unknown) {
-      setMacRestoreError(e instanceof Error ? e.message : 'Invalid MAC');
-    }
-  }, [macRestoreInput]);
-
   const handleCheckUpdate = async () => {
     if (checkingUpdate) return;
     Haptics.selectionAsync();
@@ -567,9 +552,6 @@ export default function SettingsScreen() {
             <Text style={[styles.infoLabel, { color: colors.mutedForeground }]}>MAC Address</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
               <Text style={[styles.macText, { color: colors.foreground }]} selectable>{deviceMac}</Text>
-              <Pressable onPress={() => { setMacRestoreInput(''); setMacRestoreError(''); setShowMacRestore(true); }}>
-                <Text style={{ color: colors.primary ?? '#6366F1', fontSize: 11, fontFamily: 'Inter_500Medium' }}>Restore</Text>
-              </Pressable>
             </View>
           </View>
         </View>
@@ -975,61 +957,6 @@ export default function SettingsScreen() {
           onSuccess={onPinSuccess}
           onCancel={() => { setPinFlow(null); setPendingRating(null); setPendingLock(null); }}
         />
-      </Modal>
-
-      {/* ── MAC Restore modal ── */}
-      <Modal visible={showMacRestore} transparent animationType="fade" onRequestClose={() => setShowMacRestore(false)}>
-        <Pressable style={styles.sheetBackdrop} onPress={() => setShowMacRestore(false)}>
-          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 32 }}>
-            <Pressable onPress={() => {}}>
-              <View style={[{ backgroundColor: colors.card, borderRadius: 20, paddingHorizontal: 24, paddingVertical: 24, width: 340 }]}>
-                <Text style={[styles.sheetTitle, { color: colors.mutedForeground, paddingHorizontal: 0, marginBottom: 8 }]}>RESTORE MAC ADDRESS</Text>
-                <Text style={{ fontSize: 13, fontFamily: 'Inter_400Regular', color: colors.foreground, marginBottom: 14 }}>
-                  Enter your original MAC address (e.g. from your IPTV provider portal).
-                </Text>
-                <TextInput
-                  value={macRestoreInput}
-                  onChangeText={(t) => { setMacRestoreInput(t); setMacRestoreError(''); }}
-                  placeholder="XX:XX:XX:XX:XX:XX"
-                  placeholderTextColor={colors.mutedForeground}
-                  autoCapitalize="characters"
-                  autoCorrect={false}
-                  style={{
-                    fontSize: 15,
-                    fontFamily: 'Inter_500Medium',
-                    letterSpacing: 1,
-                    color: colors.foreground,
-                    borderWidth: 1,
-                    borderColor: colors.border,
-                    borderRadius: 8,
-                    paddingHorizontal: 12,
-                    paddingVertical: 10,
-                    marginBottom: 4,
-                  }}
-                />
-                {macRestoreError ? (
-                  <Text style={{ fontSize: 12, fontFamily: 'Inter_400Regular', color: '#EF4444', marginVertical: 6 }}>{macRestoreError}</Text>
-                ) : (
-                  <View style={{ height: 10 }} />
-                )}
-                <View style={{ flexDirection: 'row', gap: 12, marginTop: 4 }}>
-                  <Pressable
-                    onPress={() => setShowMacRestore(false)}
-                    style={{ flex: 1, paddingVertical: 12, borderRadius: 8, borderWidth: 1, borderColor: colors.border, alignItems: 'center' }}
-                  >
-                    <Text style={{ fontSize: 14, fontFamily: 'Inter_500Medium', color: colors.foreground }}>Cancel</Text>
-                  </Pressable>
-                  <Pressable
-                    onPress={handleMacRestore}
-                    style={{ flex: 1, paddingVertical: 12, borderRadius: 8, backgroundColor: colors.primary ?? '#6366F1', alignItems: 'center' }}
-                  >
-                    <Text style={{ fontSize: 14, fontFamily: 'Inter_600SemiBold', color: '#FFFFFF' }}>Restore</Text>
-                  </Pressable>
-                </View>
-              </View>
-            </Pressable>
-          </View>
-        </Pressable>
       </Modal>
 
       {/* ── Community / Telegram modal ── */}
