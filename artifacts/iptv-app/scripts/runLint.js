@@ -1,7 +1,7 @@
 const { spawnSync } = require('node:child_process');
 
-const command = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
-const result = spawnSync(command, ['exec', 'eslint', '.'], {
+const command = process.platform === 'win32' ? 'eslint.cmd' : 'eslint';
+const result = spawnSync(command, ['.'], {
   encoding: 'utf8',
 });
 
