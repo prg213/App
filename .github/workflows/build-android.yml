@@ -4,6 +4,8 @@ name: Build Android APK
 # Emergency fallback: push a branch matching release-trigger/* to bypass a stale
 # dispatch registry (delete the branch once the run is confirmed in progress).
 "on":
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       release_action:
