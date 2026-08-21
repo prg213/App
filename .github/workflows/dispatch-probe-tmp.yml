@@ -1,9 +1,8 @@
 name: Build Android APK
-# Safe triggers: workflow_dispatch + repository_dispatch only.
-# Do NOT add workflow_call — it poisons GitHub's dispatch registry for this file.
-# Emergency fallback: push a branch matching release-trigger/* to bypass a stale
-# dispatch registry (delete the branch once the run is confirmed in progress).
-"on":
+# dispatch-probe-tmp.yml — this filename has a clean workflow_dispatch registry entry.
+# Do NOT rename this file — renaming inherits the stale push-trigger registry of the old name.
+# Do NOT add workflow_call — it poisons GitHub's dispatch registry.
+on:
   workflow_dispatch:
     inputs:
       release_action:
@@ -75,10 +74,6 @@ jobs:
         run: |
           set -euo pipefail
           APK=StreamVault.apk
-          # Build 252's compressed 144 MB universal APK is confirmed to install
-          # on the target Firestick and ARM64 phone. Keep the ceiling just above
-          # that validated package while still rejecting the earlier ~152 MB
-          # uncompressed universal APK that could not install on Fire TV.
           MAX_UNIVERSAL_APK_BYTES=$((150 * 1024 * 1024))
           test "$(stat --format=%s "$APK")" -le "$MAX_UNIVERSAL_APK_BYTES"
           for ABI in armeabi-v7a arm64-v8a; do
