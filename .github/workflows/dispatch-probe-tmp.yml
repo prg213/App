@@ -177,7 +177,7 @@ jobs:
           body: |
             Android APK — build #${{ steps.candidate.outputs.run_number }}
             **All supported Fire TV and Android phones:** Download StreamVault.apk.
-            Validated on target devices before promotion:
+            This exact candidate was validated on the target Firestick and modern Android phone before promotion:
             ${{ inputs.device_validation_notes }}
           files: release-assets/StreamVault*.apk
           make_latest: true
