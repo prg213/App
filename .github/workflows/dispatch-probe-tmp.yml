@@ -40,13 +40,7 @@ jobs:
         with:
           version: 9
       - run: pnpm install --no-frozen-lockfile
-      # The clean GitHub runner intermittently returns exit 1 without emitting
-      # an ESLint diagnostic for this command. Keep it visible in the run, but
-      # let the downstream TypeScript, packaging, and full Jest gates decide
-      # whether a release candidate may be produced.
-      - name: Lint (diagnostic)
-        run: pnpm --filter @workspace/iptv-app run lint
-        continue-on-error: true
+      - run: pnpm --filter @workspace/iptv-app run lint
       - run: bash artifacts/iptv-app/scripts/check-epg-scroll-not-persisted.sh
       - run: bash artifacts/iptv-app/scripts/check-inmemory-not-persisted.sh
       - run: pnpm --filter @workspace/iptv-app run typecheck
