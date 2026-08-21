@@ -92,8 +92,6 @@ export interface TVLiveLayoutProps {
   vlcReloadKey?: number;
   /** True while the persistent mini-player owns live playback. */
   isPlaybackActive: boolean;
-  /** Animated transform used by Android's single VLC surface. */
-  nativeSurfaceTransform?: StyleProp<ViewStyle>;
   /** Lets the persistent Android VLC surface escape the mini-player bounds. */
   nativeSurfaceFullscreen?: boolean;
   isBuffering: boolean;
@@ -174,7 +172,6 @@ export function TVLiveLayout({
   streamUrl,
   vlcReloadKey,
   isPlaybackActive,
-  nativeSurfaceTransform,
   nativeSurfaceFullscreen = false,
   isBuffering,
   hasError,
@@ -1250,25 +1247,23 @@ export function TVLiveLayout({
               }}
               onPress={onWatchFullscreen}
             >
-              {isPlaybackActive && !!streamUrl && (
-                <Animated.View
-                  pointerEvents="none"
-                  style={[
-                    StyleSheet.absoluteFill,
-                    Platform.OS === 'android' && nativeSurfaceTransform,
-                  ]}
-                >
+              {/* Android: VLC surface is rendered at root level in index.tsx
+                   to avoid overflow clipping and to allow layout-bounds
+                   animation.  Non-Android TV (hypothetical) still renders
+                   via NativeStreamPlayer directly inside this panel.       */}
+              {Platform.OS !== 'android' && isPlaybackActive && !!streamUrl && (
+                <View style={StyleSheet.absoluteFill} pointerEvents="none">
                   <NativeStreamPlayer
                     source={streamUrl}
                     player={player}
                     style={StyleSheet.absoluteFill}
                     resizeMode="contain"
-                    reloadKey={Platform.OS === 'android' ? vlcReloadKey : `${videoKey}:${vlcReloadKey ?? 0}`}
+                    reloadKey={`${videoKey}:${vlcReloadKey ?? 0}`}
                     onPlaying={onVlcPlaying}
                     onBuffering={onVlcBuffering}
                     onError={onVlcError}
                   />
-                </Animated.View>
+                </View>
               )}
 
               {/* Surface reattachment can briefly report buffering when moving
