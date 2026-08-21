@@ -17,7 +17,7 @@
 # Usage
 # -----
 #   Run locally:   bash artifacts/iptv-app/scripts/check-inmemory-not-persisted.sh
-#   Run in CI:     see .github/workflows/build-android.yml
+#   Run in CI:     see .github/workflows/dispatch-probe-tmp.yml
 #
 # Self-test mode
 # --------------

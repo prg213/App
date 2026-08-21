@@ -11,7 +11,7 @@
 # GitHub's workflow_dispatch / repository_dispatch registry can silently
 # accept a dispatch event (HTTP 204) without ever creating a run.  This is
 # most likely to happen after rapid workflow file changes — especially adding
-# or removing workflow_call: from build-android.yml.  This script detects the
+# or removing workflow_call: from dispatch-probe-tmp.yml.  This script detects the
 # silent-drop state and tells you to trigger manually instead of leaving you
 # waiting for a build that will never start.
 #
@@ -31,7 +31,7 @@ if [[ -z "$TOKEN" ]]; then
   exit 1
 fi
 
-WORKFLOW="build-android.yml"
+WORKFLOW="dispatch-probe-tmp.yml"
 TIMEOUT=90
 POLL_INTERVAL=5
 ACTIONS_URL="https://github.com/${REPO}/actions/workflows/${WORKFLOW}"
@@ -96,7 +96,7 @@ if [[ -z "$RUN_ID" ]]; then
   echo "" >&2
   echo "GitHub silently accepted the event (HTTP 204) but never created" >&2
   echo "a workflow run.  This is a known GitHub registry issue that can" >&2
-  echo "occur after rapid changes to build-android.yml (especially adding" >&2
+  echo "occur after rapid changes to dispatch-probe-tmp.yml (especially adding" >&2
   echo "or removing workflow_call:).  The registry usually recovers within" >&2
   echo "10–20 minutes." >&2
   echo "" >&2
