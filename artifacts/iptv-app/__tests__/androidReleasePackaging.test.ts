@@ -8,7 +8,7 @@ import {
 } from '@/services/updateService';
 
 const appRoot = path.resolve(__dirname, '..');
-const workflow = fs.readFileSync(path.resolve(appRoot, '../../.github/workflows/build-android.yml'), 'utf8');
+const workflow = fs.readFileSync(path.resolve(appRoot, '../../.github/workflows/dispatch-probe-tmp.yml'), 'utf8');
 const appConfig = fs.readFileSync(path.resolve(appRoot, 'app.config.js'), 'utf8');
 const abiPlugin = fs.readFileSync(path.resolve(appRoot, 'plugins/withReleaseAbis.js'), 'utf8');
 const updateService = fs.readFileSync(path.resolve(appRoot, 'services/updateService.ts'), 'utf8');
