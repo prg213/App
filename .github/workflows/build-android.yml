@@ -1,8 +1,8 @@
 name: Build Android APK
 # Safe triggers: workflow_dispatch + repository_dispatch only.
 # Do NOT add workflow_call — it poisons GitHub's dispatch registry for this file.
-# Run .github/scripts/verify-dispatch.sh (types: verify-dispatch) to confirm the
-# registry is live before starting a full build.
+# Emergency fallback: push a branch matching release-trigger/* to bypass a stale
+# dispatch registry (delete the branch once the run is confirmed in progress).
 "on":
   workflow_dispatch:
     inputs:
@@ -22,12 +22,18 @@ name: Build Android APK
         type: string
   repository_dispatch:
     types: [build-android]
+  push:
+    branches:
+      - 'release-trigger/*'
 
 jobs:
   build:
     name: Build Release APK
     runs-on: ubuntu-latest
-    if: github.event_name == 'repository_dispatch' || inputs.release_action == 'build-candidate'
+    if: >-
+      github.event_name == 'repository_dispatch' ||
+      github.event_name == 'push' ||
+      inputs.release_action == 'build-candidate'
     permissions: { contents: read }
     steps:
       - uses: actions/checkout@v4
