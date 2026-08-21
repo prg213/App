@@ -34,4 +34,4 @@
 - [GitHub Actions dispatch registry](github-actions-registry.md) — registry poisoned; workflow_dispatch returns 422 for all files; EAS is the current workaround; MAC differs between EAS and GA builds.
 - [GitHub source upload integrity](github-source-upload-integrity.md) — verify remote hashes after API source uploads; streamed shell output can silently truncate large files.
 - [MAC revert session](mac-revert-session.md) — Original AsyncStorage MAC restored; never tie MAC to signing cert or Android ID; migration from legacy SecureStore key included.
-- [VLC mini↔fullscreen transition bugs](vlc-transition-bugs.md) — Persistent root-level VLC surface; completed bounds animation must precede fullscreen-route removal.
+- [VLC mini↔fullscreen transition bugs](vlc-transition-bugs.md) — VLC TextureView stays absolute-fill in the real mini-player host; fullscreen expands its parent, never the native child.

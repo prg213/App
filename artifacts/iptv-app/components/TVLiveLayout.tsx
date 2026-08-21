@@ -33,8 +33,6 @@ import {
   Text,
   View,
   type ListRenderItem,
-  type StyleProp,
-  type ViewStyle,
 } from 'react-native';
 import { type VideoPlayer } from 'expo-video';
 import { FocusablePressable } from '@/components/FocusablePressable';
@@ -92,7 +90,7 @@ export interface TVLiveLayoutProps {
   vlcReloadKey?: number;
   /** True while the persistent mini-player owns live playback. */
   isPlaybackActive: boolean;
-  /** Lets the persistent Android VLC surface escape the mini-player bounds. */
+  /** Expands the preview container while the same VLC child stays inside it. */
   nativeSurfaceFullscreen?: boolean;
   isBuffering: boolean;
   hasError: boolean;
@@ -100,9 +98,7 @@ export interface TVLiveLayoutProps {
   onVlcBuffering?: () => void;
   onVlcError?: () => void;
   /**
-   * Ref to the video preview container — passed in from LivePlayerContext so
-   * triggerCollapse / triggerExpand can measure this view's on-screen position
-   * for the fullscreen ↔ mini-player animation on TV.
+   * Ref to the real video preview container for focus restoration.
    */
   miniPlayerRef?: React.RefObject<View | null>;
   /**
@@ -208,6 +204,7 @@ export function TVLiveLayout({
   const catFocusedRef = useRef<View | null>(null);
   const channelFocusedRef = useRef(false);
   const previewFocusedRef = useRef(false);
+  const [previewFocused, setPreviewFocused] = useState(false);
   const catchupFocusedLocalRef = useRef(false);
   const guideFocusedRef = useRef(false);
   // Fire OS can ignore a cross-panel nextFocusLeft target and move focus to the
@@ -736,6 +733,7 @@ export function TVLiveLayout({
       nextFocusUp: previewH,
       nextFocusDown: nodeHandle(catchupNode) ?? nodeHandle(firstGuideNode) ?? previewH,
       nextFocusLeft: playingOrReturnProxy,
+      nextFocusRight: previewH,
     });
     patch(catchupNode, {
       nextFocusUp: previewH,
@@ -752,6 +750,11 @@ export function TVLiveLayout({
           : {}),
         nextFocusLeft: playingOrReturnProxy,
       });
+    });
+    // RIGHT from any visible channel must land on the real focusable preview,
+    // not a native video layer or an unrelated screen coordinate.
+    chRefMap.current.forEach((node) => {
+      patch(node, { nextFocusRight: previewH });
     });
   }, [channelEpg.length, guideChannel?.id, hasCatchup, leftReturnProxyHandle, miniPlayerRef, nodeHandle, playingChHandle, selectedChannel?.id]);
 
@@ -1202,7 +1205,10 @@ export function TVLiveLayout({
       </View>
 
       {/* ═══ Panel 3 — Preview ═══════════════════════════════════════════════ */}
-      <View style={styles.previewPanel}>
+      <View style={[
+        styles.previewPanel,
+        nativeSurfaceFullscreen && styles.previewPanelFullscreen,
+      ]}>
         {!selectedChannel ? (
           <View style={styles.noSelWrap}>
             <Text style={{ fontSize: 48 }}>📺</Text>
@@ -1230,7 +1236,7 @@ export function TVLiveLayout({
               accessible
               accessibilityRole="button"
               accessibilityLabel="Watch fullscreen — press OK"
-              focusedStyle={styles.videoFocused}
+              focusable={Platform.isTV ? isPlaybackActive && !!streamUrl : true}
               style={[
                 styles.videoWrap,
                 nativeSurfaceFullscreen && styles.nativeSurfaceFullscreen,
@@ -1239,31 +1245,39 @@ export function TVLiveLayout({
               onFocus={() => {
                 previewPanelReturnPendingRef.current = true;
                 previewFocusedRef.current = true;
+                setPreviewFocused(true);
                 onPreviewFocusChange?.(true);
               }}
               onBlur={() => {
                 previewFocusedRef.current = false;
+                setPreviewFocused(false);
                 onPreviewFocusChange?.(false);
               }}
               onPress={onWatchFullscreen}
             >
-              {/* Android: VLC surface is rendered at root level in index.tsx
-                   to avoid overflow clipping and to allow layout-bounds
-                   animation.  Non-Android TV (hypothetical) still renders
-                   via NativeStreamPlayer directly inside this panel.       */}
-              {Platform.OS !== 'android' && isPlaybackActive && !!streamUrl && (
-                <View style={StyleSheet.absoluteFill} pointerEvents="none">
+              {/* The real VLC TextureView belongs to the actual focusable
+                  mini-player container. Its own onLayout drives libVLC's
+                  output window, so it cannot drift from this preview box. */}
+              {isPlaybackActive && !!streamUrl && (
+                <Animated.View
+                  collapsable={false}
+                  pointerEvents="none"
+                  focusable={false}
+                  accessible={false}
+                  importantForAccessibility="no-hide-descendants"
+                  style={[styles.nativeSurfaceHost, StyleSheet.absoluteFill]}
+                >
                   <NativeStreamPlayer
                     source={streamUrl}
                     player={player}
                     style={StyleSheet.absoluteFill}
                     resizeMode="contain"
-                    reloadKey={`${videoKey}:${vlcReloadKey ?? 0}`}
+                    reloadKey={Platform.OS === 'android' ? vlcReloadKey : `${videoKey}:${vlcReloadKey ?? 0}`}
                     onPlaying={onVlcPlaying}
                     onBuffering={onVlcBuffering}
                     onError={onVlcError}
                   />
-                </View>
+                </Animated.View>
               )}
 
               {/* Surface reattachment can briefly report buffering when moving
@@ -1282,6 +1296,9 @@ export function TVLiveLayout({
                   <Text style={{ fontSize: 28 }}>⚠️</Text>
                   <Text style={styles.videoOverlayText}>Stream unavailable</Text>
                 </View>
+              )}
+              {previewFocused && !nativeSurfaceFullscreen && (
+                <View pointerEvents="none" style={styles.videoFocusRing} />
               )}
 
             </FocusablePressable>
@@ -1592,6 +1609,16 @@ const styles = StyleSheet.create({
     minHeight: 0,
     overflow: 'hidden',
   },
+  previewPanelFullscreen: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    zIndex: 100,
+    elevation: 100,
+    backgroundColor: '#000',
+  },
 
   noSelWrap: {
     flex: 1,
@@ -1621,9 +1648,32 @@ const styles = StyleSheet.create({
     borderColor: FOCUS_BORDER,
   },
   nativeSurfaceFullscreen: {
-    overflow: 'visible',
-    zIndex: 100,
-    elevation: 100,
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    width: '100%',
+    height: '100%',
+    borderRadius: 0,
+    borderWidth: 0,
+  },
+  nativeSurfaceHost: {
+    position: 'absolute',
+    backgroundColor: '#000',
+  },
+  videoFocusRing: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    borderWidth: 4,
+    borderColor: FOCUS_BORDER,
+    shadowColor: FOCUS_BORDER,
+    shadowOpacity: 0.9,
+    shadowRadius: 12,
+    elevation: 14,
   },
 
   // Keep the persistent native player mounted, but remove all surrounding Live

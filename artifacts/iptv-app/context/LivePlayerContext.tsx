@@ -49,6 +49,8 @@ interface LivePlayerContextValue {
    * values coordinate that single native surface with the fullscreen route.
    */
   nativeSurfaceMode: NativeSurfaceMode;
+  /** True from the moment a native surface transition is requested until its bounds animation completes. */
+  nativeSurfaceTransitioning: boolean;
   nativeSurfaceUrl: string;
   setNativeSurfaceUrl: (url: string) => void;
   /**
@@ -135,6 +137,7 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
   // therefore keeps the Live TV view alive and animates that one surface while
   // the fullscreen route supplies only its controls.
   const [nativeSurfaceMode, setNativeSurfaceMode] = useState<NativeSurfaceMode>('mini');
+  const [nativeSurfaceTransitioning, setNativeSurfaceTransitioning] = useState(false);
   const [nativeSurfaceUrl, setNativeSurfaceUrl] = useState('');
   const [nativeSurfaceHandoff, setNativeSurfaceHandoff] = useState<NativeSurfaceHandoff | null>(null);
   const nativeSurfaceTransitionRef = useRef<NativeSurfaceTransition | null>(null);
@@ -167,17 +170,31 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
 
   const transitionNativeSurface = useCallback(
     (mode: NativeSurfaceMode, onComplete: () => void = () => {}) => {
-      setNativeSurfaceMode(mode);
-      if (Platform.OS !== 'android') {
+      if (mode === 'hidden') {
+        setNativeSurfaceTransitioning(false);
+        setNativeSurfaceMode(mode);
         onComplete();
+        return;
+      }
+      // Arm the host's overflow/chrome state in the same update as the mode.
+      // During a collapse mode becomes "mini" before the next animation frame;
+      // without this flag the still-fullscreen TextureView is clipped for a frame.
+      setNativeSurfaceTransitioning(true);
+      setNativeSurfaceMode(mode);
+      const completeTransition = () => {
+        setNativeSurfaceTransitioning(false);
+        onComplete();
+      };
+      if (Platform.OS !== 'android') {
+        completeTransition();
         return;
       }
       // Let the mini-player apply its overflow/z-index state before asking it
       // to animate the already-mounted native view.
       requestAnimationFrame(() => {
         const transition = nativeSurfaceTransitionRef.current;
-        if (transition) transition(mode, onComplete);
-        else onComplete();
+        if (transition) transition(mode, completeTransition);
+        else completeTransition();
       });
     },
     [],
@@ -678,7 +695,7 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
 
   return (
     <LivePlayerContext.Provider
-      value={{ player, activeUrlRef, nativeSurfaceMode, nativeSurfaceUrl, setNativeSurfaceUrl, nativeSurfaceHandoff, beginNativeSurfaceHandoff, updateNativeSurfaceHandoffUrl, endNativeSurfaceHandoff, setNativeSurfaceTransitionHandler, transitionNativeSurface, miniPlayerRef, isCollapsingRef, collapseRestorePendingRef, pendingCollapseRemountRef, onCollapseCompleteRef, notifyPlayerReady, triggerExpand, triggerExpandFromRef, triggerCollapse }}
+      value={{ player, activeUrlRef, nativeSurfaceMode, nativeSurfaceTransitioning, nativeSurfaceUrl, setNativeSurfaceUrl, nativeSurfaceHandoff, beginNativeSurfaceHandoff, updateNativeSurfaceHandoffUrl, endNativeSurfaceHandoff, setNativeSurfaceTransitionHandler, transitionNativeSurface, miniPlayerRef, isCollapsingRef, collapseRestorePendingRef, pendingCollapseRemountRef, onCollapseCompleteRef, notifyPlayerReady, triggerExpand, triggerExpandFromRef, triggerCollapse }}
     >
       {children}
       {/* Expanding/collapsing VideoView overlay — rendered on top of everything.

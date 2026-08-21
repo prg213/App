@@ -1381,9 +1381,9 @@ export default function PlayerScreen() {
     switchChannel(nextChannel, (channelIdx + 1) % channelList.length, channelIdx === channelList.length - 1);
   }, [nextChannel, channelIdx, channelList, switchChannel]);
 
-  // ── Animated collapse back (live TV only) ────────────────────────────────
-  // Plays the reverse mini-player animation before navigating back so the
-  // user sees the fullscreen view shrink back down to the preview box.
+  // ── Return to Live TV (live only) ───────────────────────────────────────
+  // The persistent VLC surface stays mounted. Its owning preview container
+  // returns to mini layout before the fullscreen controls route is removed.
   const handleBackLive = useCallback(() => {
     // When launched from recently-watched with stopOnBack=true, just pause and
     // go back — no mini-player collapse animation.  The Live TV tab's
@@ -1394,9 +1394,9 @@ export default function PlayerScreen() {
       router.back();
       return;
     }
-    // Do not let a repeated BACK interrupt the layout-bounds animation and pop
+    // Do not let a repeated BACK interrupt the parent-layout handoff and pop
     // the transparent fullscreen route before the persistent VLC surface is
-    // visibly back in its mini-player position.
+    // visibly back in its mini-player container.
     if (usesPersistentNativeSurface && persistentSurfaceBackInFlightRef.current) return;
     // Immediately zero-out the controls and info bar via setValue so their
     // native opacity updates in the same frame — before the collapse overlay
@@ -1438,9 +1438,9 @@ export default function PlayerScreen() {
     if (usesPersistentNativeSurface) {
       persistentSurfaceBackInFlightRef.current = true;
       const returnToLive = () => {
-        // The native bounds animation is complete at this point. Restore
+        // The container layout handoff is complete at this point. Restore
         // Fire TV focus only after the Live TV route becomes active again; the
-        // root-level VLC surface is deliberately not a focus target.
+        // nested VLC surface is deliberately not a focus target.
         if (Platform.isTV) DEE.emit('live:restore-preview-focus');
         if (params.groupTitle && (params.fromHome === 'true' || !params.channelsJson)) {
           StorageService.setPrefLiveCat(params.groupTitle!).catch(() => {});
