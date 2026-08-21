@@ -9,6 +9,9 @@
         "buildType": "apk",
         "image": "ubuntu-26.04-jdk-17-ndk-r27b-sdk-57"
       },
+      "customBuildConfig": {
+        "path": ".eas/build/android-preview.yml"
+      },
       "env": {
         "EXPO_PUBLIC_DOMAIN": "streamvault.rip",
         "EXPO_PUBLIC_TMDB_API_KEY": "312ee14dd7f250471da1174324be2bda",

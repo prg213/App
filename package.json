@@ -15,16 +15,5 @@
   "devDependencies": {
     "prettier": "^3.9.5",
     "typescript": "~5.9.3"
-  },
-  "packageManager": "pnpm@9.15.9",
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "@clerk/shared",
-      "esbuild",
-      "expo-modules-core",
-      "react-native-reanimated",
-      "react-native-screens",
-      "react-native-gesture-handler"
-    ]
   }
 }

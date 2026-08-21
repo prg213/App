@@ -1,0 +1,12 @@
+build:
+  name: Android APK (pnpm 9)
+  steps:
+    - eas/checkout
+    - run:
+        name: Install pnpm 9
+        command: npm install -g pnpm@9.15.9
+    - eas/use_npm_token
+    - eas/install_node_modules
+    - eas/prebuild
+    - eas/run_gradle
+    - eas/find_and_upload_build_artifacts
