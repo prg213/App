@@ -128,8 +128,10 @@ jobs:
             if [ -s Installed-StreamVault.apk ]; then
               INSTALLED_CERT_SHA256="$("$APKSIGNER" verify --print-certs Installed-StreamVault.apk | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -1 || true)"
               echo "INSTALLED cert SHA-256 (latest release): $INSTALLED_CERT_SHA256"
-              if [ -n "$INSTALLED_CERT_SHA256" ] && [ "$CANDIDATE_CERT_SHA256" != "$INSTALLED_CERT_SHA256" ]; then
-                echo "::warning::Cert mismatch vs latest release. KEYSTORE_BASE64 may have changed, or latest release was built with a different keystore. Install will require uninstall+reinstall. Use Settings → MAC Address → Restore if your IPTV subscription MAC needs to be set manually."
+              if [ -n "$INSTALLED_CERT_SHA256" ]; then
+                # Advisory check only — non-fatal so recovery builds aren't blocked.
+                test "$CANDIDATE_CERT_SHA256" = "$INSTALLED_CERT_SHA256" \
+                  || echo "::warning::Cert mismatch vs latest release. KEYSTORE_BASE64 may have changed, or latest release used a different keystore. Install will require uninstall+reinstall. Use Settings → MAC Address → Restore if your IPTV MAC needs to be set manually."
               fi
             fi
           fi
