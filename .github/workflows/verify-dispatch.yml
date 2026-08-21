@@ -1,20 +1,14 @@
-name: Verify Dispatch / Build Android
-# Lightweight canary + emergency build trigger.
-# - verify-dispatch: confirms GitHub's repository_dispatch registry is live.
-# - android-build-now: full signed-APK build, used when build-android.yml's
-#   registry is in a stale silent-drop state. Delete this event type and the
-#   build job once build-android.yml's registry has recovered.
-# Do NOT add workflow_call or push/pull_request triggers.
+name: Verify Dispatch
+# Lightweight canary — confirms GitHub's repository_dispatch registry is live.
+# Do NOT add workflow_call, push, pull_request, or build jobs.
 "on":
   repository_dispatch:
-    types: [verify-dispatch, android-build-now]
+    types: [verify-dispatch]
 
 jobs:
   verify:
     name: Dispatch canary
     runs-on: ubuntu-latest
-    # Run on plain verify-dispatch pings (no run_build flag) only.
-    if: github.event.action == 'verify-dispatch' && github.event.client_payload.run_build != true
     permissions: {}
     steps:
       - name: Confirm dispatch is live
@@ -22,86 +16,3 @@ jobs:
           echo "repository_dispatch is working."
           echo "run_id=${GITHUB_RUN_ID}"
           echo "triggered_by=${{ github.event.client_payload.triggered_by || 'unknown' }}"
-
-  build:
-    name: Build Release APK
-    runs-on: ubuntu-latest
-    # Triggered by: verify-dispatch with run_build:true (uses proven registry)
-    # OR android-build-now once GitHub registers that type.
-    if: (github.event.action == 'verify-dispatch' && github.event.client_payload.run_build == true) || github.event.action == 'android-build-now'
-    permissions: { contents: read }
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with: { java-version: "17", distribution: temurin }
-      - uses: actions/setup-node@v4
-        with: { node-version: 22 }
-      - uses: pnpm/action-setup@v4
-        with: { version: 9 }
-      - run: pnpm install --no-frozen-lockfile
-      - run: pnpm --filter @workspace/iptv-app run lint
-      - run: bash artifacts/iptv-app/scripts/check-epg-scroll-not-persisted.sh
-      - run: bash artifacts/iptv-app/scripts/check-inmemory-not-persisted.sh
-      - run: pnpm --filter @workspace/iptv-app run typecheck
-      - run: pnpm --filter @workspace/iptv-app run typecheck:tests
-      - name: Android packaging and VLC MP2 regressions
-        run: pnpm --filter @workspace/iptv-app exec jest __tests__/androidReleasePackaging.test.ts __tests__/mp2AudioPlayback.test.ts --runInBand
-      - name: Full IPTV test suite
-        run: pnpm --filter @workspace/iptv-app exec jest --runInBand
-      - name: Expo prebuild
-        working-directory: artifacts/iptv-app
-        run: npx expo prebuild --platform android --no-install --clean
-        env: { CI: 1, EXPO_PUBLIC_DOMAIN: streamvault.rip, EXPO_PUBLIC_TMDB_API_KEY: 312ee14dd7f250471da1174324be2bda, EXPO_PUBLIC_BUILD_NUMBER: ${{ github.run_number }} }
-      - name: Install NDK
-        run: echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "ndk;27.1.12297006" "cmake;3.22.1" --sdk_root=$ANDROID_HOME
-      - name: Restore signing keystore
-        working-directory: artifacts/iptv-app/android
-        run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > release.keystore
-      - name: Build release APK
-        working-directory: artifacts/iptv-app/android
-        run: ./gradlew assembleRelease -Pandroid.injected.signing.store.file=$(pwd)/release.keystore -Pandroid.injected.signing.store.password=streamvault123 -Pandroid.injected.signing.key.alias=streamvault -Pandroid.injected.signing.key.password=streamvault123 -x lintVitalAnalyzeRelease -x lintAnalyzeRelease --stacktrace --no-daemon
-        env: { ANDROID_NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/27.1.12297006, EXPO_PUBLIC_DOMAIN: streamvault.rip, EXPO_PUBLIC_TMDB_API_KEY: 312ee14dd7f250471da1174324be2bda, EXPO_PUBLIC_BUILD_NUMBER: ${{ github.run_number }}, GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=512m" }
-      - name: Stage universal and fallback APKs
-        run: |
-          set -euo pipefail
-          OUTPUT_DIR="artifacts/iptv-app/android/app/build/outputs/apk/release"
-          UNIVERSAL_APK="$(find "$OUTPUT_DIR" -name '*universal*release.apk' -print -quit)"
-          ARM32_APK="$(find "$OUTPUT_DIR" -name '*armeabi-v7a*release.apk' -print -quit)"
-          ARM64_APK="$(find "$OUTPUT_DIR" -name '*arm64-v8a*release.apk' -print -quit)"
-          test -n "$UNIVERSAL_APK"; test -n "$ARM32_APK"; test -n "$ARM64_APK"
-          cp "$UNIVERSAL_APK" StreamVault.apk
-          cp "$ARM32_APK" StreamVault-armeabi-v7a.apk
-          cp "$ARM64_APK" StreamVault-arm64-v8a.apk
-      - name: Validate universal APK
-        env: { GH_TOKEN: ${{ github.token }} }
-        run: |
-          set -euo pipefail
-          APK=StreamVault.apk
-          MAX_UNIVERSAL_APK_BYTES=$((150 * 1024 * 1024))
-          test "$(stat --format=%s "$APK")" -le "$MAX_UNIVERSAL_APK_BYTES"
-          for ABI in armeabi-v7a arm64-v8a; do
-            mapfile -t ABI_LIBRARIES < <(zipinfo -1 "$APK" | grep "^lib/$ABI/.*\.so$" || true)
-            test "${#ABI_LIBRARIES[@]}" -gt 0
-            for ABI_LIBRARY in "${ABI_LIBRARIES[@]}"; do
-              COMPRESSION_METHOD="$(zipinfo -v "$APK" "$ABI_LIBRARY" | awk -F: '/compression method:/{gsub(/^[[:space:]]+/, "", $2); print $2; exit}')"
-              test "$COMPRESSION_METHOD" = "deflated"
-            done
-            for VLC_LIBRARY in libvlc.so libvlcjni.so; do printf '%s\n' "${ABI_LIBRARIES[@]}" | grep -qx "lib/$ABI/$VLC_LIBRARY"; done
-          done
-          ! zipinfo -1 "$APK" | grep -Eq '^lib/(x86|x86_64)/'
-          TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -V | tail -1)"
-          AAPT2="$ANDROID_HOME/build-tools/$TOOLS/aapt2"; APKSIGNER="$ANDROID_HOME/build-tools/$TOOLS/apksigner"
-          BADGING="$("$AAPT2" dump badging "$APK")"; VERSION_CODE="$(printf '%s\n' "$BADGING" | sed -n "s/.*versionCode='\([^']*\)'.*/\1/p" | head -1)"
-          printf '%s\n' "$BADGING" | grep -q "package: name='com.prg213.streamvault'"; test "$VERSION_CODE" = "$GITHUB_RUN_NUMBER"
-          "$APKSIGNER" verify --verbose --print-certs "$APK"
-          PREVIOUS_ASSET_ID="$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq '.assets[] | select(.name == "StreamVault.apk") | .id' | head -1)"
-          test -n "$PREVIOUS_ASSET_ID"; gh api -H "Accept: application/octet-stream" "repos/$GITHUB_REPOSITORY/releases/assets/$PREVIOUS_ASSET_ID" > Installed-StreamVault.apk
-          CANDIDATE_CERT_SHA256="$("$APKSIGNER" verify --print-certs "$APK" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -1)"
-          INSTALLED_CERT_SHA256="$("$APKSIGNER" verify --print-certs Installed-StreamVault.apk | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -1)"
-          test -n "$CANDIDATE_CERT_SHA256"; test "$CANDIDATE_CERT_SHA256" = "$INSTALLED_CERT_SHA256"
-      - name: Upload validated APK candidate
-        uses: actions/upload-artifact@v4
-        with:
-          name: StreamVault-release-${{ github.run_number }}
-          path: StreamVault*.apk
-          retention-days: 30

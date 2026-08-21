@@ -22,9 +22,6 @@ name: Build Android APK
         type: string
   repository_dispatch:
     types: [build-android]
-  push:
-    branches:
-      - 'release-trigger/*'
 
 jobs:
   build:

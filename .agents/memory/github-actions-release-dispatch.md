@@ -53,8 +53,8 @@ Even a fresh commit to a matching branch produces a run with 0 jobs if the workf
 - Build job must have no `if:` condition (or a simple single-line inline `if:`)
 - Promote job keeps its `if: github.event_name == 'workflow_dispatch' && inputs.release_action == 'promote-candidate'`
 
-## Current workflow file state (after this session)
-- `build-android.yml` on main: no `if:` on build job; `workflow_dispatch + repository_dispatch + push:release-trigger/*` triggers. Registry is stale/broken.
-- `verify-dispatch.yml` on main: has a full build job that runs when `github.event.action == 'android-build-now'` or `github.event.action == 'verify-dispatch' && client_payload.run_build == true`. Registry is stale.
-- `android-build-now.yml` on main: standalone build workflow, `repository_dispatch: types: [android-build-now]`. Registry not yet active (< 60 min).
-- All three dispatch event types are currently silently dropped. **Use the GitHub UI.**
+## Current clean state
+- `build-android.yml`: `workflow_dispatch + repository_dispatch` only (no `push:`), no `if:` on build job.
+- `verify-dispatch.yml`: lightweight canary only — `repository_dispatch: types: [verify-dispatch]`, one verify job, no build job.
+- `android-build-now.yml`: deleted (was a debugging artifact).
+- After any workflow file push, wait 45+ minutes for the dispatch registry to re-register before relying on programmatic triggers. Use GitHub UI in the meantime.
