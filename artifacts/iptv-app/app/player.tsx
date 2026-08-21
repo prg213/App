@@ -960,6 +960,17 @@ export default function PlayerScreen() {
     cancelRemindersForActiveChannel({ channelId: params.channelId, epgId: params.epgId });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Persistent VLC handoff (Android/Fire TV mini→fullscreen): the mini-player's
+  // VLC surface is already streaming — this route is controls-only.  Clear the
+  // loading state immediately so the "Connecting to stream" overlay never covers
+  // a healthy live stream.  A separate effect (not the [] one) handles this so
+  // it fires reliably even if context commits after the initial mount.
+  useEffect(() => {
+    if (!usesPersistentNativeSurface || !isLive) return;
+    setIsBuffering(false);
+    setIsPlaying(true);
+  }, [usesPersistentNativeSurface, isLive]);
+
   useEffect(() => {
     if (isWeb || USES_NATIVE_VLC || !player) return;
     const subs = [

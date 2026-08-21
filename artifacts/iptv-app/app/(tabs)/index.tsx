@@ -929,8 +929,10 @@ export default function LiveTVScreen() {
         if (!USES_NATIVE_VLC) setIsLivePreviewActive(false);
         if (goingToPlayerRef.current) {
           goingToPlayerRef.current = false;
-          // tabBlurredAtRef is intentionally NOT set here; liveReloadNeededRef
-          // is the signal used when returning from the fullscreen player.
+          // Null out tabBlurredAtRef so returning from the fullscreen player
+          // never triggers the "stale tab" live-edge reload.  VLC was streaming
+          // the whole time — a reconnect is neither necessary nor wanted.
+          tabBlurredAtRef.current = null;
           return;
         }
         // Record when the tab was blurred so we can decide on return whether
