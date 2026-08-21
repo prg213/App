@@ -896,10 +896,19 @@ export default function PlayerScreen() {
   // so ownership must outlive the visual mode. A route-scoped handoff ID avoids
   // treating a retained URL as ownership: direct Home/recently-watched launches
   // have no ID and must mount their own VLC renderer.
+  //
+  // NOTE: we intentionally check nativeSurfaceHandoffId (from route params) rather
+  // than comparing it against the context's nativeSurfaceHandoff?.id (React state).
+  // The context state is set by beginNativeSurfaceHandoff() just before navigate()
+  // is called, but React may not have committed that update by the time this route
+  // renders — particularly when nativeSurfaceTransitionRef has no handler and
+  // onComplete() fires in a single rAF (~16 ms).  Reading from params is always
+  // synchronous and race-free.  The semantics are identical: a non-null param ID
+  // means this route was explicitly opened as a handoff from the Live TV tab.
   const usesPersistentNativeSurface =
     USES_NATIVE_VLC
     && isLive
-    && nativeSurfaceHandoff?.id === nativeSurfaceHandoffId;
+    && nativeSurfaceHandoffId !== null;
 
   useEffect(() => () => {
     if (nativeSurfaceHandoffId) endNativeSurfaceHandoff(nativeSurfaceHandoffId);
