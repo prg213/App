@@ -39,6 +39,61 @@ describe('Android live VLC surface transitions', () => {
     expect(tvLayout).toContain('opacity: 0');
   });
 
+  it('applies the hide guard to all five chrome containers — prevents partial-hide regressions on older Fire TV Stick models', () => {
+    // Five distinct panel containers must each carry both guards:
+    //   (1) categories panel   (2) channels panel   (3) info bar
+    //   (4) catchup row        (5) mini-guide wrap
+    //
+    // If a new panel is introduced without the suppression the count below
+    // breaks, forcing the author to add the guard explicitly.  On 1st/2nd-gen
+    // Fire TV Sticks (Fire OS 3/5) the surface compositor does not honour
+    // elevation alone, so every overlapping view must be visually removed via
+    // opacity:0 AND event-blocked via pointerEvents:'none'.
+    const pointerMatches =
+      tvLayout.match(/pointerEvents=\{hideLiveChromeForFullscreen \? 'none' : 'auto'\}/g) ?? [];
+    expect(pointerMatches.length).toBeGreaterThanOrEqual(5);
+
+    const opacityMatches =
+      tvLayout.match(/hideLiveChromeForFullscreen && styles\.fullscreenChromeHidden/g) ?? [];
+    expect(opacityMatches.length).toBeGreaterThanOrEqual(5);
+  });
+
+  it('fullscreenChromeHidden uses opacity not display/visibility — opacity:0 is reliable on all Android API levels', () => {
+    // display:'none' can cause layout recalculation artefacts on older RN/Android
+    // combinations; visibility:'hidden' has inconsistent support.  opacity:0
+    // leaves the view in the layout tree (preventing reflow) while making it
+    // invisible on every Android version including Fire OS 3 (Android 4.2.2).
+    const styleStart = tvLayout.indexOf('fullscreenChromeHidden:');
+    expect(styleStart).toBeGreaterThan(-1);
+    const ruleBody = tvLayout.slice(styleStart, tvLayout.indexOf('},', styleStart));
+    expect(ruleBody).toContain('opacity: 0');
+    expect(ruleBody).not.toMatch(/display\s*:/);
+    expect(ruleBody).not.toMatch(/visibility\s*:/);
+  });
+
+  it('nativeSurfaceFullscreen style carries both zIndex and elevation for cross-generation compositor compatibility', () => {
+    // elevation (API ≥ 21, Fire OS 5+) controls the Android shadow compositor
+    // layer ordering on modern Fire TV Stick 3rd gen / Fire TV Cube.
+    // zIndex is the only effective ordering signal on pre-Lollipop surfaces
+    // (Fire TV Stick 1st gen, Fire OS 3, Android 4.2).
+    // Both must be present so the VLC texture sits above any residual chrome
+    // on every hardware generation — opacity:0 is the primary guard but
+    // belt-and-suspenders compositor ordering prevents edge-case bleed-through.
+    const styleStart = tvLayout.indexOf('nativeSurfaceFullscreen:');
+    expect(styleStart).toBeGreaterThan(-1);
+    const ruleBody = tvLayout.slice(styleStart, tvLayout.indexOf('},', styleStart));
+    expect(ruleBody).toMatch(/zIndex\s*:/);
+    expect(ruleBody).toMatch(/elevation\s*:/);
+  });
+
+  it('catchup row carries an explicit focusable guard alongside pointerEvents — TV remote focus is not blocked by pointerEvents alone on older Fire OS', () => {
+    // On Fire OS 3 and some Fire OS 5 builds, setting pointerEvents='none' on a
+    // parent View does NOT prevent TV remote D-pad focus reaching Pressable
+    // children.  The focusable={false} prop must be set on each interactive
+    // child individually when the chrome is hidden.
+    expect(tvLayout).toContain('focusable={!hideLiveChromeForFullscreen}');
+  });
+
   it('keeps the existing Android surface for only its fullscreen route lifetime', () => {
     const ownershipStart = fullscreenPlayer.indexOf('const usesPersistentNativeSurface');
     const ownershipBlock = fullscreenPlayer.slice(ownershipStart, ownershipStart + 500);
