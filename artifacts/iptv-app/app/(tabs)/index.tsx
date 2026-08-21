@@ -542,6 +542,31 @@ export default function LiveTVScreen() {
   // Incrementing this key forces VideoView to remount, re-binding the Surface.
   // The flash overlay hides any single-frame black during the remount.
   const [videoKey, setVideoKey] = useState(0);
+  // These callbacks are intentionally stable so the memoized Android VLC
+  // surface receives no prop update when nativeSurfaceMode changes. A
+  // mini/fullscreen transition must adjust only its parent's bounds — never
+  // reapply a source, volume, mute, pause, or seek value to libVLC.
+  const handlePersistentVlcPlaying = useCallback(() => {
+    setIsBuffering(false);
+    setHasError(false);
+    Animated.timing(flashOverlayOpacity, {
+      toValue: 0,
+      duration: 200,
+      useNativeDriver: true,
+    }).start();
+  }, [flashOverlayOpacity]);
+  const handlePersistentVlcBuffering = useCallback(() => {
+    setIsBuffering(true);
+  }, []);
+  const handlePersistentVlcError = useCallback(() => {
+    setIsBuffering(false);
+    setHasError(true);
+    Animated.timing(flashOverlayOpacity, {
+      toValue: 0,
+      duration: 150,
+      useNativeDriver: true,
+    }).start();
+  }, [flashOverlayOpacity]);
   const isFirstFocusRef = useRef(true);
   useFocusEffect(useCallback(() => {
     if (isFirstFocusRef.current) {
@@ -1831,17 +1856,9 @@ export default function LiveTVScreen() {
             style={StyleSheet.absoluteFill}
             resizeMode="contain"
             reloadKey={vlcReloadKey}
-            onPlaying={() => {
-              setIsBuffering(false);
-              setHasError(false);
-              Animated.timing(flashOverlayOpacity, { toValue: 0, duration: 200, useNativeDriver: true }).start();
-            }}
-            onBuffering={() => setIsBuffering(true)}
-            onError={() => {
-              setIsBuffering(false);
-              setHasError(true);
-              Animated.timing(flashOverlayOpacity, { toValue: 0, duration: 150, useNativeDriver: true }).start();
-            }}
+            onPlaying={handlePersistentVlcPlaying}
+            onBuffering={handlePersistentVlcBuffering}
+            onError={handlePersistentVlcError}
           />
           <Animated.View
             style={[StyleSheet.absoluteFill, styles.flashOverlay, { opacity: flashOverlayOpacity }]}
@@ -2414,17 +2431,9 @@ export default function LiveTVScreen() {
             style={StyleSheet.absoluteFill}
             resizeMode="contain"
             reloadKey={vlcReloadKey}
-            onPlaying={() => {
-              setIsBuffering(false);
-              setHasError(false);
-              Animated.timing(flashOverlayOpacity, { toValue: 0, duration: 200, useNativeDriver: true }).start();
-            }}
-            onBuffering={() => setIsBuffering(true)}
-            onError={() => {
-              setIsBuffering(false);
-              setHasError(true);
-              Animated.timing(flashOverlayOpacity, { toValue: 0, duration: 150, useNativeDriver: true }).start();
-            }}
+            onPlaying={handlePersistentVlcPlaying}
+            onBuffering={handlePersistentVlcBuffering}
+            onError={handlePersistentVlcError}
           />
           {/* Flash-prevention overlay */}
           <Animated.View

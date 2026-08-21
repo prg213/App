@@ -105,6 +105,20 @@ stale frame.
 call route navigation only when the animation callback reports `finished`, and
 on return skip `transitionNativeSurface('mini')` when the mode is already mini.
 
+## Native playback-prop stability
+
+The Android VLC wrapper is memoized and the persistent live surface receives
+stable event callbacks. A preview/fullscreen change must only update the outer
+surface bounds, not re-send VLC playback props.
+
+**Why:** A parent layout render may create fresh native prop objects. Even when
+the React key is unchanged, reapplying controlled defaults such as volume or
+mute can overwrite state owned by libVLC.
+
+**How to apply:** Keep all transition-only values on the outer
+`Animated.View`; let the native component re-render only for a real stream
+input change (URL, explicit reload/retry, pause, seek, or resize mode).
+
 ## Navigation config (player.tsx route)
 
 _layout.tsx: animation: 'none', presentation: 'transparentModal' (Android).

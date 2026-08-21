@@ -6,6 +6,7 @@ const liveTab = fs.readFileSync(path.resolve(appRoot, 'app/(tabs)/index.tsx'), '
 const fullscreenPlayer = fs.readFileSync(path.resolve(appRoot, 'app/player.tsx'), 'utf8');
 const liveContext = fs.readFileSync(path.resolve(appRoot, 'context/LivePlayerContext.tsx'), 'utf8');
 const tvLayout = fs.readFileSync(path.resolve(appRoot, 'components/TVLiveLayout.tsx'), 'utf8');
+const androidNativePlayer = fs.readFileSync(path.resolve(appRoot, 'components/NativeStreamPlayer.android.tsx'), 'utf8');
 
 describe('Android live VLC surface transitions', () => {
   it('coordinates the persistent native surface through LivePlayerContext', () => {
@@ -37,6 +38,17 @@ describe('Android live VLC surface transitions', () => {
     // Android TV receives the root-level instance from index.tsx; this layout
     // must never create a second VLC player for the same fullscreen handoff.
     expect(tvLayout).toContain("Platform.OS !== 'android' && isPlaybackActive");
+  });
+
+  it('does not reapply VLC playback props for a layout-only transition', () => {
+    // React.memo receives stable live-tab callbacks, so changing
+    // nativeSurfaceMode only resizes the parent Animated.View. It cannot reset
+    // libVLC-owned playback position, pause state, audio/subtitle selection,
+    // volume, mute state, or programme state by re-sending native props.
+    expect(androidNativePlayer).toContain('React.memo(NativeStreamPlayerAndroid)');
+    expect(liveTab).toContain('onPlaying={handlePersistentVlcPlaying}');
+    expect(liveTab).toContain('onBuffering={handlePersistentVlcBuffering}');
+    expect(liveTab).toContain('onError={handlePersistentVlcError}');
   });
 
   it('hides Live TV panels while the persistent surface is fullscreen', () => {
@@ -133,6 +145,21 @@ describe('Android live VLC surface transitions', () => {
     expect(backBlock).toContain('persistentSurfaceBackInFlightRef.current) return');
     expect(backBlock).toContain('persistentSurfaceBackInFlightRef.current = true');
     expect(backBlock).toContain("transitionNativeSurface('mini', returnToLive)");
+  });
+
+  it('does not reload, replace, or stop the stream in either transition path', () => {
+    const watchStart = liveTab.indexOf('const handleWatch = useCallback');
+    const watchBlock = liveTab.slice(watchStart, watchStart + 3000);
+    const backStart = fullscreenPlayer.indexOf('const handleBackLive = useCallback');
+    const backBlock = fullscreenPlayer.slice(backStart, backStart + 5200);
+
+    for (const transitionBlock of [watchBlock, backBlock]) {
+      expect(transitionBlock).not.toContain('setVlcReloadKey');
+      expect(transitionBlock).not.toContain('player.replace(');
+      expect(transitionBlock).not.toContain('.stop(');
+      expect(transitionBlock).not.toContain('.release(');
+      expect(transitionBlock).not.toContain('.destroy(');
+    }
   });
 
   it('does not run a second mini resize when the tab regains focus after BACK', () => {

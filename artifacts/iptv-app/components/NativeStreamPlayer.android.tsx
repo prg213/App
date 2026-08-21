@@ -10,7 +10,7 @@ import type { NativeStreamPlayerProps } from './NativeStreamPlayer';
  * including MPEG Layer II audio, which are not bundled with the standard
  * ExoPlayer configuration used by expo-video.
  */
-export function NativeStreamPlayer({
+function NativeStreamPlayerAndroid({
   source,
   paused = false,
   repeat = false,
@@ -74,3 +74,12 @@ export function NativeStreamPlayer({
     />
   );
 }
+
+/**
+ * A mini ↔ fullscreen handoff changes only the parent surface bounds. Keeping
+ * this component memoized means those layout-only renders never send a fresh
+ * source, volume, mute, pause, track, or seek prop set to the native VLC view.
+ * The memo intentionally releases when a real playback input changes (URL,
+ * reload key, pause state, seek, or resize mode).
+ */
+export const NativeStreamPlayer = React.memo(NativeStreamPlayerAndroid);
