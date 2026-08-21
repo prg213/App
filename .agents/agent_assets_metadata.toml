@@ -13,3 +13,10 @@ uri = "file://StreamVault-v230.apk"
 type = "unspecified"
 title = "StreamVault v230 APK"
 description = "Release APK built from commit 1020e39. Includes the latest Live TV focus navigation, TV viewport fitting, and channel zapping with the OSD visible."
+
+[[outputs]]
+id = "im_r5-YnqmguTjr31oiTu"
+uri = "file://attached_assets/StreamVault-build-16.apk"
+type = "unspecified"
+title = "StreamVault candidate — build #16"
+description = "GitHub Actions candidate built from the repaired fullscreen handoff source. Install this APK to test the latest changes; the website release remains v245 until this candidate is approved."
