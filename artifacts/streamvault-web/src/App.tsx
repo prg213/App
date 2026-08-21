@@ -104,7 +104,7 @@ function Home() {
             <span className="text-xl font-bold tracking-tight text-white">StreamVault</span>
           </div>
           <a 
-            href="https://github.com/prg213/App/releases/latest/download/StreamVault.apk"
+            href="https://github.com/prg213/App/releases/download/build-245/StreamVault.apk"
             className="text-sm font-medium text-white/80 hover:text-white transition-colors"
           >
             Download APK
@@ -143,7 +143,7 @@ function Home() {
             
             <motion.div variants={fadeUp} className="flex flex-col sm:flex-row items-center justify-center gap-4">
               <a 
-                href="https://github.com/prg213/App/releases/latest/download/StreamVault.apk"
+                href="https://github.com/prg213/App/releases/download/build-245/StreamVault.apk"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="group relative flex items-center gap-3 bg-primary hover:bg-primary/90 text-background px-8 py-4 rounded-xl font-bold text-lg transition-all hover:scale-105 active:scale-95 shadow-[0_0_40px_-10px_rgba(0,229,255,0.5)]"
@@ -303,7 +303,7 @@ function Home() {
         <div className="max-w-4xl mx-auto px-6 text-center relative z-10">
           <h2 className="text-3xl md:text-5xl font-bold text-white mb-8">Ready to upgrade your screen?</h2>
           <a 
-            href="https://github.com/prg213/App/releases/latest/download/StreamVault.apk"
+            href="https://github.com/prg213/App/releases/download/build-245/StreamVault.apk"
             className="inline-flex items-center gap-2 bg-white text-background hover:bg-white/90 px-8 py-4 rounded-xl font-bold text-lg transition-transform hover:scale-105 active:scale-95"
           >
             <Download className="w-5 h-5" />
