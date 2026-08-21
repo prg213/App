@@ -1429,6 +1429,10 @@ export default function PlayerScreen() {
     if (usesPersistentNativeSurface) {
       persistentSurfaceBackInFlightRef.current = true;
       const returnToLive = () => {
+        // The native bounds animation is complete at this point. Restore
+        // Fire TV focus only after the Live TV route becomes active again; the
+        // root-level VLC surface is deliberately not a focus target.
+        if (Platform.isTV) DEE.emit('live:restore-preview-focus');
         if (params.groupTitle && (params.fromHome === 'true' || !params.channelsJson)) {
           StorageService.setPrefLiveCat(params.groupTitle!).catch(() => {});
           router.navigate('/');

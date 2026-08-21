@@ -119,6 +119,21 @@ mute can overwrite state owned by libVLC.
 `Animated.View`; let the native component re-render only for a real stream
 input change (URL, explicit reload/retry, pause, seek, or resize mode).
 
+## Fire TV focus handoff
+
+Preview/fullscreen navigation must restore D-pad focus through a dedicated
+post-collapse signal, not through the VLC surface or the resize animation.
+
+**Why:** The fullscreen route owns Firestick BACK while focused; its removal
+changes native focus after the shrink completes. Requesting preview focus while
+the modal is still active can silently fail and leave the remote without a
+usable target.
+
+**How to apply:** Emit the restore signal only from the completed collapse
+callback. The Live TV screen stores it while unfocused, then requests focus on
+the stable preview Pressable after navigation focus returns, with one short
+Fire-OS retry. Keep VLC pointer-events disabled and non-focusable.
+
 ## Navigation config (player.tsx route)
 
 _layout.tsx: animation: 'none', presentation: 'transparentModal' (Android).

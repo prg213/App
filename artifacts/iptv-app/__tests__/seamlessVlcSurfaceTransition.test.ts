@@ -170,6 +170,21 @@ describe('Android live VLC surface transitions', () => {
     expect(focusReturnBlock).toContain("if (nativeSurfaceMode !== 'mini') transitionNativeSurface('mini')");
   });
 
+  it('restores Firestick focus to the preview control after the completed handoff', () => {
+    const backStart = fullscreenPlayer.indexOf('const handleBackLive = useCallback');
+    const backBlock = fullscreenPlayer.slice(backStart, backStart + 5200);
+
+    // The event sits in returnToLive, which is invoked only by the completed
+    // native shrink callback, before router.back makes Live TV focused again.
+    expect(backBlock).toContain("DEE.emit('live:restore-preview-focus')");
+    expect(liveTab).toContain("DeviceEventEmitter.addListener('live:restore-preview-focus'");
+    expect(liveTab).toContain('restorePreviewFocusOnReturnRef.current = true');
+    expect(liveTab).toContain('requestTvFocus(miniPlayerRef.current)');
+    // The persistent VLC container has pointerEvents=none; focus belongs to
+    // the mini-player Pressable, so remote navigation is independent of video.
+    expect(liveTab).toContain('pointerEvents="none"');
+  });
+
   it('publishes native ownership before every Android fullscreen entry point', () => {
     const watchStart = liveTab.indexOf('const handleWatch = useCallback');
     const watchChannelStart = liveTab.indexOf('const handleWatchChannel = useCallback');

@@ -884,6 +884,11 @@ export default function LiveTVScreen() {
   /** Set when navigating to fullscreen from recently-watched so that backing
    *  out stops the stream rather than leaving it playing in the mini-player. */
   const clearChannelOnReturnRef = useRef(false);
+  // Set by the fullscreen player only after its persistent VLC surface has
+  // completed the shrink animation. Keeping this separate from the player
+  // prevents a D-pad focus request from becoming part of the native playback
+  // transition or from targeting the non-focusable VLC surface itself.
+  const restorePreviewFocusOnReturnRef = useRef(false);
   // When a recently-watched channel is opened from the Home screen the Live TV
   // tab's playingChannel is never set (the channel was launched directly into
   // the player, bypassing this tab).  The player emits this event before its
@@ -900,6 +905,32 @@ export default function LiveTVScreen() {
     });
     return () => sub.remove();
   }, []);
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener('live:restore-preview-focus', () => {
+      if (Platform.isTV) restorePreviewFocusOnReturnRef.current = true;
+    });
+    return () => sub.remove();
+  }, []);
+  // Firestick focus is restored after (not during) the transparent fullscreen
+  // route's removal. The first request runs after the navigator commits focus;
+  // one short retry covers older Fire OS builds where the first request can race
+  // native focus reassignment. Both target the stable mini-player Pressable,
+  // never the VLC playback surface.
+  useFocusEffect(
+    useCallback(() => {
+      if (!Platform.isTV || !restorePreviewFocusOnReturnRef.current) return;
+      restorePreviewFocusOnReturnRef.current = false;
+      let retry: ReturnType<typeof setTimeout> | null = null;
+      const frame = requestAnimationFrame(() => {
+        requestTvFocus(miniPlayerRef.current);
+        retry = setTimeout(() => requestTvFocus(miniPlayerRef.current), 180);
+      });
+      return () => {
+        cancelAnimationFrame(frame);
+        if (retry) clearTimeout(retry);
+      };
+    }, [miniPlayerRef]),
+  );
   // After reloading for the live edge, seek to end of DVR window once ready.
   const pendingLiveEdgeSeek = useRef(false);
   // Timestamp (ms) when the Live TV tab was last blurred — used to decide
