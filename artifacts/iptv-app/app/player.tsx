@@ -322,6 +322,18 @@ export default function PlayerScreen() {
   const isWeb = Platform.OS === 'web';
   const isLive = params.type === 'live';
   const isCatchup = params.type === 'catchup';
+  // This route param is synchronous. It is the only safe first-render signal
+  // that Live TV has already mounted the Android VLC TextureView and is handing
+  // it to this controls-only route. Do not wait for context state/effects before
+  // deciding whether to show a loading screen — doing so produces a black
+  // "Connecting to stream" flash over a healthy persistent surface.
+  const nativeSurfaceHandoffId = typeof params.nativeSurfaceHandoffId === 'string'
+    ? params.nativeSurfaceHandoffId
+    : null;
+  const hasPersistentNativeSurfaceHandoff =
+    USES_NATIVE_VLC
+    && isLive
+    && nativeSurfaceHandoffId !== null;
   const startAtSecs = params.startAt ? parseFloat(params.startAt) : 0;
   const knownDurationSecs = params.knownDuration ? parseFloat(params.knownDuration) : 0;
   // Catch-up seek regeneration fields (undefined for non-catch-up streams)
@@ -387,7 +399,10 @@ export default function PlayerScreen() {
   const [isPlaying, setIsPlaying] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
-  const [isBuffering, setIsBuffering] = useState(true);
+  // A persistent VLC handoff is already presenting video in the mini-player.
+  // Starting this route in buffering state would briefly paint its opaque
+  // loading layer over that live texture before the effect below can clear it.
+  const [isBuffering, setIsBuffering] = useState(() => !hasPersistentNativeSurfaceHandoff);
   const [vlcReloadKey, setVlcReloadKey] = useState(0);
   const [vlcSeekPosition, setVlcSeekPosition] = useState<number | undefined>();
   const reloadNativeVlc = useCallback((url = activeUrlRef.current) => {
@@ -888,9 +903,6 @@ export default function PlayerScreen() {
     triggerCollapse,
     notifyPlayerReady,
   } = useLivePlayer();
-  const nativeSurfaceHandoffId = typeof params.nativeSurfaceHandoffId === 'string'
-    ? params.nativeSurfaceHandoffId
-    : null;
   // When Live TV already owns this Android stream, this route is controls-only.
   // The visual surface mode changes to `mini` before BACK removes this route,
   // so ownership must outlive the visual mode. A route-scoped handoff ID avoids
@@ -905,10 +917,7 @@ export default function PlayerScreen() {
   // onComplete() fires in a single rAF (~16 ms).  Reading from params is always
   // synchronous and race-free.  The semantics are identical: a non-null param ID
   // means this route was explicitly opened as a handoff from the Live TV tab.
-  const usesPersistentNativeSurface =
-    USES_NATIVE_VLC
-    && isLive
-    && nativeSurfaceHandoffId !== null;
+  const usesPersistentNativeSurface = hasPersistentNativeSurfaceHandoff;
 
   useEffect(() => () => {
     if (nativeSurfaceHandoffId) endNativeSurfaceHandoff(nativeSurfaceHandoffId);
@@ -2525,7 +2534,7 @@ export default function PlayerScreen() {
           Shown during initial load and every channel switch.  Covers the blank
           VideoView so the user never sees a frozen/empty player surface.
           pointerEvents="none" keeps Back and D-pad zones fully active. */}
-      {isBuffering && !isReconnecting && !isResolvingUrl && !hasError && !isWeb && !(isLive && (hasZapped || Platform.isTV)) && (
+      {isBuffering && !usesPersistentNativeSurface && !isReconnecting && !isResolvingUrl && !hasError && !isWeb && !(isLive && (hasZapped || Platform.isTV)) && (
         <View style={styles.loadingOverlay} pointerEvents="none">
           <View style={styles.loadingContent}>
             {!!activeLogo && (

@@ -136,6 +136,21 @@ Live TV chrome. After the completed collapse and route focus return, remeasure
 the preview and force one layout-only size refresh followed by the exact bounds.
 Never reload the source or remount VLC to repair this condition.
 
+## Fullscreen handoff loading flash
+
+The fullscreen controls route must know it has borrowed the persistent native
+surface on its first render. Do not initialize it as buffering and clear that
+state in an effect.
+
+**Why:** Effects run after the first frame. The generic opaque “Connecting to
+stream” overlay can cover a healthy persistent VLC texture, making a visual
+handoff look like a decoder restart.
+
+**How to apply:** Derive handoff ownership synchronously from the route handoff
+ID, initialize loading state from that value, and exclude persistent handoffs
+from generic loading overlays. Keep the route transparent; it owns controls,
+not video.
+
 ## Fire TV focus handoff
 
 Preview/fullscreen navigation must restore D-pad focus through a dedicated

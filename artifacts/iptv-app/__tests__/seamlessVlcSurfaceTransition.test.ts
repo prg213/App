@@ -151,7 +151,7 @@ describe('Android live VLC surface transitions', () => {
   });
 
   it('keeps the existing Android surface for only its fullscreen route lifetime', () => {
-    const ownershipStart = fullscreenPlayer.indexOf('const usesPersistentNativeSurface');
+    const ownershipStart = fullscreenPlayer.indexOf('const hasPersistentNativeSurfaceHandoff');
     const ownershipBlock = fullscreenPlayer.slice(ownershipStart, ownershipStart + 500);
 
     expect(ownershipBlock).toContain('USES_NATIVE_VLC');
@@ -162,10 +162,23 @@ describe('Android live VLC surface transitions', () => {
     // BACK sets the shared visual mode to mini before this route is removed.
     // Ownership must survive that transition or player.tsx mounts a second VLC
     // decoder in the closing route and restarts playback.
+    expect(fullscreenPlayer).toContain('const usesPersistentNativeSurface = hasPersistentNativeSurfaceHandoff');
     expect(ownershipBlock).not.toContain("nativeSurfaceMode === 'fullscreen'");
     expect(fullscreenPlayer).toContain('endNativeSurfaceHandoff(nativeSurfaceHandoffId)');
     expect(fullscreenPlayer).toContain('videoMounted && !usesPersistentNativeSurface');
     expect(fullscreenPlayer).toContain("transitionNativeSurface('mini', returnToLive)");
+  });
+
+  it('never paints a connecting overlay over a persistent VLC handoff', () => {
+    // Route params are available on the first render, while effects run later.
+    // A handoff must therefore begin non-buffering and keep the generic loading
+    // overlay out of the controls-only fullscreen route from frame one.
+    expect(fullscreenPlayer).toContain('const hasPersistentNativeSurfaceHandoff =');
+    expect(fullscreenPlayer).toContain('useState(() => !hasPersistentNativeSurfaceHandoff)');
+    const loadingStart = fullscreenPlayer.indexOf('{isBuffering && !usesPersistentNativeSurface');
+    expect(loadingStart).toBeGreaterThan(-1);
+    const loadingBlock = fullscreenPlayer.slice(loadingStart, loadingStart + 1100);
+    expect(loadingBlock).toContain('Connecting to stream');
   });
 
   it('only removes fullscreen after the native surface reaches mini bounds', () => {
