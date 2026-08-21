@@ -919,6 +919,10 @@ export default function PlayerScreen() {
   // LivePlayerContext becomes the sole renderer — having two VideoViews share
   // the same player simultaneously causes one of them to go black on Android.
   const [videoMounted, setVideoMounted] = useState(true);
+  // Fire TV can report a quick repeated BACK press while the first press is
+  // collapsing. Keep the transparent player route alive until the single native
+  // VLC surface has reached the mini-player bounds.
+  const persistentSurfaceBackInFlightRef = useRef(false);
 
   // The player this screen actually uses:
   const player = isLive ? sharedPlayer : localPlayer;
@@ -1381,6 +1385,10 @@ export default function PlayerScreen() {
       router.back();
       return;
     }
+    // Do not let a repeated BACK interrupt the layout-bounds animation and pop
+    // the transparent fullscreen route before the persistent VLC surface is
+    // visibly back in its mini-player position.
+    if (usesPersistentNativeSurface && persistentSurfaceBackInFlightRef.current) return;
     // Immediately zero-out the controls and info bar via setValue so their
     // native opacity updates in the same frame — before the collapse overlay
     // snaps to full screen.  This makes the handoff seamless: the overlay
@@ -1419,6 +1427,7 @@ export default function PlayerScreen() {
     // that same native surface before removing this transparent controls route;
     // do not unmount or recreate a decoder for a normal BACK handoff.
     if (usesPersistentNativeSurface) {
+      persistentSurfaceBackInFlightRef.current = true;
       const returnToLive = () => {
         if (params.groupTitle && (params.fromHome === 'true' || !params.channelsJson)) {
           StorageService.setPrefLiveCat(params.groupTitle!).catch(() => {});

@@ -448,7 +448,11 @@ export default function LiveTVScreen() {
           Animated.timing(vlcLeft,   { toValue: rect.left,   duration: DURATION, easing: EASING, useNativeDriver: false }),
           Animated.timing(vlcWidth,  { toValue: rect.width,  duration: DURATION, easing: EASING, useNativeDriver: false }),
           Animated.timing(vlcHeight, { toValue: rect.height, duration: DURATION, easing: EASING, useNativeDriver: false }),
-        ]).start(() => onComplete());
+        // A second hardware BACK can interrupt this animation. Only the
+        // animation that actually reaches the preview is allowed to dismiss
+        // the transparent fullscreen route; popping early would reveal the
+        // still-moving native surface and risk a blank or stale frame.
+        ]).start(({ finished }) => { if (finished) onComplete(); });
       } else {
         // Snap to current mini-player position before expanding so the
         // surface always grows from the right origin even if the animated
@@ -694,7 +698,10 @@ export default function LiveTVScreen() {
         return;
       }
     if (USES_NATIVE_VLC) {
-      transitionNativeSurface('mini');
+      // A normal persistent-surface BACK already finished its mini transition
+      // before calling router.back(). Do not animate/resize the same VLC view a
+      // second time as the tab regains focus.
+      if (nativeSurfaceMode !== 'mini') transitionNativeSurface('mini');
       return;
     }
     // Normal focus return (tab switch, etc.) — show flash overlay to cover the
@@ -714,7 +721,7 @@ export default function LiveTVScreen() {
       }).start();
     }, 2000);
     return () => clearTimeout(overlayFallback);
-  }, [flashOverlayOpacity, isCollapsingRef, collapseRestorePendingRef, pendingCollapseRemountRef, onCollapseCompleteRef]));
+  }, [flashOverlayOpacity, isCollapsingRef, collapseRestorePendingRef, pendingCollapseRemountRef, onCollapseCompleteRef, nativeSurfaceMode, transitionNativeSurface]));
 
   // ── AppState tracking (#21/#31/#53) ──────────────────────────────────────
   const isAppBackgroundRef = useRef(false);

@@ -26,9 +26,17 @@ describe('Android live VLC surface transitions', () => {
     expect(watchBlock).toMatch(/if\s*\(\s*USES_NATIVE_VLC\s*\)/);
   });
 
-  it('does not include videoKey in Android VLC reload keys', () => {
-    expect(liveTab).toContain('reloadKey={USES_NATIVE_VLC ? vlcReloadKey');
-    expect(tvLayout).toContain("reloadKey={Platform.OS === 'android' ? vlcReloadKey");
+  it('keeps one root-level Android VLC surface without videoKey in its reload key', () => {
+    // The root-level surface is deliberately outside both mini-player
+    // containers so resize/reposition can never unmount or clip libVLC.
+    expect(liveTab).toContain('Root-level VLC surface (TV layout)');
+    expect(liveTab).toContain('Root-level VLC surface (phone layout)');
+    const rootVlcReloadKeys = liveTab.match(/reloadKey=\{vlcReloadKey\}/g) ?? [];
+    expect(rootVlcReloadKeys.length).toBe(2);
+    expect(liveTab).not.toContain('reloadKey={USES_NATIVE_VLC ? vlcReloadKey');
+    // Android TV receives the root-level instance from index.tsx; this layout
+    // must never create a second VLC player for the same fullscreen handoff.
+    expect(tvLayout).toContain("Platform.OS !== 'android' && isPlaybackActive");
   });
 
   it('hides Live TV panels while the persistent surface is fullscreen', () => {
@@ -100,7 +108,9 @@ describe('Android live VLC surface transitions', () => {
 
     expect(ownershipBlock).toContain('USES_NATIVE_VLC');
     expect(ownershipBlock).toContain('&& isLive');
-    expect(ownershipBlock).toContain('nativeSurfaceHandoff?.id === nativeSurfaceHandoffId');
+    // Route params are synchronous. Comparing with async context state can
+    // briefly produce false during the handoff and mount a second VLC decoder.
+    expect(ownershipBlock).toContain('nativeSurfaceHandoffId !== null');
     // BACK sets the shared visual mode to mini before this route is removed.
     // Ownership must survive that transition or player.tsx mounts a second VLC
     // decoder in the closing route and restarts playback.
@@ -108,6 +118,29 @@ describe('Android live VLC surface transitions', () => {
     expect(fullscreenPlayer).toContain('endNativeSurfaceHandoff(nativeSurfaceHandoffId)');
     expect(fullscreenPlayer).toContain('videoMounted && !usesPersistentNativeSurface');
     expect(fullscreenPlayer).toContain("transitionNativeSurface('mini', returnToLive)");
+  });
+
+  it('only removes fullscreen after the native surface reaches mini bounds', () => {
+    const transitionStart = liveTab.indexOf('const runNativeSurfaceTransition');
+    const transitionBlock = liveTab.slice(transitionStart, transitionStart + 4200);
+    const backStart = fullscreenPlayer.indexOf('const handleBackLive = useCallback');
+    const backBlock = fullscreenPlayer.slice(backStart, backStart + 5200);
+
+    // Interrupted Animated.timing callbacks report finished:false. They must
+    // never call the route-pop completion callback early.
+    expect(transitionBlock).toContain('({ finished }) => { if (finished) onComplete(); }');
+    // A rapid Firestick double-BACK must not start an overlapping collapse.
+    expect(backBlock).toContain('persistentSurfaceBackInFlightRef.current) return');
+    expect(backBlock).toContain('persistentSurfaceBackInFlightRef.current = true');
+    expect(backBlock).toContain("transitionNativeSurface('mini', returnToLive)");
+  });
+
+  it('does not run a second mini resize when the tab regains focus after BACK', () => {
+    const normalFocusReturn = liveTab.indexOf('// Normal focus return');
+    const focusReturnStart = liveTab.lastIndexOf('if (USES_NATIVE_VLC) {', normalFocusReturn);
+    const focusReturnBlock = liveTab.slice(focusReturnStart, focusReturnStart + 700);
+
+    expect(focusReturnBlock).toContain("if (nativeSurfaceMode !== 'mini') transitionNativeSurface('mini')");
   });
 
   it('publishes native ownership before every Android fullscreen entry point', () => {
