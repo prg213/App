@@ -30,3 +30,4 @@
 - [Fire TV APK packaging](fire-tv-apk-packaging.md) — StreamVault.apk is a gated compressed universal ARM release; promote only the exact device-validated candidate.
 - [GitHub Actions release dispatch](github-actions-release-dispatch.md) — registry breaks permanently after workflow_call or rapid edits; use GitHub UI or EAS Build instead.
 - [EAS Build fallback](eas-build-fallback.md) — one-liner to build signed APK via EAS when GitHub Actions is broken; uses prg123s-team/iptv-app project + existing credentials KYpC-gXKPE.
+- [EAS Build pnpm fix](eas-build-pnpm-fix.md) — pnpm 11.9.0 on ubuntu-26.04 image silently ignores onlyBuiltDependencies; fix is ubuntu-24.04-jdk-17-ndk-r27b image in eas.json.
