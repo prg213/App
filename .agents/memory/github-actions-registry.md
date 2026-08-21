@@ -1,16 +1,15 @@
 ---
 name: GitHub Actions dispatch registry
-description: The repo's Actions dispatch registry is broken — workflow_dispatch returns 422 even for new files; every push triggers 0-job runs via an unknown required-workflow ruleset.
+description: The repo's Actions dispatch registry is broken — workflow_dispatch returns 422 for all workflow files; build workflow is now in dispatch-probe-tmp.yml; use repository_dispatch to trigger builds.
 ---
 
-## Current state
-- `build-android.yml` was renamed to `release-android.yml` (commit b850342).
-- `workflow_dispatch` on `release-android.yml` returns 422 "Workflow does not have 'workflow_dispatch' trigger" — this is a false negative from GitHub's stale dispatch registry.
-- Every push to main triggers a 0-job push run for the workflow file; the run completes as "failure" in < 1 minute. This is caused by an unknown repository ruleset (or branch protection required workflow) that fires the workflow file on every push, but since the YAML has no push trigger, 0 jobs run.
-- `workflow_dispatch` was working on 2026-08-20 (run 32427431257, commit 6343b6c4). It broke some time during 2026-08-21.
 
-## Root cause
-Prior sessions added/removed `workflow_call` and a push trigger rapidly, poisoning GitHub's internal dispatch registry for `build-android.yml`. Renaming to `release-android.yml` did NOT clear the registry — GitHub may be tracking at the repo level, not the file level.
+## Current state (as of 2026-08-21)
+- Build workflow content lives in `.github/workflows/dispatch-probe-tmp.yml` (ID 339445812).
+  - Originally `build-android.yml` → renamed to `release-android.yml` (commit b850342) → merged into `dispatch-probe-tmp.yml` (commit 61ce8fa) to use the cleanest workflow ID.
+- `workflow_dispatch` returns 422 "Workflow does not have 'workflow_dispatch' trigger" for ALL workflow files in the repo, including newly created ones. This is a repo-wide registry corruption.
+- `repository_dispatch` with `event_type: build-android` returns 204 and triggers a build run. Use this as the interim trigger until `workflow_dispatch` recovers.
+- `dispatch-build.sh` uses `repository_dispatch` and polls `dispatch-probe-tmp.yml` for new runs.
 
 ## Recovery — SOLVED
 **Use a non-main branch (`apk/build`).**
@@ -32,14 +31,44 @@ Root cause (confirmed): Every push to `main` that modifies a workflow file trigg
 
 **Why:** GitHub maintains an internal registry of workflow triggers that can get out of sync with the YAML when workflow files are created/deleted/modified rapidly or when incompatible triggers (workflow_call) are added. Recovery is time-based.
 
-## Workaround
-Use EAS Build (ubuntu-24.04-jdk-17-ndk-r27b image) until GitHub Actions recovers:
-`EXPO_TOKEN=$EXPO_TOKEN npx eas build --platform android --profile preview --non-interactive --no-wait`
-Note: EAS uses credential set KYpC-gXKPE which is a DIFFERENT signing key from the GitHub Actions production keystore. Installing an EAS APK changes the Android SSAID and therefore the derived MAC address.
-
 ## MAC consequence
 - Android SSAID is scoped to (package_name × signing_key) on Android 8+.
-- GitHub Actions prod keystore → SSAID_prod → MAC_prod.
-- EAS keystore KYpC-gXKPE → SSAID_eas → MAC_eas.
-- To restore MAC_prod, the user must install a GitHub Actions APK (requires uninstall of EAS version first).
-- Alternatively: use the Settings → MAC Address → Restore feature (added in commit b850342) to manually enter the old MAC.
+- GitHub Actions prod keystore → SSAID_prod → MAC_prod (correct).
+- EAS keystore KYpC-gXKPE → SSAID_eas → MAC_eas (breaks IPTV subscription).
+- Builds triggered via `dispatch-build.sh` (repository_dispatch) use the production keystore — MAC_prod preserved.
+- Alternatively: use Settings → MAC Address → Restore to manually enter the old MAC.
+
+
+## Registry ID history
+- `build-android.yml`: ID unknown, corrupted
+- `release-android.yml`: ID 339400082, corrupted (same ID reused after delete+recreate at same path)
+- `dispatch-probe-tmp.yml`: ID 339445812, currently 422 but has clean history — best candidate for recovery
+- `build-release.yml`: ID 339448158, corrupted (deleted from repo)
+- dispatch probe insight: GitHub reuses the same workflow ID when a file is recreated at the same path — creating at a NEW path gets a new ID, but corruption is now repo-wide anyway.
+
+## Root cause (confirmed)
+1. Prior sessions added/removed `workflow_call` and push triggers rapidly, poisoning GitHub's internal dispatch registry for `build-android.yml`.
+2. This session's investigation confirmed: when a workflow file is modified and committed, GitHub fires a "push" event run for it within ~90 seconds. This push run (0 jobs, failure) re-evaluates the registry entry and corrupts it for `workflow_dispatch`.
+3. The corruption is repo-wide and time-based — even fresh new workflow files (never modified) eventually return 422 after the registry gets sufficiently corrupted.
+
+
+## Workaround (working NOW)
+Trigger builds via `repository_dispatch`:
+```bash
+GITHUB_REPOSITORY=prg213/App bash .github/scripts/dispatch-build.sh
+```
+This uses `event_type: build-android` which is handled by `dispatch-probe-tmp.yml`.
+
+
+## Additional recovery notes
+- GitHub's registry typically recovers on its own over hours/days with **no commits touching workflow files**.
+- **Do NOT add `workflow_call` trigger** (poisons registry immediately).
+- **Do NOT modify workflow files** — each commit that touches a workflow file triggers a push run that resets the recovery timer.
+- Check `workflow_dispatch` recovery with:
+  ```bash
+  curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $GITHUB_TOKEN" \
+    -X POST "https://api.github.com/repos/prg213/App/actions/workflows/dispatch-probe-tmp.yml/dispatches" \
+    -d '{"ref":"apk/build","inputs":{"release_action":"build-candidate"}}'
+  ```
+  - 204 = recovered ✓
+  - 422 = still broken, wait longer
