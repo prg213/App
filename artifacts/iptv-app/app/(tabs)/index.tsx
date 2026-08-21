@@ -428,6 +428,7 @@ export default function LiveTVScreen() {
   // (matching measureInWindow output).  Used to snap the VLC container back
   // to the correct mini-player position before/after each transition.
   const miniRectRef = useRef<{ top: number; left: number; width: number; height: number } | null>(null);
+  const surfaceRelayoutFrameRef = useRef<number | null>(null);
 
   const runNativeSurfaceTransition = useCallback((mode: 'mini' | 'fullscreen' | 'hidden', onComplete: () => void) => {
     if (mode === 'hidden') {
@@ -530,6 +531,50 @@ export default function LiveTVScreen() {
       });
     });
   }, [miniPlayerRef, vlcTop, vlcLeft, vlcWidth, vlcHeight]);
+
+  // The Android VLC module implements playback with a TextureView.  Its native
+  // onLayout callback forwards the current dimensions to libVLC via
+  // vlcOut.setWindowSize().  A completed fullscreen collapse normally delivers
+  // that callback, but some Fire OS compositor builds can keep a live texture
+  // (and therefore audio) while missing the final mini-player layout update.
+  //
+  // Re-apply the measured mini bounds after the route regains focus. The
+  // one-pixel re-layout is deliberately layout-only: it makes TextureView emit
+  // onLayout and rebind its output window without changing source, key, pause,
+  // volume, tracks, or any libVLC playback state.
+  const rebindPersistentVlcPreviewSurface = useCallback(() => {
+    if (!USES_NATIVE_VLC || nativeSurfaceMode !== 'mini') return;
+    const node = miniPlayerRef.current as any;
+    if (!node) return;
+
+    node.measureInWindow((x: number, y: number, w: number, h: number) => {
+      if (!w || !h) return;
+      miniRectRef.current = { top: y, left: x, width: w, height: h };
+      vlcTop.setValue(y);
+      vlcLeft.setValue(x);
+      // Do not rely on assigning the same values to trigger a native layout
+      // pass. A one-pixel intermediate bound wakes the TextureView, then the
+      // next frame restores the exact measured preview rectangle.
+      vlcWidth.setValue(w + 1);
+      vlcHeight.setValue(h + 1);
+      if (surfaceRelayoutFrameRef.current !== null) {
+        cancelAnimationFrame(surfaceRelayoutFrameRef.current);
+      }
+      surfaceRelayoutFrameRef.current = requestAnimationFrame(() => {
+        surfaceRelayoutFrameRef.current = null;
+        vlcTop.setValue(y);
+        vlcLeft.setValue(x);
+        vlcWidth.setValue(w);
+        vlcHeight.setValue(h);
+      });
+    });
+  }, [miniPlayerRef, nativeSurfaceMode, vlcTop, vlcLeft, vlcWidth, vlcHeight]);
+
+  useEffect(() => () => {
+    if (surfaceRelayoutFrameRef.current !== null) {
+      cancelAnimationFrame(surfaceRelayoutFrameRef.current);
+    }
+  }, []);
 
   // Animated overlay that snaps to opaque synchronously (no React reconciler
   // roundtrip) before player.replace() is called, preventing the black flash
@@ -889,6 +934,7 @@ export default function LiveTVScreen() {
   // prevents a D-pad focus request from becoming part of the native playback
   // transition or from targeting the non-focusable VLC surface itself.
   const restorePreviewFocusOnReturnRef = useRef(false);
+  const rebindPreviewSurfaceOnReturnRef = useRef(false);
   // When a recently-watched channel is opened from the Home screen the Live TV
   // tab's playingChannel is never set (the channel was launched directly into
   // the player, bypassing this tab).  The player emits this event before its
@@ -907,10 +953,28 @@ export default function LiveTVScreen() {
   }, []);
   useEffect(() => {
     const sub = DeviceEventEmitter.addListener('live:restore-preview-focus', () => {
+      // This event is emitted only once the fullscreen shrink has completed.
+      // Rebind the native TextureView after Live TV is focused again so audio
+      // can never continue against a stale zero-size/covered preview surface.
+      if (USES_NATIVE_VLC) rebindPreviewSurfaceOnReturnRef.current = true;
       if (Platform.isTV) restorePreviewFocusOnReturnRef.current = true;
     });
     return () => sub.remove();
   }, []);
+  useFocusEffect(
+    useCallback(() => {
+      if (!rebindPreviewSurfaceOnReturnRef.current) return;
+      rebindPreviewSurfaceOnReturnRef.current = false;
+      const frame = requestAnimationFrame(rebindPersistentVlcPreviewSurface);
+      // Older Fire OS compositor paths can commit focus one frame before their
+      // TextureView bounds. Run one harmless layout-only retry after that pass.
+      const retry = setTimeout(rebindPersistentVlcPreviewSurface, 180);
+      return () => {
+        cancelAnimationFrame(frame);
+        clearTimeout(retry);
+      };
+    }, [rebindPersistentVlcPreviewSurface]),
+  );
   // Firestick focus is restored after (not during) the transparent fullscreen
   // route's removal. The first request runs after the navigator commits focus;
   // one short retry covers older Fire OS builds where the first request can race
@@ -1870,6 +1934,7 @@ export default function LiveTVScreen() {
            position measurement.                                           ── */}
       {USES_NATIVE_VLC && isLivePreviewActive && (
         <Animated.View
+          collapsable={false}
           pointerEvents="none"
           style={{
             position: 'absolute',
@@ -1879,6 +1944,12 @@ export default function LiveTVScreen() {
             height: vlcHeight,
             backgroundColor: '#000',
             borderRadius: nativeSurfaceMode === 'mini' ? 8 : 0,
+            // Keep the TextureView in a real parent and above all Live TV
+            // chrome on every Android/Fire OS compositor generation.
+            overflow: 'visible',
+            opacity: 1,
+            zIndex: 100,
+            elevation: 100,
           }}
         >
           <NativeStreamPlayer
@@ -1911,6 +1982,7 @@ export default function LiveTVScreen() {
       {/* D-pad focus ring — rendered above VLC so it is visible on Firestick */}
       {USES_NATIVE_VLC && miniPlayerFocused && nativeSurfaceMode === 'mini' && (
         <Animated.View
+          collapsable={false}
           pointerEvents="none"
           style={{
             position: 'absolute',
@@ -2454,6 +2526,10 @@ export default function LiveTVScreen() {
             height: vlcHeight,
             backgroundColor: '#000',
             borderRadius: nativeSurfaceMode === 'mini' ? 8 : 0,
+            overflow: 'visible',
+            opacity: 1,
+            zIndex: 100,
+            elevation: 100,
           }}
         >
           <NativeStreamPlayer

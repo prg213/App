@@ -119,6 +119,23 @@ mute can overwrite state owned by libVLC.
 `Animated.View`; let the native component re-render only for a real stream
 input change (URL, explicit reload/retry, pause, seek, or resize mode).
 
+## Audio without preview video
+
+For the Android VLC module, continued audio after a fullscreen return means the
+TextureView is still mounted: its native `onDetachedFromWindow` stops playback.
+Treat the failure as stale layout/output-window binding or compositor stacking,
+not as a reason to recreate the decoder.
+
+**Why:** The module forwards TextureView layout changes to libVLC's
+`setWindowSize`. On some Fire OS compositor paths, a completed collapse can
+leave that live texture without its final preview-size update, producing audio
+with no visible video.
+
+**How to apply:** Keep the root VLC parent non-flattened and explicitly above
+Live TV chrome. After the completed collapse and route focus return, remeasure
+the preview and force one layout-only size refresh followed by the exact bounds.
+Never reload the source or remount VLC to repair this condition.
+
 ## Fire TV focus handoff
 
 Preview/fullscreen navigation must restore D-pad focus through a dedicated

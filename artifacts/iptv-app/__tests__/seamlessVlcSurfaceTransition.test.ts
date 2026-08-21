@@ -51,6 +51,42 @@ describe('Android live VLC surface transitions', () => {
     expect(liveTab).toContain('onError={handlePersistentVlcError}');
   });
 
+  it('rebinds the visible preview TextureView after a completed collapse without recreating VLC', () => {
+    // libVLC's Android TextureView only forwards its output size when native
+    // layout changes. This route-return repair forces that layout path from the
+    // measured preview rectangle; it must never change the source/key or mount
+    // a replacement native view while audio is still playing.
+    const rebindStart = liveTab.indexOf('const rebindPersistentVlcPreviewSurface');
+    const rebindEnd = liveTab.indexOf('\n\n  useEffect(() => () =>', rebindStart);
+    const rebindBlock = liveTab.slice(rebindStart, rebindEnd);
+    expect(rebindStart).toBeGreaterThan(-1);
+    expect(liveTab).toContain('rebindPreviewSurfaceOnReturnRef.current = true');
+    expect(rebindBlock).toContain('vlcWidth.setValue(w + 1)');
+    expect(rebindBlock).toContain('vlcHeight.setValue(h + 1)');
+    expect(liveTab).toContain('requestAnimationFrame(rebindPersistentVlcPreviewSurface)');
+    expect(rebindBlock).not.toContain('setVlcReloadKey');
+    expect(rebindBlock).not.toContain('player.replace(');
+  });
+
+  it('keeps the mounted VLC TextureView visible, measurable, and above Live TV chrome', () => {
+    // A custom native view needs a real, non-flattened parent. Explicit
+    // stacking prevents audio-only playback when an older Fire OS compositor
+    // paints the otherwise-live TextureView behind the restored preview panel.
+    const surfaceSection = liveTab.slice(
+      liveTab.indexOf('Root-level VLC surface (TV layout)'),
+      liveTab.indexOf('D-pad focus ring', liveTab.indexOf('Root-level VLC surface (TV layout)')),
+    );
+    expect(surfaceSection).toContain('collapsable={false}');
+    expect(surfaceSection).toMatch(/width:\s*vlcWidth/);
+    expect(surfaceSection).toMatch(/height:\s*vlcHeight/);
+    expect(surfaceSection).toMatch(/top:\s*vlcTop/);
+    expect(surfaceSection).toMatch(/left:\s*vlcLeft/);
+    expect(surfaceSection).toContain("overflow: 'visible'");
+    expect(surfaceSection).toContain('opacity: 1');
+    expect(surfaceSection).toMatch(/zIndex:\s*100/);
+    expect(surfaceSection).toMatch(/elevation:\s*100/);
+  });
+
   it('hides Live TV panels while the persistent surface is fullscreen', () => {
     expect(tvLayout).toContain("const hideLiveChromeForFullscreen = nativeSurfaceFullscreen && Platform.OS === 'android'");
     expect(tvLayout).toContain("pointerEvents={hideLiveChromeForFullscreen ? 'none' : 'auto'}");
