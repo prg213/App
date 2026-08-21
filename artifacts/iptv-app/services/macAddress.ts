@@ -72,3 +72,17 @@ export async function getDeviceMac(): Promise<string> {
   await writeSecure(mac);
   return mac;
 }
+
+/**
+ * Override the stored MAC (e.g. to restore a previous value after a signing-key
+ * change).  Validates format, updates SecureStore, and clears the in-memory cache
+ * so getDeviceMac() returns the new value immediately.
+ */
+export async function overrideDeviceMac(mac: string): Promise<void> {
+  if (!/^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$/.test(mac)) {
+    throw new Error('Use format XX:XX:XX:XX:XX:XX');
+  }
+  const upper = mac.toUpperCase();
+  cached = upper;
+  await writeSecure(upper);
+}
