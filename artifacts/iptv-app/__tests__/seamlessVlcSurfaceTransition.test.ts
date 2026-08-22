@@ -17,7 +17,10 @@ describe('Android live VLC container ownership', () => {
     expect(liveContext).toContain('updateNativeSurfaceHandoffUrl');
     expect(liveContext).toContain('endNativeSurfaceHandoff');
     expect(liveContext).toContain('transitionNativeSurface');
-    expect(liveContext).toContain('requestAnimationFrame(onComplete)');
+    expect(liveContext).toContain('LayoutAnimation.configureNext');
+    expect(liveContext).toContain('NATIVE_SURFACE_TRANSITION_MS');
+    expect(liveContext).toContain('requestAnimationFrame(() =>');
+    expect(liveContext).toContain('setTimeout(onComplete, shouldAnimate ? NATIVE_SURFACE_TRANSITION_MS : 0)');
   });
 
   it('keeps the transition state free of measured bounds and animated surface overlays', () => {
