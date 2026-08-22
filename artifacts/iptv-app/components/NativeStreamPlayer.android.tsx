@@ -3,6 +3,14 @@ import { useKeepAwake } from 'expo-keep-awake';
 import { VLCPlayer, type VLCPlayerSource } from 'react-native-vlc-media-player';
 import type { NativeStreamPlayerProps } from './NativeStreamPlayer';
 
+// Temporary diagnostic tracing for the Fire TV mini-player/fullscreen test.
+// Remove this block and its call sites after the device trace identifies the
+// lifecycle boundary that causes the black frame.
+const VLC_TRACE = '[SV-VLC-TRACE]';
+function traceVlc(event: string, details?: Record<string, unknown>) {
+  console.log(VLC_TRACE, event, details ?? {});
+}
+
 /**
  * Android and Fire TV playback surface.
  *
@@ -23,6 +31,29 @@ function NativeStreamPlayerAndroid({
   onError,
   onProgress,
 }: NativeStreamPlayerProps) {
+  const instanceId = React.useRef(`react-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+
+  React.useEffect(() => {
+    traceVlc('react-surface-mount', {
+      instance: instanceId.current,
+      sourceLength: source.length,
+    });
+    return () => {
+      traceVlc('react-surface-unmount', { instance: instanceId.current });
+    };
+  }, [source.length]);
+
+  React.useEffect(() => {
+    traceVlc('react-surface-inputs', {
+      instance: instanceId.current,
+      sourceLength: source.length,
+      reloadKey: reloadKey ?? null,
+      paused,
+      resizeMode,
+      seekPosition: seekPosition ?? null,
+    });
+  }, [paused, reloadKey, resizeMode, seekPosition, source]);
+
   // The native manager receives a ReadableMap. Keep that map identity stable
   // across layout-only parent renders; a new source object is only valid when
   // the URL itself changes.
@@ -56,15 +87,23 @@ function NativeStreamPlayerAndroid({
       resizeMode={resizeMode}
       onPlaying={onPlaying}
       onBuffering={(event) => {
+        const bufferRate = (event as { bufferRate?: number }).bufferRate;
+        traceVlc('js-buffering', {
+          instance: instanceId.current,
+          bufferRate: bufferRate ?? null,
+        });
         // LibVLC reports a final `Buffering` event at 100% after some live
         // streams have already entered Playing. Treating that terminal event
         // as a new stall leaves the first fullscreen channel behind the
         // "Connecting to stream" layer because no second Playing event is
         // guaranteed. Only surface genuine, incomplete buffering.
-        const bufferRate = (event as { bufferRate?: number }).bufferRate;
         if (bufferRate === undefined || bufferRate < 100) onBuffering?.();
       }}
-      onError={onError}
+      onError={(event) => {
+        traceVlc('js-error', { instance: instanceId.current });
+        traceVlc('js-error-callback', { instance: instanceId.current });
+        onError?.();
+      }}
       // LibVLC reports milliseconds; StreamVault controls, history, and
       // catch-up offsets consistently use seconds. Native progress events also
       // carry `isPlaying` at runtime (the library's typings omit it). This is
@@ -73,7 +112,8 @@ function NativeStreamPlayerAndroid({
       // fullscreen surface mount.
       onProgress={(event) => {
         const { currentTime, duration } = event;
-        if ((event as typeof event & { isPlaying?: boolean }).isPlaying) onPlaying?.();
+        const isPlaying = (event as typeof event & { isPlaying?: boolean }).isPlaying;
+        if (isPlaying) onPlaying?.();
         onProgress?.(currentTime / 1000, duration / 1000);
       }}
     />

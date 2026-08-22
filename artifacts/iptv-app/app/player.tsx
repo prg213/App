@@ -54,6 +54,7 @@ const FITS = [
   { value: 'fill' as const, label: 'Stretch' },
 ];
 const USES_NATIVE_VLC = Platform.OS === 'android';
+const VLC_TRACE = '[SV-VLC-TRACE]';
 
 type ChannelEntry = {
   url: string;
@@ -929,6 +930,21 @@ export default function PlayerScreen() {
   // synchronous and race-free.  The semantics are identical: a non-null param ID
   // means this route was explicitly opened as a handoff from the Live TV tab.
   const usesPersistentNativeSurface = hasPersistentNativeSurfaceHandoff;
+
+  useEffect(() => {
+    console.log(VLC_TRACE, 'player-route-mount', {
+      live: isLive,
+      persistentSurface: usesPersistentNativeSurface,
+      handoffId: nativeSurfaceHandoffId ?? null,
+      urlLength: params.url?.length ?? 0,
+    });
+    return () => {
+      console.log(VLC_TRACE, 'player-route-unmount', {
+        persistentSurface: usesPersistentNativeSurface,
+        handoffId: nativeSurfaceHandoffId ?? null,
+      });
+    };
+  }, [isLive, nativeSurfaceHandoffId, params.url, usesPersistentNativeSurface]);
 
   useEffect(() => () => {
     if (nativeSurfaceHandoffId) endNativeSurfaceHandoff(nativeSurfaceHandoffId);

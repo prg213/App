@@ -23,9 +23,73 @@ index 0e5cc4f50661440d6c6d73941037aa61d2981303..ca92dc036e78f88563ba46be4dbb8723
 diff --git a/android/src/main/java/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView.java b/android/src/main/java/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView.java
 --- a/android/src/main/java/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView.java
 +++ b/android/src/main/java/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView.java
-@@ -204,15 +204,11 @@ class ReactVlcPlayerView extends TextureView implements
+@@ -41,8 +41,13 @@
+         AudioManager.OnAudioFocusChangeListener {
+ 
+     private static final String TAG = "ReactVlcPlayerView";
++    private static final String TRACE_TAG = "SV-VLC-TRACE";
+     private final String tag = "ReactVlcPlayerView";
+ 
++    private void trace(String event) {
++        Log.i(TRACE_TAG, "view=" + System.identityHashCode(this) + " " + event);
++    }
++
+     private final VideoEventEmitter eventEmitter;
+     private LibVLC libvlc;
+     private MediaPlayer mMediaPlayer = null;
+@@ -92,6 +97,7 @@
+ 
+         this.addOnLayoutChangeListener(onLayoutChangeListener);
+         context.addLifecycleEventListener(this);
++        trace("native-view-create display=" + screenWidth + "x" + screenHeight);
+     }
+ 
+ 
+@@ -104,11 +110,13 @@
+     @Override
+     protected void onAttachedToWindow() {
+         super.onAttachedToWindow();
++        trace("native-view-attached");
+         //createPlayer();
+     }
+ 
+     @Override
+     protected void onDetachedFromWindow() {
++        trace("native-view-detached stopPlayback");
+         super.onDetachedFromWindow();
+         stopPlayback();
+     }
+@@ -117,6 +125,7 @@
+ 
+     @Override
+     public void onHostResume() {
++        trace("host-resume mediaPlayer=" + (mMediaPlayer != null) + " surfaceDestroyed=" + isSurfaceViewDestory);
+         if (mMediaPlayer != null && isSurfaceViewDestory && isHostPaused) {
+             IVLCVout vlcOut = mMediaPlayer.getVLCVout();
+             if (!vlcOut.areViewsAttached()) {
+@@ -133,6 +142,7 @@
+ 
+     @Override
+     public void onHostPause() {
++        trace("host-pause mediaPlayer=" + (mMediaPlayer != null) + " paused=" + isPaused);
+         if (!isPaused && mMediaPlayer != null) {
+             isPaused = true;
+             isHostPaused = true;
+@@ -148,6 +158,7 @@
+ 
+     @Override
+     public void onHostDestroy() {
++        trace("host-destroy stopPlayback");
+         stopPlayback();
+     }
+ 
+@@ -203,16 +214,15 @@
+ 
          @Override
          public void onLayoutChange(View view, int i, int i1, int i2, int i3, int i4, int i5, int i6, int i7) {
++            trace("video-layout old=" + (i2 - i) + "x" + (i3 - i1)
++                    + " new=" + view.getWidth() + "x" + view.getHeight()
++                    + ((view.getWidth() == 0 || view.getHeight() == 0) ? " ZERO" : ""));
              if (view.getWidth() > 0 && view.getHeight() > 0) {
 -                mVideoWidth = view.getWidth(); // 获取宽度
 -                mVideoHeight = view.getHeight(); // 获取高度
@@ -44,8 +108,81 @@ diff --git a/android/src/main/java/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView
              }
          }
      };
-@@ -413,10 +409,16 @@ class ReactVlcPlayerView extends TextureView implements
-             });
+@@ -226,6 +236,14 @@
+ 
+         @Override
+         public void onEvent(MediaPlayer.Event event) {
++            if (event.type == MediaPlayer.Event.Opening
++                    || event.type == MediaPlayer.Event.Playing
++                    || event.type == MediaPlayer.Event.Buffering
++                    || event.type == MediaPlayer.Event.Paused
++                    || event.type == MediaPlayer.Event.Stopped
++                    || event.type == MediaPlayer.Event.EncounteredError) {
++                trace("player-event type=" + event.type);
++            }
+             boolean isPlaying = mMediaPlayer.isPlaying();
+             currentTime = mMediaPlayer.getTime();
+             float position = mMediaPlayer.getPosition();
+@@ -294,6 +312,7 @@
+     private IVLCVout.OnNewVideoLayoutListener onNewVideoLayoutListener = new IVLCVout.OnNewVideoLayoutListener() {
+         @Override
+         public void onNewVideoLayout(IVLCVout vout, int width, int height, int visibleWidth, int visibleHeight, int sarNum, int sarDen) {
++            trace("vlc-video-layout " + width + "x" + height + " visible=" + visibleWidth + "x" + visibleHeight);
+             if (width * height == 0)
+                 return;
+             // store video size
+@@ -318,11 +337,13 @@
+     IVLCVout.Callback callback = new IVLCVout.Callback() {
+         @Override
+         public void onSurfacesCreated(IVLCVout ivlcVout) {
++            trace("vlc-surfaces-created");
+             isSurfaceViewDestory = false;
+         }
+ 
+         @Override
+         public void onSurfacesDestroyed(IVLCVout ivlcVout) {
++            trace("vlc-surfaces-destroyed");
+             isSurfaceViewDestory = true;
+         }
+ 
+@@ -335,6 +356,7 @@
+ 
+ 
+     private void stopPlayback() {
++        trace("stop-playback");
+         onStopPlayback();
+         releasePlayer();
+     }
+@@ -345,13 +367,17 @@
+     }
+ 
+     private void createPlayer(boolean autoplayResume, boolean isResume) {
++        trace("create-player begin autoplayResume=" + autoplayResume + " isResume=" + isResume
++                + " existingPlayer=" + (mMediaPlayer != null) + " surface=" + (getSurfaceTexture() != null));
+         releasePlayer();
+         if (this.getSurfaceTexture() == null) {
++            trace("create-player skipped no-surface");
+             return;
+         }
+         try {
+             final ArrayList<String> cOptions = new ArrayList<>();
+             String uriString = srcMap.hasKey("uri") ? srcMap.getString("uri") : null;
++            trace("create-player source uriLength=" + (uriString == null ? 0 : uriString.length()));
+             //String extension = srcMap.hasKey("type") ? srcMap.getString("type") : null;
+             boolean isNetwork = srcMap.hasKey("isNetwork") ? srcMap.getBoolean("isNetwork") : false;
+             boolean autoplay = srcMap.hasKey("autoplay") ? srcMap.getBoolean("autoplay") : true;
+@@ -374,8 +400,10 @@
+             } else {
+                 libvlc = new LibVLC(getContext(), cOptions);
+             }
++            trace("libvlc-created");
+             // Create media player
+             mMediaPlayer = new MediaPlayer(libvlc);
++            trace("media-player-created");
+             setMutedModifier(mMuted);
+             mMediaPlayer.setEventListener(mPlayerListener);
+             
+@@ -414,9 +442,15 @@
              //this.getHolder().setKeepScreenOn(true);
              IVLCVout vlcOut = mMediaPlayer.getVLCVout();
              if (mVideoWidth > 0 && mVideoHeight > 0) {
@@ -63,3 +200,118 @@ diff --git a/android/src/main/java/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView
                  }
                  //mMediaPlayer.setAspectRatio(mVideoWidth+":"+mVideoHeight);
              }
+@@ -428,6 +462,7 @@
+             } else {
+                 m = new Media(libvlc, uriString);
+             }
++            trace("media-created uriLength=" + (uriString == null ? 0 : uriString.length()));
+             m.setEventListener(mMediaListener);
+             if (hwDecoderEnabled != null && hwDecoderForced != null) {
+                 boolean hmEnabled = false;
+@@ -451,13 +486,16 @@
+             mVideoInfo = null;
+             mVideoInfoHash = null;
+             mMediaPlayer.setMedia(m);
++            trace("media-attached-to-player");
+             m.release();
++            trace("media-released-after-setMedia");
+             mMediaPlayer.setScale(0);
+             if (_subtitleUri != null) {
+                 mMediaPlayer.addSlave(Media.Slave.Type.Subtitle, _subtitleUri, true);
+             }
+ 
+             if (!vlcOut.areViewsAttached()) {
++                trace("vlc-surfaces-attach");
+                 vlcOut.addCallback(callback);
+                 // vlcOut.setVideoSurface(this.getSurfaceTexture());
+                 //vlcOut.setVideoSurface(this.getHolder().getSurface(), this.getHolder());
+@@ -470,15 +508,18 @@
+             }
+             if (isResume) {
+                 if (autoplayResume) {
++                    trace("player-play resume");
+                     mMediaPlayer.play();
+                 }
+             } else {
+                 if (autoplay) {
+                     isPaused = false;
++                    trace("player-play autoplay");
+                     mMediaPlayer.play();
+                 }
+             }
+             eventEmitter.loadStart();
++            trace("create-player complete");
+ 
+             setProgressUpdateRunnable();
+         } catch (Exception e) {
+@@ -491,12 +532,15 @@
+         if (libvlc == null)
+             return;
+ 
++        trace("release-player begin mediaPlayer=" + (mMediaPlayer != null));
+         final IVLCVout vout = mMediaPlayer.getVLCVout();
+         vout.removeCallback(callback);
+         vout.detachViews();
+         //surfaceView.removeOnLayoutChangeListener(onLayoutChangeListener);
+         mMediaPlayer.release();
++        trace("media-player-released");
+         libvlc.release();
++        trace("libvlc-released");
+         libvlc = null;
+ 
+         if(mProgressUpdateRunnable != null){
+@@ -537,6 +581,8 @@
+     }
+ 
+     public void setSrc(ReadableMap src) {
++        String uri = src != null && src.hasKey("uri") && !src.isNull("uri") ? src.getString("uri") : null;
++        trace("source-change map uriLength=" + (uri == null ? 0 : uri.length()));
+         this.srcMap = src;
+         createPlayer(true, false);
+     }
+@@ -592,6 +638,7 @@
+      * @param paused
+      */
+     public void setPausedModifier(boolean paused) {
++        trace("pause-change value=" + paused + " hasPlayer=" + (mMediaPlayer != null));
+         Log.i("paused:", "" + paused + ":" + mMediaPlayer);
+         if (mMediaPlayer != null) {
+             if (paused) {
+@@ -719,6 +766,7 @@
+ 
+     public void stopPlayer() {
+         if(mMediaPlayer == null) return;
++        trace("stop-command");
+         mMediaPlayer.stop();
+     }
+ 
+@@ -752,6 +800,7 @@
+     }
+ 
+     public void cleanUpResources() {
++        trace("cleanup-resources");
+         if (surfaceView != null) {
+             surfaceView.removeOnLayoutChangeListener(onLayoutChangeListener);
+         }
+@@ -760,6 +809,7 @@
+ 
+     @Override
+     public void onSurfaceTextureAvailable(SurfaceTexture surface, int width, int height) {
++        trace("surface-texture-available " + width + "x" + height);
+         mVideoWidth = width;
+         mVideoHeight = height;
+         surfaceVideo = new Surface(surface);
+@@ -768,10 +818,12 @@
+     @Override
+     public void onSurfaceTextureSizeChanged(SurfaceTexture surface, int width, int height) {
++        trace("surface-texture-size-changed " + width + "x" + height);
+ 
+     }
+ 
+     @Override
+     public boolean onSurfaceTextureDestroyed(SurfaceTexture surface) {
++        trace("surface-texture-destroyed");
+         return true;
+     }
+ 
+diff --git a/diagnostic-placeholder b/diagnostic-placeholder
