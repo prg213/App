@@ -1286,7 +1286,11 @@ export default function LiveTVScreen() {
   }, [deviceMac]);
 
   const handleWatch = useCallback(() => {
-    if (!selectedChannel) return;
+    // The highlighted row can change while the mini-player continues showing a
+    // different channel. Fullscreen is a presentation change for the active
+    // decoder, so it must always follow the channel already playing.
+    const activeChannel = playingChannel ?? selectedChannel;
+    if (!activeChannel) return;
     goingToPlayerRef.current = true;
     // Shared player keeps streaming — no pause needed before going fullscreen.
 
@@ -1305,20 +1309,22 @@ export default function LiveTVScreen() {
       channelId: ch.id,
       num: ch.num,
       groupTitle: ch.groupTitle,
+      tvArchive: ch.tvArchive,
+      tvArchiveDuration: ch.tvArchiveDuration,
     }));
     // Index must be from the sorted list, not the original array.
-    const idx = chList.findIndex((c) => c.channelId === selectedChannel.id);
+    const idx = chList.findIndex((c) => c.channelId === activeChannel.id);
     let nativeSurfaceHandoffId: string | undefined;
 
     const navigate = () => router.push({
       pathname: '/player',
       params: {
-        url: selectedChannel.streamUrl,
-        title: selectedChannel.name,
+        url: activeChannel.streamUrl,
+        title: activeChannel.name,
         type: 'live',
-        logo: selectedChannel.logo ?? '',
-        epgId: selectedChannel.epgId ?? selectedChannel.id,
-        channelId: selectedChannel.id,
+        logo: activeChannel.logo ?? '',
+        epgId: activeChannel.epgId ?? activeChannel.id,
+        channelId: activeChannel.id,
         channelsJson: JSON.stringify(chList),
         channelIndex: String(idx),
         nativeSurfaceHandoffId,
@@ -1333,13 +1339,13 @@ export default function LiveTVScreen() {
       // The controls route uses this as its proof that the mini-player already
       // owns the live decoder, so it must be set in the same update as the
       // surface-mode transition.
-      setNativeSurfaceUrl(selectedChannel.streamUrl);
-      nativeSurfaceHandoffId = beginNativeSurfaceHandoff(selectedChannel.streamUrl);
+      setNativeSurfaceUrl(activeChannel.streamUrl);
+      nativeSurfaceHandoffId = beginNativeSurfaceHandoff(activeChannel.streamUrl);
       transitionNativeSurface('fullscreen', navigate);
     } else {
       triggerExpand(navigate);
     }
-  }, [selectedChannel, channels, player, router, beginNativeSurfaceHandoff, setNativeSurfaceUrl, transitionNativeSurface, triggerExpand]);
+  }, [selectedChannel, playingChannel, channels, player, router, beginNativeSurfaceHandoff, setNativeSurfaceUrl, transitionNativeSurface, triggerExpand]);
 
   // The persistent Android VLC TextureView is elevated above the original
   // preview card so it can animate outside clipped panels. Keep one shared
@@ -1385,6 +1391,8 @@ export default function LiveTVScreen() {
       channelId: c.id,
       num: c.num,
       groupTitle: c.groupTitle,
+      tvArchive: c.tvArchive,
+      tvArchiveDuration: c.tvArchiveDuration,
     }));
     const idx = chList.findIndex((c) => c.channelId === ch.id);
     let nativeSurfaceHandoffId: string | undefined;
@@ -1527,7 +1535,10 @@ export default function LiveTVScreen() {
   // Navigate straight to the fullscreen player — no expand animation needed
   // on a TV where there is no mini-player position to animate from.
   const handleTVWatch = useCallback(() => {
-    if (!selectedChannel) return;
+    // D-pad OK expands the currently visible mini-player stream, not merely
+    // the last list row that received focus.
+    const activeChannel = playingChannel ?? selectedChannel;
+    if (!activeChannel) return;
     goingToPlayerRef.current = true;
     const hasNums = channels.some((ch) => ch.num != null);
     const orderedChannels = hasNums
@@ -1541,18 +1552,20 @@ export default function LiveTVScreen() {
       channelId: ch.id,
       num: ch.num,
       groupTitle: ch.groupTitle,
+      tvArchive: ch.tvArchive,
+      tvArchiveDuration: ch.tvArchiveDuration,
     }));
-    const idx = chList.findIndex((c) => c.channelId === selectedChannel.id);
+    const idx = chList.findIndex((c) => c.channelId === activeChannel.id);
     let nativeSurfaceHandoffId: string | undefined;
     const navigate = () => router.push({
       pathname: '/player',
       params: {
-        url: selectedChannel.streamUrl,
-        title: selectedChannel.name,
+        url: activeChannel.streamUrl,
+        title: activeChannel.name,
         type: 'live',
-        logo: selectedChannel.logo ?? '',
-        epgId: selectedChannel.epgId ?? selectedChannel.id,
-        channelId: selectedChannel.id,
+        logo: activeChannel.logo ?? '',
+        epgId: activeChannel.epgId ?? activeChannel.id,
+        channelId: activeChannel.id,
         // No stopOnBack — the normal triggerCollapse path handles the return
         // so the player is never paused and the TV video panel remounts cleanly
         // via onCollapseCompleteRef → setVideoKey, matching the phone flow.
@@ -1564,13 +1577,13 @@ export default function LiveTVScreen() {
     if (USES_NATIVE_VLC) {
       // Publish ownership before navigation so player.tsx stays a controls-only
       // route even when Fire OS commits the route faster than effects run.
-      setNativeSurfaceUrl(selectedChannel.streamUrl);
-      nativeSurfaceHandoffId = beginNativeSurfaceHandoff(selectedChannel.streamUrl);
+      setNativeSurfaceUrl(activeChannel.streamUrl);
+      nativeSurfaceHandoffId = beginNativeSurfaceHandoff(activeChannel.streamUrl);
       transitionNativeSurface('fullscreen', navigate);
     } else {
       navigate();
     }
-  }, [selectedChannel, channels, router, beginNativeSurfaceHandoff, setNativeSurfaceUrl, transitionNativeSurface]);
+  }, [selectedChannel, playingChannel, channels, router, beginNativeSurfaceHandoff, setNativeSurfaceUrl, transitionNativeSurface]);
 
   // ── TV: play a past mini-guide programme directly (skip CatchupSheet) ─────
   // Converts an EpgProgram (which has JS Date fields) into the same catch-up
