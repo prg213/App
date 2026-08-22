@@ -32,6 +32,6 @@
 - [EAS Build fallback](eas-build-fallback.md) — one-liner to build signed APK via EAS when GitHub Actions is broken; uses prg123s-team/iptv-app project + existing credentials KYpC-gXKPE.
 - [EAS Build pnpm fix](eas-build-pnpm-fix.md) — pnpm 11.9.0 on ubuntu-26.04 image silently ignores onlyBuiltDependencies; fix is ubuntu-24.04-jdk-17-ndk-r27b image in eas.json.
 - [GitHub Actions dispatch registry](github-actions-registry.md) — registry poisoned; workflow_dispatch returns 422 for all files; EAS is the current workaround; MAC differs between EAS and GA builds.
-- [GitHub source upload integrity](github-source-upload-integrity.md) — verify remote hashes after API source uploads; streamed shell output can silently truncate large files.
 - [MAC revert session](mac-revert-session.md) — Original AsyncStorage MAC restored; never tie MAC to signing cert or Android ID; migration from legacy SecureStore key included.
-- [VLC mini↔fullscreen transition bugs](vlc-transition-bugs.md) — VLC TextureView stays absolute-fill in the real mini-player host; fullscreen expands its parent, never the native child.
+- [VLC mini↔fullscreen transition bugs](vlc-transition-bugs.md) — Persistent root-level VLC surface; completed bounds animation must precede fullscreen-route removal.
+- [Unified patch validation](unified-patch-validation.md) — native patched-dependency diffs need exact hunks, clean EOF handling, and a clean-install check.

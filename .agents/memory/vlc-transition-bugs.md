@@ -5,35 +5,23 @@ description: Root causes and fixes for stream restarts and poor visual quality w
 
 ## Architecture (confirmed correct)
 
-ONE VLCPlayer lives in the actual mini-player FocusablePressable in each phone
-and TV layout. The fullscreen route is controls-only when it has a native
-handoff ID, so it never mounts a second VLC decoder.
+ONE VLCPlayer lives in NativeStreamPlayer.android.tsx, key={`${source}:${reloadKey ?? 0}`}.
 
-At rest, the VLC TextureView must use `absoluteFill` inside that real
-FocusablePressable. Its native layout callback then receives exactly the
-preview box’s dimensions. The mini-player is never an empty focus/touch
-placeholder with a separately-positioned root-level VLC sibling.
+Render sites (after the layout-bounds animation fix):
+- index.tsx (phone layout): root-level Animated.View, last child of <View style={styles.root}>
+- index.tsx (TV layout): root-level Animated.View, last child of <View flex:1>
+- player.tsx: NO VLC — controls-only transparent modal when nativeSurfaceHandoffId !== null
 
-## Container-owned fullscreen layout
+VLC is NEVER inside the mini-player FocusablePressable on Android anymore.
+The FocusablePressable is a pure touch target for the VLC path (miniPlayerRef, onPress, onFocus/Blur).
 
-Fullscreen changes the parent preview region to fill its Live TV layout while
-the persistent VLC child remains an `absoluteFill` child of the same
-FocusablePressable. The surface never receives measured screen coordinates,
-negative offsets, animated bounds, or a temporary overflow escape.
+## Animation approach (current — layout bounds)
 
-On Fire TV, the tab shell is also part of that parent layout: it normally
-reserves the permanent sidebar width. During a persistent fullscreen handoff,
-the shell must remove that sidebar and its scene margin so the preview parent
-can fill the physical window.
+vlcTop, vlcLeft, vlcWidth, vlcHeight are Animated.Values animated with useNativeDriver:false.
 
-The Live TV root also has normal overscan padding and three-panel chrome.
-Fullscreen must override that padding to zero, remove the non-video panels from
-layout, and center the persistent 16:9 preview against black so unusual TV
-viewports letterbox instead of stretching the stream.
-
-The handoff waits one layout frame before showing or removing fullscreen
-controls. This preserves the single decoder while allowing normal React Native
-layout to resize the TextureView for orientation and resolution changes.
+Mini state: values = measured mini-player screen-absolute coords (via measureInWindow).
+Fullscreen: values = (0, 0, screenWidth, screenHeight).
+Animation: Easing.out(Easing.cubic), 220ms.
 
 Why layout bounds instead of transforms:
 - SurfaceView composites on a separate layer; CSS scale transforms move the wrapper but not the video content.
@@ -43,6 +31,11 @@ Why layout bounds instead of transforms:
 Why NOT useNativeDriver:true:
 - top/left/width/height are layout properties, not compositor properties.
 - useNativeDriver:true can only animate opacity, transform, etc.
+
+Position initialization:
+- useEffect on isLivePreviewActive → measureInWindow → seeds vlcTop/Left/Width/Height.
+- handleMiniPlayerLayout (onLayout of phone FocusablePressable) → re-measures on layout changes.
+- runNativeSurfaceTransition always re-measures mini-player before animating (handles safe-area changes).
 
 ## Bug 1 — stale tabBlurredAtRef → vlcReloadKey++ on fullscreen return (FIXED)
 
@@ -72,34 +65,19 @@ const usesPersistentNativeSurface = USES_NATIVE_VLC && isLive && nativeSurfaceHa
 player.tsx initialises isBuffering = true. For controls-only path, no VLC → onPlaying never fires.
 Fix: useEffect([usesPersistentNativeSurface, isLive]) calls setIsBuffering(false) + setIsPlaying(true).
 
-## Bug 4 — focus-effect safety fallback cancels fullscreen entry (FIXED)
+## Stacking order for root-level VLC container
 
-The Live TV screen's focus effect depends on the native surface mode. Changing
-that mode to fullscreen re-runs the effect before the transparent player route
-has necessarily blurred the tab. Its interrupted-navigation safety fallback
-must not immediately change the mode back to mini while fullscreen navigation
-is still in flight.
+Root layout children (last = topmost in z-order):
+1. Left panel (cats)
+2. Middle panel (channels)
+3. Right panel (previewPanel / TVLiveLayout video panel)
+4. VLC Animated.View — LAST → naturally above all panels (no explicit zIndex needed)
+5. D-pad focus ring — SIBLING after VLC → above VLC
 
-**Why:** The result is a fullscreen control bar layered over the still-small
-Live TV preview: the player route opens, but the persistent VLC owner's parent
-has already been collapsed.
-
-**How to apply:** Gate the mini-mode safety fallback on the fullscreen
-navigation marker. The player route remains solely responsible for returning
-the owner to mini mode immediately before it removes its controls route.
-
-## Host, focus, and overlay rules
-
-The animated native child remains non-focusable, non-accessible, and uses
-`pointerEvents="none"`. Its enclosing FocusablePressable therefore retains
-phone touch, Fire TV D-pad, and OK ownership. Android loading, error, LIVE,
-and expand-hint overlays belong above the nested native child and must also
-not intercept the Pressable.
-
-On Fire TV, the visible focus ring is a child of that same FocusablePressable,
-so it cannot appear away from the video. Channel rows route RIGHT to the
-preview; preview LEFT returns to the playing channel, DOWN reaches guide
-controls, and UP/RIGHT remain anchored on the player.
+FocusablePressable (miniPlayerRef) is BELOW the VLC container (earlier in JSX), so:
+- Touch events: VLC has pointerEvents="none" → passes through to FocusablePressable ✓
+- Focus ring: separate Animated.View sibling AFTER VLC → visible ✓
+- Buffering/error/hint/badge: INSIDE VLC container → visible ✓
 
 ## Key invariants to preserve in future changes
 
@@ -108,12 +86,9 @@ controls, and UP/RIGHT remain anchored on the player.
 3. nativeSurfaceHandoffId (params) must be set BEFORE navigate() is called in handleWatch/handleWatchChannel
 4. player.tsx must NOT render NativeStreamPlayer when nativeSurfaceHandoffId !== null (controls-only)
 5. tabBlurredAtRef must be nulled in the goingToPlayerRef early-return
-6. NativeStreamPlayer must remain physically inside the real mini-player
-   FocusablePressable and use its layout at rest.
-7. Fullscreen must expand the preview container, not the VLC child. The
-   TextureView always remains within its real parent at `absoluteFill`.
-8. Never restore screen-coordinate measurements, negative offsets, animated
-   VLC width/height, or overflow escapes for the native surface.
+6. NativeStreamPlayer must remain at ROOT level in index.tsx (not inside any overflow:hidden container)
+7. vlcTop/Left/Width/Height must be re-measured before each animation (both expand and collapse)
+8. The FocusablePressable body for USES_NATIVE_VLC must remain empty (pure touch target)
 
 ## BACK collapse completion
 
@@ -144,21 +119,6 @@ mute can overwrite state owned by libVLC.
 `Animated.View`; let the native component re-render only for a real stream
 input change (URL, explicit reload/retry, pause, seek, or resize mode).
 
-## Stable libVLC output buffer for Fire TV handoffs
-
-The VLC TextureView must allocate its libVLC output window at the physical
-display size once, when the surface/player is created. Do not call
-`setWindowSize` from its React Native layout-change listener.
-
-**Why:** On Fire OS, changing the React Native parent from the mini preview to
-fullscreen is a normal TextureView resize. Calling `setWindowSize` at the same
-time forces libVLC to reconfigure its output, which can clear the texture for a
-black frame even though decoding and audio continue.
-
-**How to apply:** Keep the VLC output buffer stable and let TextureView scale
-that buffer within the changing real owner container. Preserve this as a pnpm
-patch so a clean Android build receives it; test it with a frozen pnpm install.
-
 ## Audio without preview video
 
 For the Android VLC module, continued audio after a fullscreen return means the
@@ -171,10 +131,10 @@ not as a reason to recreate the decoder.
 leave that live texture without its final preview-size update, producing audio
 with no visible video.
 
-**How to apply:** Keep the VLC child in the real non-flattened mini-player
-host and let ordinary parent layout changes resize it. Never reload the source,
-remount VLC, or assign the native child screen-coordinate bounds to repair a
-visual issue.
+**How to apply:** Keep the root VLC parent non-flattened and explicitly above
+Live TV chrome. After the completed collapse and route focus return, remeasure
+the preview and force one layout-only size refresh followed by the exact bounds.
+Never reload the source or remount VLC to repair this condition.
 
 ## Fullscreen handoff loading flash
 
