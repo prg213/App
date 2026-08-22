@@ -200,6 +200,29 @@ describe('Android live VLC container ownership', () => {
     }
   });
 
+  it('does not reload playback or raise a black cover during a native fullscreen entry', () => {
+    const entryStart = liveTab.indexOf('const handleWatch = useCallback');
+    const entryBlock = liveTab.slice(entryStart, liveTab.indexOf('const handleMiniPlayerPress', entryStart));
+
+    expect(entryStart).toBeGreaterThan(-1);
+    expect(entryBlock).toContain("transitionNativeSurface('fullscreen', navigate)");
+    expect(entryBlock).not.toContain('setVlcReloadKey');
+    expect(entryBlock).not.toContain('player.replace(');
+    expect(entryBlock).not.toContain('flashOverlayOpacity.setValue');
+
+    // The active React Native layout resize must not ask libVLC to recreate
+    // its video output. That is the Fire TV black-frame regression we guard.
+    const layoutStart = vlcAndroidPatch.indexOf('onLayoutChange(View view');
+    const layoutBlock = vlcAndroidPatch.slice(layoutStart, vlcAndroidPatch.indexOf('};', layoutStart));
+    const activeLayoutLines = layoutBlock
+      .split('\n')
+      .filter((line) => !line.startsWith('-'))
+      .join('\n');
+    expect(layoutStart).toBeGreaterThan(-1);
+    expect(activeLayoutLines).not.toContain('setWindowSize');
+    expect(activeLayoutLines).not.toContain('setAspectRatio');
+  });
+
   it('does not collapse the persistent surface while fullscreen navigation is in flight', () => {
     expect(liveTab).toContain(
       "if (nativeSurfaceMode !== 'mini' && !goingToPlayerRef.current)",
