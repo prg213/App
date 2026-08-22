@@ -6,6 +6,7 @@ const liveTab = fs.readFileSync(path.resolve(appRoot, 'app/(tabs)/index.tsx'), '
 const fullscreenPlayer = fs.readFileSync(path.resolve(appRoot, 'app/player.tsx'), 'utf8');
 const liveContext = fs.readFileSync(path.resolve(appRoot, 'context/LivePlayerContext.tsx'), 'utf8');
 const tvLayout = fs.readFileSync(path.resolve(appRoot, 'components/TVLiveLayout.tsx'), 'utf8');
+const tabLayout = fs.readFileSync(path.resolve(appRoot, 'app/(tabs)/_layout.tsx'), 'utf8');
 const androidNativePlayer = fs.readFileSync(path.resolve(appRoot, 'components/NativeStreamPlayer.android.tsx'), 'utf8');
 
 describe('Android live VLC container ownership', () => {
@@ -136,6 +137,15 @@ describe('Android live VLC container ownership', () => {
     expect(opacityMatches.length).toBeGreaterThanOrEqual(5);
     expect(tvLayout).toContain('fullscreenChromeHidden: {');
     expect(tvLayout).toContain('opacity: 0');
+  });
+
+  it('releases the Fire TV tab shell so the persistent parent can fill the physical viewport', () => {
+    expect(tabLayout).toContain('const { nativeSurfaceMode } = useLivePlayer()');
+    expect(tabLayout).toContain(
+      "const nativeSurfaceFullscreen = Platform.isTV && nativeSurfaceMode === 'fullscreen'",
+    );
+    expect(tabLayout).toContain('nativeSurfaceFullscreen ? null : <Sidebar {...props} />');
+    expect(tabLayout).toContain('marginLeft: nativeSurfaceFullscreen ? 0 : SIDEBAR_W');
   });
 
   it('returns the same surface to mini mode before the controls-only route closes', () => {
