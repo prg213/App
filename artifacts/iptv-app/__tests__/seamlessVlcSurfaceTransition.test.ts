@@ -8,6 +8,7 @@ const liveContext = fs.readFileSync(path.resolve(appRoot, 'context/LivePlayerCon
 const tvLayout = fs.readFileSync(path.resolve(appRoot, 'components/TVLiveLayout.tsx'), 'utf8');
 const tabLayout = fs.readFileSync(path.resolve(appRoot, 'app/(tabs)/_layout.tsx'), 'utf8');
 const androidNativePlayer = fs.readFileSync(path.resolve(appRoot, 'components/NativeStreamPlayer.android.tsx'), 'utf8');
+const vlcAndroidPatch = fs.readFileSync(path.resolve(appRoot, '../../patches/react-native-vlc-media-player@1.0.98.patch'), 'utf8');
 
 describe('Android live VLC container ownership', () => {
   it('coordinates the one persistent surface through a route-scoped handoff', () => {
@@ -146,6 +147,16 @@ describe('Android live VLC container ownership', () => {
     );
     expect(tabLayout).toContain('nativeSurfaceFullscreen ? null : <Sidebar {...props} />');
     expect(tabLayout).toContain('marginLeft: nativeSurfaceFullscreen ? 0 : SIDEBAR_W');
+  });
+
+  it('keeps the libVLC output buffer stable while the React Native parent expands', () => {
+    const nativeVlcChange = vlcAndroidPatch.slice(
+      vlcAndroidPatch.indexOf('ReactVlcPlayerView.java'),
+    );
+    expect(nativeVlcChange).toContain('Keep the libVLC output buffer stable');
+    expect(nativeVlcChange).toContain('Allocate the output at the physical display size once');
+    expect(nativeVlcChange).toMatch(/\+\s+vlcOut\.setWindowSize\(outputWidth, outputHeight\)/);
+    expect(nativeVlcChange).toMatch(/-\s+vlcOut\.setWindowSize\(mVideoWidth, mVideoHeight\)/);
   });
 
   it('returns the same surface to mini mode before the controls-only route closes', () => {
