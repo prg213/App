@@ -63,6 +63,8 @@ type ChannelEntry = {
   channelId?: string;
   num?: number;
   groupTitle?: string;
+  tvArchive?: number;
+  tvArchiveDuration?: number;
 };
 
 function buildCreds(c: ReturnType<typeof useAppContext>['credentials']) {
@@ -1427,6 +1429,9 @@ export default function PlayerScreen() {
       streamUrl: liveUrlRef.current || currentEntry?.url || params.url || '',
       epgId:     activeEpgId  ?? currentEntry?.epgId ?? params.channelId ?? '',
       groupTitle: currentEntry?.groupTitle ?? params.groupTitle ?? '',
+      num: currentEntry?.num,
+      tvArchive: currentEntry?.tvArchive,
+      tvArchiveDuration: currentEntry?.tvArchiveDuration,
     };
     // Store before emitting so the Live TV tab can recover even if it was
     // temporarily unmounted or has not yet regained route focus.
