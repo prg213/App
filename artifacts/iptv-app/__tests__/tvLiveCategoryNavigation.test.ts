@@ -86,9 +86,12 @@ describe('Fire TV category navigation', () => {
   it('keeps live surface handoffs silent on TV while retaining stream errors', () => {
     expect(TV_LAYOUT).toMatch(/\{isBuffering && !Platform\.isTV && \(/);
     expect(TV_LAYOUT).toMatch(/\{hasError && !isBuffering && \(/);
-    expect(LIVE_TV).toMatch(
-      /collapseRestorePendingRef\.current = false;[\s\S]*?setIsBuffering\(false\)/,
-    );
+    const returnStart = LIVE_TV.indexOf('const returnedChannel = consumePendingLivePlayerReturn()');
+    const returnBlock = LIVE_TV.slice(returnStart, returnStart + 900);
+    expect(returnStart).toBeGreaterThan(-1);
+    expect(returnBlock).toContain('setIsBuffering(false)');
+    expect(returnBlock).toContain('setPlayingChannel(returnedChannel)');
+    expect(returnBlock).toContain('setSelectedChannel(returnedChannel)');
   });
 
   it('restores the currently zapped fullscreen channel to its TV list row on BACK', () => {
