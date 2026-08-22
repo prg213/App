@@ -19,6 +19,7 @@ import { useRouter } from 'expo-router';
 import { Tabs } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppContext } from '@/context/AppContext';
+import { useLivePlayer } from '@/context/LivePlayerContext';
 import { StorageService } from '@/services/storage';
 
 export const SIDEBAR_W = 220;
@@ -397,6 +398,11 @@ function Sidebar({ state, descriptors, navigation }: SidebarProps) {
 
 export default function TabLayout() {
   const router = useRouter();
+  const { nativeSurfaceMode } = useLivePlayer();
+  // The persistent Fire TV VLC owner lives inside the tab scene. Its fullscreen
+  // parent can only fill the physical window when the tab shell also releases
+  // its reserved sidebar width.
+  const nativeSurfaceFullscreen = Platform.isTV && nativeSurfaceMode === 'fullscreen';
 
   // Global catch-all: if no screen BackHandler consumed the press, move focus
   // to the sidebar instead of letting Android exit the app.
@@ -422,10 +428,12 @@ export default function TabLayout() {
   return (
     <Tabs
       initialRouteName="home"
-      tabBar={(props) => <Sidebar {...props} />}
+      tabBar={(props) => (
+        nativeSurfaceFullscreen ? null : <Sidebar {...props} />
+      )}
       screenOptions={{
         headerShown: false,
-        sceneStyle: { marginLeft: SIDEBAR_W },
+        sceneStyle: { marginLeft: nativeSurfaceFullscreen ? 0 : SIDEBAR_W },
       }}
     >
       <Tabs.Screen name="home"      options={{ title: 'Home'      }} />
