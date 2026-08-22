@@ -1239,7 +1239,7 @@ export function TVLiveLayout({
               focusable={Platform.isTV ? isPlaybackActive && !!streamUrl : true}
               style={[
                 styles.videoWrap,
-                nativeSurfaceFullscreen && styles.nativeSurfaceFullscreen,
+                nativeSurfaceFullscreen && styles.fullscreenVideoContainer,
               ]}
               nextFocusLeft={playingChHandle ?? leftReturnProxyHandle ?? undefined}
               onFocus={() => {
@@ -1259,7 +1259,7 @@ export function TVLiveLayout({
                   mini-player container. Its own onLayout drives libVLC's
                   output window, so it cannot drift from this preview box. */}
               {isPlaybackActive && !!streamUrl && (
-                <Animated.View
+                <View
                   collapsable={false}
                   pointerEvents="none"
                   focusable={false}
@@ -1277,7 +1277,7 @@ export function TVLiveLayout({
                     onBuffering={onVlcBuffering}
                     onError={onVlcError}
                   />
-                </Animated.View>
+                </View>
               )}
 
               {/* Surface reattachment can briefly report buffering when moving
@@ -1647,12 +1647,8 @@ const styles = StyleSheet.create({
   videoFocused: {
     borderColor: FOCUS_BORDER,
   },
-  nativeSurfaceFullscreen: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    bottom: 0,
-    left: 0,
+  fullscreenVideoContainer: {
+    flex: 1,
     width: '100%',
     height: '100%',
     borderRadius: 0,
