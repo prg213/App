@@ -66,20 +66,24 @@ describe('Android live VLC container ownership', () => {
     expect(liveTab).toContain('nativeSurfaceFullscreen && styles.fullscreenVideoContainer');
     expect(tvLayout).toContain('nativeSurfaceFullscreen && styles.previewPanelFullscreen');
     expect(tvLayout).toContain('nativeSurfaceFullscreen && styles.fullscreenVideoContainer');
+    expect(tvLayout).toContain('nativeSurfaceFullscreen && styles.rootFullscreen');
 
     for (const source of [liveTab, tvLayout]) {
       const ruleStart = source.indexOf('fullscreenVideoContainer:');
       const ruleBody = source.slice(ruleStart, source.indexOf('},', ruleStart));
       expect(ruleStart).toBeGreaterThan(-1);
-      expect(ruleBody).toContain('flex: 1');
       expect(ruleBody).toContain("width: '100%'");
-      expect(ruleBody).toContain("height: '100%'");
       expect(ruleBody).not.toMatch(/position\s*:/);
       expect(ruleBody).not.toMatch(/top\s*:/);
       expect(ruleBody).not.toMatch(/left\s*:/);
       expect(ruleBody).not.toMatch(/right\s*:/);
       expect(ruleBody).not.toMatch(/bottom\s*:/);
     }
+
+    const tvRuleStart = tvLayout.indexOf('fullscreenVideoContainer:');
+    const tvRuleBody = tvLayout.slice(tvRuleStart, tvLayout.indexOf('},', tvRuleStart));
+    expect(tvRuleBody).toContain('aspectRatio: 16 / 9');
+    expect(tvRuleBody).toContain("maxHeight: '100%'");
   });
 
   it('does not use coordinate-driven VLC props or a second persistent decoder', () => {
@@ -137,7 +141,9 @@ describe('Android live VLC container ownership', () => {
     expect(pointerMatches.length).toBeGreaterThanOrEqual(5);
     expect(opacityMatches.length).toBeGreaterThanOrEqual(5);
     expect(tvLayout).toContain('fullscreenChromeHidden: {');
-    expect(tvLayout).toContain('opacity: 0');
+    expect(tvLayout).toContain("display: 'none'");
+    expect(tvLayout).toContain('rootFullscreen: {');
+    expect(tvLayout).toContain("backgroundColor: '#000'");
   });
 
   it('releases the Fire TV tab shell so the persistent parent can fill the physical viewport', () => {
