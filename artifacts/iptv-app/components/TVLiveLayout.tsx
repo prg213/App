@@ -1257,8 +1257,9 @@ export function TVLiveLayout({
               onPress={onWatchFullscreen}
             >
               {/* The real VLC TextureView belongs to the actual focusable
-                  mini-player container. Its own onLayout drives libVLC's
-                  output window, so it cannot drift from this preview box. */}
+                  mini-player container. The parent changes only its bounds;
+                  libVLC keeps one display-sized output buffer throughout the
+                  mini-player/fullscreen handoff. */}
               {isPlaybackActive && !!streamUrl && (
                 <View
                   collapsable={false}
