@@ -893,8 +893,6 @@ export default function PlayerScreen() {
   const {
     player: sharedPlayer,
     activeUrlRef: liveUrlRef,
-    nativeSurfaceMode,
-    nativeSurfaceUrl,
     setNativeSurfaceUrl,
     nativeSurfaceHandoff,
     updateNativeSurfaceHandoffUrl,
@@ -923,10 +921,8 @@ export default function PlayerScreen() {
     if (nativeSurfaceHandoffId) endNativeSurfaceHandoff(nativeSurfaceHandoffId);
   }, [endNativeSurfaceHandoff, nativeSurfaceHandoffId]);
 
-  // Controls whether the fullscreen VideoView is mounted.  We unmount it
-  // before calling triggerCollapse so that the overlay VideoView in
-  // LivePlayerContext becomes the sole renderer — having two VideoViews share
-  // the same player simultaneously causes one of them to go black on Android.
+  // Controls the direct-launch renderer. A Live TV handoff never mounts this
+  // renderer: its persistent VLC child remains owned by the Live TV container.
   const [videoMounted, setVideoMounted] = useState(true);
   // Fire TV can report a quick repeated BACK press while the first press is
   // collapsing. Keep the transparent player route alive until the single native
@@ -1398,19 +1394,14 @@ export default function PlayerScreen() {
     // the transparent fullscreen route before the persistent VLC surface is
     // visibly back in its mini-player container.
     if (usesPersistentNativeSurface && persistentSurfaceBackInFlightRef.current) return;
-    // Immediately zero-out the controls and info bar via setValue so their
-    // native opacity updates in the same frame — before the collapse overlay
-    // snaps to full screen.  This makes the handoff seamless: the overlay
-    // covers a plain-video surface rather than a surface still showing UI.
+    // Immediately zero-out the controls and info bar so the persistent
+    // container can return to mini layout without a competing surface.
     controlsOpacity.setValue(0);
     infoOpacity.setValue(0);
     setShowControls(false);
     setShowInfo(false);
-    // Unmount our VideoView BEFORE the overlay mounts.  expo-video only
-    // renders cleanly to one VideoView at a time; if both are mounted
-    // simultaneously one of them goes black.  By the time triggerCollapse's
-    // measureInWindow + rAF chain runs and setOverlayVisible(true) fires,
-    // this state update will already have committed to the native layer.
+    // Direct launches use the local renderer. Persistent Live TV handoffs do
+    // not mount a second renderer and only change the owner's layout mode.
     setVideoMounted(false);
     // Always hand back the channel that is playing now, not the channel that
     // originally opened fullscreen. The Live TV screen remains mounted while
@@ -1461,14 +1452,7 @@ export default function PlayerScreen() {
     // handoff when both params are present.
     if (params.groupTitle && (params.fromHome === 'true' || !params.channelsJson)) {
       StorageService.setPrefLiveCat(params.groupTitle!).catch(() => {});
-      // Two rAFs: first lets React commit the setPlayingChannel state update;
-      // second lets the native layout pass update the mini-player's rect so
-      // triggerCollapse's measureInWindow gets real pixel dimensions.
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          triggerCollapse(() => router.navigate('/'));
-        });
-      });
+      triggerCollapse(() => router.navigate('/'));
       return;
     }
     triggerCollapse(() => router.back());

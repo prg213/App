@@ -1,358 +1,84 @@
 /**
- * Regression guards: mini-player must never play audio in the background
- * after the user presses Back from fullscreen.
+ * Regression guards for returning from live fullscreen playback.
  *
- * Four root causes were fixed and this file pins each fix so that future
- * refactors cannot silently re-introduce them.  All tests use source-text
- * inspection (no native modules required) because the bugs live in
- * timing-sensitive ref / animation sequences that are impractical to drive
- * through a React renderer.
- *
- * Covered scenarios
- * ─────────────────
- * 1. Phone – zap path:
- *      Watch channel → zap 3 times → BACK
- *      → mini-player must show the zapped-to channel with video
- *
- * 2. Phone – tab-switch path:
- *      Live TV → Movies → Live TV
- *      → flash overlay must clear within 3 s (never stays opaque forever)
- *
- * 3. Edge case – recently-watched early-back path:
- *      Open player from recently-watched → BACK immediately (before stream loads)
- *      → player must be paused; playing channel must be cleared so no audio leaks
- *
- * 4. TV / Firestick – same collapse paths:
- *      → TVLiveLayout must also mount its VideoView (selectedChannel fix)
- *      → D-pad focus must be restored to the mini-player after collapse
+ * Android/Fire TV no longer uses a measured overlay handoff: the VLC child
+ * stays mounted in Live TV and only its owner changes between mini and
+ * fullscreen layouts.
  */
+import fs from 'fs';
+import path from 'path';
 
-const fs   = require('fs');
-const path = require('path');
+const appRoot = path.resolve(__dirname, '..');
+const context = fs.readFileSync(path.resolve(appRoot, 'context/LivePlayerContext.tsx'), 'utf8');
+const player = fs.readFileSync(path.resolve(appRoot, 'app/player.tsx'), 'utf8');
+const liveTab = fs.readFileSync(path.resolve(appRoot, 'app/(tabs)/index.tsx'), 'utf8');
 
-const CTX_PATH    = path.resolve(__dirname, '../context/LivePlayerContext.tsx');
-const PLAYER_PATH = path.resolve(__dirname, '../app/player.tsx');
-const INDEX_PATH  = path.resolve(__dirname, '../app/(tabs)/index.tsx');
+describe('live fullscreen return ownership', () => {
+  it('does not retain the measured overlay collapse implementation', () => {
+    for (const retiredImplementation of [
+      'measureInWindow',
+      'setOverlayHasVideo',
+      'onCollapseCompleteRef',
+      'pendingCollapseRemountRef',
+      '_runCollapseAnimation',
+      '<VideoView',
+    ]) {
+      expect(context).not.toContain(retiredImplementation);
+    }
+  });
 
-const ctx:    string = fs.readFileSync(CTX_PATH,    'utf-8');
-const player: string = fs.readFileSync(PLAYER_PATH, 'utf-8');
-const index:  string = fs.readFileSync(INDEX_PATH,  'utf-8');
+  it('returns the current channel through the shared handoff before closing', () => {
+    const backStart = player.indexOf('const handleBackLive = useCallback');
+    const back = player.slice(backStart, backStart + 3600);
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Scenario 1 — Phone: zap 3 times → BACK → mini-player shows video
-//
-// Root cause: the overlay's VideoView was unmounted by setOverlayVisible(false)
-// which called setVideoSurface(null) on the shared player, stealing the surface
-// from the mini-player VideoView that had just mounted (or was about to mount).
-// ─────────────────────────────────────────────────────────────────────────────
+    expect(back).toContain('setPendingLivePlayerReturn(returnChannel)');
+    expect(back).toContain("DEE.emit('live:setPlayingChannel', returnChannel)");
+    expect(back.indexOf('setPendingLivePlayerReturn(returnChannel)'))
+      .toBeLessThan(back.indexOf("DEE.emit('live:setPlayingChannel', returnChannel)"));
+  });
 
-describe('Scenario 1 — zap → BACK: overlay VideoView removed before collapse animation', () => {
-  it('setOverlayHasVideo(false) is called at the START of triggerCollapse, before measureInWindow', () => {
-    // The fix: strip the VideoView from the overlay immediately when
-    // triggerCollapse begins.  This must happen BEFORE the measureInWindow
-    // callback so the overlay is already a plain coloured View when the
-    // collapse animation runs.  Unmounting it later (inside the timeout after
-    // the animation) would call setVideoSurface(null) and steal the surface.
-    //
-    // Verify the call appears in the triggerCollapse body (before any
-    // measureInWindow / requestAnimationFrame) by checking that
-    // setOverlayHasVideo(false) precedes the first measureInWindow call
-    // in the triggerCollapse section.
-    const collapseStart = ctx.indexOf('const triggerCollapse');
+  it('restores both live selection and playback state without remounting Android VLC', () => {
+    const returnStart = liveTab.indexOf('const returnedChannel = consumePendingLivePlayerReturn()');
+    const returnBlock = liveTab.slice(returnStart, returnStart + 1600);
+
+    expect(returnStart).toBeGreaterThan(-1);
+    expect(returnBlock).toContain('setPlayingChannel(returnedChannel)');
+    expect(returnBlock).toContain('setSelectedChannel(returnedChannel)');
+    expect(returnBlock).toContain('if (!USES_NATIVE_VLC) setVideoKey');
+    expect(returnBlock).toContain('focusPlayingChannelRef.current?.()');
+    expect(returnBlock).toContain('requestTvFocus(miniPlayerRef.current)');
+  });
+
+  it('keeps early stop-on-back launches silent', () => {
+    const backStart = player.indexOf('const handleBackLive = useCallback');
+    const back = player.slice(backStart, backStart + 900);
+
+    expect(back).toContain("if (params.stopOnBack === 'true')");
+    expect(back).toContain('sharedPlayer?.pause()');
+    expect(back).toContain('setVideoMounted(false)');
+    expect(back).toContain('router.back()');
+  });
+
+  it('waits for a direct renderer to unmount before routing back to Live TV', () => {
+    const transitionStart = context.indexOf('const transitionNativeSurface = useCallback');
+    const transition = context.slice(transitionStart, transitionStart + 900);
+    const collapseStart = context.indexOf('const triggerCollapse = useCallback');
+    const collapse = context.slice(collapseStart, collapseStart + 300);
+
+    expect(transitionStart).toBeGreaterThan(-1);
+    expect(transition).toContain('setNativeSurfaceMode(mode)');
+    expect(transition).toContain('requestAnimationFrame(onComplete)');
+    expect(transition).not.toContain('measureInWindow');
+    expect(transition).not.toContain('Animated.');
     expect(collapseStart).toBeGreaterThan(-1);
+    expect(collapse).toContain('requestAnimationFrame(() => {');
+    expect(collapse).toContain('requestAnimationFrame(onDone)');
 
-    const setFalsePos        = ctx.indexOf('setOverlayHasVideo(false)', collapseStart);
-    const measureInWindowPos = ctx.indexOf('measureInWindow',           collapseStart);
-
-    expect(setFalsePos).toBeGreaterThan(-1);
-    expect(measureInWindowPos).toBeGreaterThan(-1);
-    // setOverlayHasVideo(false) must come BEFORE measureInWindow
-    expect(setFalsePos).toBeLessThan(measureInWindowPos);
-  });
-
-  it('pendingCollapseRemountRef is cleared in the null-ref early-exit path', () => {
-    // Root cause: when miniPlayerRef.current is null (e.g. mini-player not
-    // mounted yet, as when backing out of recently-watched before the Live TV
-    // tab has ever been visited), the old code left pendingCollapseRemountRef
-    // as true and called onDone() immediately.  useFocusEffect saw the flag,
-    // registered onCollapseCompleteRef, and waited forever for a callback that
-    // would never arrive → audio played with no video surface permanently.
-    //
-    // Fix: clear both flags and call onDone() when the ref is unavailable.
-    const collapseStart = ctx.indexOf('const triggerCollapse');
-    const nullRefEarlyExit = ctx.indexOf('Mini-player view is not mounted', collapseStart);
-    expect(nullRefEarlyExit).toBeGreaterThan(-1);
-
-    const pendingClearPos = ctx.indexOf('pendingCollapseRemountRef.current = false', nullRefEarlyExit);
-    const onDonePos       = ctx.indexOf('onDone()', nullRefEarlyExit);
-    expect(pendingClearPos).toBeGreaterThan(-1);
-    expect(onDonePos).toBeGreaterThan(-1);
-    // Both must appear, with the flag cleared before onDone
-    expect(pendingClearPos).toBeLessThan(onDonePos);
-  });
-
-  it('pendingCollapseRemountRef is cleared in the zero-size early-exit path', () => {
-    // Same bug in the zero-size branch: measureInWindow returns 0×0 (mini-player
-    // not laid out yet).  Without clearing the flag the callback waits forever.
-    const collapseStart  = ctx.indexOf('const triggerCollapse');
-    const zeroSizeMarker = ctx.indexOf('Mini-player has no measurable size', collapseStart);
-    expect(zeroSizeMarker).toBeGreaterThan(-1);
-
-    const pendingClearPos = ctx.indexOf('pendingCollapseRemountRef.current = false', zeroSizeMarker);
-    expect(pendingClearPos).toBeGreaterThan(-1);
-  });
-
-  it('overlay timeout calls onCollapseCompleteRef BEFORE setOverlayVisible(false)', () => {
-    // The ordering guarantee: inside the 200 ms post-collapse timeout,
-    // onCollapseCompleteRef.current?.() must fire BEFORE setOverlayVisible(false).
-    // This ensures the overlay VideoView unmounts only AFTER the mini-player
-    // VideoView has been mounted (setVideoKey called), leaving the player with
-    // a live surface throughout.
-    //
-    // Anchor the search inside the timeout body so we don't match the earlier
-    // setOverlayVisible(false) call that lives in the expand phase.
-    const timeoutAnchor = ctx.indexOf('Navigate back — home screen is already rendered');
-    expect(timeoutAnchor).toBeGreaterThan(-1);
-
-    const refPos          = ctx.indexOf('onCollapseCompleteRef.current?.()', timeoutAnchor);
-    const setVisibleFalse = ctx.indexOf('setOverlayVisible(false)',           refPos);
-    expect(refPos).toBeGreaterThan(-1);
-    expect(setVisibleFalse).toBeGreaterThan(-1);
-    expect(refPos).toBeLessThan(setVisibleFalse);
-  });
-
-  it('useFocusEffect registers onCollapseCompleteRef callback (fast-nav path) for setVideoKey', () => {
-    // Fast navigation (< 200 ms): pendingCollapseRemountRef is still true.
-    // useFocusEffect must register onCollapseCompleteRef so the rAF handler
-    // calls setVideoKey only after setOverlayVisible(false) has committed.
-    expect(index).toMatch(/onCollapseCompleteRef\.current\s*=\s*\(\s*\)\s*=>\s*setVideoKey/);
-  });
-
-  it('useFocusEffect only rebinds an Expo VideoView on the slow-nav path', () => {
-    // Slow navigation (> 200 ms): pendingCollapseRemountRef is already false.
-    // The overlay is gone — it is safe to mount the mini-player Expo VideoView
-    // immediately. VLC deliberately skips this remount because it remains
-    // mounted throughout the Android fullscreen handoff.
-    expect(index).toMatch(/else if\s*\(\s*!USES_NATIVE_VLC\s*\)\s*\{\s*setVideoKey\s*\(\s*\(k\)\s*=>/);
-  });
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Scenario 2 — Phone: tab switch → flash overlay must clear within 3 s
-//
-// Root cause: ExoPlayer stays in STATE_READY when re-attaching to a new
-// TextureView surface, so statusChange→readyToPlay never re-fires.  Without
-// a fallback timer the flash overlay stayed at opacity 1 permanently — audio
-// played but the video was hidden behind the opaque overlay.
-// ─────────────────────────────────────────────────────────────────────────────
-
-describe('Scenario 2 — tab switch: flash overlay has a safety-net fallback timer', () => {
-  it('a setTimeout fallback exists to clear the flash overlay after a fixed delay', () => {
-    // The overlayFallback timeout fades flashOverlayOpacity to 0 in case
-    // readyToPlay never fires (e.g. ExoPlayer already in STATE_READY).
-    expect(index).toMatch(/overlayFallback\s*=\s*setTimeout/);
-  });
-
-  it('fallback timer fires within 3 000 ms (task requirement)', () => {
-    // Extract the numeric delay passed to the overlayFallback setTimeout.
-    // The callback body spans multiple lines and contains commas, so we
-    // capture the closing }, DELAY) pattern instead of trying to span the body.
-    // The current implementation uses 2 000 ms — any value ≤ 3 000 ms is valid.
-    const fbIdx = index.indexOf('overlayFallback');
-    expect(fbIdx).toBeGreaterThan(-1);
-    // Read 250 chars — enough to reach the closing `}, 2000);` on any indentation.
-    const region = index.slice(fbIdx, fbIdx + 250);
-    const m = region.match(/},\s*(\d+)\s*\)/);
-    expect(m).not.toBeNull();
-    expect(parseInt(m![1], 10)).toBeLessThanOrEqual(3000);
-  });
-
-  it('fallback timer fades flashOverlayOpacity to 0', () => {
-    // The fallback must actually clear the overlay, not just console.log.
-    // Check that the overlayFallback timeout body references both flashOverlayOpacity
-    // and toValue: 0.
-    const fbStart = index.indexOf('overlayFallback = setTimeout');
-    expect(fbStart).toBeGreaterThan(-1);
-    const fbBody = index.slice(fbStart, fbStart + 300);
-    expect(fbBody).toMatch(/flashOverlayOpacity/);
-    expect(fbBody).toMatch(/toValue\s*:\s*0/);
-  });
-
-  it('readyToPlay status also fades flash overlay to 0 (primary path)', () => {
-    // The primary clear path: statusChange → readyToPlay in index.tsx fades
-    // flashOverlayOpacity to 0 so users on fast devices never see the overlay.
-    const readyBlock = index.match(
-      /readyToPlay[\s\S]{0,400}flashOverlayOpacity[\s\S]{0,100}toValue\s*:\s*0/
-    );
-    expect(readyBlock).not.toBeNull();
-  });
-
-  it('fallback cleanup function cancels the overlayFallback timer on tab blur', () => {
-    // The useFocusEffect cleanup must cancel overlayFallback so repeated
-    // tab switches don't stack up multiple fade-outs.
-    expect(index).toMatch(/clearTimeout\s*\(\s*overlayFallback\s*\)/);
-  });
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Scenario 3 — Recently-watched early-back: no audio with black screen
-//
-// Root cause A (player.tsx): stopOnBack path — the shared player was not
-// paused before router.back(), so audio continued playing while no VideoView
-// was mounted anywhere.
-//
-// Root cause B (index.tsx): clearChannelOnReturnRef path — the mini-player's
-// display:none was removed (playingChannel was set) but the VideoView was
-// never bound to a live surface; the player kept playing audio silently.
-// ─────────────────────────────────────────────────────────────────────────────
-
-describe('Scenario 3 — recently-watched early-back: audio is stopped before navigating', () => {
-  it('handleBackLive pauses sharedPlayer when stopOnBack is true (player.tsx)', () => {
-    // The stopOnBack branch in handleBackLive must call sharedPlayer?.pause()
-    // before router.back() so the stream stops immediately.
-    const stopOnBackIdx = player.indexOf("params.stopOnBack === 'true'");
-    expect(stopOnBackIdx).toBeGreaterThan(-1);
-
-    const pausePos     = player.indexOf('sharedPlayer?.pause()', stopOnBackIdx);
-    const routerBackPos = player.indexOf('router.back()',        stopOnBackIdx);
-    expect(pausePos).toBeGreaterThan(-1);
-    expect(routerBackPos).toBeGreaterThan(-1);
-    // pause must come before router.back()
-    expect(pausePos).toBeLessThan(routerBackPos);
-  });
-
-  it('useFocusEffect clearChannelOnReturnRef branch pauses the player (index.tsx)', () => {
-    // When the user backs out before the collapse animation (recently-watched
-    // path), useFocusEffect must pause the player and clear the playing channel
-    // to stop audio and hide the mini-player.
-    const clearIdx = index.indexOf('clearChannelOnReturnRef.current');
-    expect(clearIdx).toBeGreaterThan(-1);
-
-    // Find the block that handles clearChannelOnReturnRef
-    const branchBody = index.slice(clearIdx, clearIdx + 300);
-    expect(branchBody).toMatch(/player\?\.pause\(\)/);
-  });
-
-  it('useFocusEffect clearChannelOnReturnRef branch clears playingChannel', () => {
-    const clearIdx = index.indexOf('clearChannelOnReturnRef.current');
-    const branchBody = index.slice(clearIdx, clearIdx + 300);
-    expect(branchBody).toMatch(/setPlayingChannel\s*\(\s*null\s*\)/);
-  });
-
-  it('useFocusEffect clearChannelOnReturnRef branch clears selectedChannel', () => {
-    // Clearing selectedChannel ensures the TVLiveLayout also unmounts its
-    // VideoView so TV users don't see audio-only playback either.
-    const clearIdx = index.indexOf('clearChannelOnReturnRef.current');
-    const branchBody = index.slice(clearIdx, clearIdx + 300);
-    expect(branchBody).toMatch(/setSelectedChannel\s*\(\s*null\s*\)/);
-  });
-
-  it('clearChannelOnReturnRef is set by handleBackLive (stopOnBack path) in player.tsx', () => {
-    // The player must signal index.tsx (via the ref forwarded through context
-    // or a module-level variable) to take the clearChannelOnReturnRef branch.
-    // In the current implementation the ref is set directly from player.tsx
-    // because the collapse is skipped — no DeviceEventEmitter is used.
-    // Instead, clearChannelOnReturnRef is populated in the Live TV tab's effect
-    // that listens for the recently-watched launch — verify the ref is consumed
-    // (reset to false) inside the clearChannelOnReturnRef branch.
-    const clearIdx = index.indexOf('clearChannelOnReturnRef.current');
-    const branchBody = index.slice(clearIdx, clearIdx + 150);
-    expect(branchBody).toMatch(/clearChannelOnReturnRef\.current\s*=\s*false/);
-  });
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Scenario 4 — TV / Firestick: same collapse paths must also restore video
-//
-// Root cause A: TVLiveLayout only renders its VideoView when selectedChannel
-// is non-null.  The recently-watched back path only called setPlayingChannel
-// but not setSelectedChannel, so the VideoView was never mounted on TV even
-// after videoKey incremented.
-//
-// Root cause B: D-pad cursor was left on a hidden player-control after collapse;
-// no focus-restore call left the remote unresponsive.
-// ─────────────────────────────────────────────────────────────────────────────
-
-describe('Scenario 4 — TV / Firestick: recently-watched back path sets selectedChannel', () => {
-  it('shared return-handoff branch calls setSelectedChannel(ch) as well as setPlayingChannel(ch)', () => {
-    // On TV, TVLiveLayout only mounts its VideoView when selectedChannel is set.
-    // Both calls must appear inside the return-handoff branch so the
-    // VideoView exists before requestAnimationFrame fires setVideoKey.
-    const pendingIdx = index.indexOf('consumePendingLivePlayerReturn');
-    expect(pendingIdx).toBeGreaterThan(-1);
-
-    // Find the section that consumes the shared return handoff.
-    const consumeIdx = index.indexOf('const ch = consumePendingLivePlayerReturn()', pendingIdx);
-    expect(consumeIdx).toBeGreaterThan(-1);
-
-    const branchBody = index.slice(consumeIdx, consumeIdx + 400);
-    expect(branchBody).toMatch(/setPlayingChannel\s*\(\s*ch\s*\)/);
-    expect(branchBody).toMatch(/setSelectedChannel\s*\(\s*ch\s*\)/);
-  });
-
-  it('shared return-handoff branch only rebinds an Expo VideoView', () => {
-    // The rAF gives the native layout a pass to measure the now-visible
-    // container before Expo rebinds its VideoView. Android VLC deliberately
-    // keeps its one existing surface rather than creating a second decoder.
-    const consumeIdx = index.indexOf('const ch = consumePendingLivePlayerReturn()');
-    expect(consumeIdx).toBeGreaterThan(-1);
-
-    const branchBody = index.slice(consumeIdx, consumeIdx + 1400);
-    expect(branchBody).toMatch(/requestAnimationFrame/);
-    expect(branchBody).toMatch(/if\s*\(\s*!USES_NATIVE_VLC\s*\)\s*setVideoKey/);
-  });
-
-  it('normal collapse path restores D-pad focus to mini-player on TV', () => {
-    // After the collapse animation the remote cursor must land somewhere
-    // reachable.  The fix calls requestTvFocus(miniPlayerRef.current) on
-    // Platform.isTV (replaces legacy miniPlayerRef.current?.focus?.()).
-    const normalCollapseIdx = index.indexOf('Normal collapse path');
-    expect(normalCollapseIdx).toBeGreaterThan(-1);
-
-    // Platform.isTV + requestTvFocus call appear ~775-850 chars after the section marker.
-    const focusBlock = index.slice(normalCollapseIdx, normalCollapseIdx + 900);
-    expect(focusBlock).toMatch(/Platform\.isTV/);
-    expect(focusBlock).toMatch(/requestTvFocus\(\s*miniPlayerRef\.current/);
-  });
-
-  it('return handoff restores the playing channel row, with mini-player as fallback on TV', () => {
-    // The shared return-handoff branch must return focus to the live channel
-    // that is actually playing. If the virtualized row cannot mount, it falls
-    // back to the mini-player so the remote is never stranded.
-    const consumeIdx = index.indexOf('const ch = consumePendingLivePlayerReturn()');
-    expect(consumeIdx).toBeGreaterThan(-1);
-
-    const branchBody = index.slice(consumeIdx, consumeIdx + 1700);
-    expect(branchBody).toMatch(/Platform\.isTV/);
-    expect(branchBody).toMatch(/focusPlayingChannelRef\.current\?\.\(\)/);
-    expect(branchBody).toMatch(/requestTvFocus\(\s*miniPlayerRef\.current/);
-  });
-
-  it('stores the return channel before emitting the legacy Live TV event', () => {
-    const player = fs.readFileSync(
-      path.join(__dirname, '../app/player.tsx'),
-      'utf8',
-    );
-    const storeIdx = player.indexOf('setPendingLivePlayerReturn(returnChannel)');
-    const emitIdx = player.indexOf("DEE.emit('live:setPlayingChannel', returnChannel)");
-
-    expect(storeIdx).toBeGreaterThan(-1);
-    expect(emitIdx).toBeGreaterThan(storeIdx);
-  });
-
-  it('expand ready-gate cancelled before collapse takes ownership of overlay (ctx)', () => {
-    // If the user presses BACK before the first frame arrives, the expand
-    // timeout set by _runExpandAnimation must be cancelled.  Without this the
-    // timeout fires mid-collapse and calls setOverlayVisible(false),
-    // conflicting with the collapse sequencing.
-    const collapseAnimStart = ctx.indexOf('_runCollapseAnimation = useCallback');
-    expect(collapseAnimStart).toBeGreaterThan(-1);
-
-    const cancelPos = ctx.indexOf('_cancelReadyGate()', collapseAnimStart);
-    // _cancelReadyGate must be called inside _runCollapseAnimation before the
-    // animation is set up
-    const animParallelPos = ctx.indexOf('Animated.parallel', collapseAnimStart);
-    expect(cancelPos).toBeGreaterThan(-1);
-    expect(cancelPos).toBeLessThan(animParallelPos);
+    const backStart = player.indexOf('const handleBackLive = useCallback');
+    const back = player.slice(backStart, backStart + 4300);
+    const directUnmount = back.indexOf('setVideoMounted(false)');
+    const directCollapse = back.indexOf('triggerCollapse(() => router.back())');
+    expect(directUnmount).toBeGreaterThan(-1);
+    expect(directCollapse).toBeGreaterThan(directUnmount);
   });
 });

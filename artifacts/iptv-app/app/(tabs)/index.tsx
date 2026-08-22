@@ -399,15 +399,9 @@ export default function LiveTVScreen() {
     activeUrlRef: liveUrlRef,
     miniPlayerRef,
     nativeSurfaceMode,
-    nativeSurfaceUrl,
     setNativeSurfaceUrl,
     beginNativeSurfaceHandoff,
-    setNativeSurfaceTransitionHandler,
     transitionNativeSurface,
-    isCollapsingRef,
-    collapseRestorePendingRef,
-    pendingCollapseRemountRef,
-    onCollapseCompleteRef,
     triggerExpand,
     triggerExpandFromRef,
   } = useLivePlayer();
@@ -416,22 +410,6 @@ export default function LiveTVScreen() {
   // FocusablePressable container. Fullscreen changes the container's parent
   // layout; the video surface itself never receives screen coordinates.
   const nativeSurfaceFullscreen = nativeSurfaceMode === 'fullscreen';
-
-  const runNativeSurfaceTransition = useCallback((
-    _mode: 'mini' | 'fullscreen' | 'hidden',
-    onComplete: () => void,
-  ) => {
-    // Let the container commit its new flex/absolute-fill layout before the
-    // transparent controls route appears or disappears. No native view moves
-    // independently of its parent.
-    requestAnimationFrame(onComplete);
-  }, []);
-
-  useEffect(() => {
-    if (!USES_NATIVE_VLC) return;
-    setNativeSurfaceTransitionHandler(runNativeSurfaceTransition);
-    return () => setNativeSurfaceTransitionHandler(null);
-  }, [runNativeSurfaceTransition, setNativeSurfaceTransitionHandler]);
 
   useEffect(() => {
     if (!USES_NATIVE_VLC) return;
@@ -481,7 +459,7 @@ export default function LiveTVScreen() {
       isFirstFocusRef.current = false;
       // If a recently-watched channel is pending (user pressed BACK from the
       // player before ever visiting the Live TV tab), we must NOT skip — fall
-      // through to the collapseRestorePendingRef block to set selectedChannel.
+      // through to the shared return handoff below to set selectedChannel.
       // For all other first-focus cases, return as before.
       if (!getPendingLivePlayerReturn()) return;
     }
@@ -495,107 +473,27 @@ export default function LiveTVScreen() {
       setSelectedChannel(null);
       return;
     }
-    if (collapseRestorePendingRef.current) {
-      // This focus return is from a fullscreen collapse.  We must NOT set
-      // flashOverlayOpacity=1 here because ExoPlayer stays in STATE_READY
-      // when re-attaching to a new surface, so readyToPlay never re-fires
-      // and the overlay would stay permanently black.
-      //
-      // Two timing scenarios depending on navigation speed:
-      //
-      // Fast navigation (< 200 ms): the 200 ms timeout hasn't fired yet.
-      //   pendingCollapseRemountRef is still true.  Register the callback so
-      //   the rAF handler calls setVideoKey AFTER setOverlayVisible(false)
-      //   has committed (guaranteeing overlay unmount before mini-player mount).
-      //
-      // Slow navigation (> 200 ms + 2 rAFs): the rAF handler already ran with
-      //   no callback registered, and cleared pendingCollapseRemountRef.
-      //   setOverlayVisible(false) has already committed, so the overlay is
-      //   gone.  Call setVideoKey directly — it's safe to mount now.
-      collapseRestorePendingRef.current = false;
-      // A fullscreen → mini-player handoff reuses the same live stream. VLC can
-      // emit a transient buffering callback while its surface is reattached even
-      // though playback is already healthy, leaving the mini-player covered by
-      // a stale "Loading…" card. Keep this transition silent; a genuine player
-      // failure still sets hasError and remains visible to the viewer.
+    const returnedChannel = consumePendingLivePlayerReturn();
+    if (returnedChannel) {
+      // The route hands back the active channel before it closes. The Android
+      // VLC child is still mounted; only its container returns to mini layout.
       setIsBuffering(false);
-
-      if (getPendingLivePlayerReturn()) {
-        // ── Recently-watched back path ──────────────────────────────────────
-        // The channel was launched directly from the Home screen, bypassing
-        // the Live TV tab entirely.  Two separate problems must be solved:
-        //
-        // PHONE — The mini-player container has display:none (playingChannel
-        // is null).  expo-video mounts a VideoView onto a zero-size surface
-        // → audio plays but no video.
-        // Fix: setPlayingChannel first (removes display:none, layout runs),
-        // then rAF → setVideoKey so the fresh VideoView lands on a measured
-        // surface.
-        //
-        // TV (FIRESTICK) — TVLiveLayout only renders its VideoView when
-        // selectedChannel is non-null.  playingChannel is ignored by
-        // TVLiveLayout entirely.  Even if setVideoKey fires, the conditional
-        // branch means the VideoView is never mounted → audio plays, no video.
-        // Fix: also call setSelectedChannel so TVLiveLayout mounts its
-        // VideoView immediately.  The stream-load useEffect sees that
-        // liveUrlRef already matches (player.tsx set it) and just calls
-        // player.play() — no stream restart.
-        //
-        // Step 1 — setPlayingChannel (phone: removes display:none)
-        //        + setSelectedChannel (TV: makes TVLiveLayout mount VideoView)
-        //        → native layout pass runs → container has real pixel dimensions
-        // Step 2 — rAF → setVideoKey mounts a fresh VideoView onto the
-        //           properly-sized surface → video appears on both platforms.
-        const ch = consumePendingLivePlayerReturn();
-        if (!ch) return;
-        setPlayingChannel(ch);
-        setSelectedChannel(ch);
-        // Switch to the channel's own category so it appears (and is
-        // highlighted) in the channel list.  Must NOT use handleSelectCat here
-        // because that helper calls setSelectedChannel(null), which would
-        // immediately undo the selection we just made.
-        // ch.groupTitle holds the category_id for Xtream providers, and the
-        // group-name string for M3U providers — both are used as the
-        // selectedCatId key, so this is always the correct value to write.
-        if (ch.groupTitle) {
-          setSelectedCatId(ch.groupTitle);
-          StorageService.setPrefLiveCat(ch.groupTitle).catch(() => {});
+      setPlayingChannel(returnedChannel);
+      setSelectedChannel(returnedChannel);
+      if (returnedChannel.groupTitle) {
+        setSelectedCatId(returnedChannel.groupTitle);
+        StorageService.setPrefLiveCat(returnedChannel.groupTitle).catch(() => {});
+      }
+      requestAnimationFrame(() => {
+        if (!USES_NATIVE_VLC) setVideoKey((key) => key + 1);
+        if (Platform.isTV) {
+          setTimeout(() => {
+            if (!focusPlayingChannelRef.current?.()) {
+              requestTvFocus(miniPlayerRef.current);
+            }
+          }, 400);
         }
-        requestAnimationFrame(() => {
-          // The Android VLC view is still mounted; remounting it here would
-          // discard the decoder we just handed back from fullscreen.
-          if (!USES_NATIVE_VLC) setVideoKey((k) => k + 1);
-          if (Platform.isTV) {
-            setTimeout(() => {
-              // BACK from fullscreen must land on the channel that is actually
-              // playing now. This callback scrolls the virtualized channel list
-              // to the current row, highlights it, and retries focus until that
-              // row has mounted after a category change.
-              if (!focusPlayingChannelRef.current?.()) {
-                requestTvFocus(miniPlayerRef.current);
-              }
-            }, 400);
-          }
-        });
-        return;
-      }
-
-      // ── Normal collapse path ────────────────────────────────────────────
-      // playingChannel was already set; mini-player was visible the whole
-      // time.  Use the existing fast/slow timing logic for videoKey.
-      if (!USES_NATIVE_VLC && pendingCollapseRemountRef.current) {
-        onCollapseCompleteRef.current = () => setVideoKey((k) => k + 1);
-      } else if (!USES_NATIVE_VLC) {
-        setVideoKey((k) => k + 1);
-      }
-      // TV: restore D-pad focus to the mini-player box so the remote cursor
-      // has a sensible target after collapsing from fullscreen.  Without this
-      // the cursor is left wherever fullscreen last placed it (often a hidden
-      // player control), and the user must navigate blindly.
-      // 400 ms gives the VideoView remount time to settle before focus lands.
-      if (Platform.isTV) {
-        setTimeout(() => requestTvFocus(miniPlayerRef.current), 400);
-      }
+      });
       return;
     }
       const catchupPreviewToRestore = catchupPreviewReturnRef.current;
@@ -631,9 +529,8 @@ export default function LiveTVScreen() {
         return;
       }
     if (USES_NATIVE_VLC) {
-      // A normal persistent-surface BACK already finished its mini transition
-      // before calling router.back(). Do not animate/resize the same VLC view a
-      // second time as the tab regains focus.
+      // The fullscreen route restores this container before it closes. This is
+      // only a safety net for interrupted navigation, never a native resize.
       if (nativeSurfaceMode !== 'mini') transitionNativeSurface('mini');
       return;
     }
@@ -654,7 +551,7 @@ export default function LiveTVScreen() {
       }).start();
     }, 2000);
     return () => clearTimeout(overlayFallback);
-  }, [flashOverlayOpacity, isCollapsingRef, collapseRestorePendingRef, pendingCollapseRemountRef, onCollapseCompleteRef, nativeSurfaceMode, transitionNativeSurface]));
+  }, [flashOverlayOpacity, nativeSurfaceMode, transitionNativeSurface]));
 
   // ── AppState tracking (#21/#31/#53) ──────────────────────────────────────
   const isAppBackgroundRef = useRef(false);
@@ -800,12 +697,10 @@ export default function LiveTVScreen() {
   // When a recently-watched channel is opened from the Home screen the Live TV
   // tab's playingChannel is never set (the channel was launched directly into
   // the player, bypassing this tab).  The player emits this event before its
-  // collapse animation so the mini-player is visible and correctly sized for
-  // triggerCollapse's measureInWindow call.
+  // fullscreen return so the mini-player is visible before the route closes.
   useEffect(() => {
     const sub = DeviceEventEmitter.addListener('live:setPlayingChannel', (ch: Channel) => {
-      // Set state immediately so the mini-player is visible before
-      // triggerCollapse measures its position.
+      // Set state immediately so the container is ready when fullscreen closes.
       setPlayingChannel(ch);
       // Also write to the shared handoff so it survives a direct Home → player
       // → Live TV return where this tab did not exist when the event fired.
@@ -1467,11 +1362,8 @@ export default function LiveTVScreen() {
    *  full channel list is passed for prev/next navigation. */
   const handleWatchChannel = useCallback((ch: Channel, cardRef?: React.RefObject<View | null>) => {
     goingToPlayerRef.current = true;
-    // Update the right-panel EPG and make the mini-player container visible.
-    // setPlayingChannel is required because the mini-player div has display:none
-    // when playingChannel is null — without it triggerCollapse's measureInWindow
-    // returns a zero rect and the collapse animation is skipped entirely,
-    // leaving the player attached to a 0×0 surface → audio only, no video.
+    // Update the right-panel EPG and make the persistent playback container
+    // visible before the fullscreen controls route borrows it.
     setSelectedChannel(ch);
     setPlayingChannel(ch);
 
@@ -1508,8 +1400,8 @@ export default function LiveTVScreen() {
       },
     });
 
-    // Animate from the tapped card's position if a ref was provided,
-    // otherwise fall back to the mini-player expand (or immediate navigation).
+    // The VLC path expands the real playback container, never the tapped card.
+    // The generic Expo-video route keeps its existing navigation hooks.
     if (USES_NATIVE_VLC) {
       // The Live TV mini-player becomes visible on this render. Give it one
       // layout pass before measuring and expanding its persistent VLC surface.
@@ -1975,8 +1867,8 @@ export default function LiveTVScreen() {
 
         {!isWeb && (
           /* collapsable={false} ensures the native view is created immediately
-             so measureInWindow() works correctly for the expand animation.
-             focusable lets D-pad / remote users highlight the box and press
+             so the persistent native surface is created immediately. Focusable
+             lets D-pad / remote users highlight the box and press
              Select to open fullscreen — no separate button needed. */
           <FocusablePressable
             ref={miniPlayerRef as any}
@@ -1988,7 +1880,7 @@ export default function LiveTVScreen() {
             style={(focused) => [
               styles.videoWrap,
               !playingChannel && { display: 'none' },
-              nativeSurfaceFullscreen && styles.nativeSurfaceFullscreen,
+              nativeSurfaceFullscreen && styles.fullscreenVideoContainer,
               focused && styles.videoWrapFocused,
             ]}
           >
@@ -1996,7 +1888,7 @@ export default function LiveTVScreen() {
                 container. Fullscreen changes the container's parent layout,
                 never the video's coordinates. */}
             {USES_NATIVE_VLC && isLivePreviewActive && (
-              <Animated.View
+              <View
                 collapsable={false}
                 pointerEvents="none"
                 focusable={false}
@@ -2017,7 +1909,7 @@ export default function LiveTVScreen() {
                   onBuffering={handlePersistentVlcBuffering}
                   onError={handlePersistentVlcError}
                 />
-              </Animated.View>
+              </View>
             )}
             {USES_NATIVE_VLC && (
               <>
@@ -2491,12 +2383,8 @@ const styles = StyleSheet.create({
   videoWrapFocused: {
     borderColor: '#00E5FF',
   },
-  nativeSurfaceFullscreen: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    bottom: 0,
-    left: 0,
+  fullscreenVideoContainer: {
+    flex: 1,
     width: '100%',
     height: '100%',
     marginBottom: 0,
