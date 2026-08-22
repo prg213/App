@@ -14,6 +14,7 @@ import type { VideoPlayer } from 'expo-video';
 export type NativeSurfaceMode = 'mini' | 'fullscreen' | 'hidden';
 
 const NATIVE_SURFACE_TRANSITION_MS = 240;
+const VLC_TRACE = '[SV-VLC-TRACE]';
 
 export interface NativeSurfaceHandoff {
   id: string;
@@ -106,6 +107,11 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
     onComplete: () => void = () => {},
   ) => {
     const shouldAnimate = Platform.OS === 'android' && mode !== 'hidden';
+    console.log(VLC_TRACE, 'surface-transition-start', {
+      mode,
+      shouldAnimate,
+      durationMs: shouldAnimate ? NATIVE_SURFACE_TRANSITION_MS : 0,
+    });
     if (shouldAnimate) {
       LayoutAnimation.configureNext({
         duration: NATIVE_SURFACE_TRANSITION_MS,
@@ -120,11 +126,16 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
     // the transparent controls route. This keeps the same visible surface on
     // screen for the entire expansion and contraction.
     if (mode === 'hidden') {
+      console.log(VLC_TRACE, 'surface-transition-complete', { mode });
       onComplete();
       return;
     }
     requestAnimationFrame(() => {
+      const transitionDelay = shouldAnimate ? NATIVE_SURFACE_TRANSITION_MS : 0;
       setTimeout(onComplete, shouldAnimate ? NATIVE_SURFACE_TRANSITION_MS : 0);
+      setTimeout(() => {
+        console.log(VLC_TRACE, 'surface-transition-complete', { mode });
+      }, transitionDelay);
     });
   }, []);
 

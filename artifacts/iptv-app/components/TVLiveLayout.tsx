@@ -49,6 +49,7 @@ import { sidebarNav } from '@/lib/sidebarNav';
 
 const FOCUS_BORDER = '#00E5FF';
 const CHANNEL_HIGHLIGHT_COMMIT_DELAY_MS = 90;
+const VLC_TRACE = '[SV-VLC-TRACE]';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -181,6 +182,14 @@ export function TVLiveLayout({
   // chrome without hiding its parent, otherwise the native surface is covered
   // by the category and channel panels on Fire TV.
   const hideLiveChromeForFullscreen = nativeSurfaceFullscreen && Platform.OS === 'android';
+
+  useEffect(() => {
+    console.log(VLC_TRACE, 'live-layout-surface-mode', {
+      fullscreen: nativeSurfaceFullscreen,
+      streamPresent: !!streamUrl,
+      playbackActive: isPlaybackActive,
+    });
+  }, [isPlaybackActive, nativeSurfaceFullscreen, streamUrl]);
 
   const catListRef = useRef<FlatList<Category>>(null);
   const chListRef  = useRef<FlatList<Channel>>(null);
@@ -1255,6 +1264,16 @@ export function TVLiveLayout({
                 onPreviewFocusChange?.(false);
               }}
               onPress={onWatchFullscreen}
+              onLayout={(event) => {
+                const { width, height, x, y } = event.nativeEvent.layout;
+                console.log(VLC_TRACE, 'react-owner-layout', {
+                  width,
+                  height,
+                  x,
+                  y,
+                  fullscreen: nativeSurfaceFullscreen,
+                });
+              }}
             >
               {/* The real VLC TextureView belongs to the actual focusable
                   mini-player container. The parent changes only its bounds;
