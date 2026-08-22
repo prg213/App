@@ -21,6 +21,11 @@ the persistent VLC child remains an `absoluteFill` child of the same
 FocusablePressable. The surface never receives measured screen coordinates,
 negative offsets, animated bounds, or a temporary overflow escape.
 
+On Fire TV, the tab shell is also part of that parent layout: it normally
+reserves the permanent sidebar width. During a persistent fullscreen handoff,
+the shell must remove that sidebar and its scene margin so the preview parent
+can fill the physical window.
+
 The handoff waits one layout frame before showing or removing fullscreen
 controls. This preserves the single decoder while allowing normal React Native
 layout to resize the TextureView for orientation and resolution changes.
