@@ -110,6 +110,11 @@ describe('Android live VLC container ownership', () => {
 
   it('does not reapply VLC playback props for a parent-layout-only transition', () => {
     expect(androidNativePlayer).toContain('React.memo(NativeStreamPlayerAndroid)');
+    expect(androidNativePlayer).toContain('const vlcSource = React.useMemo');
+    expect(androidNativePlayer).toContain('}), [source]);');
+    expect(androidNativePlayer).toContain('source={vlcSource}');
+    expect(androidNativePlayer).toContain('key={`${source}:${reloadKey ?? 0}`}');
+    expect(androidNativePlayer).not.toContain('nativeSurfaceMode');
     expect(liveTab).toContain('onPlaying={handlePersistentVlcPlaying}');
     expect(liveTab).toContain('onBuffering={handlePersistentVlcBuffering}');
     expect(liveTab).toContain('onError={handlePersistentVlcError}');
