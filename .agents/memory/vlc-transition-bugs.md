@@ -62,6 +62,22 @@ const usesPersistentNativeSurface = USES_NATIVE_VLC && isLive && nativeSurfaceHa
 player.tsx initialises isBuffering = true. For controls-only path, no VLC → onPlaying never fires.
 Fix: useEffect([usesPersistentNativeSurface, isLive]) calls setIsBuffering(false) + setIsPlaying(true).
 
+## Bug 4 — focus-effect safety fallback cancels fullscreen entry (FIXED)
+
+The Live TV screen's focus effect depends on the native surface mode. Changing
+that mode to fullscreen re-runs the effect before the transparent player route
+has necessarily blurred the tab. Its interrupted-navigation safety fallback
+must not immediately change the mode back to mini while fullscreen navigation
+is still in flight.
+
+**Why:** The result is a fullscreen control bar layered over the still-small
+Live TV preview: the player route opens, but the persistent VLC owner's parent
+has already been collapsed.
+
+**How to apply:** Gate the mini-mode safety fallback on the fullscreen
+navigation marker. The player route remains solely responsible for returning
+the owner to mini mode immediately before it removes its controls route.
+
 ## Host, focus, and overlay rules
 
 The animated native child remains non-focusable, non-accessible, and uses

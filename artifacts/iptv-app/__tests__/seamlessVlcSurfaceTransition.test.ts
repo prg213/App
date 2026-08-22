@@ -173,6 +173,12 @@ describe('Android live VLC container ownership', () => {
     }
   });
 
+  it('does not collapse the persistent surface while fullscreen navigation is in flight', () => {
+    expect(liveTab).toContain(
+      "if (nativeSurfaceMode !== 'mini' && !goingToPlayerRef.current)",
+    );
+  });
+
   it('updates the existing persistent source after a real channel zap', () => {
     const switchStart = fullscreenPlayer.indexOf('const switchChannel = useCallback');
     const switchBlock = fullscreenPlayer.slice(switchStart, switchStart + 3600);

@@ -531,7 +531,13 @@ export default function LiveTVScreen() {
     if (USES_NATIVE_VLC) {
       // The fullscreen route restores this container before it closes. This is
       // only a safety net for interrupted navigation, never a native resize.
-      if (nativeSurfaceMode !== 'mini') transitionNativeSurface('mini');
+      // Changing nativeSurfaceMode to "fullscreen" re-runs this focus callback
+      // while the transparent controls route is opening. Do not immediately
+      // undo that parent-layout handoff; player.tsx is responsible for changing
+      // it back to mini just before BACK removes the controls route.
+      if (nativeSurfaceMode !== 'mini' && !goingToPlayerRef.current) {
+        transitionNativeSurface('mini');
+      }
       return;
     }
     // Normal focus return (tab switch, etc.) — show flash overlay to cover the
