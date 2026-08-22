@@ -29,7 +29,10 @@ describe('Android release packaging', () => {
   });
 
   it('validates APK identity, signer continuity, and VLC regression coverage', () => {
-    expect(workflow).toContain('test "$VERSION_CODE" = "$GITHUB_RUN_NUMBER"');
+    expect(workflow).toContain('RELEASE_BUILD_OFFSET: 245');
+    expect(workflow).toContain('id: build_identity');
+    expect(workflow).toContain('EXPO_PUBLIC_BUILD_NUMBER: ${{ steps.build_identity.outputs.release_build }}');
+    expect(workflow).toContain('test "$VERSION_CODE" = "${{ steps.build_identity.outputs.release_build }}"');
     expect(workflow).toContain('test "$CANDIDATE_CERT_SHA256" = "$INSTALLED_CERT_SHA256"');
     expect(workflow).toContain('Android packaging and VLC MP2 regressions');
     expect(workflow).toContain('Full IPTV test suite');
@@ -38,6 +41,7 @@ describe('Android release packaging', () => {
   it('only promotes the exact device-validated candidate', () => {
     expect(workflow).toContain('default: build-candidate');
     expect(workflow).toContain('Promote Device-Validated APK');
+    expect(workflow).toContain('CANDIDATE_RELEASE_BUILD=$((CANDIDATE_RUN_NUMBER + RELEASE_BUILD_OFFSET))');
     expect(workflow).toContain('CANDIDATE_ARTIFACT_ID=');
     expect(workflow).toContain('actions/artifacts/${{ steps.candidate.outputs.artifact_id }}/zip');
     expect(workflow).toContain('This exact candidate was validated');

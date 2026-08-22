@@ -21,6 +21,14 @@ on:
   repository_dispatch:
     types: [build-android]
 
+env:
+  # This workflow was recreated after public builds had already reached v245.
+  # GitHub resets a workflow's run number when its identity changes, so a raw
+  # run number would create an APK Android refuses to install over v245 and
+  # would make the in-app updater offer that older release. Keep public build
+  # IDs monotonic while retaining the GitHub run as the candidate identifier.
+  RELEASE_BUILD_OFFSET: 245
+
 jobs:
   build:
     name: Build Release APK
@@ -39,6 +47,12 @@ jobs:
       - uses: pnpm/action-setup@v4
         with:
           version: 9
+      - name: Set release build identity
+        id: build_identity
+        run: |
+          set -euo pipefail
+          RELEASE_BUILD=$((GITHUB_RUN_NUMBER + RELEASE_BUILD_OFFSET))
+          echo "release_build=$RELEASE_BUILD" >> "$GITHUB_OUTPUT"
       - run: pnpm install --no-frozen-lockfile
       - run: pnpm --filter @workspace/iptv-app run lint
       - run: bash artifacts/iptv-app/scripts/check-epg-scroll-not-persisted.sh
@@ -56,7 +70,7 @@ jobs:
           CI: 1
           EXPO_PUBLIC_DOMAIN: streamvault.rip
           EXPO_PUBLIC_TMDB_API_KEY: 312ee14dd7f250471da1174324be2bda
-          EXPO_PUBLIC_BUILD_NUMBER: ${{ github.run_number }}
+          EXPO_PUBLIC_BUILD_NUMBER: ${{ steps.build_identity.outputs.release_build }}
       - name: Install NDK
         run: echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "ndk;27.1.12297006" "cmake;3.22.1" --sdk_root=$ANDROID_HOME
       - name: Restore signing keystore
@@ -76,7 +90,7 @@ jobs:
           ANDROID_NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/27.1.12297006
           EXPO_PUBLIC_DOMAIN: streamvault.rip
           EXPO_PUBLIC_TMDB_API_KEY: 312ee14dd7f250471da1174324be2bda
-          EXPO_PUBLIC_BUILD_NUMBER: ${{ github.run_number }}
+          EXPO_PUBLIC_BUILD_NUMBER: ${{ steps.build_identity.outputs.release_build }}
           GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=512m"
       - name: Stage universal and fallback APKs
         run: |
@@ -115,7 +129,7 @@ jobs:
           BADGING="$("$AAPT2" dump badging "$APK")"
           VERSION_CODE="$(printf '%s\n' "$BADGING" | sed -n "s/.*versionCode='\([^']*\)'.*/\1/p" | head -1)"
           printf '%s\n' "$BADGING" | grep -q "package: name='com.prg213.streamvault'"
-          test "$VERSION_CODE" = "$GITHUB_RUN_NUMBER"
+          test "$VERSION_CODE" = "${{ steps.build_identity.outputs.release_build }}"
           "$APKSIGNER" verify --verbose --print-certs "$APK"
           # Signer-continuity check: compare cert with the latest release APK.
           # This is advisory only (non-fatal) because the installed APK may be from
@@ -168,10 +182,12 @@ jobs:
           CANDIDATE_EVENT="$(gh run view "$CANDIDATE_RUN_ID" --repo "$GITHUB_REPOSITORY" --json event --jq .event)"
           case "$CANDIDATE_EVENT" in workflow_dispatch|repository_dispatch) ;; *) exit 1 ;; esac
           CANDIDATE_RUN_NUMBER="$(gh run view "$CANDIDATE_RUN_ID" --repo "$GITHUB_REPOSITORY" --json number --jq .number)"
+          CANDIDATE_RELEASE_BUILD=$((CANDIDATE_RUN_NUMBER + RELEASE_BUILD_OFFSET))
           CANDIDATE_ARTIFACT_ID="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$CANDIDATE_RUN_ID/artifacts" \
             --jq ".artifacts[] | select(.name == \"StreamVault-release-$CANDIDATE_RUN_NUMBER\" and .expired == false) | .id" | head -1)"
           test -n "$CANDIDATE_ARTIFACT_ID"
           echo "run_number=$CANDIDATE_RUN_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "release_build=$CANDIDATE_RELEASE_BUILD" >> "$GITHUB_OUTPUT"
           echo "artifact_id=$CANDIDATE_ARTIFACT_ID" >> "$GITHUB_OUTPUT"
       - run: |
           gh api -H "Accept: application/vnd.github+json" \
@@ -184,10 +200,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
       - uses: softprops/action-gh-release@v2
         with:
-          tag_name: build-${{ steps.candidate.outputs.run_number }}
-          name: StreamVault v${{ steps.candidate.outputs.run_number }}
+          tag_name: build-${{ steps.candidate.outputs.release_build }}
+          name: StreamVault v${{ steps.candidate.outputs.release_build }}
           body: |
-            Android APK — build #${{ steps.candidate.outputs.run_number }}
+            Android APK — build #${{ steps.candidate.outputs.release_build }}
             **All supported Fire TV and Android phones:** Download StreamVault.apk.
             This exact candidate was validated on the target Firestick and modern Android phone before promotion:
             ${{ inputs.device_validation_notes }}

@@ -17,3 +17,16 @@ middle of the source.
 files and keep credentials out of model-visible output. Treat a byte-for-byte
 hash match as the publishing completion check; a successful API response alone
 is insufficient.
+
+## Complete task-set parity
+
+Before dispatching CI, compare every file changed by the completed local task
+with its remote counterpart—not just the files edited in the current turn.
+
+**Why:** A partial upload can leave new static assertions on GitHub while
+companion implementation files remain old. Local tests pass against the
+coherent workspace, but remote CI correctly fails against the mixed revision.
+
+**How to apply:** Derive the task’s changed-file list from its local commit,
+compare each local Git blob SHA with the remote file SHA, then stream/upload
+only the mismatches and hash-verify the final whole set before dispatch.
