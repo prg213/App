@@ -1129,6 +1129,7 @@ export function TVLiveLayout({
           paddingLeft: Math.max(insets.left, 12),
           paddingRight: Math.max(insets.right, 12),
         },
+        nativeSurfaceFullscreen && styles.rootFullscreen,
       ]}
     >
       {/* ═══ Panel 1 — Categories ═══════════════════════════════════════════ */}
@@ -1256,8 +1257,9 @@ export function TVLiveLayout({
               onPress={onWatchFullscreen}
             >
               {/* The real VLC TextureView belongs to the actual focusable
-                  mini-player container. Its own onLayout drives libVLC's
-                  output window, so it cannot drift from this preview box. */}
+                  mini-player container. The parent changes only its bounds;
+                  libVLC keeps one display-sized output buffer throughout the
+                  mini-player/fullscreen handoff. */}
               {isPlaybackActive && !!streamUrl && (
                 <View
                   collapsable={false}
@@ -1507,6 +1509,13 @@ const styles = StyleSheet.create({
     minHeight: 0,
     overflow: 'hidden',
   },
+  rootFullscreen: {
+    paddingTop: 0,
+    paddingBottom: 0,
+    paddingLeft: 0,
+    paddingRight: 0,
+    backgroundColor: '#000',
+  },
 
   // ── Panel 1 — Categories ──
   catPanel: {
@@ -1615,6 +1624,8 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     left: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
     zIndex: 100,
     elevation: 100,
     backgroundColor: '#000',
@@ -1648,11 +1659,13 @@ const styles = StyleSheet.create({
     borderColor: FOCUS_BORDER,
   },
   fullscreenVideoContainer: {
-    flex: 1,
     width: '100%',
-    height: '100%',
+    aspectRatio: 16 / 9,
+    maxHeight: '100%',
+    flexShrink: 1,
     borderRadius: 0,
     borderWidth: 0,
+    marginBottom: 0,
   },
   nativeSurfaceHost: {
     position: 'absolute',
@@ -1675,7 +1688,7 @@ const styles = StyleSheet.create({
   // Keep the persistent native player mounted, but remove all surrounding Live
   // TV chrome while that player is transformed to fullscreen bounds.
   fullscreenChromeHidden: {
-    opacity: 0,
+    display: 'none',
   },
 
   videoOverlay: {

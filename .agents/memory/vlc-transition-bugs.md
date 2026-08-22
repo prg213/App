@@ -26,6 +26,11 @@ reserves the permanent sidebar width. During a persistent fullscreen handoff,
 the shell must remove that sidebar and its scene margin so the preview parent
 can fill the physical window.
 
+The Live TV root also has normal overscan padding and three-panel chrome.
+Fullscreen must override that padding to zero, remove the non-video panels from
+layout, and center the persistent 16:9 preview against black so unusual TV
+viewports letterbox instead of stretching the stream.
+
 The handoff waits one layout frame before showing or removing fullscreen
 controls. This preserves the single decoder while allowing normal React Native
 layout to resize the TextureView for orientation and resolution changes.
@@ -138,6 +143,21 @@ mute can overwrite state owned by libVLC.
 **How to apply:** Keep all transition-only values on the outer
 `Animated.View`; let the native component re-render only for a real stream
 input change (URL, explicit reload/retry, pause, seek, or resize mode).
+
+## Stable libVLC output buffer for Fire TV handoffs
+
+The VLC TextureView must allocate its libVLC output window at the physical
+display size once, when the surface/player is created. Do not call
+`setWindowSize` from its React Native layout-change listener.
+
+**Why:** On Fire OS, changing the React Native parent from the mini preview to
+fullscreen is a normal TextureView resize. Calling `setWindowSize` at the same
+time forces libVLC to reconfigure its output, which can clear the texture for a
+black frame even though decoding and audio continue.
+
+**How to apply:** Keep the VLC output buffer stable and let TextureView scale
+that buffer within the changing real owner container. Preserve this as a pnpm
+patch so a clean Android build receives it; test it with a frozen pnpm install.
 
 ## Audio without preview video
 

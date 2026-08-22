@@ -8,6 +8,7 @@ const liveContext = fs.readFileSync(path.resolve(appRoot, 'context/LivePlayerCon
 const tvLayout = fs.readFileSync(path.resolve(appRoot, 'components/TVLiveLayout.tsx'), 'utf8');
 const tabLayout = fs.readFileSync(path.resolve(appRoot, 'app/(tabs)/_layout.tsx'), 'utf8');
 const androidNativePlayer = fs.readFileSync(path.resolve(appRoot, 'components/NativeStreamPlayer.android.tsx'), 'utf8');
+const vlcAndroidPatch = fs.readFileSync(path.resolve(appRoot, '../../patches/react-native-vlc-media-player@1.0.98.patch'), 'utf8');
 
 describe('Android live VLC container ownership', () => {
   it('coordinates the one persistent surface through a route-scoped handoff', () => {
@@ -16,7 +17,10 @@ describe('Android live VLC container ownership', () => {
     expect(liveContext).toContain('updateNativeSurfaceHandoffUrl');
     expect(liveContext).toContain('endNativeSurfaceHandoff');
     expect(liveContext).toContain('transitionNativeSurface');
-    expect(liveContext).toContain('requestAnimationFrame(onComplete)');
+    expect(liveContext).toContain('LayoutAnimation.configureNext');
+    expect(liveContext).toContain('NATIVE_SURFACE_TRANSITION_MS');
+    expect(liveContext).toContain('requestAnimationFrame(() =>');
+    expect(liveContext).toContain('setTimeout(onComplete, shouldAnimate ? NATIVE_SURFACE_TRANSITION_MS : 0)');
   });
 
   it('keeps the transition state free of measured bounds and animated surface overlays', () => {
@@ -65,20 +69,24 @@ describe('Android live VLC container ownership', () => {
     expect(liveTab).toContain('nativeSurfaceFullscreen && styles.fullscreenVideoContainer');
     expect(tvLayout).toContain('nativeSurfaceFullscreen && styles.previewPanelFullscreen');
     expect(tvLayout).toContain('nativeSurfaceFullscreen && styles.fullscreenVideoContainer');
+    expect(tvLayout).toContain('nativeSurfaceFullscreen && styles.rootFullscreen');
 
     for (const source of [liveTab, tvLayout]) {
       const ruleStart = source.indexOf('fullscreenVideoContainer:');
       const ruleBody = source.slice(ruleStart, source.indexOf('},', ruleStart));
       expect(ruleStart).toBeGreaterThan(-1);
-      expect(ruleBody).toContain('flex: 1');
       expect(ruleBody).toContain("width: '100%'");
-      expect(ruleBody).toContain("height: '100%'");
       expect(ruleBody).not.toMatch(/position\s*:/);
       expect(ruleBody).not.toMatch(/top\s*:/);
       expect(ruleBody).not.toMatch(/left\s*:/);
       expect(ruleBody).not.toMatch(/right\s*:/);
       expect(ruleBody).not.toMatch(/bottom\s*:/);
     }
+
+    const tvRuleStart = tvLayout.indexOf('fullscreenVideoContainer:');
+    const tvRuleBody = tvLayout.slice(tvRuleStart, tvLayout.indexOf('},', tvRuleStart));
+    expect(tvRuleBody).toContain('aspectRatio: 16 / 9');
+    expect(tvRuleBody).toContain("maxHeight: '100%'");
   });
 
   it('does not use coordinate-driven VLC props or a second persistent decoder', () => {
@@ -104,11 +112,40 @@ describe('Android live VLC container ownership', () => {
   });
 
   it('does not reapply VLC playback props for a parent-layout-only transition', () => {
-    expect(androidNativePlayer).toContain('React.memo(NativeStreamPlayerAndroid)');
+    expect(androidNativePlayer).toContain('areVlcPlaybackInputsEqual');
+    expect(androidNativePlayer).toContain('React.memo(');
+    expect(androidNativePlayer).toContain('NativeStreamPlayerAndroid,');
+    expect(androidNativePlayer).toContain('const vlcSource = React.useMemo');
+    expect(androidNativePlayer).toContain('}), [source]);');
+    expect(androidNativePlayer).toContain('source={vlcSource}');
+    expect(androidNativePlayer).toContain('key={`${source}:${reloadKey ?? 0}`}');
+    expect(androidNativePlayer).not.toContain('nativeSurfaceMode');
     expect(liveTab).toContain('onPlaying={handlePersistentVlcPlaying}');
     expect(liveTab).toContain('onBuffering={handlePersistentVlcBuffering}');
     expect(liveTab).toContain('onError={handlePersistentVlcError}');
     expect(liveTab).not.toContain('reloadKey={USES_NATIVE_VLC ?');
+  });
+
+  it('treats parent layout as presentation-only and preserves every VLC playback input', () => {
+    // The explicit comparator ignores parent style changes while requiring a
+    // remount only for a genuine stream/playback command. This lets libVLC keep
+    // its position, pause/play state, volume, mute state, and audio/subtitle
+    // selection internally while fullscreen changes the owner bounds.
+    for (const input of [
+      'previous.source === next.source',
+      'previous.reloadKey === next.reloadKey',
+      'previous.paused === next.paused',
+      'previous.repeat === next.repeat',
+      'previous.resizeMode === next.resizeMode',
+      'previous.seekPosition === next.seekPosition',
+    ]) {
+      expect(androidNativePlayer).toContain(input);
+    }
+    expect(androidNativePlayer).toContain('previous.onPlaying === next.onPlaying');
+    expect(androidNativePlayer).toContain('previous.onProgress === next.onProgress');
+    expect(androidNativePlayer).toContain('previous.onError === next.onError');
+    expect(androidNativePlayer).toContain('volume, and mute state');
+    expect(androidNativePlayer).toContain('selection, subtitle selection');
   });
 
   it('keeps status overlays above the native child without intercepting its control', () => {
@@ -136,7 +173,9 @@ describe('Android live VLC container ownership', () => {
     expect(pointerMatches.length).toBeGreaterThanOrEqual(5);
     expect(opacityMatches.length).toBeGreaterThanOrEqual(5);
     expect(tvLayout).toContain('fullscreenChromeHidden: {');
-    expect(tvLayout).toContain('opacity: 0');
+    expect(tvLayout).toContain("display: 'none'");
+    expect(tvLayout).toContain('rootFullscreen: {');
+    expect(tvLayout).toContain("backgroundColor: '#000'");
   });
 
   it('releases the Fire TV tab shell so the persistent parent can fill the physical viewport', () => {
@@ -146,6 +185,16 @@ describe('Android live VLC container ownership', () => {
     );
     expect(tabLayout).toContain('nativeSurfaceFullscreen ? null : <Sidebar {...props} />');
     expect(tabLayout).toContain('marginLeft: nativeSurfaceFullscreen ? 0 : SIDEBAR_W');
+  });
+
+  it('keeps the libVLC output buffer stable while the React Native parent expands', () => {
+    const nativeVlcChange = vlcAndroidPatch.slice(
+      vlcAndroidPatch.indexOf('ReactVlcPlayerView.java'),
+    );
+    expect(nativeVlcChange).toContain('Keep the libVLC output buffer stable');
+    expect(nativeVlcChange).toContain('Allocate the output at the physical display size once');
+    expect(nativeVlcChange).toMatch(/\+\s+vlcOut\.setWindowSize\(outputWidth, outputHeight\)/);
+    expect(nativeVlcChange).toMatch(/-\s+vlcOut\.setWindowSize\(mVideoWidth, mVideoHeight\)/);
   });
 
   it('returns the same surface to mini mode before the controls-only route closes', () => {
@@ -181,6 +230,64 @@ describe('Android live VLC container ownership', () => {
       expect(block).toContain('beginNativeSurfaceHandoff');
       expect(block).toContain("transitionNativeSurface('fullscreen', navigate)");
     }
+  });
+
+  it('does not reload playback or raise a black cover during a native fullscreen entry', () => {
+    const entryStart = liveTab.indexOf('const handleWatch = useCallback');
+    const entryBlock = liveTab.slice(entryStart, liveTab.indexOf('const handleMiniPlayerPress', entryStart));
+
+    expect(entryStart).toBeGreaterThan(-1);
+    expect(entryBlock).toContain("transitionNativeSurface('fullscreen', navigate)");
+    expect(entryBlock).not.toContain('setVlcReloadKey');
+    expect(entryBlock).not.toContain('player.replace(');
+    expect(entryBlock).not.toContain('flashOverlayOpacity.setValue');
+
+    // The active React Native layout resize must not ask libVLC to recreate
+    // its video output. That is the Fire TV black-frame regression we guard.
+    const layoutStart = vlcAndroidPatch.indexOf('onLayoutChange(View view');
+    const layoutBlock = vlcAndroidPatch.slice(layoutStart, vlcAndroidPatch.indexOf('};', layoutStart));
+    const activeLayoutLines = layoutBlock
+      .split('\n')
+      .filter((line) => !line.startsWith('-'))
+      .join('\n');
+    expect(layoutStart).toBeGreaterThan(-1);
+    expect(activeLayoutLines).not.toContain('setWindowSize');
+    expect(activeLayoutLines).not.toContain('setAspectRatio');
+  });
+
+  it('expands the channel already playing rather than a separately highlighted row', () => {
+    for (const entryPoint of [
+      'const handleWatch = useCallback',
+      'const handleTVWatch = useCallback',
+    ]) {
+      const start = liveTab.indexOf(entryPoint);
+      const block = liveTab.slice(start, start + 2800);
+      expect(start).toBeGreaterThan(-1);
+      expect(block).toContain('const activeChannel = playingChannel ?? selectedChannel');
+      expect(block).toContain('url: activeChannel.streamUrl');
+      expect(block).toContain('beginNativeSurfaceHandoff(activeChannel.streamUrl)');
+      expect(block).not.toContain('setVlcReloadKey');
+      expect(block).not.toContain('player.replace(');
+    }
+  });
+
+  it('retains the active channel metadata and cached guide identity through return', () => {
+    const backStart = fullscreenPlayer.indexOf('const handleBackLive = useCallback');
+    const back = fullscreenPlayer.slice(backStart, backStart + 3800);
+
+    for (const metadataField of [
+      'num: currentEntry?.num',
+      'tvArchive: currentEntry?.tvArchive',
+      'tvArchiveDuration: currentEntry?.tvArchiveDuration',
+      'epgId:     activeEpgId',
+      'groupTitle: currentEntry?.groupTitle',
+    ]) {
+      expect(back).toContain(metadataField);
+    }
+
+    expect(fullscreenPlayer).toContain("queryKey: ['xmltv-epg', credentials]");
+    expect(fullscreenPlayer).toContain('const { currentProg, nextProg } = React.useMemo');
+    expect(fullscreenPlayer).toContain('const progs = epgMap.get(activeEpgId) ?? []');
   });
 
   it('does not collapse the persistent surface while fullscreen navigation is in flight', () => {

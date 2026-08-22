@@ -20,3 +20,46 @@ index 0e5cc4f50661440d6c6d73941037aa61d2981303..ca92dc036e78f88563ba46be4dbb8723
  
  repositories {
      maven {
+diff --git a/android/src/main/java/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView.java b/android/src/main/java/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView.java
+--- a/android/src/main/java/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView.java
++++ b/android/src/main/java/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView.java
+@@ -204,15 +204,11 @@ class ReactVlcPlayerView extends TextureView implements
+         @Override
+         public void onLayoutChange(View view, int i, int i1, int i2, int i3, int i4, int i5, int i6, int i7) {
+             if (view.getWidth() > 0 && view.getHeight() > 0) {
+-                mVideoWidth = view.getWidth(); // 获取宽度
+-                mVideoHeight = view.getHeight(); // 获取高度
+-                if (mMediaPlayer != null) {
+-                    IVLCVout vlcOut = mMediaPlayer.getVLCVout();
+-                    vlcOut.setWindowSize(mVideoWidth, mVideoHeight);
+-                    if (autoAspectRatio) {
+-                        mMediaPlayer.setAspectRatio(mVideoWidth + ":" + mVideoHeight);
+-                    }
+-                }
++                // Keep the libVLC output buffer stable while React Native changes
++                // the parent bounds. Resizing the VLC output here clears the
++                // TextureView on Fire TV during mini-player/fullscreen handoffs.
++                mVideoWidth = view.getWidth();
++                mVideoHeight = view.getHeight();
+             }
+         }
+     };
+@@ -413,10 +409,16 @@ class ReactVlcPlayerView extends TextureView implements
+             });
+             //this.getHolder().setKeepScreenOn(true);
+             IVLCVout vlcOut = mMediaPlayer.getVLCVout();
+             if (mVideoWidth > 0 && mVideoHeight > 0) {
+-                vlcOut.setWindowSize(mVideoWidth, mVideoHeight);
++                // Allocate the output at the physical display size once. The
++                // TextureView scales this stable buffer inside its current
++                // parent, so a parent-only fullscreen transition never asks
++                // libVLC to tear down and recreate its video output.
++                int outputWidth = screenWidth > 0 ? screenWidth : mVideoWidth;
++                int outputHeight = screenHeight > 0 ? screenHeight : mVideoHeight;
++                vlcOut.setWindowSize(outputWidth, outputHeight);
+                 if (autoAspectRatio) {
+-                    mMediaPlayer.setAspectRatio(mVideoWidth + ":" + mVideoHeight);
++                    mMediaPlayer.setAspectRatio(outputWidth + ":" + outputHeight);
+                 }
+                 //mMediaPlayer.setAspectRatio(mVideoWidth+":"+mVideoHeight);
+             }

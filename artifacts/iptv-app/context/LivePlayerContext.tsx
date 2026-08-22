@@ -6,12 +6,14 @@
  * changing `nativeSurfaceMode` changes the owning container's layout, never
  * the native view's coordinates or decoder.
  */
-import React, { createContext, useCallback, useContext, useRef, useState } from 'react';
-import { View } from 'react-native';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { LayoutAnimation, Platform, UIManager, View } from 'react-native';
 import { useVideoPlayer } from 'expo-video';
 import type { VideoPlayer } from 'expo-video';
 
 export type NativeSurfaceMode = 'mini' | 'fullscreen' | 'hidden';
+
+const NATIVE_SURFACE_TRANSITION_MS = 240;
 
 export interface NativeSurfaceHandoff {
   id: string;
@@ -72,6 +74,15 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
   const [nativeSurfaceHandoff, setNativeSurfaceHandoff] = useState<NativeSurfaceHandoff | null>(null);
   const nextNativeSurfaceHandoffIdRef = useRef(0);
 
+  // Android requires this opt-in before LayoutAnimation can interpolate the
+  // existing owner’s bounds. It changes View layout only; it never touches
+  // the VLC TextureView lifecycle.
+  useEffect(() => {
+    if (Platform.OS === 'android') {
+      UIManager.setLayoutAnimationEnabledExperimental?.(true);
+    }
+  }, []);
+
   const beginNativeSurfaceHandoff = useCallback((url: string) => {
     const id = String(++nextNativeSurfaceHandoffIdRef.current);
     setNativeSurfaceHandoff({ id, url });
@@ -94,14 +105,27 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
     mode: NativeSurfaceMode,
     onComplete: () => void = () => {},
   ) => {
+    const shouldAnimate = Platform.OS === 'android' && mode !== 'hidden';
+    if (shouldAnimate) {
+      LayoutAnimation.configureNext({
+        duration: NATIVE_SURFACE_TRANSITION_MS,
+        create: { type: LayoutAnimation.Types.easeInEaseOut, property: 'opacity' },
+        update: { type: LayoutAnimation.Types.easeInEaseOut },
+        delete: { type: LayoutAnimation.Types.easeInEaseOut, property: 'opacity' },
+      });
+    }
     setNativeSurfaceMode(mode);
     // The mounted VLC child remains an absolute-fill child of its owner. Wait
-    // for its parent layout to commit before revealing or removing controls.
+    // for the parent layout animation to finish before revealing or removing
+    // the transparent controls route. This keeps the same visible surface on
+    // screen for the entire expansion and contraction.
     if (mode === 'hidden') {
       onComplete();
       return;
     }
-    requestAnimationFrame(onComplete);
+    requestAnimationFrame(() => {
+      setTimeout(onComplete, shouldAnimate ? NATIVE_SURFACE_TRANSITION_MS : 0);
+    });
   }, []);
 
   // Expo-video uses these entry points too. They never measure or move a

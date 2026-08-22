@@ -1,6 +1,6 @@
 import React from 'react';
 import { useKeepAwake } from 'expo-keep-awake';
-import { VLCPlayer } from 'react-native-vlc-media-player';
+import { VLCPlayer, type VLCPlayerSource } from 'react-native-vlc-media-player';
 import type { NativeStreamPlayerProps } from './NativeStreamPlayer';
 
 /**
@@ -23,6 +23,19 @@ function NativeStreamPlayerAndroid({
   onError,
   onProgress,
 }: NativeStreamPlayerProps) {
+  // The native manager receives a ReadableMap. Keep that map identity stable
+  // across layout-only parent renders; a new source object is only valid when
+  // the URL itself changes.
+  const vlcSource = React.useMemo<VLCPlayerSource>(() => ({
+    uri: source,
+    initType: 2,
+    initOptions: [
+      '--network-caching=1200',
+      '--clock-jitter=0',
+      '--clock-synchro=0',
+    ],
+  }), [source]);
+
   // Fire TV ignores this harmlessly; on phones it prevents the screen from
   // timing out while the viewer is actively watching the stream. Do not share
   // a tag with the mini-player/fullscreen sibling: Expo removes a tag when
@@ -33,15 +46,7 @@ function NativeStreamPlayerAndroid({
     <VLCPlayer
       key={`${source}:${reloadKey ?? 0}`}
       style={style}
-      source={{
-        uri: source,
-        initType: 2,
-        initOptions: [
-          '--network-caching=1200',
-          '--clock-jitter=0',
-          '--clock-synchro=0',
-        ],
-      }}
+      source={vlcSource}
       autoplay
       paused={paused}
       repeat={repeat}
@@ -76,10 +81,39 @@ function NativeStreamPlayerAndroid({
 }
 
 /**
+ * A mini/fullscreen handoff changes only the owner container's bounds. Ignore
+ * React props that are unrelated to libVLC playback (the parent style and the
+ * Expo player adapter) so a layout-only render cannot re-send volume, mute,
+ * pause, seek, source, or track-related values to the native view.
+ *
+ * libVLC therefore retains its current decoder position, playing state, audio
+ * selection, subtitle selection, volume, and mute state until the user changes
+ * one of the real playback inputs below.
+ */
+function areVlcPlaybackInputsEqual(
+  previous: Readonly<NativeStreamPlayerProps>,
+  next: Readonly<NativeStreamPlayerProps>,
+) {
+  return previous.source === next.source
+    && previous.reloadKey === next.reloadKey
+    && previous.paused === next.paused
+    && previous.repeat === next.repeat
+    && previous.resizeMode === next.resizeMode
+    && previous.seekPosition === next.seekPosition
+    && previous.onPlaying === next.onPlaying
+    && previous.onBuffering === next.onBuffering
+    && previous.onError === next.onError
+    && previous.onProgress === next.onProgress;
+}
+
+/**
  * A mini ↔ fullscreen handoff changes only the parent surface bounds. Keeping
  * this component memoized means those layout-only renders never send a fresh
  * source, volume, mute, pause, track, or seek prop set to the native VLC view.
  * The memo intentionally releases when a real playback input changes (URL,
  * reload key, pause state, seek, or resize mode).
  */
-export const NativeStreamPlayer = React.memo(NativeStreamPlayerAndroid);
+export const NativeStreamPlayer = React.memo(
+  NativeStreamPlayerAndroid,
+  areVlcPlaybackInputsEqual,
+);

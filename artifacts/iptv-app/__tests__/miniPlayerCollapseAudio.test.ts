@@ -59,15 +59,16 @@ describe('live fullscreen return ownership', () => {
     expect(back).toContain('router.back()');
   });
 
-  it('waits for a direct renderer to unmount before routing back to Live TV', () => {
+  it('waits for the persistent surface to contract before routing back to Live TV', () => {
     const transitionStart = context.indexOf('const transitionNativeSurface = useCallback');
-    const transition = context.slice(transitionStart, transitionStart + 900);
+    const transition = context.slice(transitionStart, transitionStart + 1400);
     const collapseStart = context.indexOf('const triggerCollapse = useCallback');
     const collapse = context.slice(collapseStart, collapseStart + 300);
 
     expect(transitionStart).toBeGreaterThan(-1);
     expect(transition).toContain('setNativeSurfaceMode(mode)');
-    expect(transition).toContain('requestAnimationFrame(onComplete)');
+    expect(transition).toContain('LayoutAnimation.configureNext');
+    expect(transition).toContain('setTimeout(onComplete, shouldAnimate ? NATIVE_SURFACE_TRANSITION_MS : 0)');
     expect(transition).not.toContain('measureInWindow');
     expect(transition).not.toContain('Animated.');
     expect(collapseStart).toBeGreaterThan(-1);
@@ -80,5 +81,18 @@ describe('live fullscreen return ownership', () => {
     const directCollapse = back.indexOf('triggerCollapse(() => router.back())');
     expect(directUnmount).toBeGreaterThan(-1);
     expect(directCollapse).toBeGreaterThan(directUnmount);
+  });
+
+  it('returns without showing a loading state or replacing the persistent stream', () => {
+    const returnStart = liveTab.indexOf('const returnedChannel = consumePendingLivePlayerReturn()');
+    const returnBlock = liveTab.slice(returnStart, returnStart + 1100);
+
+    expect(returnStart).toBeGreaterThan(-1);
+    expect(returnBlock).toContain('setIsBuffering(false)');
+    expect(returnBlock).toContain('setPlayingChannel(returnedChannel)');
+    expect(returnBlock).toContain('setSelectedChannel(returnedChannel)');
+    expect(returnBlock).not.toContain('setVlcReloadKey');
+    expect(returnBlock).not.toContain('player.replace(');
+    expect(returnBlock).not.toContain('player.pause(');
   });
 });
