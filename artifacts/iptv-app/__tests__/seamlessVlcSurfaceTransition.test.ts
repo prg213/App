@@ -112,7 +112,9 @@ describe('Android live VLC container ownership', () => {
   });
 
   it('does not reapply VLC playback props for a parent-layout-only transition', () => {
-    expect(androidNativePlayer).toContain('React.memo(NativeStreamPlayerAndroid)');
+    expect(androidNativePlayer).toContain('areVlcPlaybackInputsEqual');
+    expect(androidNativePlayer).toContain('React.memo(');
+    expect(androidNativePlayer).toContain('NativeStreamPlayerAndroid,');
     expect(androidNativePlayer).toContain('const vlcSource = React.useMemo');
     expect(androidNativePlayer).toContain('}), [source]);');
     expect(androidNativePlayer).toContain('source={vlcSource}');
@@ -122,6 +124,28 @@ describe('Android live VLC container ownership', () => {
     expect(liveTab).toContain('onBuffering={handlePersistentVlcBuffering}');
     expect(liveTab).toContain('onError={handlePersistentVlcError}');
     expect(liveTab).not.toContain('reloadKey={USES_NATIVE_VLC ?');
+  });
+
+  it('treats parent layout as presentation-only and preserves every VLC playback input', () => {
+    // The explicit comparator ignores parent style changes while requiring a
+    // remount only for a genuine stream/playback command. This lets libVLC keep
+    // its position, pause/play state, volume, mute state, and audio/subtitle
+    // selection internally while fullscreen changes the owner bounds.
+    for (const input of [
+      'previous.source === next.source',
+      'previous.reloadKey === next.reloadKey',
+      'previous.paused === next.paused',
+      'previous.repeat === next.repeat',
+      'previous.resizeMode === next.resizeMode',
+      'previous.seekPosition === next.seekPosition',
+    ]) {
+      expect(androidNativePlayer).toContain(input);
+    }
+    expect(androidNativePlayer).toContain('previous.onPlaying === next.onPlaying');
+    expect(androidNativePlayer).toContain('previous.onProgress === next.onProgress');
+    expect(androidNativePlayer).toContain('previous.onError === next.onError');
+    expect(androidNativePlayer).toContain('volume, and mute state');
+    expect(androidNativePlayer).toContain('selection, subtitle selection');
   });
 
   it('keeps status overlays above the native child without intercepting its control', () => {
@@ -229,6 +253,41 @@ describe('Android live VLC container ownership', () => {
     expect(layoutStart).toBeGreaterThan(-1);
     expect(activeLayoutLines).not.toContain('setWindowSize');
     expect(activeLayoutLines).not.toContain('setAspectRatio');
+  });
+
+  it('expands the channel already playing rather than a separately highlighted row', () => {
+    for (const entryPoint of [
+      'const handleWatch = useCallback',
+      'const handleTVWatch = useCallback',
+    ]) {
+      const start = liveTab.indexOf(entryPoint);
+      const block = liveTab.slice(start, start + 2800);
+      expect(start).toBeGreaterThan(-1);
+      expect(block).toContain('const activeChannel = playingChannel ?? selectedChannel');
+      expect(block).toContain('url: activeChannel.streamUrl');
+      expect(block).toContain('beginNativeSurfaceHandoff(activeChannel.streamUrl)');
+      expect(block).not.toContain('setVlcReloadKey');
+      expect(block).not.toContain('player.replace(');
+    }
+  });
+
+  it('retains the active channel metadata and cached guide identity through return', () => {
+    const backStart = fullscreenPlayer.indexOf('const handleBackLive = useCallback');
+    const back = fullscreenPlayer.slice(backStart, backStart + 3800);
+
+    for (const metadataField of [
+      'num: currentEntry?.num',
+      'tvArchive: currentEntry?.tvArchive',
+      'tvArchiveDuration: currentEntry?.tvArchiveDuration',
+      'epgId:     activeEpgId',
+      'groupTitle: currentEntry?.groupTitle',
+    ]) {
+      expect(back).toContain(metadataField);
+    }
+
+    expect(fullscreenPlayer).toContain("queryKey: ['xmltv-epg', credentials]");
+    expect(fullscreenPlayer).toContain('const { currentProg, nextProg } = React.useMemo');
+    expect(fullscreenPlayer).toContain('const progs = epgMap.get(activeEpgId) ?? []');
   });
 
   it('does not collapse the persistent surface while fullscreen navigation is in flight', () => {
