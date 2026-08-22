@@ -27,17 +27,42 @@ describe('Android live VLC surface transitions', () => {
     expect(watchBlock).toMatch(/if\s*\(\s*USES_NATIVE_VLC\s*\)/);
   });
 
-  it('keeps one root-level Android VLC surface without videoKey in its reload key', () => {
-    // The root-level surface is deliberately outside both mini-player
-    // containers so resize/reposition can never unmount or clip libVLC.
-    expect(liveTab).toContain('Root-level VLC surface (TV layout)');
-    expect(liveTab).toContain('Root-level VLC surface (phone layout)');
-    const rootVlcReloadKeys = liveTab.match(/reloadKey=\{vlcReloadKey\}/g) ?? [];
-    expect(rootVlcReloadKeys.length).toBe(2);
+  it('keeps one Android VLC surface inside the actual mini-player host', () => {
+    // The native TextureView must be a child of the focusable mini-player,
+    // never a separately-positioned sibling that can drift from its bounds.
+    expect(liveTab).toContain('The native VLC surface always fills this real focusable');
+    expect(tvLayout).toContain('The real VLC TextureView belongs to the actual focusable');
+    expect(liveTab).not.toContain('Root-level VLC surface');
+    const persistentReloadKeys = liveTab.match(/reloadKey=\{vlcReloadKey\}/g) ?? [];
+    expect(persistentReloadKeys.length).toBe(1);
     expect(liveTab).not.toContain('reloadKey={USES_NATIVE_VLC ? vlcReloadKey');
-    // Android TV receives the root-level instance from index.tsx; this layout
-    // must never create a second VLC player for the same fullscreen handoff.
-    expect(tvLayout).toContain("Platform.OS !== 'android' && isPlaybackActive");
+    expect(tvLayout).toContain("Platform.OS === 'android' ? vlcReloadKey");
+  });
+
+  it('does not mount a competing VLC surface during a persistent Live TV handoff', () => {
+    const tvVlcMounts = tvLayout.match(/<NativeStreamPlayer/g) ?? [];
+    const fullscreenMountStart = fullscreenPlayer.indexOf('videoMounted && !usesPersistentNativeSurface');
+    const fullscreenMountBlock = fullscreenPlayer.slice(fullscreenMountStart, fullscreenMountStart + 900);
+    const contextOverlayStart = liveContext.indexOf('{overlayVisible && (');
+    const contextOverlayBlock = liveContext.slice(contextOverlayStart, contextOverlayStart + 1200);
+
+    // Fire TV returns before the phone layout is rendered, leaving one concrete
+    // VLC renderer: the absolute-fill child of the visible TV mini-player.
+    expect(liveTab).toContain('if (Platform.isTV) {');
+    expect(tvVlcMounts).toHaveLength(1);
+    expect(tvLayout).toContain('isPlaybackActive && !!streamUrl && (');
+    expect(tvLayout).toContain('style={[styles.nativeSurfaceHost, StyleSheet.absoluteFill]}');
+
+    // A Live TV handoff makes the fullscreen route controls-only. Its separate
+    // renderer is for direct/non-handoff launches and cannot mount at the same
+    // time as the mini-player VLC owner.
+    expect(fullscreenMountBlock).toContain('<NativeStreamPlayer');
+    expect(fullscreenMountBlock).toContain('!usesPersistentNativeSurface');
+
+    // The legacy root-level animation overlay is an Expo VideoView, not a
+    // hidden VLC surface, and the persistent VLC transition does not use it.
+    expect(contextOverlayBlock).toContain('<VideoView');
+    expect(contextOverlayBlock).not.toContain('<NativeStreamPlayer');
   });
 
   it('does not reapply VLC playback props for a layout-only transition', () => {
@@ -51,40 +76,42 @@ describe('Android live VLC surface transitions', () => {
     expect(liveTab).toContain('onError={handlePersistentVlcError}');
   });
 
-  it('rebinds the visible preview TextureView after a completed collapse without recreating VLC', () => {
-    // libVLC's Android TextureView only forwards its output size when native
-    // layout changes. This route-return repair forces that layout path from the
-    // measured preview rectangle; it must never change the source/key or mount
-    // a replacement native view while audio is still playing.
-    const rebindStart = liveTab.indexOf('const rebindPersistentVlcPreviewSurface');
-    const rebindEnd = liveTab.indexOf('\n\n  useEffect(() => () =>', rebindStart);
-    const rebindBlock = liveTab.slice(rebindStart, rebindEnd);
-    expect(rebindStart).toBeGreaterThan(-1);
-    expect(liveTab).toContain('rebindPreviewSurfaceOnReturnRef.current = true');
-    expect(rebindBlock).toContain('vlcWidth.setValue(w + 1)');
-    expect(rebindBlock).toContain('vlcHeight.setValue(h + 1)');
-    expect(liveTab).toContain('requestAnimationFrame(rebindPersistentVlcPreviewSurface)');
-    expect(rebindBlock).not.toContain('setVlcReloadKey');
-    expect(rebindBlock).not.toContain('player.replace(');
+  it('lets the real container layout resize VLC without pixel rebinds', () => {
+    expect(liveTab).not.toContain('measureMiniPlayerInSurfaceRoot');
+    expect(liveTab).not.toContain('rebindPersistentVlcPreviewSurface');
+    expect(liveTab).not.toContain('vlcWidth.setValue');
+    expect(liveTab).not.toContain('vlcHeight.setValue');
+    expect(liveTab).toContain('requestAnimationFrame(onComplete)');
   });
 
-  it('keeps the mounted VLC TextureView visible, measurable, and above Live TV chrome', () => {
-    // A custom native view needs a real, non-flattened parent. Explicit
-    // stacking prevents audio-only playback when an older Fire OS compositor
-    // paints the otherwise-live TextureView behind the restored preview panel.
-    const surfaceSection = liveTab.slice(
-      liveTab.indexOf('Root-level VLC surface (TV layout)'),
-      liveTab.indexOf('D-pad focus ring', liveTab.indexOf('Root-level VLC surface (TV layout)')),
-    );
-    expect(surfaceSection).toContain('collapsable={false}');
-    expect(surfaceSection).toMatch(/width:\s*vlcWidth/);
-    expect(surfaceSection).toMatch(/height:\s*vlcHeight/);
-    expect(surfaceSection).toMatch(/top:\s*vlcTop/);
-    expect(surfaceSection).toMatch(/left:\s*vlcLeft/);
-    expect(surfaceSection).toContain("overflow: 'visible'");
-    expect(surfaceSection).toContain('opacity: 1');
-    expect(surfaceSection).toMatch(/zIndex:\s*100/);
-    expect(surfaceSection).toMatch(/elevation:\s*100/);
+  it('keeps the mounted VLC TextureView inside its real preview host', () => {
+    expect(liveTab).toContain('styles.nativeSurfaceHost');
+    expect(liveTab).toContain('StyleSheet.absoluteFill');
+    expect(liveTab).toContain('nativeSurfaceFullscreen && styles.previewPanelFullscreen');
+    expect(liveTab).not.toMatch(/top:\s*vlcTop/);
+    expect(liveTab).not.toMatch(/left:\s*vlcLeft/);
+    expect(liveTab).not.toMatch(/width:\s*vlcWidth/);
+    expect(liveTab).not.toMatch(/height:\s*vlcHeight/);
+    expect(tvLayout).toContain('styles.nativeSurfaceHost');
+    expect(tvLayout).toContain('nativeSurfaceFullscreen && styles.nativeSurfaceFullscreen');
+    expect(tvLayout).toContain('nativeSurfaceFullscreen && styles.previewPanelFullscreen');
+    expect(tvLayout).toContain('style={[styles.nativeSurfaceHost, StyleSheet.absoluteFill]}');
+  });
+
+  it('does not position the native VLC surface with screen coordinates', () => {
+    for (const forbidden of [
+      'nativeSurfaceRootRef',
+      'measureMiniPlayerInSurfaceRoot',
+      'toValue: -rect.top',
+      'toValue: -rect.left',
+      'vlcTop',
+      'vlcLeft',
+      'vlcWidth',
+      'vlcHeight',
+    ]) {
+      expect(liveTab).not.toContain(forbidden);
+    }
+    expect(liveTab).toContain('onPress={handleMiniPlayerPress}');
   });
 
   it('hides Live TV panels while the persistent surface is fullscreen', () => {
@@ -127,19 +154,16 @@ describe('Android live VLC surface transitions', () => {
     expect(ruleBody).not.toMatch(/visibility\s*:/);
   });
 
-  it('nativeSurfaceFullscreen style carries both zIndex and elevation for cross-generation compositor compatibility', () => {
-    // elevation (API ≥ 21, Fire OS 5+) controls the Android shadow compositor
-    // layer ordering on modern Fire TV Stick 3rd gen / Fire TV Cube.
-    // zIndex is the only effective ordering signal on pre-Lollipop surfaces
-    // (Fire TV Stick 1st gen, Fire OS 3, Android 4.2).
-    // Both must be present so the VLC texture sits above any residual chrome
-    // on every hardware generation — opacity:0 is the primary guard but
-    // belt-and-suspenders compositor ordering prevents edge-case bleed-through.
-    const styleStart = tvLayout.indexOf('nativeSurfaceFullscreen:');
+  it('expands the preview container above surrounding TV chrome', () => {
+    const styleStart = tvLayout.indexOf('previewPanelFullscreen:');
     expect(styleStart).toBeGreaterThan(-1);
     const ruleBody = tvLayout.slice(styleStart, tvLayout.indexOf('},', styleStart));
     expect(ruleBody).toMatch(/zIndex\s*:/);
     expect(ruleBody).toMatch(/elevation\s*:/);
+    expect(ruleBody).toMatch(/top:\s*0/);
+    expect(ruleBody).toMatch(/right:\s*0/);
+    expect(ruleBody).toMatch(/bottom:\s*0/);
+    expect(ruleBody).toMatch(/left:\s*0/);
   });
 
   it('catchup row carries an explicit focusable guard alongside pointerEvents — TV remote focus is not blocked by pointerEvents alone on older Fire OS', () => {
@@ -181,15 +205,16 @@ describe('Android live VLC surface transitions', () => {
     expect(loadingBlock).toContain('Connecting to stream');
   });
 
-  it('only removes fullscreen after the native surface reaches mini bounds', () => {
+  it('removes fullscreen only after the container layout gets a frame to commit', () => {
     const transitionStart = liveTab.indexOf('const runNativeSurfaceTransition');
     const transitionBlock = liveTab.slice(transitionStart, transitionStart + 4200);
     const backStart = fullscreenPlayer.indexOf('const handleBackLive = useCallback');
     const backBlock = fullscreenPlayer.slice(backStart, backStart + 5200);
 
-    // Interrupted Animated.timing callbacks report finished:false. They must
-    // never call the route-pop completion callback early.
-    expect(transitionBlock).toContain('({ finished }) => { if (finished) onComplete(); }');
+    expect(transitionBlock).toContain('requestAnimationFrame(onComplete)');
+    expect(liveContext).toContain('const [nativeSurfaceTransitioning, setNativeSurfaceTransitioning] = useState(false)');
+    expect(liveContext).toContain('setNativeSurfaceTransitioning(true);');
+    expect(liveContext).toContain('setNativeSurfaceTransitioning(false);');
     // A rapid Firestick double-BACK must not start an overlapping collapse.
     expect(backBlock).toContain('persistentSurfaceBackInFlightRef.current) return');
     expect(backBlock).toContain('persistentSurfaceBackInFlightRef.current = true');
@@ -198,7 +223,8 @@ describe('Android live VLC surface transitions', () => {
 
   it('does not reload, replace, or stop the stream in either transition path', () => {
     const watchStart = liveTab.indexOf('const handleWatch = useCallback');
-    const watchBlock = liveTab.slice(watchStart, watchStart + 3000);
+    const watchEnd = liveTab.indexOf('const handleMiniPlayerPress = useCallback', watchStart);
+    const watchBlock = liveTab.slice(watchStart, watchEnd);
     const backStart = fullscreenPlayer.indexOf('const handleBackLive = useCallback');
     const backBlock = fullscreenPlayer.slice(backStart, backStart + 5200);
 
@@ -232,6 +258,52 @@ describe('Android live VLC surface transitions', () => {
     // The persistent VLC container has pointerEvents=none; focus belongs to
     // the mini-player Pressable, so remote navigation is independent of video.
     expect(liveTab).toContain('pointerEvents="none"');
+  });
+
+  it('makes the actual Fire TV mini-player remotely focusable and visually focused', () => {
+    expect(tvLayout).toContain("focusable={Platform.isTV ? isPlaybackActive && !!streamUrl : true}");
+    expect(tvLayout).toContain('onPress={onWatchFullscreen}');
+    expect(tvLayout).toContain('chRefMap.current.forEach((node) => {');
+    expect(tvLayout).toContain('patch(node, { nextFocusRight: previewH });');
+    expect(tvLayout).toContain('nextFocusRight: previewH');
+    expect(tvLayout).toContain('previewFocused && !nativeSurfaceFullscreen');
+    expect(tvLayout).toContain('styles.videoFocusRing');
+    expect(tvLayout).toContain('borderColor: FOCUS_BORDER');
+    expect(tvLayout).toContain('shadowColor: FOCUS_BORDER');
+  });
+
+  it('supports repeated Fire TV mini-player → fullscreen → BACK → mini-player cycles', () => {
+    const backStart = fullscreenPlayer.indexOf('const handleBackLive = useCallback');
+    const backBlock = fullscreenPlayer.slice(backStart, backStart + 5200);
+    const restoreListenerStart = liveTab.indexOf("DeviceEventEmitter.addListener('live:restore-preview-focus'");
+    const restoreListener = liveTab.slice(restoreListenerStart, restoreListenerStart + 420);
+    const restoreFocusStart = liveTab.indexOf('// Firestick focus is restored after');
+    const restoreFocusBlock = liveTab.slice(restoreFocusStart, restoreFocusStart + 1000);
+    const tvWatchStart = liveTab.indexOf('const handleTVWatch = useCallback');
+    const tvWatchBlock = liveTab.slice(tvWatchStart, tvWatchStart + 1800);
+
+    // Every physical BACK publishes the channel that is actively playing now,
+    // returns the existing VLC surface to mini mode, then leaves fullscreen.
+    expect(backBlock).toContain("DEE.emit('live:setPlayingChannel', returnChannel)");
+    expect(backBlock).toContain("transitionNativeSurface('mini', returnToLive)");
+    expect(backBlock).toContain("DEE.emit('live:restore-preview-focus')");
+    expect(backBlock).not.toContain('setNativeSurfaceUrl(');
+    expect(backBlock).not.toContain('setVlcReloadKey');
+    expect(backBlock).not.toContain('player.replace(');
+
+    // The event sets the restore flag every time it is received. The focus
+    // effect clears it only after scheduling focus and retries the real player
+    // Pressable after Fire OS has committed the returned screen.
+    expect(restoreListener).toContain('restorePreviewFocusOnReturnRef.current = true');
+    expect(restoreFocusBlock).toContain('restorePreviewFocusOnReturnRef.current = false');
+    expect(restoreFocusBlock).toContain('requestTvFocus(miniPlayerRef.current)');
+    expect(restoreFocusBlock).toContain('setTimeout(() => requestTvFocus(miniPlayerRef.current), 180)');
+
+    // Once focus is back, OK reuses the same normal TV entry point for the next
+    // cycle rather than requiring touch or mounting another player.
+    expect(tvWatchBlock).toContain('beginNativeSurfaceHandoff(selectedChannel.streamUrl)');
+    expect(tvWatchBlock).toContain("transitionNativeSurface('fullscreen', navigate)");
+    expect(tvLayout).toContain('onPress={onWatchFullscreen}');
   });
 
   it('publishes native ownership before every Android fullscreen entry point', () => {
