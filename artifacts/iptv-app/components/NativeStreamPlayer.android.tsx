@@ -1,6 +1,6 @@
 import React from 'react';
 import { useKeepAwake } from 'expo-keep-awake';
-import { VLCPlayer } from 'react-native-vlc-media-player';
+import { VLCPlayer, type VLCPlayerSource } from 'react-native-vlc-media-player';
 import type { NativeStreamPlayerProps } from './NativeStreamPlayer';
 
 /**
@@ -23,6 +23,19 @@ function NativeStreamPlayerAndroid({
   onError,
   onProgress,
 }: NativeStreamPlayerProps) {
+  // The native manager receives a ReadableMap. Keep that map identity stable
+  // across layout-only parent renders; a new source object is only valid when
+  // the URL itself changes.
+  const vlcSource = React.useMemo<VLCPlayerSource>(() => ({
+    uri: source,
+    initType: 2,
+    initOptions: [
+      '--network-caching=1200',
+      '--clock-jitter=0',
+      '--clock-synchro=0',
+    ],
+  }), [source]);
+
   // Fire TV ignores this harmlessly; on phones it prevents the screen from
   // timing out while the viewer is actively watching the stream. Do not share
   // a tag with the mini-player/fullscreen sibling: Expo removes a tag when
@@ -33,15 +46,7 @@ function NativeStreamPlayerAndroid({
     <VLCPlayer
       key={`${source}:${reloadKey ?? 0}`}
       style={style}
-      source={{
-        uri: source,
-        initType: 2,
-        initOptions: [
-          '--network-caching=1200',
-          '--clock-jitter=0',
-          '--clock-synchro=0',
-        ],
-      }}
+      source={vlcSource}
       autoplay
       paused={paused}
       repeat={repeat}
