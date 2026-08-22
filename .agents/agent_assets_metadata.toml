@@ -13,3 +13,10 @@ uri = "file://StreamVault-v230.apk"
 type = "unspecified"
 title = "StreamVault v230 APK"
 description = "Release APK built from commit 1020e39. Includes the latest Live TV focus navigation, TV viewport fitting, and channel zapping with the OSD visible."
+
+[[outputs]]
+id = "Izwj3hCuu_Z3-0vub7DMA"
+uri = "file://artifacts/iptv-app/StreamVault-diagnostic-run-22.apk"
+type = "unspecified"
+title = "StreamVault diagnostic APK — run 22"
+description = "Universal signed diagnostic APK with [SV-VLC-TRACE] lifecycle logging. Install on the Firestick/Android TV, perform the requested mini-player ↔ fullscreen cycles, and collect logcat lines containing SV-VLC-TRACE."
