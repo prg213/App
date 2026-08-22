@@ -373,6 +373,10 @@ export default function PlayerScreen() {
   // Mutable ref to showInfoBar — lets switchChannel (declared before showInfoBar
   // in this file) call it without a stale closure or circular hook dependency.
   const showInfoBarRef = useRef<((userInvoked?: boolean) => void) | null>(null);
+  // The persistent live-TV fullscreen route is controlled by the same OSD
+  // controls row. Keep an imperative opener for the raw Fire TV Select fallback
+  // without coupling it to the VLC surface or its lifecycle.
+  const showTvLiveControlsRef = useRef<() => void>(() => {});
   // Tracks whether the OSD is currently visible because the user explicitly
   // pressed OK (true) or because it was auto-shown on entry / channel switch
   // (false).  Auto-shown OSD dismisses after 5 s; user-invoked OSD stays until
@@ -434,9 +438,11 @@ export default function PlayerScreen() {
   // even when the timeshift stream doesn't expose its duration to expo-video.
   const [duration, setDuration] = useState(knownDurationSecs > 0 ? knownDurationSecs : 0);
   const [showControls, setShowControls] = useState(false);
-  const [showInfo, setShowInfo] = useState(true);
+  // A mini-player handoff already has moving video beneath this controls-only
+  // route. Start its TV overlay hidden so the first OK explicitly opens it.
+  const [showInfo, setShowInfo] = useState(() => !hasPersistentNativeSurfaceHandoff);
   // Ref so BackHandler closure can read showInfo without going stale
-  const showInfoRef = useRef(true);
+  const showInfoRef = useRef(showInfo);
   useEffect(() => { showInfoRef.current = showInfo; }, [showInfo]);
 
   // Picker-open refs — used by the OSD auto-dismiss timer to avoid hiding the
@@ -465,6 +471,11 @@ export default function PlayerScreen() {
   // Ref to block spurious onFocus channel-switch on initial TV mount
   const tvNavReadyRef = useRef(false);
   const tvCenterRef = useRef<View>(null);
+  const tvLiveChannelControlRef = useRef<View>(null);
+  const tvLiveAudioControlRef = useRef<View>(null);
+  const tvLiveCcControlRef = useRef<View>(null);
+  const tvLiveBackControlRef = useRef<View>(null);
+  const tvLiveControlsOpeningRef = useRef(false);
   // Set to true by the D-pad zone onFocus handlers when a wrap-around channel
   // switch is about to fire (ch 0 → last, or last → ch 0).  Read by the
   // useEffect([channelIdx]) below to extend the focus-restoration delay from
@@ -1715,13 +1726,24 @@ export default function PlayerScreen() {
     // D-pad exclusively.
     up: ({ eventKeyAction }) => {
       if (eventKeyAction !== 1 || !isLive) return;
-      if (showChannelMenuRef.current || showAudioPickerRef.current || showSubPickerRef.current) return;
+      // The OSD owns every D-pad direction while its controls are visible.
+      // Do not let the raw fallback zap channels when spatial focus is moving
+      // between its buttons.
+      if (showInfoRef.current || showChannelMenuRef.current || showAudioPickerRef.current || showSubPickerRef.current) return;
       handleNextChannel();
     },
     down: ({ eventKeyAction }) => {
       if (eventKeyAction !== 1 || !isLive) return;
-      if (showChannelMenuRef.current || showAudioPickerRef.current || showSubPickerRef.current) return;
+      if (showInfoRef.current || showChannelMenuRef.current || showAudioPickerRef.current || showSubPickerRef.current) return;
       handlePrevChannel();
+    },
+    select: ({ eventKeyAction }) => {
+      if (eventKeyAction !== 1 || !isLive || showInfoRef.current) return;
+      if (showChannelMenuRef.current || showAudioPickerRef.current || showSubPickerRef.current) return;
+      // Native Pressable activation normally handles Select. This is the
+      // Firestick raw-key fallback when focus remains on the full-screen centre
+      // zone after a transition.
+      showTvLiveControlsRef.current();
     },
     onFastForward: ({ eventKeyAction }) => {
       if (eventKeyAction !== 1 || isLive) return;
@@ -1862,6 +1884,15 @@ export default function PlayerScreen() {
   useEffect(() => {
     if (!isLive) return;
     if (Platform.isTV) {
+      // A persistent VLC handoff enters fullscreen with focus parked on the
+      // transparent centre target. The viewer opens controls explicitly with
+      // OK, which avoids an initial overlay stealing focus during the video
+      // expansion.
+      if (hasPersistentNativeSurfaceHandoff) {
+        setShowInfo(false);
+        infoOpacity.setValue(0);
+        return;
+      }
       infoBarUserInvokedRef.current = false; // entry is always auto mode
       setShowInfo(true);
       infoOpacity.setValue(1);
@@ -1886,6 +1917,16 @@ export default function PlayerScreen() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // The fullscreen handoff route is presented only after the underlying
+  // persistent VLC owner reaches fullscreen bounds. Claim a stable, non-native
+  // focus target immediately so the physical remote is never left without a
+  // target during that presentation transition.
+  useEffect(() => {
+    if (!Platform.isTV || !isLive || !hasPersistentNativeSurfaceHandoff) return;
+    const t = setTimeout(() => requestTvFocus(tvCenterRef.current), 80);
+    return () => clearTimeout(t);
+  }, [isLive, hasPersistentNativeSurfaceHandoff]);
 
   // Allow TV D-pad channel nav after a short settle — prevents spurious
   // onFocus firing as the screen mounts from triggering an immediate switch.
@@ -2042,6 +2083,55 @@ export default function PlayerScreen() {
   }, [infoOpacity, scheduleInfoHide, isLive]);
   // Keep the ref current so switchChannel (declared above) can call showInfoBar.
   showInfoBarRef.current = showInfoBar;
+
+  // Fire TV live controls live inside the OSD. Opening them is deliberately a
+  // UI-only action: the persistent VLC view stays behind this route and is not
+  // paused, resized by libVLC, remounted, or asked to reload.
+  const showTvLiveControls = useCallback(() => {
+    if (!Platform.isTV || !isLive || tvLiveControlsOpeningRef.current) return;
+    tvLiveControlsOpeningRef.current = true;
+    if (!showInfoRef.current) {
+      showInfoBar(true);
+    }
+    setTimeout(() => {
+      tvLiveControlsOpeningRef.current = false;
+      requestTvFocus(tvLiveChannelControlRef.current);
+    }, 120);
+  }, [isLive, showInfoBar]);
+  showTvLiveControlsRef.current = showTvLiveControls;
+
+  // The OSD actions are a single visual row, but Fire OS can route UP/DOWN out
+  // of absolutely-positioned overlays. Wire all four directions explicitly so
+  // every D-pad press stays inside the controls until BACK dismisses them.
+  useEffect(() => {
+    if (!Platform.isTV || !isLive || !showInfo) return;
+    const t = setTimeout(() => {
+      const { findNodeHandle } = require('react-native');
+      const channelHandle = findNodeHandle(tvLiveChannelControlRef.current);
+      const audioHandle = findNodeHandle(tvLiveAudioControlRef.current);
+      const ccHandle = findNodeHandle(tvLiveCcControlRef.current);
+      const backHandle = findNodeHandle(tvLiveBackControlRef.current);
+      if (channelHandle == null || audioHandle == null || ccHandle == null || backHandle == null) return;
+
+      (tvLiveChannelControlRef.current as any)?.setNativeProps({
+        nextFocusLeft: backHandle, nextFocusRight: audioHandle,
+        nextFocusUp: backHandle, nextFocusDown: audioHandle,
+      });
+      (tvLiveAudioControlRef.current as any)?.setNativeProps({
+        nextFocusLeft: channelHandle, nextFocusRight: ccHandle,
+        nextFocusUp: channelHandle, nextFocusDown: ccHandle,
+      });
+      (tvLiveCcControlRef.current as any)?.setNativeProps({
+        nextFocusLeft: audioHandle, nextFocusRight: backHandle,
+        nextFocusUp: audioHandle, nextFocusDown: backHandle,
+      });
+      (tvLiveBackControlRef.current as any)?.setNativeProps({
+        nextFocusLeft: ccHandle, nextFocusRight: channelHandle,
+        nextFocusUp: ccHandle, nextFocusDown: channelHandle,
+      });
+    }, 80);
+    return () => clearTimeout(t);
+  }, [showInfo, isLive]);
 
   // Show the TV channel-switch preview overlay, then call onCommit after 700 ms.
   // Only relevant on TV (Platform.isTV) — phone/tablet paths never call this.
@@ -2924,6 +3014,7 @@ export default function PlayerScreen() {
             <View style={styles.infoTvControls}>
               {/* Keep the chips inside the OSD so they're D-pad reachable. */}
               <FocusablePressable
+                ref={tvLiveChannelControlRef}
                 style={styles.infoOsdChip}
                 focusedStyle={styles.infoOsdChipFocused}
                 onFocus={() => { if (!infoBarUserInvokedRef.current) showInfoBarRef.current?.(); }}
@@ -2936,6 +3027,7 @@ export default function PlayerScreen() {
                 <Text style={styles.infoOsdChipText}>≡ Channels</Text>
               </FocusablePressable>
               <FocusablePressable
+                ref={tvLiveAudioControlRef}
                 style={styles.infoOsdChip}
                 focusedStyle={styles.infoOsdChipFocused}
                 onFocus={() => { if (!infoBarUserInvokedRef.current) showInfoBarRef.current?.(); }}
@@ -2946,6 +3038,7 @@ export default function PlayerScreen() {
                 </Text>
               </FocusablePressable>
               <FocusablePressable
+                ref={tvLiveCcControlRef}
                 style={[styles.infoOsdChip, activeSubtitleTrack !== null && styles.infoOsdChipActive]}
                 focusedStyle={styles.infoOsdChipFocused}
                 onFocus={() => { if (!infoBarUserInvokedRef.current) showInfoBarRef.current?.(); }}
@@ -2955,7 +3048,11 @@ export default function PlayerScreen() {
                   CC {activeSubtitleTrack ? `· ${(activeSubtitleTrack.language || '').toUpperCase()}` : ''}
                 </Text>
               </FocusablePressable>
-              <FocusablePressable onPress={handleBackLive} style={styles.backBtnSmall}>
+              <FocusablePressable
+                ref={tvLiveBackControlRef}
+                onPress={handleBackLive}
+                style={styles.backBtnSmall}
+              >
                 <Text style={styles.backIcon}>←</Text>
               </FocusablePressable>
             </View>
@@ -3047,16 +3144,10 @@ export default function PlayerScreen() {
             }}
             onPress={() => {
               if (Platform.isTV) {
-                // Fire TV: OK toggles the OSD info bar.
-                // When opening via OK the bar is "user-invoked" and stays
-                // visible until the user explicitly closes it again.
-                // Audio/CC are now chips inside the info bar — the old separate
-                // controls bar is not shown on TV any more.
-                if (showInfoRef.current) {
-                  dismissInfoBar();
-                } else {
-                  showInfoBar(true); // user-invoked — no auto-dismiss
-                }
+                // Fire TV: OK opens the explicit controls overlay and moves
+                // focus into its first action. Once controls own focus, OK is
+                // handled by the selected FocusablePressable.
+                showTvLiveControls();
               } else {
                 // Phone/tablet: toggle info bar (touch path).
                 if (showInfo) { dismissInfoBar(); } else { showInfoBar(); }
