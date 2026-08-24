@@ -44,3 +44,10 @@ uri = "file://artifacts/iptv-app/StreamVault-release-23.apk"
 type = "unspecified"
 title = "StreamVault fixed APK — build 23"
 description = "Universal signed APK from GitHub Actions build 23, built from commit 3b3bb9a containing the Android phone fullscreen layout fix."
+
+[[outputs]]
+id = "zS-14fgrvgK84cLrwDD_7"
+uri = "file://attached_assets/StreamVault-v266.apk"
+type = "unspecified"
+title = "StreamVault Android candidate v266"
+description = "Universal internal APK from EAS build 97933cb2-c9fc-4733-b745-d48622a78bf6. Install fresh because it uses the EAS signing key."
