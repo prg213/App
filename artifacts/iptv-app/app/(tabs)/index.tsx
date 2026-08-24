@@ -442,6 +442,21 @@ export default function LiveTVScreen() {
       () => {},
     );
   }, [miniPlayerRef, nativeSurfaceMode]);
+
+  // The first channel can make the mini-player visible in the same React
+  // commit that creates its layout node. On Android, measureLayout can then
+  // run before the native hierarchy has settled and return no bounds. Retry
+  // after the next few layout frames so the persistent VLC presentation host
+  // is mounted immediately on first channel selection instead of only after
+  // a fullscreen round-trip. This is layout-only; it never touches VLC.
+  useEffect(() => {
+    if (!USES_NATIVE_VLC || nativeSurfaceMode !== 'mini' || !playingChannel) return;
+    const timers = [0, 16, 64, 200].map((delay) => setTimeout(() => {
+      measureNativeSurfaceOwner();
+    }, delay));
+    return () => timers.forEach((timer) => clearTimeout(timer));
+  }, [measureNativeSurfaceOwner, nativeSurfaceMode, playingChannel?.id]);
+
   const activeNativeSurfaceUrl = nativeSurfaceUrl
     || playingChannel?.streamUrl
     || selectedChannel?.streamUrl
@@ -1985,7 +2000,10 @@ export default function LiveTVScreen() {
             onPress={handleMiniPlayerPress}
             onFocus={() => setMiniPlayerFocused(true)}
             onBlur={() => setMiniPlayerFocused(false)}
-            onLayout={measureNativeSurfaceOwner}
+            onLayout={() => {
+              measureNativeSurfaceOwner();
+              requestAnimationFrame(measureNativeSurfaceOwner);
+            }}
             focusedStyle={{}}
             style={(focused) => [
               styles.videoWrap,
@@ -2307,7 +2325,7 @@ export default function LiveTVScreen() {
               source={activeNativeSurfaceUrl}
               player={player}
               style={StyleSheet.absoluteFill}
-              resizeMode={nativeSurfaceFullscreen ? 'cover' : 'contain'}
+              resizeMode={nativeSurfaceFullscreen ? 'fill' : 'contain'}
               reloadKey={vlcReloadKey}
               onPlaying={handlePersistentVlcPlaying}
               onBuffering={handlePersistentVlcBuffering}

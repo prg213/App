@@ -1301,7 +1301,7 @@ export function TVLiveLayout({
                     // viewport instead of inheriting the mini-player's 16:9 box.
                     // This changes only presentation; the same VLC session remains
                     // attached so playback/audio never restarts.
-                    resizeMode={nativeSurfaceFullscreen ? 'cover' : 'contain'}
+                    resizeMode={nativeSurfaceFullscreen ? 'fill' : 'contain'}
                     reloadKey={Platform.OS === 'android' ? vlcReloadKey : `${videoKey}:${vlcReloadKey ?? 0}`}
                     onPlaying={onVlcPlaying}
                     onBuffering={onVlcBuffering}
