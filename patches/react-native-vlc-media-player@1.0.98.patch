@@ -34,7 +34,15 @@
      private String src;
      private String _subtitleUri;
      private boolean netStrTag;
-@@ -104,32 +110,51 @@
+@@ -68,6 +74,7 @@
+     private int preVolume = 100;
+     private boolean autoAspectRatio = false;
+     private boolean acceptInvalidCertificates = false;
++    private String resizeMode = "contain";
+ 
+     private float mProgressUpdateInterval = 0;
+     private Handler mProgressUpdateHandler = new Handler();
+@@ -104,30 +111,49 @@
      @Override
      protected void onAttachedToWindow() {
          super.onAttachedToWindow();
@@ -74,27 +82,25 @@
 +            syncVlcOutputToView("host-resume");
 +            recoverVlcOutputIfReady("host-resume");
 +            resumeHostPausedPlayerIfReady("host-resume");
-         }
-     }
- 
++        }
++    }
++
 +    private void resumeHostPausedPlayerIfReady(String reason) {
 +        if (!hasRetainablePlayer() || !isHostPaused) return;
 +        IVLCVout vlcOut = mMediaPlayer.getVLCVout();
 +        if (!vlcOut.areViewsAttached()) {
 +            Log.i(tag, "surface-output-resume-waiting reason=" + reason);
 +            return;
-+        }
+         }
 +        isSurfaceViewDestory = false;
 +        isPaused = false;
 +        isHostPaused = false;
 +        Log.i(tag, "surface-output-resume reason=" + reason);
 +        mMediaPlayer.play();
-+    }
-+
+     }
  
-     @Override
-     public void onHostPause() {
-@@ -157,6 +182,56 @@
+ 
+@@ -157,6 +183,97 @@
      public void onAudioFocusChange(int focusChange) {
      }
  
@@ -110,9 +116,50 @@
 +
 +        IVLCVout vlcOut = mMediaPlayer.getVLCVout();
 +        vlcOut.setWindowSize(outputWidth, outputHeight);
++        applyResizeMode();
++        // libVLC's Vout must be explicitly told that its output frame changed.
++        // This updates the existing surface in-place; it does not recreate the
++        // MediaPlayer or reload the stream.
++        try {
++            vlcOut.updateVideoSurfaces();
++        } catch (Exception e) {
++            Log.w(tag, "surface-output-update failed reason=" + reason, e);
++        }
 +        Log.i(tag, "surface-output-size reason=" + reason
-+                + " output=" + outputWidth + "x" + outputHeight);
++                + " output=" + outputWidth + "x" + outputHeight
++                + " resizeMode=" + resizeMode);
 +        return true;
++    }
++
++    private void applyResizeMode() {
++        if (mMediaPlayer == null) return;
++        try {
++            if ("cover".equals(resizeMode)) {
++                mMediaPlayer.setVideoScale(MediaPlayer.ScaleType.SURFACE_FIT_SCREEN);
++            } else if ("fill".equals(resizeMode)) {
++                mMediaPlayer.setVideoScale(MediaPlayer.ScaleType.SURFACE_FILL);
++            } else {
++                mMediaPlayer.setVideoScale(MediaPlayer.ScaleType.SURFACE_BEST_FIT);
++            }
++        } catch (Exception e) {
++            Log.w(tag, "resize-mode failed mode=" + resizeMode, e);
++        }
++    }
++
++    public void setResizeMode(String mode) {
++        if (mode == null || mode.length() == 0) mode = "contain";
++        if (!"contain".equals(mode) && !"cover".equals(mode) && !"fill".equals(mode)) {
++            mode = "contain";
++        }
++        resizeMode = mode;
++        if (mMediaPlayer != null) {
++            applyResizeMode();
++            try {
++                mMediaPlayer.getVLCVout().updateVideoSurfaces();
++            } catch (Exception e) {
++                Log.w(tag, "resize-mode surface update failed", e);
++            }
++        }
 +    }
 +
 +    private void detachVlcOutputForSurfaceLoss(String reason) {
@@ -151,7 +198,7 @@
      private void setProgressUpdateRunnable() {
          if (mMediaPlayer != null && mProgressUpdateInterval > 0){
              new Thread() {
-@@ -204,15 +279,12 @@
+@@ -204,15 +321,12 @@
          @Override
          public void onLayoutChange(View view, int i, int i1, int i2, int i3, int i4, int i5, int i6, int i7) {
              if (view.getWidth() > 0 && view.getHeight() > 0) {
@@ -173,7 +220,7 @@
              }
          }
      };
-@@ -335,6 +407,7 @@
+@@ -335,6 +449,7 @@
  
  
      private void stopPlayback() {
@@ -181,7 +228,7 @@
          onStopPlayback();
          releasePlayer();
      }
-@@ -414,10 +487,10 @@
+@@ -414,10 +529,11 @@
              //this.getHolder().setKeepScreenOn(true);
              IVLCVout vlcOut = mMediaPlayer.getVLCVout();
              if (mVideoWidth > 0 && mVideoHeight > 0) {
@@ -193,10 +240,20 @@
 +                // owns the host bounds; root/display metrics can be stale after
 +                // the mini/fullscreen presentation changes.
 +                syncVlcOutputToView("player-create");
++                applyResizeMode();
                  //mMediaPlayer.setAspectRatio(mVideoWidth+":"+mVideoHeight);
              }
              DisplayMetrics dm = getResources().getDisplayMetrics();
-@@ -763,16 +836,27 @@
+@@ -464,6 +580,8 @@
+                 //vlcOut.attachViews(onNewVideoLayoutListener);
+                 vlcOut.setVideoSurface(this.getSurfaceTexture());
+                 vlcOut.attachViews(onNewVideoLayoutListener);
++                applyResizeMode();
++                try { vlcOut.updateVideoSurfaces(); } catch (Exception ignored) {}
+                 // vlcOut.attachSurfaceSlave(surfaceVideo,null,onNewVideoLayoutListener);
+                 //vlcOut.setVideoView(this);
+                 //vlcOut.attachViews(onNewVideoLayoutListener);
+@@ -763,16 +881,27 @@
          mVideoWidth = width;
          mVideoHeight = height;
          surfaceVideo = new Surface(surface);
@@ -226,3 +283,25 @@
          return true;
      }
  
+--- a/android/src/main/java/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerViewManager.java
++++ b/android/src/main/java/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerViewManager.java
+@@ -29,6 +29,7 @@
+     private static final String PROP_VOLUME = "volume";
+     private static final String PROP_SEEK = "seek";
+     private static final String PROP_RESUME = "resume";
++    private static final String PROP_RESIZE_MODE = "resizeMode";
+     private static final String PROP_RATE = "rate";
+     private static final String PROP_VIDEO_ASPECT_RATIO = "videoAspectRatio";
+     private static final String PROP_SRC_IS_NETWORK = "isNetwork";
+@@ -132,6 +133,11 @@
+         videoView.doResume(autoPlay);
+     }
+ 
++    @ReactProp(name = PROP_RESIZE_MODE, defaultString = "contain")
++    public void setResizeMode(final ReactVlcPlayerView videoView, final String resizeMode) {
++        videoView.setResizeMode(resizeMode);
++    }
++
+ 
+     @ReactProp(name = PROP_RATE)
+     public void setRate(final ReactVlcPlayerView videoView, final float rate) {

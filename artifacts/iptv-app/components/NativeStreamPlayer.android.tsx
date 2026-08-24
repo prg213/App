@@ -88,7 +88,6 @@ function NativeStreamPlayerAndroid({
       volume={100}
       muted={false}
       resizeMode={resizeMode}
-      videoAspectRatio={videoAspectRatio as any}
       onPlaying={onPlaying}
       onBuffering={(event) => {
         const bufferRate = (event as { bufferRate?: number }).bufferRate;

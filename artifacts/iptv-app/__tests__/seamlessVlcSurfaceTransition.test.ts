@@ -39,22 +39,29 @@ describe('Android live VLC container ownership', () => {
     }
   });
 
-  it('mounts one Android VLC child inside the real preview owner', () => {
+  it('mounts one Android VLC child in a root-level presentation host measured from the preview control', () => {
     const controlStart = liveTab.indexOf('ref={miniPlayerRef as any}');
-    const phoneOwner = liveTab.slice(controlStart, controlStart + 3200);
+    const phoneOwner = liveTab.slice(
+      controlStart,
+      liveTab.indexOf('</FocusablePressable>', controlStart),
+    );
+    const presentationStart = liveTab.indexOf('Android VLC presentation host');
+    const presentationHost = liveTab.slice(presentationStart, presentationStart + 2600);
 
     expect(controlStart).toBeGreaterThan(-1);
-    expect(phoneOwner).toContain('<NativeStreamPlayer');
-    expect(phoneOwner).toContain('styles.nativeSurfaceHost');
-    expect(phoneOwner).toContain('StyleSheet.absoluteFill');
-    expect(phoneOwner).toContain('source={activeNativeSurfaceUrl}');
-    expect(phoneOwner).toContain('reloadKey={vlcReloadKey}');
-    expect(phoneOwner).toContain('pointerEvents="none"');
-    expect(liveTab).not.toContain('nativeSurfaceRootRef');
-    expect(liveTab).not.toContain('measureNativeSurfaceOwner');
-    expect(liveTab).not.toContain('owner.measureLayout(');
-    expect(liveTab).not.toContain('nativeSurfacePresentationLayer');
-    expect(liveTab).not.toContain('nativeSurfacePresentationFrame');
+    expect(phoneOwner).toContain('onLayout={measureNativeSurfaceOwner}');
+    expect(phoneOwner).toContain('{!USES_NATIVE_VLC && isLivePreviewActive && (');
+    expect(presentationStart).toBeGreaterThan(controlStart);
+    expect(presentationHost).toContain('styles.nativeSurfacePresentationLayer');
+    expect(presentationHost).toContain('styles.nativeSurfacePresentationFrame');
+    expect(presentationHost).toContain('<NativeStreamPlayer');
+    expect(presentationHost).toContain('StyleSheet.absoluteFill');
+    expect(presentationHost).toContain('source={activeNativeSurfaceUrl}');
+    expect(presentationHost).toContain('reloadKey={vlcReloadKey}');
+    expect(presentationHost).toContain('pointerEvents="none"');
+    expect(liveTab).toContain('nativeSurfaceRootRef');
+    expect(liveTab).toContain('measureNativeSurfaceOwner');
+    expect(liveTab).toContain('owner.measureLayout(');
     expect(liveTab.match(/<NativeStreamPlayer/g)).toHaveLength(2); // Android + non-Android branch
   });
 
@@ -76,11 +83,12 @@ describe('Android live VLC container ownership', () => {
     expect(tvLayout).toContain('onNativeSurfaceLayout?.({ width, height, x, y });');
   });
 
-  it('expands the phone preview owner while retaining the Fire TV layout', () => {
-    expect(liveTab).toContain('nativeSurfaceFullscreen && styles.previewPanelFullscreen');
-    expect(liveTab).toContain('nativeSurfaceFullscreen && styles.fullscreenVideoContainer');
-    expect(liveTab).not.toContain('nativeSurfacePresentationFrame');
-    expect(liveTab).not.toContain('nativeSurfacePresentationLayer');
+  it('expands the phone presentation frame while retaining the Fire TV layout', () => {
+    expect(liveTab).toContain('styles.nativeSurfacePresentationLayer');
+    expect(liveTab).toContain('styles.nativeSurfacePresentationFrame');
+    expect(liveTab).toContain('nativeSurfaceFullscreen\n                ? StyleSheet.absoluteFill');
+    expect(liveTab).toContain('left: nativeOwnerBounds.x');
+    expect(liveTab).toContain('height: nativeOwnerBounds.height');
     expect(tvLayout).toContain('nativeSurfaceFullscreen && styles.previewPanelFullscreen');
     expect(tvLayout).toContain('nativeSurfaceFullscreen && styles.fullscreenVideoContainer');
     expect(tvLayout).toContain('nativeSurfaceFullscreen && styles.rootFullscreen');
@@ -105,8 +113,9 @@ describe('Android live VLC container ownership', () => {
       expect(liveTab).not.toContain(forbidden);
     }
 
-    expect(liveTab).not.toContain('nativeSurfaceRootRef');
-    expect(liveTab).not.toContain('nativeOwnerBounds');
+    expect(liveTab).toContain('nativeSurfaceRootRef');
+    expect(liveTab).toContain('nativeOwnerBounds');
+    expect(liveTab).toContain('styles.nativeSurfacePresentationLayer');
     expect(liveTab).toContain('commitNativeSurfaceLayout(nativeSurfaceMode, { width, height, x, y })');
     const fullscreenMountStart = fullscreenPlayer.indexOf('videoMounted && !usesPersistentNativeSurface');
     const fullscreenMount = fullscreenPlayer.slice(fullscreenMountStart, fullscreenMountStart + 1100);
@@ -195,10 +204,10 @@ describe('Android live VLC container ownership', () => {
   it('removes the phone mini-player chrome so Android fullscreen contains only the video', () => {
     expect(liveTab).toContain('!nativeSurfaceFullscreen && playingChannel && (');
     expect(liveTab).toContain('!nativeSurfaceFullscreen && (selectedChannel ? (');
-    expect(liveTab).toContain('nativeSurfaceFullscreen && styles.previewPanelFullscreen');
-    expect(liveTab).toContain('nativeSurfaceFullscreen && styles.fullscreenVideoContainer');
-    expect(liveTab).not.toContain('nativeSurfacePresentationLayer:');
-    expect(liveTab).not.toContain('nativeSurfacePresentationFrame:');
+    expect(liveTab).toContain('nativeSurfacePresentationLayer:');
+    expect(liveTab).toContain('nativeSurfacePresentationFrame:');
+    expect(liveTab).toContain('nativeSurfaceFullscreen\n                ? StyleSheet.absoluteFill');
+    expect(liveTab).toContain('nativeSurfaceMode !== \'hidden\'');
   });
 
   it('guards the Android phone fullscreen journey as one layout-and-handoff contract', () => {
@@ -227,7 +236,7 @@ describe('Android live VLC container ownership', () => {
 
     // Both pieces of phone-only Live TV chrome are guarded by the same mode:
     // the channel metadata row and the TV GUIDE/EPG panel disappear together
-    // while the fullscreen video container remains the only visible content.
+    // while the root-level presentation frame is the only visible content.
     const infoStart = liveTab.indexOf('{!nativeSurfaceFullscreen && playingChannel && (');
     const guideStart = liveTab.indexOf('{!nativeSurfaceFullscreen && (selectedChannel ? (');
     expect(infoStart).toBeGreaterThan(-1);
@@ -235,8 +244,9 @@ describe('Android live VLC container ownership', () => {
     expect(liveTab.slice(infoStart, guideStart)).toContain('styles.chInfoBar');
     expect(liveTab.slice(guideStart, guideStart + 900)).toContain('TV GUIDE');
     expect(liveTab.slice(guideStart, guideStart + 900)).toContain('channelEpg');
-    expect(liveTab).toContain('nativeSurfaceFullscreen && styles.previewPanelFullscreen');
-    expect(liveTab).toContain('nativeSurfaceFullscreen && styles.fullscreenVideoContainer');
+    expect(liveTab).toContain('styles.nativeSurfacePresentationLayer');
+    expect(liveTab).toContain('styles.nativeSurfacePresentationFrame');
+    expect(liveTab).toContain('nativeSurfaceFullscreen\n                ? StyleSheet.absoluteFill');
 
     // BACK must return the currently active channel (including a zap made while
     // fullscreen), restore the same persistent surface to mini mode, and only
@@ -351,13 +361,14 @@ describe('Android live VLC container ownership', () => {
     expect(activeLayoutLines).not.toContain('setAspectRatio');
   });
 
-  it('records the real Android owner dimensions without reparenting the surface', () => {
+  it('records root-relative Android owner dimensions without reparenting the surface', () => {
     expect(liveTab).toContain("console.log(VLC_TRACE, 'react-window-bounds'");
     expect(liveTab).toContain('insetRight: insets.right');
     expect(liveTab).toContain('fullscreen: nativeSurfaceFullscreen');
     expect(liveTab).toContain('commitNativeSurfaceLayout(nativeSurfaceMode, { width, height, x, y })');
-    expect(liveTab).not.toContain('owner.measureLayout(');
-    expect(liveTab).not.toContain('nativeSurfaceRootRef');
+    expect(liveTab).toContain('owner.measureLayout(');
+    expect(liveTab).toContain('nativeSurfaceRootRef');
+    expect(liveTab).toContain('setNativeOwnerBounds');
     expect(vlcAndroidPatch).toContain('int outputWidth = getWidth()');
     expect(vlcAndroidPatch).toContain('int outputHeight = getHeight()');
     expect(vlcAndroidPatch).not.toContain('getRootView()');
@@ -384,7 +395,7 @@ describe('Android live VLC container ownership', () => {
     expect(liveTab).not.toContain('nativeVlcAspectRatio');
     expect(liveTab).not.toContain('videoAspectRatio=');
     expect(liveTab).toContain("resizeMode={nativeSurfaceFullscreen ? 'cover' : 'contain'}");
-    expect(androidNativePlayer).toContain('videoAspectRatio={videoAspectRatio as any}');
+    expect(androidNativePlayer).not.toContain('videoAspectRatio={videoAspectRatio as any}');
   });
 
   it('retains the libVLC player across a temporary TextureView detach or replacement', () => {
