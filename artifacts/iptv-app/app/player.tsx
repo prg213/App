@@ -1317,8 +1317,27 @@ export default function PlayerScreen() {
       setNativeSurfaceUrl(entry.url);
       updateNativeSurfaceHandoffUrl(nativeSurfaceHandoffId, entry.url);
     }
-    // Notify the Live TV tab so its mini-player title/logo stay in sync
-    { const { DeviceEventEmitter } = require('react-native'); DeviceEventEmitter.emit('channel:switched', { url: entry.url, logo: entry.logo ?? '', title: entry.title }); }
+    // Notify the Live TV tab with the complete channel identity. Resolving the
+    // return state by URL alone is unsafe when providers reuse a URL or refresh
+    // their channel catalogue while fullscreen is open.
+    {
+      const { DeviceEventEmitter } = require('react-native');
+      const switchedChannel: Channel = {
+        id: entry.channelId ?? entry.url,
+        name: entry.title,
+        logo: entry.logo ?? '',
+        streamUrl: entry.url,
+        epgId: entry.epgId,
+        groupTitle: entry.groupTitle ?? '',
+        num: entry.num,
+        tvArchive: entry.tvArchive,
+        tvArchiveDuration: entry.tvArchiveDuration,
+      };
+      DeviceEventEmitter.emit('channel:switched', {
+        url: entry.url,
+        channel: switchedChannel,
+      });
+    }
     activeUrlRef.current = entry.url; // keep ref in sync so reconnect targets the right channel
     setIsBuffering(true);
     setHasError(false);
@@ -1442,7 +1461,11 @@ export default function PlayerScreen() {
       id:        currentEntry?.channelId ?? params.channelId ?? '',
       name:      activeTitle  ?? currentEntry?.title ?? params.title  ?? '',
       logo:      activeLogo   ?? currentEntry?.logo  ?? params.logo   ?? '',
-      streamUrl: liveUrlRef.current || currentEntry?.url || params.url || '',
+      // The zapped entry is the complete source-of-truth for the fullscreen
+      // player (URL and metadata came from the same item). Prefer it over the
+      // shared ref so a delayed context update can never return a title/EPG
+      // for one channel with the stream URL from another.
+      streamUrl: currentEntry?.url || liveUrlRef.current || params.url || '',
       epgId:     activeEpgId  ?? currentEntry?.epgId ?? params.channelId ?? '',
       groupTitle: currentEntry?.groupTitle ?? params.groupTitle ?? '',
       num: currentEntry?.num,

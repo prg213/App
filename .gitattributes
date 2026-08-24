@@ -3,3 +3,4 @@ StreamVault-v230.apk filter=lfs diff=lfs merge=lfs -text
 attached_assets/StreamVault-build-16.apk filter=lfs diff=lfs merge=lfs -text
 patches/*.patch -whitespace
 artifacts/iptv-app/StreamVault-diagnostic-run-22.apk filter=lfs diff=lfs merge=lfs -text
+artifacts/iptv-app/StreamVault-release-23.apk filter=lfs diff=lfs merge=lfs -text

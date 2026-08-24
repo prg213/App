@@ -59,7 +59,7 @@ describe('live fullscreen return ownership', () => {
     expect(back).toContain('router.back()');
   });
 
-  it('waits for the persistent surface to contract before routing back to Live TV', () => {
+  it('commits the persistent surface to its final layout before routing back to Live TV', () => {
     const transitionStart = context.indexOf('const transitionNativeSurface = useCallback');
     const transition = context.slice(transitionStart, transitionStart + 1400);
     const collapseStart = context.indexOf('const triggerCollapse = useCallback');
@@ -67,8 +67,10 @@ describe('live fullscreen return ownership', () => {
 
     expect(transitionStart).toBeGreaterThan(-1);
     expect(transition).toContain('setNativeSurfaceMode(mode)');
-    expect(transition).toContain('LayoutAnimation.configureNext');
-    expect(transition).toContain('setTimeout(onComplete, shouldAnimate ? NATIVE_SURFACE_TRANSITION_MS : 0)');
+    expect(transition).toContain("animated: false");
+    expect(transition).toContain('requestAnimationFrame(() =>');
+    expect(transition).toContain('onComplete();');
+    expect(transition).not.toContain('LayoutAnimation.configureNext');
     expect(transition).not.toContain('measureInWindow');
     expect(transition).not.toContain('Animated.');
     expect(collapseStart).toBeGreaterThan(-1);
@@ -76,7 +78,7 @@ describe('live fullscreen return ownership', () => {
     expect(collapse).toContain('requestAnimationFrame(onDone)');
 
     const backStart = player.indexOf('const handleBackLive = useCallback');
-    const back = player.slice(backStart, backStart + 4300);
+    const back = player.slice(backStart, backStart + 6000);
     const directUnmount = back.indexOf('setVideoMounted(false)');
     const directCollapse = back.indexOf('triggerCollapse(() => router.back())');
     expect(directUnmount).toBeGreaterThan(-1);

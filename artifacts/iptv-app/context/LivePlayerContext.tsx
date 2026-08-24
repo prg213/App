@@ -6,14 +6,13 @@
  * changing `nativeSurfaceMode` changes the owning container's layout, never
  * the native view's coordinates or decoder.
  */
-import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { LayoutAnimation, Platform, UIManager, View } from 'react-native';
+import React, { createContext, useCallback, useContext, useRef, useState } from 'react';
+import { Platform, View } from 'react-native';
 import { useVideoPlayer } from 'expo-video';
 import type { VideoPlayer } from 'expo-video';
 
 export type NativeSurfaceMode = 'mini' | 'fullscreen' | 'hidden';
 
-const NATIVE_SURFACE_TRANSITION_MS = 240;
 const VLC_TRACE = '[SV-VLC-TRACE]';
 
 export interface NativeSurfaceHandoff {
@@ -75,15 +74,6 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
   const [nativeSurfaceHandoff, setNativeSurfaceHandoff] = useState<NativeSurfaceHandoff | null>(null);
   const nextNativeSurfaceHandoffIdRef = useRef(0);
 
-  // Android requires this opt-in before LayoutAnimation can interpolate the
-  // existing owner’s bounds. It changes View layout only; it never touches
-  // the VLC TextureView lifecycle.
-  useEffect(() => {
-    if (Platform.OS === 'android') {
-      UIManager.setLayoutAnimationEnabledExperimental?.(true);
-    }
-  }, []);
-
   const beginNativeSurfaceHandoff = useCallback((url: string) => {
     const id = String(++nextNativeSurfaceHandoffIdRef.current);
     setNativeSurfaceHandoff({ id, url });
@@ -106,36 +96,23 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
     mode: NativeSurfaceMode,
     onComplete: () => void = () => {},
   ) => {
-    const shouldAnimate = Platform.OS === 'android' && mode !== 'hidden';
     console.log(VLC_TRACE, 'surface-transition-start', {
       mode,
-      shouldAnimate,
-      durationMs: shouldAnimate ? NATIVE_SURFACE_TRANSITION_MS : 0,
+      animated: false,
     });
-    if (shouldAnimate) {
-      LayoutAnimation.configureNext({
-        duration: NATIVE_SURFACE_TRANSITION_MS,
-        create: { type: LayoutAnimation.Types.easeInEaseOut, property: 'opacity' },
-        update: { type: LayoutAnimation.Types.easeInEaseOut },
-        delete: { type: LayoutAnimation.Types.easeInEaseOut, property: 'opacity' },
-      });
-    }
     setNativeSurfaceMode(mode);
-    // The mounted VLC child remains an absolute-fill child of its owner. Wait
-    // for the parent layout animation to finish before revealing or removing
-    // the transparent controls route. This keeps the same visible surface on
-    // screen for the entire expansion and contraction.
+    // A TextureView can stop producing frames while LayoutAnimation repeatedly
+    // changes its bounds. Commit the owner to its final bounds in one layout
+    // pass instead: the VLC child stays mounted and its decoder/output are not
+    // touched, while the transparent controls route waits for that commit.
     if (mode === 'hidden') {
       console.log(VLC_TRACE, 'surface-transition-complete', { mode });
       onComplete();
       return;
     }
     requestAnimationFrame(() => {
-      const transitionDelay = shouldAnimate ? NATIVE_SURFACE_TRANSITION_MS : 0;
-      setTimeout(onComplete, shouldAnimate ? NATIVE_SURFACE_TRANSITION_MS : 0);
-      setTimeout(() => {
-        console.log(VLC_TRACE, 'surface-transition-complete', { mode });
-      }, transitionDelay);
+      console.log(VLC_TRACE, 'surface-transition-complete', { mode });
+      onComplete();
     });
   }, []);
 

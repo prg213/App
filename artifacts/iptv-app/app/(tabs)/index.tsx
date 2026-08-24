@@ -71,6 +71,7 @@ import {
 const FAVS_CAT_ID = '__favs';
 const ALL_CAT_ID = '__all';
 const USES_NATIVE_VLC = Platform.OS === 'android';
+const VLC_TRACE = '[SV-VLC-TRACE]';
 
 function buildCreds(c: ReturnType<typeof useAppContext>['credentials']) {
   return { host: c!.host!, username: c!.username!, password: c!.password! };
@@ -756,13 +757,34 @@ export default function LiveTVScreen() {
   const lastWatchedUrlRef = useRef(lastWatchedUrl);
   useEffect(() => { lastWatchedUrlRef.current = lastWatchedUrl; }, [lastWatchedUrl]);
 
-  // When the fullscreen player switches channels (prev/next), keep mini-player in sync
+  // When fullscreen changes channel, use the exact identity that switched rather
+  // than resolving by URL alone. Providers can reuse URLs or refresh the list
+  // while fullscreen is open; in either case URL-only matching can make the
+  // mini-player label/EPG describe a different stream.
   useEffect(() => {
-    const sub = DeviceEventEmitter.addListener('channel:switched', ({ url }: { url: string }) => {
-      const found = channelsRef.current.find((ch) => ch.streamUrl === url);
-      if (found) {
-        setSelectedChannel(found);
-        setPlayingChannel(found);
+    const sub = DeviceEventEmitter.addListener('channel:switched', ({
+      url,
+      channel,
+    }: {
+      url: string;
+      channel?: Channel;
+    }) => {
+      const catalogChannel = channel?.id
+        ? channelsRef.current.find((candidate) => candidate.id === channel.id)
+        : channelsRef.current.find((candidate) => candidate.streamUrl === url);
+      const activeChannel = catalogChannel
+        ? {
+            ...catalogChannel,
+            ...channel,
+            // Menu entries do not carry a category; retain it from the latest
+            // Live TV catalogue so a later BACK opens the right category.
+            groupTitle: channel?.groupTitle || catalogChannel.groupTitle,
+          }
+        : channel;
+
+      if (activeChannel) {
+        setSelectedChannel(activeChannel);
+        setPlayingChannel(activeChannel);
       }
     });
     return () => sub.remove();
@@ -1895,6 +1917,16 @@ export default function LiveTVScreen() {
             onPress={handleMiniPlayerPress}
             onFocus={() => setMiniPlayerFocused(true)}
             onBlur={() => setMiniPlayerFocused(false)}
+              onLayout={(event) => {
+                const { width, height, x, y } = event.nativeEvent.layout;
+                console.log(VLC_TRACE, 'react-owner-layout', {
+                  width,
+                  height,
+                  x,
+                  y,
+                  fullscreen: nativeSurfaceFullscreen,
+                });
+              }}
             focusedStyle={{}}
             style={(focused) => [
               styles.videoWrap,

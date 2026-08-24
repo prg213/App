@@ -7,6 +7,7 @@ const fullscreenPlayer = fs.readFileSync(path.resolve(appRoot, 'app/player.tsx')
 const liveContext = fs.readFileSync(path.resolve(appRoot, 'context/LivePlayerContext.tsx'), 'utf8');
 const tvLayout = fs.readFileSync(path.resolve(appRoot, 'components/TVLiveLayout.tsx'), 'utf8');
 const tabLayout = fs.readFileSync(path.resolve(appRoot, 'app/(tabs)/_layout.tsx'), 'utf8');
+const rootLayout = fs.readFileSync(path.resolve(appRoot, 'app/_layout.tsx'), 'utf8');
 const androidNativePlayer = fs.readFileSync(path.resolve(appRoot, 'components/NativeStreamPlayer.android.tsx'), 'utf8');
 const vlcAndroidPatch = fs.readFileSync(path.resolve(appRoot, '../../patches/react-native-vlc-media-player@1.0.98.patch'), 'utf8');
 
@@ -17,10 +18,9 @@ describe('Android live VLC container ownership', () => {
     expect(liveContext).toContain('updateNativeSurfaceHandoffUrl');
     expect(liveContext).toContain('endNativeSurfaceHandoff');
     expect(liveContext).toContain('transitionNativeSurface');
-    expect(liveContext).toContain('LayoutAnimation.configureNext');
-    expect(liveContext).toContain('NATIVE_SURFACE_TRANSITION_MS');
     expect(liveContext).toContain('requestAnimationFrame(() =>');
-    expect(liveContext).toContain('setTimeout(onComplete, shouldAnimate ? NATIVE_SURFACE_TRANSITION_MS : 0)');
+    expect(liveContext).toContain("animated: false");
+    expect(liveContext).toContain('onComplete();');
   });
 
   it('keeps the transition state free of measured bounds and animated surface overlays', () => {
@@ -198,6 +198,75 @@ describe('Android live VLC container ownership', () => {
     expect(ruleBody).toContain("aspectRatio: undefined");
   });
 
+  it('guards the Android phone fullscreen journey as one layout-and-handoff contract', () => {
+    // The phone path must use the same Android handoff as Fire TV, but its
+    // fullscreen route also has to release the tab shell that normally reserves
+    // the sidebar width.
+    expect(tabLayout).toContain(
+      "const nativeSurfaceFullscreen = Platform.OS === 'android' && nativeSurfaceMode === 'fullscreen'",
+    );
+    expect(tabLayout).toContain('nativeSurfaceFullscreen ? null : <Sidebar {...props} />');
+    expect(tabLayout).toContain('sceneStyle: { marginLeft: nativeSurfaceFullscreen ? 0 : SIDEBAR_W }');
+
+    // The route is a transparent controls layer over the persistent VLC view;
+    // an opaque or animated Stack presentation would reintroduce a black frame
+    // and would make the phone fullscreen layout dependent on a second player.
+    expect(rootLayout).toContain(
+      "presentation: Platform.OS === 'android' ? 'transparentModal' : 'fullScreenModal'",
+    );
+    expect(rootLayout).toContain("animation: 'none'");
+    expect(rootLayout).toContain("contentStyle: { backgroundColor: 'transparent' }");
+    expect(fullscreenPlayer).toContain('const usesPersistentNativeSurface = hasPersistentNativeSurfaceHandoff;');
+    expect(fullscreenPlayer).toContain('videoMounted && !usesPersistentNativeSurface');
+
+    // Both pieces of phone-only Live TV chrome are guarded by the same mode:
+    // the channel metadata row and the TV GUIDE/EPG panel disappear together
+    // while the fullscreen video container remains the only visible content.
+    const infoStart = liveTab.indexOf('{!nativeSurfaceFullscreen && playingChannel && (');
+    const guideStart = liveTab.indexOf('{!nativeSurfaceFullscreen && (selectedChannel ? (');
+    expect(infoStart).toBeGreaterThan(-1);
+    expect(guideStart).toBeGreaterThan(infoStart);
+    expect(liveTab.slice(infoStart, guideStart)).toContain('styles.chInfoBar');
+    expect(liveTab.slice(guideStart, guideStart + 900)).toContain('TV GUIDE');
+    expect(liveTab.slice(guideStart, guideStart + 900)).toContain('channelEpg');
+    expect(liveTab).toContain('nativeSurfaceFullscreen && styles.fullscreenVideoContainer');
+
+    // BACK must return the currently active channel (including a zap made while
+    // fullscreen), restore the same persistent surface to mini mode, and only
+    // then remove the transparent route.
+    const backStart = fullscreenPlayer.indexOf('const handleBackLive = useCallback');
+    const back = fullscreenPlayer.slice(backStart, backStart + 3800);
+    const persistentBackStart = back.indexOf('if (usesPersistentNativeSurface) {');
+    const persistentBack = back.slice(persistentBackStart, persistentBackStart + 900);
+    expect(backStart).toBeGreaterThan(-1);
+    expect(persistentBackStart).toBeGreaterThan(-1);
+    expect(back).toContain('streamUrl: currentEntry?.url || liveUrlRef.current || params.url ||');
+    expect(back).toContain('setPendingLivePlayerReturn(returnChannel)');
+    expect(back).toContain("DEE.emit('live:setPlayingChannel', returnChannel)");
+    expect(persistentBack).toContain("transitionNativeSurface('mini', returnToLive)");
+    expect(persistentBack).toContain('router.back()');
+    const returnCallbackStart = persistentBack.indexOf('const returnToLive = () => {');
+    const returnCallbackEnd = persistentBack.indexOf('};', returnCallbackStart);
+    expect(returnCallbackStart).toBeGreaterThan(-1);
+    expect(returnCallbackEnd).toBeGreaterThan(returnCallbackStart);
+    expect(persistentBack.slice(returnCallbackStart, returnCallbackEnd)).toContain('router.back()');
+    expect(
+      back.indexOf('setPendingLivePlayerReturn(returnChannel)'),
+    ).toBeLessThan(back.indexOf("transitionNativeSurface('mini', returnToLive)"));
+    expect(
+      persistentBack.indexOf("transitionNativeSurface('mini', returnToLive)"),
+    ).toBeGreaterThan(returnCallbackEnd);
+
+    // The receiving Live TV screen consumes that handoff into both selection
+    // and playback state, so returning does not leave a stale row or a silent
+    // mini-player behind.
+    expect(liveTab).toContain('const returnedChannel = consumePendingLivePlayerReturn();');
+    const returnedChannelStart = liveTab.indexOf('if (returnedChannel) {', liveTab.indexOf('const returnedChannel'));
+    const returnedChannelBlock = liveTab.slice(returnedChannelStart, returnedChannelStart + 500);
+    expect(returnedChannelBlock).toContain('setPlayingChannel(returnedChannel)');
+    expect(returnedChannelBlock).toContain('setSelectedChannel(returnedChannel)');
+  });
+
   it('keeps the libVLC output buffer stable while the React Native parent expands', () => {
     const nativeVlcChange = vlcAndroidPatch.slice(
       vlcAndroidPatch.indexOf('ReactVlcPlayerView.java'),
@@ -266,6 +335,13 @@ describe('Android live VLC container ownership', () => {
     expect(activeLayoutLines).not.toContain('setAspectRatio');
   });
 
+  it('commits the native owner directly to its final bounds instead of animating TextureView resizes', () => {
+    expect(liveContext).not.toContain('LayoutAnimation.configureNext');
+    expect(liveContext).not.toContain('setLayoutAnimationEnabledExperimental');
+    expect(liveContext).toContain("animated: false");
+    expect(liveContext).toContain('requestAnimationFrame(() =>');
+  });
+
   it('expands the channel already playing rather than a separately highlighted row', () => {
     for (const entryPoint of [
       'const handleWatch = useCallback',
@@ -309,9 +385,36 @@ describe('Android live VLC container ownership', () => {
 
   it('updates the existing persistent source after a real channel zap', () => {
     const switchStart = fullscreenPlayer.indexOf('const switchChannel = useCallback');
-    const switchBlock = fullscreenPlayer.slice(switchStart, switchStart + 3600);
+    const switchBlock = fullscreenPlayer.slice(switchStart, switchStart + 5000);
     expect(switchBlock).toContain('setNativeSurfaceUrl(entry.url)');
     expect(switchBlock).toContain('updateNativeSurfaceHandoffUrl(nativeSurfaceHandoffId, entry.url)');
     expect(switchBlock).toContain("DeviceEventEmitter.emit('channel:switched'");
+    expect(switchBlock).toContain('channel: switchedChannel');
+    expect(switchBlock).toContain('id: entry.channelId ?? entry.url');
+    expect(switchBlock).toContain('if (isLive) liveUrlRef.current = entry.url');
+  });
+
+  it('keeps the mini-player identity tied to the exact fullscreen channel switch', () => {
+    const listenerStart = liveTab.indexOf("DeviceEventEmitter.addListener('channel:switched'");
+    const listener = liveTab.slice(listenerStart, listenerStart + 1300);
+
+    expect(listenerStart).toBeGreaterThan(-1);
+    expect(listener).toContain('channel?: Channel');
+    expect(listener).toContain('candidate.id === channel.id');
+    expect(listener).toContain('setSelectedChannel(activeChannel)');
+    expect(listener).toContain('setPlayingChannel(activeChannel)');
+    expect(liveTab).toContain("console.log(VLC_TRACE, 'react-owner-layout'");
+  });
+
+  it('returns the zapped entry URL with its matching metadata on BACK', () => {
+    const backStart = fullscreenPlayer.indexOf('const handleBackLive = useCallback');
+    const back = fullscreenPlayer.slice(backStart, backStart + 3800);
+
+    expect(backStart).toBeGreaterThan(-1);
+    expect(back).toContain('const currentEntry = channelList[channelIdx]');
+    expect(back).toContain('streamUrl: currentEntry?.url || liveUrlRef.current || params.url ||');
+    expect(back).toContain('id:        currentEntry?.channelId');
+    expect(back).toContain('epgId:     activeEpgId');
+    expect(back).toContain('setPendingLivePlayerReturn(returnChannel)');
   });
 });

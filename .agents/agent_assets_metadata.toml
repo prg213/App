@@ -6,6 +6,7 @@ id = "jjKyL8UHcTCF2r348q6pT"
 uri = "file://StreamVault-debug.apk"
 type = "unspecified"
 title = "StreamVault Debug APK"
+logical_id = "8b8b3392-7780-4d8f-b1e9-91fefd0d015c"
 
 [[outputs]]
 id = "xdB-s5DvZsujToahHK2nt"
@@ -13,6 +14,7 @@ uri = "file://StreamVault-v230.apk"
 type = "unspecified"
 title = "StreamVault v230 APK"
 description = "Release APK built from commit 1020e39. Includes the latest Live TV focus navigation, TV viewport fitting, and channel zapping with the OSD visible."
+logical_id = "55eca1e9-a703-4d1a-99d7-f456deba05b2"
 
 [[outputs]]
 id = "Izwj3hCuu_Z3-0vub7DMA"
@@ -20,3 +22,25 @@ uri = "file://artifacts/iptv-app/StreamVault-diagnostic-run-22.apk"
 type = "unspecified"
 title = "StreamVault diagnostic APK — run 22"
 description = "Universal signed diagnostic APK with [SV-VLC-TRACE] lifecycle logging. Install on the Firestick/Android TV, perform the requested mini-player ↔ fullscreen cycles, and collect logcat lines containing SV-VLC-TRACE."
+logical_id = "a85dbbda-8621-45a0-88d6-771858416bab"
+
+[[outputs]]
+id = "An8UdJHoZyUs8AWl4gpsy"
+uri = "file://artifacts/iptv-app/StreamVault-diagnostic-phone-arm64-run-23.apk"
+type = "unspecified"
+title = "StreamVault Android phone diagnostic APK — build 23"
+description = "Signed ARM64 APK built from main at the Android fullscreen fix commit. Use this on a modern ARM64 Android phone; the universal APK is also saved in artifacts/iptv-app/StreamVault-diagnostic-run-23.apk."
+logical_id = "b90acc30-7857-4e3e-b267-12fcfbceff3d"
+content_hash = "sha256:4495259725255d7449ba6f0e074d7c66b80159872c7b26527df5672804e60bfa"
+size = 64699260
+mtime_ms = 1787567863089
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:ee7158f7-9a75-41e8-a92a-260cf9085a78/b90acc30-7857-4e3e-b267-12fcfbceff3d/f3fc7cef-a9b7-43c4-8e19-c999e6ad6f00"
+storage_version_token = "1787567872306569"
+content_type = "application/octet-stream"
+
+[[outputs]]
+id = "tCWgPrqGqWPs1-zg4nItT"
+uri = "file://artifacts/iptv-app/StreamVault-release-23.apk"
+type = "unspecified"
+title = "StreamVault fixed APK — build 23"
+description = "Universal signed APK from GitHub Actions build 23, built from commit 3b3bb9a containing the Android phone fullscreen layout fix."
