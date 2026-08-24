@@ -353,10 +353,52 @@ describe('Android live VLC container ownership', () => {
   });
 
   it('commits the native owner directly to its final bounds instead of animating TextureView resizes', () => {
+    const transitionStart = liveContext.indexOf('const transitionNativeSurface = useCallback');
+    const transitionBlock = liveContext.slice(
+      transitionStart,
+      liveContext.indexOf('const commitNativeSurfaceLayout', transitionStart),
+    );
     expect(liveContext).not.toContain('LayoutAnimation.configureNext');
     expect(liveContext).not.toContain('setLayoutAnimationEnabledExperimental');
-    expect(liveContext).toContain("animated: false");
-    expect(liveContext).toContain('requestAnimationFrame(() =>');
+    expect(transitionStart).toBeGreaterThan(-1);
+    expect(transitionBlock).toContain("animated: false");
+    expect(transitionBlock).not.toContain('requestAnimationFrame(() =>');
+    expect(liveContext).toContain('pendingNativeSurfaceTransitionRef');
+    expect(liveContext).toContain('commitNativeSurfaceLayout');
+    expect(liveContext).toContain("'surface-transition-layout-ack'");
+    expect(liveTab).toContain('commitNativeSurfaceLayout(nativeSurfaceMode, { width, height, x, y })');
+  });
+
+  it('uses the measured fullscreen owner ratio instead of the mini-player ratio', () => {
+    expect(liveTab).toContain('const fullscreenVlcAspectRatio = nativeSurfaceFullscreen');
+    expect(liveTab).toContain('videoAspectRatio={fullscreenVlcAspectRatio}');
+    expect(liveTab).toContain("resizeMode={nativeSurfaceFullscreen ? 'cover' : 'contain'}");
+    expect(androidNativePlayer).toContain('videoAspectRatio={videoAspectRatio as any}');
+  });
+
+  it('retains the libVLC player across a temporary TextureView detach or replacement', () => {
+    const nativeVlcChange = vlcAndroidPatch.slice(
+      vlcAndroidPatch.indexOf('ReactVlcPlayerView.java'),
+    );
+    const detachStart = nativeVlcChange.indexOf('protected void onDetachedFromWindow()');
+    const detachBlock = nativeVlcChange
+      .slice(detachStart, nativeVlcChange.indexOf('@@', detachStart))
+      .split('\n')
+      .filter((line) => !line.startsWith('-'))
+      .join('\n');
+    const textureStart = nativeVlcChange.indexOf('onSurfaceTextureAvailable');
+    const textureBlock = nativeVlcChange.slice(textureStart, nativeVlcChange.indexOf('@@', textureStart));
+
+    expect(detachStart).toBeGreaterThan(-1);
+    expect(detachBlock).toContain('if (!isSurfaceTextureAvailable)');
+    expect(detachBlock).toContain('detachVlcOutputForSurfaceLoss("view-detached-without-surface")');
+    expect(detachBlock).not.toContain('stopPlayback()');
+    expect(nativeVlcChange).toContain('private boolean hasRetainablePlayer()');
+    expect(nativeVlcChange).toContain('surface-output-reattach');
+    expect(nativeVlcChange).toContain('vlcOut.setVideoSurface(getSurfaceTexture())');
+    expect(textureBlock).toContain('if (hasRetainablePlayer())');
+    expect(textureBlock).toContain('recoverVlcOutputIfReady("surface-available")');
+    expect(textureBlock).toContain('else if (!isTerminalCleanup && srcMap != null)');
   });
 
   it('expands the channel already playing rather than a separately highlighted row', () => {

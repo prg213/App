@@ -11,6 +11,12 @@ export interface NativeStreamPlayerProps {
   paused?: boolean;
   repeat?: boolean;
   resizeMode?: StreamResizeMode;
+  /**
+   * Android libVLC display aspect. Undefined keeps the stream's native aspect;
+   * fullscreen supplies the measured owner ratio so the output cannot retain
+   * the mini-player geometry.
+   */
+  videoAspectRatio?: string;
   style?: StyleProp<ViewStyle>;
   reloadKey?: string | number;
   /** Normalized VLC seek position (0=start, 1=end). Android only. */
