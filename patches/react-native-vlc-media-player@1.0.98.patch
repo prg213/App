@@ -100,7 +100,7 @@
      }
  
  
-@@ -157,6 +183,97 @@
+@@ -157,6 +183,87 @@
      public void onAudioFocusChange(int focusChange) {
      }
  
@@ -117,14 +117,9 @@
 +        IVLCVout vlcOut = mMediaPlayer.getVLCVout();
 +        vlcOut.setWindowSize(outputWidth, outputHeight);
 +        applyResizeMode();
-+        // libVLC's Vout must be explicitly told that its output frame changed.
-+        // This updates the existing surface in-place; it does not recreate the
-+        // MediaPlayer or reload the stream.
-+        try {
-+            vlcOut.updateVideoSurfaces();
-+        } catch (Exception e) {
-+            Log.w(tag, "surface-output-update failed reason=" + reason, e);
-+        }
++        // setWindowSize updates this attached Vout in libVLC 3.6. Calling the
++        // removed updateVideoSurfaces API is neither necessary nor compatible.
++        // This remains a presentation-only change: the player and stream stay put.
 +        Log.i(tag, "surface-output-size reason=" + reason
 +                + " output=" + outputWidth + "x" + outputHeight
 +                + " resizeMode=" + resizeMode);
@@ -154,11 +149,6 @@
 +        resizeMode = mode;
 +        if (mMediaPlayer != null) {
 +            applyResizeMode();
-+            try {
-+                mMediaPlayer.getVLCVout().updateVideoSurfaces();
-+            } catch (Exception e) {
-+                Log.w(tag, "resize-mode surface update failed", e);
-+            }
 +        }
 +    }
 +
@@ -198,7 +188,7 @@
      private void setProgressUpdateRunnable() {
          if (mMediaPlayer != null && mProgressUpdateInterval > 0){
              new Thread() {
-@@ -204,15 +321,12 @@
+@@ -204,15 +312,12 @@
          @Override
          public void onLayoutChange(View view, int i, int i1, int i2, int i3, int i4, int i5, int i6, int i7) {
              if (view.getWidth() > 0 && view.getHeight() > 0) {
@@ -220,7 +210,7 @@
              }
          }
      };
-@@ -335,6 +449,7 @@
+@@ -335,6 +440,7 @@
  
  
      private void stopPlayback() {
@@ -228,7 +218,7 @@
          onStopPlayback();
          releasePlayer();
      }
-@@ -414,10 +529,11 @@
+@@ -414,10 +520,11 @@
              //this.getHolder().setKeepScreenOn(true);
              IVLCVout vlcOut = mMediaPlayer.getVLCVout();
              if (mVideoWidth > 0 && mVideoHeight > 0) {
@@ -244,16 +234,15 @@
                  //mMediaPlayer.setAspectRatio(mVideoWidth+":"+mVideoHeight);
              }
              DisplayMetrics dm = getResources().getDisplayMetrics();
-@@ -464,6 +580,8 @@
+@@ -464,6 +571,7 @@
                  //vlcOut.attachViews(onNewVideoLayoutListener);
                  vlcOut.setVideoSurface(this.getSurfaceTexture());
                  vlcOut.attachViews(onNewVideoLayoutListener);
 +                applyResizeMode();
-+                try { vlcOut.updateVideoSurfaces(); } catch (Exception ignored) {}
                  // vlcOut.attachSurfaceSlave(surfaceVideo,null,onNewVideoLayoutListener);
                  //vlcOut.setVideoView(this);
                  //vlcOut.attachViews(onNewVideoLayoutListener);
-@@ -763,16 +881,27 @@
+@@ -763,16 +871,27 @@
          mVideoWidth = width;
          mVideoHeight = height;
          surfaceVideo = new Surface(surface);
@@ -297,7 +286,7 @@
          videoView.doResume(autoPlay);
      }
  
-+    @ReactProp(name = PROP_RESIZE_MODE, defaultString = "contain")
++    @ReactProp(name = PROP_RESIZE_MODE)
 +    public void setResizeMode(final ReactVlcPlayerView videoView, final String resizeMode) {
 +        videoView.setResizeMode(resizeMode);
 +    }

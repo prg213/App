@@ -310,6 +310,9 @@ describe('Android live VLC container ownership', () => {
     expect(nativeVlcChange).toContain('syncVlcOutputToView("layout")');
     expect(nativeVlcChange).toMatch(/-\s+vlcOut\.setWindowSize\(mVideoWidth, mVideoHeight\)/);
     expect(nativeVlcChange).not.toContain('+                    mMediaPlayer.setAspectRatio');
+    expect(nativeVlcChange).not.toContain('updateVideoSurfaces(');
+    expect(vlcAndroidPatch).toContain('@ReactProp(name = PROP_RESIZE_MODE)');
+    expect(vlcAndroidPatch).not.toContain('defaultString =');
   });
 
   it('returns the same surface to mini mode before the controls-only route closes', () => {
