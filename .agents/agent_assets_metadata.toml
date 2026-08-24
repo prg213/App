@@ -79,3 +79,10 @@ uri = "file://attached_assets/StreamVault-LiveTV-VLC-CURRENT-SOURCE-AFTER-LATEST
 type = "unspecified"
 title = "StreamVault current Live TV VLC source"
 description = "Exact current checkout source after the latest Android build, including React Native Live TV/player paths, persistent mini/fullscreen surface handoff, layout and measurement logic, player lifecycle, channel switching, Android VLC/libVLC integration, custom native patch, relevant tests, and Android build support. Excludes node_modules, caches, generated build output, APKs, signing keys, credentials, API keys, .env/secrets, and unrelated files."
+
+[[outputs]]
+id = "hCnob9OUYcWi0r-rvdPT7"
+uri = "file://artifacts/iptv-app/builds/StreamVault-268.apk"
+type = "unspecified"
+title = "StreamVault Android APK 268"
+description = "Successful Android internal APK build from the existing StreamVault IPTV project. Install this over the existing StreamVault app; physical playback verification is still required."
