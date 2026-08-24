@@ -409,43 +409,10 @@ export default function LiveTVScreen() {
     triggerExpandFromRef,
   } = useLivePlayer();
 
-  // Android owns one VLC TextureView in a stable direct child of this Live TV
-  // root. The focusable mini control remains a real control, but only provides
-  // the measured mini viewport; it never reparents or unmounts the native view.
+  // The persistent VLC child always fills its real FocusablePressable owner.
+  // Fullscreen changes that owner's parent layout; it never projects mini
+  // coordinates into a separate root-level presentation host.
   const nativeSurfaceFullscreen = nativeSurfaceMode === 'fullscreen';
-  const nativeSurfaceRootRef = useRef<View>(null);
-  const [nativeOwnerBounds, setNativeOwnerBounds] = useState({
-    width: 0,
-    height: 0,
-    x: 0,
-    y: 0,
-  });
-  const nativeVlcAspectRatio = nativeOwnerBounds.width > 0
-    && nativeOwnerBounds.height > 0
-    ? `${Math.round(nativeOwnerBounds.width)}:${Math.round(nativeOwnerBounds.height)}`
-    : undefined;
-  const measureNativeSurfaceOwner = useCallback(() => {
-    if (!USES_NATIVE_VLC || nativeSurfaceMode !== 'mini') return;
-    const owner = miniPlayerRef.current;
-    const root = nativeSurfaceRootRef.current;
-    if (!owner || !root) return;
-
-    owner.measureLayout(
-      root,
-      (x, y, width, height) => {
-        if (width <= 0 || height <= 0) return;
-        setNativeOwnerBounds((current) => (
-          current.x === x
-          && current.y === y
-          && current.width === width
-          && current.height === height
-            ? current
-            : { x, y, width, height }
-        ));
-      },
-      () => {},
-    );
-  }, [miniPlayerRef, nativeSurfaceMode]);
   const activeNativeSurfaceUrl = nativeSurfaceUrl
     || playingChannel?.streamUrl
     || selectedChannel?.streamUrl
@@ -1434,11 +1401,9 @@ export default function LiveTVScreen() {
     }
   }, [selectedChannel, playingChannel, channels, player, router, beginNativeSurfaceHandoff, setNativeSurfaceUrl, transitionNativeSurface, triggerExpand]);
 
-  // The persistent Android VLC TextureView is elevated above the original
-  // preview card so it can animate outside clipped panels. Keep one shared
-  // press handler for the card and the transparent mobile relay above that
-  // native texture; otherwise the TextureView can swallow a touch before the
-  // card's onPress receives it.
+  // The persistent Android VLC TextureView fills the real preview control.
+  // Keep one shared press handler for the card and its native child so the
+  // TextureView cannot swallow a touch before the card's onPress receives it.
   const handleMiniPlayerPress = useCallback(() => {
     if (hasError && selectedChannel) {
       setHasError(false);
@@ -1504,8 +1469,8 @@ export default function LiveTVScreen() {
     // The VLC path expands the real playback container, never the tapped card.
     // The generic Expo-video route keeps its existing navigation hooks.
     if (USES_NATIVE_VLC) {
-      // The Live TV mini-player becomes visible on this render. Give it one
-      // layout pass before measuring and expanding its persistent VLC surface.
+      // The Live TV owner becomes visible on this render. Give its final
+      // fullscreen layout one frame to commit before opening the controls route.
       setNativeSurfaceUrl(ch.streamUrl);
       nativeSurfaceHandoffId = beginNativeSurfaceHandoff(ch.streamUrl);
       requestAnimationFrame(() => transitionNativeSurface('fullscreen', navigate));
@@ -1756,6 +1721,9 @@ export default function LiveTVScreen() {
           vlcReloadKey={vlcReloadKey}
           isPlaybackActive={isLivePreviewActive}
           nativeSurfaceFullscreen={nativeSurfaceFullscreen}
+           onNativeSurfaceLayout={(bounds) => {
+             commitNativeSurfaceLayout(nativeSurfaceMode, bounds);
+           }}
           isBuffering={isBuffering}
           hasError={hasError}
           onVlcPlaying={handlePersistentVlcPlaying}
@@ -1790,12 +1758,7 @@ export default function LiveTVScreen() {
   }
 
   return (
-    <View
-      ref={nativeSurfaceRootRef}
-      collapsable={false}
-      onLayout={measureNativeSurfaceOwner}
-      style={[styles.root, { backgroundColor: colors.background }]}
-    >
+    <View style={[styles.root, { backgroundColor: colors.background }]}>
 
       {/* ══ LEFT: vertical category list ══ */}
       <View style={[styles.catPanel, { borderRightColor: colors.border, paddingTop: insets.top + 4 }]}>
@@ -1973,6 +1936,7 @@ export default function LiveTVScreen() {
       <View style={[
         styles.previewPanel,
         { paddingTop: insets.top + 4, paddingRight: insets.right + 8 },
+        nativeSurfaceFullscreen && styles.previewPanelFullscreen,
       ]}>
 
         {!isWeb && (
@@ -1986,14 +1950,49 @@ export default function LiveTVScreen() {
             onPress={handleMiniPlayerPress}
             onFocus={() => setMiniPlayerFocused(true)}
             onBlur={() => setMiniPlayerFocused(false)}
-            onLayout={measureNativeSurfaceOwner}
+            onLayout={(event) => {
+              const { width, height, x, y } = event.nativeEvent.layout;
+              console.log(VLC_TRACE, 'react-owner-layout', {
+                width,
+                height,
+                x,
+                y,
+                fullscreen: nativeSurfaceFullscreen,
+              });
+              commitNativeSurfaceLayout(nativeSurfaceMode, { width, height, x, y });
+            }}
             focusedStyle={{}}
             style={(focused) => [
               styles.videoWrap,
               !playingChannel && { display: 'none' },
+              nativeSurfaceFullscreen && styles.fullscreenVideoContainer,
               focused && styles.videoWrapFocused,
             ]}
           >
+            {/* The single Android VLC TextureView stays in this real owner.
+                A mode change resizes the same TextureView and MediaPlayer;
+                source changes are the only reason its keyed renderer reloads. */}
+            {USES_NATIVE_VLC && isLivePreviewActive && nativeSurfaceMode !== 'hidden' && (
+              <View
+                collapsable={false}
+                pointerEvents="none"
+                focusable={false}
+                accessible={false}
+                importantForAccessibility="no-hide-descendants"
+                style={[styles.nativeSurfaceHost, StyleSheet.absoluteFill]}
+              >
+                <NativeStreamPlayer
+                  source={activeNativeSurfaceUrl}
+                  player={player}
+                  style={StyleSheet.absoluteFill}
+                  resizeMode={nativeSurfaceFullscreen ? 'cover' : 'contain'}
+                  reloadKey={vlcReloadKey}
+                  onPlaying={handlePersistentVlcPlaying}
+                  onBuffering={handlePersistentVlcBuffering}
+                  onError={handlePersistentVlcError}
+                />
+              </View>
+            )}
             {USES_NATIVE_VLC && (
               <>
                 {isBuffering && !hasError && nativeSurfaceMode === 'mini' && (
@@ -2263,62 +2262,6 @@ export default function LiveTVScreen() {
         ))}
       </View>{/* end previewPanel */}
 
-      {/* Android VLC presentation host. This stays a direct child of the Live
-          TV root for both mini and fullscreen. The mini control above only
-          reports its real bounds; fullscreen fills this root after the tab
-          shell releases its sidebar margin. */}
-      {USES_NATIVE_VLC
-        && isLivePreviewActive
-        && nativeSurfaceMode !== 'hidden'
-        && activeNativeSurfaceUrl
-        && (nativeSurfaceFullscreen || (nativeOwnerBounds.width > 0 && nativeOwnerBounds.height > 0)) && (
-        <View
-          collapsable={false}
-          pointerEvents="none"
-          accessible={false}
-          importantForAccessibility="no-hide-descendants"
-          style={styles.nativeSurfacePresentationLayer}
-        >
-          <View
-            collapsable={false}
-            onLayout={(event) => {
-              const { width, height, x, y } = event.nativeEvent.layout;
-              console.log(VLC_TRACE, 'react-owner-layout', {
-                width,
-                height,
-                x,
-                y,
-                fullscreen: nativeSurfaceFullscreen,
-              });
-              commitNativeSurfaceLayout(nativeSurfaceMode, { width, height, x, y });
-            }}
-            style={[
-              styles.nativeSurfacePresentationFrame,
-              nativeSurfaceFullscreen
-                ? StyleSheet.absoluteFill
-                : {
-                    left: nativeOwnerBounds.x,
-                    top: nativeOwnerBounds.y,
-                    width: nativeOwnerBounds.width,
-                    height: nativeOwnerBounds.height,
-                  },
-            ]}
-          >
-            <NativeStreamPlayer
-              source={activeNativeSurfaceUrl}
-              player={player}
-              style={StyleSheet.absoluteFill}
-              resizeMode={nativeSurfaceFullscreen ? 'cover' : 'contain'}
-              videoAspectRatio={nativeVlcAspectRatio}
-              reloadKey={vlcReloadKey}
-              onPlaying={handlePersistentVlcPlaying}
-              onBuffering={handlePersistentVlcBuffering}
-              onError={handlePersistentVlcError}
-            />
-          </View>
-        </View>
-      )}
-
       {/* ── Catch-up sheet ── */}
       {showCatchup && selectedChannel && creds && (
         <CatchupSheet
@@ -2532,17 +2475,6 @@ const styles = StyleSheet.create({
   },
   nativeSurfaceHost: {
     position: 'absolute',
-    backgroundColor: '#000',
-  },
-  nativeSurfacePresentationLayer: {
-    ...StyleSheet.absoluteFillObject,
-    zIndex: 50,
-    elevation: 50,
-    pointerEvents: 'none',
-  },
-  nativeSurfacePresentationFrame: {
-    position: 'absolute',
-    overflow: 'hidden',
     backgroundColor: '#000',
   },
   expandHint: {

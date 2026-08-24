@@ -68,11 +68,14 @@ describe('live fullscreen return ownership', () => {
     expect(transitionStart).toBeGreaterThan(-1);
     expect(transition).toContain('setNativeSurfaceMode(mode)');
     expect(transition).toContain("animated: false");
-    expect(transition).toContain('requestAnimationFrame(() =>');
-    expect(transition).toContain('onComplete();');
+    expect(transition).toContain('pendingNativeSurfaceTransitionRef.current = { mode, onComplete };');
+    expect(transition).not.toContain('requestAnimationFrame(() =>');
     expect(transition).not.toContain('LayoutAnimation.configureNext');
     expect(transition).not.toContain('measureInWindow');
     expect(transition).not.toContain('Animated.');
+    expect(context).toContain('const commitNativeSurfaceLayout = useCallback');
+    expect(context).toContain("'surface-transition-layout-ack'");
+    expect(context).toContain('pending.onComplete();');
     expect(collapseStart).toBeGreaterThan(-1);
     expect(collapse).toContain('requestAnimationFrame(() => {');
     expect(collapse).toContain('requestAnimationFrame(onDone)');
