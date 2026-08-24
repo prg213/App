@@ -51,3 +51,10 @@ uri = "file://attached_assets/StreamVault-v266.apk"
 type = "unspecified"
 title = "StreamVault Android candidate v266"
 description = "Universal internal APK from EAS build 97933cb2-c9fc-4733-b745-d48622a78bf6. Install fresh because it uses the EAS signing key."
+
+[[outputs]]
+id = "xQ4qgNaqHSq4et_dnrOss"
+uri = "file://StreamVault-267-universal.apk"
+type = "unspecified"
+title = "StreamVault Android APK 267"
+description = "Universal internal APK built from the final Android VLC presentation and delayed foreground-recovery changes. Install this on the physical Android phone for acceptance testing."
