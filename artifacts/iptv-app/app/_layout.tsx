@@ -150,7 +150,16 @@ function RootLayoutNav() {
   return (
     <View style={{ flex: 1 }}>
       <Stack screenOptions={{ headerShown: false, animation: 'fade' }}>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen
+          name="(tabs)"
+          options={{
+            headerShown: false,
+            // The Android VLC surface lives in this screen while the transparent
+            // player route supplies controls. Do not freeze the owner while the
+            // fullscreen route asks it to resize to the current window.
+            freezeOnBlur: false,
+          }}
+        />
         <Stack.Screen name="activation" options={{ headerShown: false, gestureEnabled: false }} />
         {/*
           Android live fullscreen can reuse the already-mounted VLC mini-player
@@ -164,6 +173,10 @@ function RootLayoutNav() {
             presentation: Platform.OS === 'android' ? 'transparentModal' : 'fullScreenModal',
             animation: 'none',
             contentStyle: { backgroundColor: 'transparent' },
+            // Native Stack is otherwise allowed to detach the previous scene
+            // underneath a modal. Keeping the Live TV scene attached is what
+            // preserves the one TextureView and its active libVLC output.
+            detachPreviousScreen: false,
           }}
         />
         <Stack.Screen name="movie/[id]" options={{ headerShown: false, animation: 'slide_from_right', gestureEnabled: true }} />
