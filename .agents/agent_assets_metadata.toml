@@ -72,3 +72,10 @@ uri = "file://attached_assets/StreamVault-LiveTV-VLC-CURRENT-SOURCE_20260824.zip
 type = "unspecified"
 title = "StreamVault current Live TV VLC source"
 description = "Current source bundle for Android Live TV, persistent VLC/libVLC integration, mini/fullscreen transitions, sizing, channel switching, lifecycle, custom native patch, relevant tests, and Android build configuration. Excludes node_modules, caches, build output, APKs, signing keys, secrets, and eas.json containing an API key."
+
+[[outputs]]
+id = "gs0NL8siWCKL56sPTy5l-"
+uri = "file://attached_assets/StreamVault-LiveTV-VLC-CURRENT-SOURCE-AFTER-LATEST-BUILD_20260824.zip"
+type = "unspecified"
+title = "StreamVault current Live TV VLC source"
+description = "Exact current checkout source after the latest Android build, including React Native Live TV/player paths, persistent mini/fullscreen surface handoff, layout and measurement logic, player lifecycle, channel switching, Android VLC/libVLC integration, custom native patch, relevant tests, and Android build support. Excludes node_modules, caches, generated build output, APKs, signing keys, credentials, API keys, .env/secrets, and unrelated files."
