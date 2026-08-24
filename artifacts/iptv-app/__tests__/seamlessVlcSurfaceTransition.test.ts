@@ -79,7 +79,7 @@ describe('Android live VLC container ownership', () => {
   });
 
   it('acknowledges final owner layout on both phone and Fire TV before continuing a handoff', () => {
-    expect(liveTab).toContain('commitNativeSurfaceLayout(nativeSurfaceMode, { width, height, x, y })');
+    expect(liveTab).toContain('commitNativeSurfaceLayout(nativeSurfaceMode, {');
     expect(liveTab).toContain('onNativeSurfaceLayout={(bounds) => {');
     expect(liveTab).toContain('commitNativeSurfaceLayout(nativeSurfaceMode, bounds);');
     expect(tvLayout).toContain('onNativeSurfaceLayout?: (bounds: { width: number; height: number; x: number; y: number }) => void;');
@@ -89,10 +89,12 @@ describe('Android live VLC container ownership', () => {
   it('expands the fullscreen preview frame without retaining the mini-player ratio', () => {
     expect(liveTab).toContain('styles.nativeSurfacePresentationLayer');
     expect(liveTab).toContain('styles.nativeSurfacePresentationFrame');
-    expect(liveTab).toContain('width: nativeSurfaceViewport.width');
-    expect(liveTab).toContain('height: nativeSurfaceViewport.height');
+    expect(liveTab).toContain('width: screenWidth');
+    expect(liveTab).toContain('height: screenHeight');
     expect(liveTab).toContain('nativeFullscreenViewportRef.current = null');
-    expect(liveTab).toContain('surface-layout-waiting-for-fullscreen-viewport');
+    expect(liveTab).toContain(
+      'nativeFullscreenViewportRef.current = { width: screenWidth, height: screenHeight }',
+    );
     expect(liveTab).toContain('surface-root-layout-ignored-before-fullscreen-viewport');
     expect(liveTab).toContain('Math.round(width) === Math.round(screenWidth)');
     expect(liveTab).toContain('Math.round(height) === Math.round(screenHeight)');
@@ -129,7 +131,7 @@ describe('Android live VLC container ownership', () => {
     expect(liveTab).toContain('nativeSurfaceRootRef');
     expect(liveTab).toContain('nativeOwnerBounds');
     expect(liveTab).toContain('styles.nativeSurfacePresentationLayer');
-    expect(liveTab).toContain('commitNativeSurfaceLayout(nativeSurfaceMode, { width, height, x, y })');
+    expect(liveTab).toContain('commitNativeSurfaceLayout(nativeSurfaceMode, {');
     const fullscreenMountStart = fullscreenPlayer.indexOf('videoMounted && !usesPersistentNativeSurface');
     const fullscreenMount = fullscreenPlayer.slice(fullscreenMountStart, fullscreenMountStart + 1100);
     expect(fullscreenMountStart).toBeGreaterThan(-1);
@@ -211,7 +213,9 @@ describe('Android live VLC container ownership', () => {
       "const nativeSurfaceFullscreen = Platform.OS === 'android' && nativeSurfaceMode === 'fullscreen'",
     );
     expect(tabLayout).toContain('nativeSurfaceFullscreen ? null : <Sidebar {...props} />');
-    expect(tabLayout).toContain('marginLeft: nativeSurfaceFullscreen ? 0 : SIDEBAR_W');
+    expect(tabLayout).toContain(
+      "nativeSurfaceFullscreen\n          ? { marginLeft: 0, position: 'absolute'",
+    );
   });
 
   it('removes the phone mini-player chrome so Android fullscreen contains only the video', () => {
@@ -219,8 +223,8 @@ describe('Android live VLC container ownership', () => {
     expect(liveTab).toContain('!nativeSurfaceFullscreen && (selectedChannel ? (');
     expect(liveTab).toContain('nativeSurfacePresentationLayer:');
     expect(liveTab).toContain('nativeSurfacePresentationFrame:');
-    expect(liveTab).toContain('width: nativeSurfaceViewport.width');
-    expect(liveTab).toContain('height: nativeSurfaceViewport.height');
+    expect(liveTab).toContain('width: screenWidth');
+    expect(liveTab).toContain('height: screenHeight');
     expect(liveTab).toContain('nativeSurfaceMode !== \'hidden\'');
   });
 
@@ -232,7 +236,9 @@ describe('Android live VLC container ownership', () => {
       "const nativeSurfaceFullscreen = Platform.OS === 'android' && nativeSurfaceMode === 'fullscreen'",
     );
     expect(tabLayout).toContain('nativeSurfaceFullscreen ? null : <Sidebar {...props} />');
-    expect(tabLayout).toContain('sceneStyle: { marginLeft: nativeSurfaceFullscreen ? 0 : SIDEBAR_W }');
+    expect(tabLayout).toContain(
+      "sceneStyle: nativeSurfaceFullscreen\n          ? { marginLeft: 0, position: 'absolute'",
+    );
 
     // The route is a transparent controls layer over the persistent VLC view;
     // an opaque or animated Stack presentation would reintroduce a black frame
@@ -260,8 +266,8 @@ describe('Android live VLC container ownership', () => {
     expect(liveTab.slice(guideStart, guideStart + 900)).toContain('channelEpg');
     expect(liveTab).toContain('styles.nativeSurfacePresentationLayer');
     expect(liveTab).toContain('styles.nativeSurfacePresentationFrame');
-    expect(liveTab).toContain('width: nativeSurfaceViewport.width');
-    expect(liveTab).toContain('height: nativeSurfaceViewport.height');
+    expect(liveTab).toContain('width: screenWidth');
+    expect(liveTab).toContain('height: screenHeight');
 
     // BACK must return the currently active channel (including a zap made while
     // fullscreen), restore the same persistent surface to mini mode, and only
@@ -383,7 +389,7 @@ describe('Android live VLC container ownership', () => {
     expect(liveTab).toContain("console.log(VLC_TRACE, 'react-window-bounds'");
     expect(liveTab).toContain('insetRight: insets.right');
     expect(liveTab).toContain('fullscreen: nativeSurfaceFullscreen');
-    expect(liveTab).toContain('commitNativeSurfaceLayout(nativeSurfaceMode, { width, height, x, y })');
+    expect(liveTab).toContain('commitNativeSurfaceLayout(nativeSurfaceMode, {');
     expect(liveTab).toContain('nativeSurfaceRootRef');
     expect(liveTab).toContain('setNativeOwnerBounds');
     expect(liveTab).toContain('nativePreviewPanelBoundsRef');
@@ -394,6 +400,33 @@ describe('Android live VLC container ownership', () => {
     expect(vlcAndroidPatch).toContain('int outputWidth = getWidth()');
     expect(vlcAndroidPatch).toContain('int outputHeight = getHeight()');
     expect(vlcAndroidPatch).not.toContain('getRootView()');
+  });
+
+  it('retries the first mini-player frame in window coordinates without creating another VLC player', () => {
+    expect(liveTab).toContain('const measureNativeMiniOwnerInWindow = useCallback');
+    expect(liveTab).toContain("nativeSurfaceModeRef.current !== 'mini'");
+    expect(liveTab).toContain('owner.measureInWindow((ownerX, ownerY, width, height) => {');
+    expect(liveTab).toContain('root.measureInWindow((rootX, rootY) => {');
+    expect(liveTab).toContain('x: Math.max(0, ownerX - rootX)');
+    expect(liveTab).toContain('const timers = [0, 16, 64, 200, 400].map((delay) =>');
+    expect(liveTab).toContain('setTimeout(measureNativeMiniOwnerInWindow, delay)');
+    expect(liveTab).toContain('return () => timers.forEach(clearTimeout)');
+    expect(liveTab).not.toContain('owner.measureLayout(');
+  });
+
+  it('forces the fullscreen presentation and handoff acknowledgement to Android window bounds', () => {
+    expect(liveTab).toContain(
+      'nativeFullscreenViewportRef.current = { width: screenWidth, height: screenHeight }',
+    );
+    expect(liveTab).toContain('width: nativeSurfaceFullscreen ? screenWidth : width');
+    expect(liveTab).toContain('height: nativeSurfaceFullscreen ? screenHeight : height');
+    expect(liveTab).toContain('x: nativeSurfaceFullscreen ? 0 : x');
+    expect(liveTab).toContain('y: nativeSurfaceFullscreen ? 0 : y');
+    expect(liveTab).toContain('width: screenWidth');
+    expect(liveTab).toContain('height: screenHeight');
+    expect(tabLayout).toContain(
+      "sceneStyle: nativeSurfaceFullscreen\n          ? { marginLeft: 0, position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }",
+    );
   });
 
   it('commits the native owner directly to its final bounds instead of animating TextureView resizes', () => {
@@ -410,7 +443,7 @@ describe('Android live VLC container ownership', () => {
     expect(liveContext).toContain('pendingNativeSurfaceTransitionRef');
     expect(liveContext).toContain('commitNativeSurfaceLayout');
     expect(liveContext).toContain("'surface-transition-layout-ack'");
-    expect(liveTab).toContain('commitNativeSurfaceLayout(nativeSurfaceMode, { width, height, x, y })');
+    expect(liveTab).toContain('commitNativeSurfaceLayout(nativeSurfaceMode, {');
   });
 
   it('uses the current TextureView bounds without changing VLC playback props during a handoff', () => {

@@ -12,7 +12,7 @@
       "env": {
         "EXPO_PUBLIC_DOMAIN": "streamvault.rip",
         "EXPO_PUBLIC_TMDB_API_KEY": "312ee14dd7f250471da1174324be2bda",
-        "EXPO_PUBLIC_BUILD_NUMBER": "268"
+        "EXPO_PUBLIC_BUILD_NUMBER": "269"
       }
     },
     "production": {

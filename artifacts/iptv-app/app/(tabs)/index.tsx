@@ -515,6 +515,59 @@ export default function LiveTVScreen() {
     publishNativeMiniOwnerBounds();
   }, [publishNativeMiniOwnerBounds]);
 
+  // Android can report the first mini-player layout before the native hierarchy
+  // has a stable relative parent. Also measure the actual window coordinates a
+  // few frames after the first channel selection so the persistent VLC surface
+  // gets a real mini-player frame without requiring a fullscreen round-trip.
+  const measureNativeMiniOwnerInWindow = useCallback(() => {
+    if (!USES_NATIVE_VLC || nativeSurfaceModeRef.current !== 'mini') return;
+    const owner = miniPlayerRef.current;
+    const root = nativeSurfaceRootRef.current;
+    if (!owner || !root || !playingChannel) return;
+
+    owner.measureInWindow((ownerX, ownerY, width, height) => {
+      if (width <= 0 || height <= 0) return;
+      root.measureInWindow((rootX, rootY) => {
+        const next = {
+          x: Math.max(0, ownerX - rootX),
+          y: Math.max(0, ownerY - rootY),
+          width,
+          height,
+        };
+        setNativeOwnerBounds((current) => (
+          current.x === next.x
+          && current.y === next.y
+          && current.width === next.width
+          && current.height === next.height
+            ? current
+            : next
+        ));
+      });
+    });
+  }, [miniPlayerRef, nativeSurfaceMode, playingChannel?.id]);
+
+  useEffect(() => {
+    if (!USES_NATIVE_VLC || nativeSurfaceMode !== 'mini' || !playingChannel) return;
+    const timers = [0, 16, 64, 200, 400].map((delay) =>
+      setTimeout(measureNativeMiniOwnerInWindow, delay)
+    );
+    return () => timers.forEach(clearTimeout);
+  }, [measureNativeMiniOwnerInWindow, nativeSurfaceMode, playingChannel?.id]);
+
+  // Fullscreen must use the actual Android window dimensions rather than any
+  // previously measured preview/root dimensions. This prevents the native VLC
+  // frame from snapping back to the old 16:9 mini-player width after entering
+  // fullscreen.
+  useEffect(() => {
+    if (!USES_NATIVE_VLC || !nativeSurfaceFullscreen) return;
+    setNativeSurfaceViewport((current) => (
+      current.width === screenWidth && current.height === screenHeight
+        ? current
+        : { width: screenWidth, height: screenHeight }
+    ));
+    nativeFullscreenViewportRef.current = { width: screenWidth, height: screenHeight };
+  }, [nativeSurfaceFullscreen, screenHeight, screenWidth]);
+
   if (previousNativeSurfaceModeRef.current !== nativeSurfaceMode) {
     previousNativeSurfaceModeRef.current = nativeSurfaceMode;
     if (nativeSurfaceMode === 'fullscreen') {
@@ -2383,23 +2436,16 @@ export default function LiveTVScreen() {
                 y,
                 fullscreen: nativeSurfaceFullscreen,
               });
-              const fullscreenViewport = nativeFullscreenViewportRef.current;
-              if (
-                nativeSurfaceFullscreen
-                && (
-                  !fullscreenViewport
-                  || width !== fullscreenViewport.width
-                  || height !== fullscreenViewport.height
-                )
-              ) {
-                console.log(VLC_TRACE, 'surface-layout-waiting-for-fullscreen-viewport', {
-                  width,
-                  height,
-                  viewport: fullscreenViewport,
-                });
-                return;
-              }
-              commitNativeSurfaceLayout(nativeSurfaceMode, { width, height, x, y });
+              // The fullscreen presentation frame is explicitly sized from
+              // the Android window dimensions. Do not reject the layout ack just
+              // because an intermediate React Navigation container reports an
+              // older preview width.
+              commitNativeSurfaceLayout(nativeSurfaceMode, {
+                width: nativeSurfaceFullscreen ? screenWidth : width,
+                height: nativeSurfaceFullscreen ? screenHeight : height,
+                x: nativeSurfaceFullscreen ? 0 : x,
+                y: nativeSurfaceFullscreen ? 0 : y,
+              });
             }}
             style={[
               styles.nativeSurfacePresentationFrame,
@@ -2407,8 +2453,8 @@ export default function LiveTVScreen() {
                 ? {
                     left: 0,
                     top: 0,
-                    width: nativeSurfaceViewport.width,
-                    height: nativeSurfaceViewport.height,
+                    width: screenWidth,
+                    height: screenHeight,
                   }
                 : {
                     left: nativeOwnerBounds.x,

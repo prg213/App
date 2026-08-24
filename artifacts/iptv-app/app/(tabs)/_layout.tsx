@@ -436,7 +436,9 @@ export default function TabLayout() {
         // The fullscreen controls route is transparent; the selected tab stays
         // visible underneath it and must accept the native owner’s layout update.
         freezeOnBlur: false,
-        sceneStyle: { marginLeft: nativeSurfaceFullscreen ? 0 : SIDEBAR_W },
+        sceneStyle: nativeSurfaceFullscreen
+          ? { marginLeft: 0, position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }
+          : { marginLeft: SIDEBAR_W },
       }}
     >
       <Tabs.Screen name="home"      options={{ title: 'Home'      }} />
