@@ -1,3 +1,23 @@
+--- a/android/build.gradle
++++ b/android/build.gradle
+@@ -20,17 +20,6 @@
+         }
+     }
+ }
+-buildscript {
+-    repositories {
+-        google()
+-        mavenCentral()
+-        // maven { url "https://maven.appspector.com/artifactory/android-sdk" }
+-
+-    }
+-    dependencies {
+-        classpath("com.android.tools.build:gradle:4.0.2")
+-    }
+-}
+ 
+ repositories {
+     maven {
 --- a/android/src/main/java/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView.java
 +++ b/android/src/main/java/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView.java
 @@ -157,2 +157,13 @@ class ReactVlcPlayerView extends TextureView implements
