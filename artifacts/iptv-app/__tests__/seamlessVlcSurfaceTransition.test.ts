@@ -49,7 +49,8 @@ describe('Android live VLC container ownership', () => {
     const presentationHost = liveTab.slice(presentationStart, presentationStart + 2600);
 
     expect(controlStart).toBeGreaterThan(-1);
-    expect(phoneOwner).toContain('onLayout={measureNativeSurfaceOwner}');
+    expect(phoneOwner).toContain('onLayout={() => {');
+    expect(phoneOwner).toContain('requestAnimationFrame(measureNativeSurfaceOwner)');
     expect(phoneOwner).toContain('{!USES_NATIVE_VLC && isLivePreviewActive && (');
     expect(presentationStart).toBeGreaterThan(controlStart);
     expect(presentationHost).toContain('styles.nativeSurfacePresentationLayer');
@@ -62,6 +63,8 @@ describe('Android live VLC container ownership', () => {
     expect(liveTab).toContain('nativeSurfaceRootRef');
     expect(liveTab).toContain('measureNativeSurfaceOwner');
     expect(liveTab).toContain('owner.measureLayout(');
+    expect(liveTab).toContain('const timers = [0, 16, 64, 200].map');
+    expect(liveTab).toContain('playingChannel?.id');
     expect(liveTab.match(/<NativeStreamPlayer/g)).toHaveLength(2); // Android + non-Android branch
   });
 
@@ -398,7 +401,8 @@ describe('Android live VLC container ownership', () => {
   it('uses the current TextureView bounds instead of a cached mini-player ratio', () => {
     expect(liveTab).not.toContain('nativeVlcAspectRatio');
     expect(liveTab).not.toContain('videoAspectRatio=');
-    expect(liveTab).toContain("resizeMode={nativeSurfaceFullscreen ? 'cover' : 'contain'}");
+    expect(liveTab).toContain("resizeMode={nativeSurfaceFullscreen ? 'fill' : 'contain'}");
+    expect(tvLayout).toContain("resizeMode={nativeSurfaceFullscreen ? 'fill' : 'contain'}");
     expect(androidNativePlayer).not.toContain('videoAspectRatio={videoAspectRatio as any}');
   });
 
