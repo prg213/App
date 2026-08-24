@@ -422,6 +422,8 @@ describe('Android live VLC container ownership', () => {
     expect(resumeBlock).toContain('isHostPaused = false');
     expect(resumeBlock).toContain('mMediaPlayer.play()');
     expect(nativeVlcChange).toContain('resumeHostPausedPlayerIfReady("surface-available")');
+    expect(nativeVlcChange).toContain('resumeHostPausedPlayerIfReady("already-attached-" + reason)');
+    expect(nativeVlcChange).toContain('resumeHostPausedPlayerIfReady("reattached-" + reason)');
   });
 
   it('expands the channel already playing rather than a separately highlighted row', () => {
