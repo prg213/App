@@ -176,8 +176,10 @@ function RootLayoutNav() {
             // Native Stack is otherwise allowed to detach the previous scene
             // underneath a modal. Keeping the Live TV scene attached is what
             // preserves the one TextureView and its active libVLC output.
+            // expo-router's Stack.Screen type omits this native-stack option,
+            // but it is forwarded to the underlying native stack.
             detachPreviousScreen: false,
-          }}
+          } as any}
         />
         <Stack.Screen name="movie/[id]" options={{ headerShown: false, animation: 'slide_from_right', gestureEnabled: true }} />
         <Stack.Screen name="series/[id]" options={{ headerShown: false, animation: 'slide_from_right', gestureEnabled: true }} />
