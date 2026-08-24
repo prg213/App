@@ -1,8 +1,6 @@
-diff --git a/android/build.gradle b/android/build.gradle
-index 0e5cc4f50661440d6c6d73941037aa61d2981303..ca92dc036e78f88563ba46be4dbb87237f75542b 100755
 --- a/android/build.gradle
 +++ b/android/build.gradle
-@@ -20,17 +20,6 @@ android {
+@@ -20,17 +20,6 @@
          }
      }
  }
@@ -20,10 +18,9 @@ index 0e5cc4f50661440d6c6d73941037aa61d2981303..ca92dc036e78f88563ba46be4dbb8723
  
  repositories {
      maven {
-diff --git a/android/src/main/java/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView.java b/android/src/main/java/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView.java
 --- a/android/src/main/java/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView.java
 +++ b/android/src/main/java/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView.java
-@@ -41,8 +41,13 @@
+@@ -41,13 +41,27 @@
          AudioManager.OnAudioFocusChangeListener {
  
      private static final String TAG = "ReactVlcPlayerView";
@@ -37,7 +34,21 @@ diff --git a/android/src/main/java/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView
      private final VideoEventEmitter eventEmitter;
      private LibVLC libvlc;
      private MediaPlayer mMediaPlayer = null;
-@@ -92,6 +97,7 @@
+     private boolean mMuted = false;
+     private boolean isSurfaceViewDestory;
++    // A TextureView surface can be lost while the foreground React Native view
++    // remains the same owner. Keep that output lifecycle separate from the
++    // libVLC MediaPlayer lifecycle.
++    private boolean isSurfaceTextureAvailable = false;
++    private boolean isViewAttachedToWindow = false;
++    private boolean isVoutAttached = false;
++    private boolean isForegroundSurfaceRecoveryPending = false;
++    private boolean isTerminalCleanup = false;
++    private boolean wasPlayingBeforeHostPause = false;
+     private String src;
+     private String _subtitleUri;
+     private boolean netStrTag;
+@@ -92,6 +106,7 @@
  
          this.addOnLayoutChangeListener(onLayoutChangeListener);
          context.addLifecycleEventListener(this);
@@ -45,45 +56,157 @@ diff --git a/android/src/main/java/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView
      }
  
  
-@@ -104,11 +110,13 @@
+@@ -104,38 +119,46 @@
      @Override
      protected void onAttachedToWindow() {
          super.onAttachedToWindow();
 +        trace("native-view-attached");
++        isViewAttachedToWindow = true;
++        recoverVlcOutputIfReady("view-attached");
          //createPlayer();
      }
  
      @Override
      protected void onDetachedFromWindow() {
-+        trace("native-view-detached stopPlayback");
++        isViewAttachedToWindow = false;
++        trace("native-view-detached retain-player=" + hasRetainablePlayer());
++        detachVlcOutputForSurfaceLoss("view-detached");
          super.onDetachedFromWindow();
-         stopPlayback();
+-        stopPlayback();
      }
-@@ -117,6 +125,7 @@
+ 
+     // LifecycleEventListener implementation
  
      @Override
      public void onHostResume() {
-+        trace("host-resume mediaPlayer=" + (mMediaPlayer != null) + " surfaceDestroyed=" + isSurfaceViewDestory);
-         if (mMediaPlayer != null && isSurfaceViewDestory && isHostPaused) {
-             IVLCVout vlcOut = mMediaPlayer.getVLCVout();
-             if (!vlcOut.areViewsAttached()) {
-@@ -133,6 +142,7 @@
+-        if (mMediaPlayer != null && isSurfaceViewDestory && isHostPaused) {
+-            IVLCVout vlcOut = mMediaPlayer.getVLCVout();
+-            if (!vlcOut.areViewsAttached()) {
+-                // vlcOut.setVideoSurface(this.getHolder().getSurface(), this.getHolder());
+-                vlcOut.attachViews(onNewVideoLayoutListener);
+-                isSurfaceViewDestory = false;
+-                isPaused = false;
+-                // this.getHolder().setKeepScreenOn(true);
+-                mMediaPlayer.play();
+-            }
++        boolean resumePlayback = isHostPaused && wasPlayingBeforeHostPause;
++        isHostPaused = false;
++        wasPlayingBeforeHostPause = false;
++        trace("host-resume mediaPlayer=" + (mMediaPlayer != null)
++                + " recoveryPending=" + isForegroundSurfaceRecoveryPending
++                + " resumePlayback=" + resumePlayback);
++        recoverVlcOutputIfReady("host-resume");
++        if (resumePlayback && hasRetainablePlayer()) {
++            isPaused = false;
++            trace("host-resume-play-existing-player");
++            mMediaPlayer.play();
+         }
+     }
+ 
  
      @Override
      public void onHostPause() {
 +        trace("host-pause mediaPlayer=" + (mMediaPlayer != null) + " paused=" + isPaused);
++        isHostPaused = true;
++        wasPlayingBeforeHostPause = hasRetainablePlayer() && mMediaPlayer.isPlaying();
          if (!isPaused && mMediaPlayer != null) {
              isPaused = true;
-             isHostPaused = true;
-@@ -148,6 +158,7 @@
+-            isHostPaused = true;
+             mMediaPlayer.pause();
+             // this.getHolder().setKeepScreenOn(false);
+             WritableMap map = Arguments.createMap();
+@@ -148,6 +171,8 @@
  
      @Override
      public void onHostDestroy() {
++        isTerminalCleanup = true;
 +        trace("host-destroy stopPlayback");
          stopPlayback();
      }
  
-@@ -203,16 +214,15 @@
+@@ -157,6 +182,81 @@
+     public void onAudioFocusChange(int focusChange) {
+     }
+ 
++    private boolean hasRetainablePlayer() {
++        return !isTerminalCleanup && libvlc != null && mMediaPlayer != null;
++    }
++
++    /**
++     * A TextureView surface is presentation state, not media-session state.
++     * Keep the active libVLC player alive while its foreground output is
++     * temporarily unavailable, then attach that same output to the replacement
++     * SurfaceTexture as soon as Android gives us one.
++     */
++    private void detachVlcOutputForSurfaceLoss(String reason) {
++        if (!hasRetainablePlayer()) {
++            trace("foreground-surface-detach-skip reason=" + reason
++                    + " retainable=false terminal=" + isTerminalCleanup);
++            return;
++        }
++
++        isForegroundSurfaceRecoveryPending = true;
++        isSurfaceViewDestory = true;
++        final IVLCVout vlcOut = mMediaPlayer.getVLCVout();
++        if (vlcOut.areViewsAttached()) {
++            trace("foreground-surface-detach-existing-player reason=" + reason
++                    + " player=" + System.identityHashCode(mMediaPlayer));
++            vlcOut.detachViews();
++        } else {
++            trace("foreground-surface-detach-already-detached reason=" + reason
++                    + " player=" + System.identityHashCode(mMediaPlayer));
++        }
++        isVoutAttached = false;
++    }
++
++    private void recoverVlcOutputIfReady(String reason) {
++        if (!isForegroundSurfaceRecoveryPending || !hasRetainablePlayer()) {
++            return;
++        }
++        if (!isViewAttachedToWindow || !isSurfaceTextureAvailable
++                || getSurfaceTexture() == null) {
++            trace("foreground-surface-rebind-wait reason=" + reason
++                    + " viewAttached=" + isViewAttachedToWindow
++                    + " surfaceAvailable=" + isSurfaceTextureAvailable);
++            return;
++        }
++
++        try {
++            final IVLCVout vlcOut = mMediaPlayer.getVLCVout();
++            if (vlcOut.areViewsAttached()) {
++                isVoutAttached = true;
++                isSurfaceViewDestory = false;
++                isForegroundSurfaceRecoveryPending = false;
++                trace("foreground-surface-rebind-already-attached reason=" + reason
++                        + " player=" + System.identityHashCode(mMediaPlayer));
++                return;
++            }
++
++            trace("foreground-surface-rebind-existing-player reason=" + reason
++                    + " player=" + System.identityHashCode(mMediaPlayer)
++                    + " playing=" + mMediaPlayer.isPlaying());
++            vlcOut.setVideoSurface(getSurfaceTexture());
++            vlcOut.attachViews(onNewVideoLayoutListener);
++            isVoutAttached = true;
++            isSurfaceViewDestory = false;
++            isForegroundSurfaceRecoveryPending = false;
++        } catch (IllegalStateException exception) {
++            trace("foreground-surface-rebind-failed reason=" + reason
++                    + " error=" + exception.getClass().getSimpleName());
++        }
++    }
++
++    private void releaseSurfaceVideo() {
++        if (surfaceVideo != null) {
++            surfaceVideo.release();
++            surfaceVideo = null;
++        }
++    }
++
+     private void setProgressUpdateRunnable() {
+         if (mMediaPlayer != null && mProgressUpdateInterval > 0){
+             new Thread() {
+@@ -203,16 +303,15 @@
  
          @Override
          public void onLayoutChange(View view, int i, int i1, int i2, int i3, int i4, int i5, int i6, int i7) {
@@ -108,7 +231,7 @@ diff --git a/android/src/main/java/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView
              }
          }
      };
-@@ -226,6 +236,14 @@
+@@ -226,6 +325,14 @@
  
          @Override
          public void onEvent(MediaPlayer.Event event) {
@@ -123,7 +246,7 @@ diff --git a/android/src/main/java/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView
              boolean isPlaying = mMediaPlayer.isPlaying();
              currentTime = mMediaPlayer.getTime();
              float position = mMediaPlayer.getPosition();
-@@ -294,6 +312,7 @@
+@@ -294,6 +401,7 @@
      private IVLCVout.OnNewVideoLayoutListener onNewVideoLayoutListener = new IVLCVout.OnNewVideoLayoutListener() {
          @Override
          public void onNewVideoLayout(IVLCVout vout, int width, int height, int visibleWidth, int visibleHeight, int sarNum, int sarDen) {
@@ -131,32 +254,44 @@ diff --git a/android/src/main/java/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView
              if (width * height == 0)
                  return;
              // store video size
-@@ -318,11 +337,13 @@
+@@ -318,11 +426,20 @@
      IVLCVout.Callback callback = new IVLCVout.Callback() {
          @Override
          public void onSurfacesCreated(IVLCVout ivlcVout) {
-+            trace("vlc-surfaces-created");
++            isVoutAttached = true;
++            trace("vlc-surfaces-created player="
++                    + (mMediaPlayer == null ? "none" : System.identityHashCode(mMediaPlayer)));
              isSurfaceViewDestory = false;
          }
  
          @Override
          public void onSurfacesDestroyed(IVLCVout ivlcVout) {
-+            trace("vlc-surfaces-destroyed");
++            isVoutAttached = false;
++            if (hasRetainablePlayer()) {
++                isForegroundSurfaceRecoveryPending = true;
++            }
++            trace("vlc-surfaces-destroyed recoverable="
++                    + isForegroundSurfaceRecoveryPending);
              isSurfaceViewDestory = true;
          }
  
-@@ -335,6 +356,7 @@
+@@ -335,6 +452,8 @@
  
  
      private void stopPlayback() {
-+        trace("stop-playback");
++        isTerminalCleanup = true;
++        trace("stop-playback terminal=true");
          onStopPlayback();
          releasePlayer();
      }
-@@ -345,13 +367,17 @@
+@@ -345,13 +464,21 @@
      }
  
      private void createPlayer(boolean autoplayResume, boolean isResume) {
++        if (isTerminalCleanup) {
++            trace("create-player skipped terminal-cleanup");
++            return;
++        }
 +        trace("create-player begin autoplayResume=" + autoplayResume + " isResume=" + isResume
 +                + " existingPlayer=" + (mMediaPlayer != null) + " surface=" + (getSurfaceTexture() != null));
          releasePlayer();
@@ -171,7 +306,7 @@ diff --git a/android/src/main/java/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView
              //String extension = srcMap.hasKey("type") ? srcMap.getString("type") : null;
              boolean isNetwork = srcMap.hasKey("isNetwork") ? srcMap.getBoolean("isNetwork") : false;
              boolean autoplay = srcMap.hasKey("autoplay") ? srcMap.getBoolean("autoplay") : true;
-@@ -374,8 +400,10 @@
+@@ -374,8 +501,10 @@
              } else {
                  libvlc = new LibVLC(getContext(), cOptions);
              }
@@ -182,7 +317,7 @@ diff --git a/android/src/main/java/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView
              setMutedModifier(mMuted);
              mMediaPlayer.setEventListener(mPlayerListener);
              
-@@ -414,9 +442,15 @@
+@@ -414,9 +543,15 @@
              //this.getHolder().setKeepScreenOn(true);
              IVLCVout vlcOut = mMediaPlayer.getVLCVout();
              if (mVideoWidth > 0 && mVideoHeight > 0) {
@@ -200,7 +335,7 @@ diff --git a/android/src/main/java/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView
                  }
                  //mMediaPlayer.setAspectRatio(mVideoWidth+":"+mVideoHeight);
              }
-@@ -428,6 +462,7 @@
+@@ -428,6 +563,7 @@
              } else {
                  m = new Media(libvlc, uriString);
              }
@@ -208,7 +343,7 @@ diff --git a/android/src/main/java/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView
              m.setEventListener(mMediaListener);
              if (hwDecoderEnabled != null && hwDecoderForced != null) {
                  boolean hmEnabled = false;
-@@ -451,13 +486,16 @@
+@@ -451,13 +587,16 @@
              mVideoInfo = null;
              mVideoInfoHash = null;
              mMediaPlayer.setMedia(m);
@@ -225,7 +360,7 @@ diff --git a/android/src/main/java/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView
                  vlcOut.addCallback(callback);
                  // vlcOut.setVideoSurface(this.getSurfaceTexture());
                  //vlcOut.setVideoSurface(this.getHolder().getSurface(), this.getHolder());
-@@ -470,15 +508,18 @@
+@@ -470,15 +609,18 @@
              }
              if (isResume) {
                  if (autoplayResume) {
@@ -244,11 +379,12 @@ diff --git a/android/src/main/java/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView
  
              setProgressUpdateRunnable();
          } catch (Exception e) {
-@@ -491,12 +532,15 @@
+@@ -491,13 +633,21 @@
          if (libvlc == null)
              return;
  
-+        trace("release-player begin mediaPlayer=" + (mMediaPlayer != null));
++        trace("release-player begin mediaPlayer=" + (mMediaPlayer != null)
++                + " terminal=" + isTerminalCleanup);
          final IVLCVout vout = mMediaPlayer.getVLCVout();
          vout.removeCallback(callback);
          vout.detachViews();
@@ -258,9 +394,14 @@ diff --git a/android/src/main/java/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView
          libvlc.release();
 +        trace("libvlc-released");
          libvlc = null;
++        mMediaPlayer = null;
++        isVoutAttached = false;
++        isForegroundSurfaceRecoveryPending = false;
++        releaseSurfaceVideo();
  
          if(mProgressUpdateRunnable != null){
-@@ -537,6 +581,8 @@
+             mProgressUpdateHandler.removeCallbacks(mProgressUpdateRunnable);
+@@ -537,6 +687,8 @@
      }
  
      public void setSrc(ReadableMap src) {
@@ -269,7 +410,7 @@ diff --git a/android/src/main/java/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView
          this.srcMap = src;
          createPlayer(true, false);
      }
-@@ -592,6 +638,7 @@
+@@ -592,6 +744,7 @@
       * @param paused
       */
      public void setPausedModifier(boolean paused) {
@@ -277,7 +418,7 @@ diff --git a/android/src/main/java/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView
          Log.i("paused:", "" + paused + ":" + mMediaPlayer);
          if (mMediaPlayer != null) {
              if (paused) {
-@@ -719,6 +766,7 @@
+@@ -719,6 +872,7 @@
  
      public void stopPlayer() {
          if(mMediaPlayer == null) return;
@@ -285,7 +426,7 @@ diff --git a/android/src/main/java/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView
          mMediaPlayer.stop();
      }
  
-@@ -752,6 +800,7 @@
+@@ -752,6 +906,7 @@
      }
  
      public void cleanUpResources() {
@@ -293,7 +434,7 @@ diff --git a/android/src/main/java/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView
          if (surfaceView != null) {
              surfaceView.removeOnLayoutChangeListener(onLayoutChangeListener);
          }
-@@ -760,6 +809,7 @@
+@@ -760,19 +915,36 @@
  
      @Override
      public void onSurfaceTextureAvailable(SurfaceTexture surface, int width, int height) {
@@ -301,7 +442,20 @@ diff --git a/android/src/main/java/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView
          mVideoWidth = width;
          mVideoHeight = height;
          surfaceVideo = new Surface(surface);
-@@ -768,10 +818,12 @@
+-        createPlayer(true, false);
++        isSurfaceTextureAvailable = true;
++        if (hasRetainablePlayer()) {
++            trace("foreground-surface-available retain-existing-player="
++                    + System.identityHashCode(mMediaPlayer));
++            recoverVlcOutputIfReady("surface-texture-available");
++        } else if (!isTerminalCleanup && srcMap != null) {
++            createPlayer(true, false);
++        } else {
++            trace("surface-texture-available wait-for-source terminal="
++                    + isTerminalCleanup);
++        }
+     }
+ 
      @Override
      public void onSurfaceTextureSizeChanged(SurfaceTexture surface, int width, int height) {
 +        trace("surface-texture-size-changed " + width + "x" + height);
@@ -310,8 +464,11 @@ diff --git a/android/src/main/java/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView
  
      @Override
      public boolean onSurfaceTextureDestroyed(SurfaceTexture surface) {
-+        trace("surface-texture-destroyed");
++        isSurfaceTextureAvailable = false;
++        isSurfaceViewDestory = true;
++        trace("surface-texture-destroyed retain-player=" + hasRetainablePlayer());
++        detachVlcOutputForSurfaceLoss("surface-texture-destroyed");
++        releaseSurfaceVideo();
          return true;
      }
  
-diff --git a/diagnostic-placeholder b/diagnostic-placeholder

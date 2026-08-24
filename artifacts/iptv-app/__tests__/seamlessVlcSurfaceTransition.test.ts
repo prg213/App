@@ -277,6 +277,80 @@ describe('Android live VLC container ownership', () => {
     expect(nativeVlcChange).toMatch(/-\s+vlcOut\.setWindowSize\(mVideoWidth, mVideoHeight\)/);
   });
 
+  it('recovers a foreground TextureView surface by rebinding the existing VLC output', () => {
+    const nativeVlcChange = vlcAndroidPatch.slice(
+      vlcAndroidPatch.indexOf('ReactVlcPlayerView.java'),
+    );
+    const activePatchLines = (source: string) => source
+      .split('\n')
+      .filter((line) => !line.startsWith('-') && !line.startsWith('+-'))
+      .join('\n');
+
+    for (const lifecycleFlag of [
+      'isSurfaceTextureAvailable',
+      'isViewAttachedToWindow',
+      'isVoutAttached',
+      'isForegroundSurfaceRecoveryPending',
+      'isTerminalCleanup',
+      'wasPlayingBeforeHostPause',
+    ]) {
+      expect(nativeVlcChange).toContain(lifecycleFlag);
+    }
+
+    const detachStart = nativeVlcChange.indexOf('private void detachVlcOutputForSurfaceLoss');
+    const recoverStart = nativeVlcChange.indexOf('private void recoverVlcOutputIfReady');
+    const detachBlock = activePatchLines(nativeVlcChange.slice(detachStart, recoverStart));
+    const recoverBlock = activePatchLines(nativeVlcChange.slice(
+      recoverStart,
+      nativeVlcChange.indexOf('private void releaseSurfaceVideo', recoverStart),
+    ));
+
+    expect(detachStart).toBeGreaterThan(-1);
+    expect(recoverStart).toBeGreaterThan(detachStart);
+    expect(detachBlock).toContain('vlcOut.detachViews()');
+    expect(detachBlock).not.toContain('releasePlayer()');
+    expect(detachBlock).not.toContain('createPlayer(');
+    expect(recoverBlock).toContain('vlcOut.setVideoSurface(getSurfaceTexture())');
+    expect(recoverBlock).toContain('vlcOut.attachViews(onNewVideoLayoutListener)');
+    expect(recoverBlock).not.toContain('releasePlayer()');
+    expect(recoverBlock).not.toContain('createPlayer(');
+    expect(recoverBlock).not.toContain('mMediaPlayer.play()');
+
+    const destroyedStart = nativeVlcChange.indexOf('public boolean onSurfaceTextureDestroyed');
+    const destroyedBlock = activePatchLines(nativeVlcChange.slice(
+      destroyedStart,
+      nativeVlcChange.indexOf('public void onSurfaceTextureUpdated', destroyedStart),
+    ));
+    expect(destroyedStart).toBeGreaterThan(-1);
+    expect(destroyedBlock).toContain('detachVlcOutputForSurfaceLoss("surface-texture-destroyed")');
+    expect(destroyedBlock).not.toContain('releasePlayer()');
+    expect(destroyedBlock).not.toContain('stopPlayback()');
+
+    const availableStart = nativeVlcChange.indexOf('public void onSurfaceTextureAvailable');
+    const availableBlock = activePatchLines(nativeVlcChange.slice(
+      availableStart,
+      nativeVlcChange.indexOf('public void onSurfaceTextureSizeChanged', availableStart),
+    ));
+    expect(availableStart).toBeGreaterThan(-1);
+    expect(availableBlock).toContain('if (hasRetainablePlayer())');
+    expect(availableBlock).toContain('recoverVlcOutputIfReady("surface-texture-available")');
+    expect(availableBlock.indexOf('recoverVlcOutputIfReady("surface-texture-available")')).toBeLessThan(
+      availableBlock.indexOf('createPlayer(true, false)'),
+    );
+
+    const detachedStart = nativeVlcChange.indexOf('protected void onDetachedFromWindow');
+    const detachedBlock = activePatchLines(nativeVlcChange.slice(
+      detachedStart,
+      nativeVlcChange.indexOf('public void onHostResume', detachedStart),
+    ));
+    expect(detachedStart).toBeGreaterThan(-1);
+    expect(detachedBlock).toContain('detachVlcOutputForSurfaceLoss("view-detached")');
+    expect(detachedBlock).not.toContain('stopPlayback()');
+    expect(detachedBlock).not.toContain('releasePlayer()');
+    expect(nativeVlcChange).toContain('isTerminalCleanup = true;');
+    expect(nativeVlcChange).toContain('trace("cleanup-resources")');
+  });
+
   it('returns the same surface to mini mode before the controls-only route closes', () => {
     const backStart = fullscreenPlayer.indexOf('const handleBackLive = useCallback');
     const back = fullscreenPlayer.slice(backStart, backStart + 4200);
