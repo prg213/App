@@ -100,3 +100,10 @@ uri = "file://artifacts/iptv-app/builds/StreamVault-269.apk"
 type = "unspecified"
 title = "StreamVault Android APK 269"
 description = "Android build 269 from GitHub revision fa2687075f03c78e8e16f8bd8a846c87a1568b24. Includes the uploaded ZIP’s mini-player first-frame and Android fullscreen window-bounds implementation while preserving the single libVLC playback session."
+
+[[outputs]]
+id = "veYKfTtQ2GhNiPRXflzVw"
+uri = "file://artifacts/iptv-app/deliverables/StreamVault-latest-source-build-269.zip"
+type = "unspecified"
+title = "StreamVault exact source for APK build 269"
+description = "Source-only archive verified against Git commit fa2687075f03c78e8e16f8bd8a846c87a1568b24 and EAS build cc7a7271-0e77-4fc2-bbea-cda9cd979351. Includes React Native Live TV/player code, fullscreen and mini-player layout/measurement, VLC patch, preserved native Android/VLC project source, Gradle configuration, lifecycle, channel switching, and build metadata. APKs, dependencies, caches, generated output, signing keys, env files, secrets, and credentials were excluded."
