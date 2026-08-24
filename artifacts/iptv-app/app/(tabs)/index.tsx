@@ -511,7 +511,30 @@ export default function LiveTVScreen() {
   }, [publishNativeMiniOwnerBounds]);
 
   const handleNativeMiniOwnerLayout = useCallback((event: any) => {
-    nativeMiniOwnerLayoutRef.current = event.nativeEvent.layout;
+    const layout = event.nativeEvent.layout;
+    nativeMiniOwnerLayoutRef.current = layout;
+
+    // Android can deliver the child layout before its preview parent layout on
+    // the first channel selection. Expose the persistent VLC surface from the
+    // child bounds immediately; the parent-relative measurement below replaces
+    // this provisional frame as soon as it is available.
+    if (layout.width > 0 && layout.height > 0) {
+      const panel = nativePreviewPanelBoundsRef.current;
+      const next = {
+        x: panel.width > 0 ? panel.x + layout.x : layout.x,
+        y: panel.height > 0 ? panel.y + layout.y : layout.y,
+        width: layout.width,
+        height: layout.height,
+      };
+      setNativeOwnerBounds((current) => (
+        current.x === next.x
+        && current.y === next.y
+        && current.width === next.width
+        && current.height === next.height
+          ? current
+          : next
+      ));
+    }
     publishNativeMiniOwnerBounds();
   }, [publishNativeMiniOwnerBounds]);
 
@@ -2416,7 +2439,7 @@ export default function LiveTVScreen() {
         && (
           nativeSurfaceFullscreen
             ? nativeSurfaceViewport.width > 0 && nativeSurfaceViewport.height > 0
-            : nativeOwnerBounds.width > 0 && nativeOwnerBounds.height > 0
+            : true
         ) && (
         <View
           collapsable={false}

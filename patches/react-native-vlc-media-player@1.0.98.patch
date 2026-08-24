@@ -132,6 +132,20 @@
 +            if ("cover".equals(resizeMode)) {
 +                mMediaPlayer.setVideoScale(MediaPlayer.ScaleType.SURFACE_FIT_SCREEN);
 +            } else if ("fill".equals(resizeMode)) {
++                // Force libVLC's output aspect to the actual TextureView bounds.
++                // SURFACE_FILL is intended to occupy the complete display, but
++                // explicitly setting the presentation aspect here prevents a
++                // stale 16:9 stream aspect from being re-applied after a native
++                // layout/Vout update. setScale(0) keeps VLC's automatic pixel
++                // scaling while the aspect ratio is supplied by the viewport.
++                int outputWidth = getWidth();
++                int outputHeight = getHeight();
++                if (outputWidth > 0 && outputHeight > 0) {
++                    mMediaPlayer.setAspectRatio(outputWidth + ":" + outputHeight);
++                } else {
++                    mMediaPlayer.setAspectRatio(null);
++                }
++                mMediaPlayer.setScale(0);
 +                mMediaPlayer.setVideoScale(MediaPlayer.ScaleType.SURFACE_FILL);
 +            } else {
 +                mMediaPlayer.setVideoScale(MediaPlayer.ScaleType.SURFACE_BEST_FIT);
