@@ -65,3 +65,10 @@ uri = "file://StreamVault-LiveTV-VLC-diagnostic.zip"
 type = "unspecified"
 title = "StreamVault Live TV VLC diagnostic source"
 description = "Read-only diagnostic archive containing the current Live TV/player source, VLC integration and native Vout bridge snapshot, custom patch, Android configuration, transition/channel-switch tests, and sanitized build configuration. No app files were modified."
+
+[[outputs]]
+id = "9ON6biFSCEhvN-vc4skbE"
+uri = "file://attached_assets/StreamVault-LiveTV-VLC-CURRENT-SOURCE_20260824.zip"
+type = "unspecified"
+title = "StreamVault current Live TV VLC source"
+description = "Current source bundle for Android Live TV, persistent VLC/libVLC integration, mini/fullscreen transitions, sizing, channel switching, lifecycle, custom native patch, relevant tests, and Android build configuration. Excludes node_modules, caches, build output, APKs, signing keys, secrets, and eas.json containing an API key."
