@@ -428,9 +428,10 @@ export default function LiveTVScreen() {
     x: 0,
     y: 0,
   });
-  // A fullscreen handoff must wait for the Live TV root to report the viewport
-  // after the tab shell has released its sidebar. This rejects an old mini
-  // frame that can otherwise acknowledge the handoff before the parent grows.
+  // A fullscreen handoff must wait for the Live TV root to report the actual
+  // Android content viewport after the tab shell has released its sidebar.
+  // This rejects old mini/sidebar layout events that can arrive late and
+  // otherwise shrink the already-expanded native frame back to preview width.
   const nativeFullscreenViewportRef = useRef<{ width: number; height: number } | null>(null);
   const [nativeOwnerBounds, setNativeOwnerBounds] = useState({
     width: 0,
@@ -478,6 +479,21 @@ export default function LiveTVScreen() {
   const handleNativeRootLayout = useCallback((event: any) => {
     const { width, height } = event.nativeEvent.layout;
     if (width <= 0 || height <= 0) return;
+    const isExpectedFullscreenViewport =
+      Math.round(width) === Math.round(screenWidth)
+      && Math.round(height) === Math.round(screenHeight);
+    if (
+      nativeSurfaceModeRef.current === 'fullscreen'
+      && !isExpectedFullscreenViewport
+    ) {
+      console.log(VLC_TRACE, 'surface-root-layout-ignored-before-fullscreen-viewport', {
+        width,
+        height,
+        expectedWidth: screenWidth,
+        expectedHeight: screenHeight,
+      });
+      return;
+    }
     setNativeSurfaceViewport((current) => (
       current.width === width && current.height === height
         ? current
@@ -487,7 +503,7 @@ export default function LiveTVScreen() {
       nativeFullscreenViewportRef.current = { width, height };
     }
     publishNativeMiniOwnerBounds();
-  }, [publishNativeMiniOwnerBounds]);
+  }, [publishNativeMiniOwnerBounds, screenHeight, screenWidth]);
 
   const handleNativePreviewPanelLayout = useCallback((event: any) => {
     nativePreviewPanelBoundsRef.current = event.nativeEvent.layout;
@@ -2406,7 +2422,11 @@ export default function LiveTVScreen() {
               source={activeNativeSurfaceUrl}
               player={player}
               style={StyleSheet.absoluteFill}
-              resizeMode={nativeSurfaceFullscreen ? 'fill' : 'contain'}
+              // Keep this native playback prop invariant across the mini/fullscreen
+              // handoff. The owner frame alone changes size; libVLC starts in fill
+              // mode so the same decoder can occupy the full Android viewport
+              // without receiving a playback-prop update during the transition.
+              resizeMode="fill"
               reloadKey={vlcReloadKey}
               onPlaying={handlePersistentVlcPlaying}
               onBuffering={handlePersistentVlcBuffering}

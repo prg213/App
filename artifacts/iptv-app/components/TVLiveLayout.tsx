@@ -1296,12 +1296,10 @@ export function TVLiveLayout({
                     source={streamUrl}
                     player={player}
                     style={StyleSheet.absoluteFill}
-                    // Mini-player preserves the stream aspect ratio. Fullscreen
-                    // uses cover so the native VLC output fills the actual phone
-                    // viewport instead of inheriting the mini-player's 16:9 box.
-                    // This changes only presentation; the same VLC session remains
-                    // attached so playback/audio never restarts.
-                    resizeMode={nativeSurfaceFullscreen ? 'fill' : 'contain'}
+                    // Keep this native playback prop fixed through the container
+                    // resize. The same VLC session begins in fill mode, then only
+                    // the owner bounds change when fullscreen is entered.
+                    resizeMode="fill"
                     reloadKey={Platform.OS === 'android' ? vlcReloadKey : `${videoKey}:${vlcReloadKey ?? 0}`}
                     onPlaying={onVlcPlaying}
                     onBuffering={onVlcBuffering}
