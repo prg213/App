@@ -34,5 +34,6 @@
 - [GitHub Actions dispatch registry](github-actions-registry.md) — registry poisoned; workflow_dispatch returns 422 for all files; EAS is the current workaround; MAC differs between EAS and GA builds.
 - [MAC revert session](mac-revert-session.md) — Original AsyncStorage MAC restored; never tie MAC to signing cert or Android ID; migration from legacy SecureStore key included.
 - [VLC mini↔fullscreen transition contract](live-vlc-transition-contract.md) — One mounted native surface changes owner layout atomically; zaps and BACK return use one channel identity.
+- [Fullscreen sizing constraint](fullscreen-sizing-constraint.md) — Fullscreen React Native containers must not inherit the mini-player's 16:9 aspect ratio; use viewport fill plus cover presentation.
 - [Unified patch validation](unified-patch-validation.md) — native patched-dependency diffs need exact hunks, clean EOF handling, and a clean-install check.
 - [pnpm patched dependency refresh](pnpm-patched-dependency-refresh.md) — after editing a pnpm patch, refresh its lockfile hash before validating the installed module.

@@ -83,7 +83,7 @@ describe('Android live VLC container ownership', () => {
     expect(tvLayout).toContain('onNativeSurfaceLayout?.({ width, height, x, y });');
   });
 
-  it('expands the phone presentation frame while retaining the Fire TV layout', () => {
+  it('expands the fullscreen preview frame without retaining the mini-player ratio', () => {
     expect(liveTab).toContain('styles.nativeSurfacePresentationLayer');
     expect(liveTab).toContain('styles.nativeSurfacePresentationFrame');
     expect(liveTab).toContain('nativeSurfaceFullscreen\n                ? StyleSheet.absoluteFill');
@@ -97,8 +97,12 @@ describe('Android live VLC container ownership', () => {
     const tvRuleBody = tvLayout.slice(tvRuleStart, tvLayout.indexOf('},', tvRuleStart));
     expect(tvRuleStart).toBeGreaterThan(-1);
     expect(tvRuleBody).toContain("width: '100%'");
-    expect(tvRuleBody).toContain('aspectRatio: 16 / 9');
+    expect(tvRuleBody).toContain("height: '100%'");
+    expect(tvRuleBody).toContain('aspectRatio: undefined');
+    expect(tvRuleBody).toContain("maxWidth: '100%'");
     expect(tvRuleBody).toContain("maxHeight: '100%'");
+    expect(tvRuleBody).toContain('flex: 1');
+    expect(tvRuleBody).not.toContain('aspectRatio: 16 / 9');
   });
 
   it('uses one container-owned presentation surface without a second persistent decoder', () => {
