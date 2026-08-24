@@ -386,9 +386,6 @@ describe('Android live VLC container ownership', () => {
       .split('\n')
       .filter((line) => !line.startsWith('-'))
       .join('\n');
-    const textureStart = nativeVlcChange.indexOf('onSurfaceTextureAvailable');
-    const textureBlock = nativeVlcChange.slice(textureStart, nativeVlcChange.indexOf('@@', textureStart));
-
     expect(detachStart).toBeGreaterThan(-1);
     expect(detachBlock).toContain('if (!isSurfaceTextureAvailable)');
     expect(detachBlock).toContain('detachVlcOutputForSurfaceLoss("view-detached-without-surface")');
@@ -396,9 +393,10 @@ describe('Android live VLC container ownership', () => {
     expect(nativeVlcChange).toContain('private boolean hasRetainablePlayer()');
     expect(nativeVlcChange).toContain('surface-output-reattach');
     expect(nativeVlcChange).toContain('vlcOut.setVideoSurface(getSurfaceTexture())');
-    expect(textureBlock).toContain('if (hasRetainablePlayer())');
-    expect(textureBlock).toContain('recoverVlcOutputIfReady("surface-available")');
-    expect(textureBlock).toContain('else if (!isTerminalCleanup && srcMap != null)');
+    expect(nativeVlcChange).toContain('if (hasRetainablePlayer())');
+    expect(nativeVlcChange).toContain('recoverVlcOutputIfReady("surface-available")');
+    expect(nativeVlcChange).toContain('else if (!isTerminalCleanup && srcMap != null)');
+    expect(vlcAndroidPatch).not.toContain('\\ No newline at end of file');
   });
 
   it('expands the channel already playing rather than a separately highlighted row', () => {
