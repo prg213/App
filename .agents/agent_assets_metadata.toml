@@ -86,3 +86,10 @@ uri = "file://artifacts/iptv-app/builds/StreamVault-268.apk"
 type = "unspecified"
 title = "StreamVault Android APK 268"
 description = "Successful Android internal APK build from the existing StreamVault IPTV project. Install this over the existing StreamVault app; physical playback verification is still required."
+
+[[outputs]]
+id = "MMXvHOVQyMz1OMfhdJFew"
+uri = "file://streamvault-iptv-source-after-build-268-8eb471f.zip"
+type = "unspecified"
+title = "StreamVault IPTV source snapshot after APK 268"
+description = "Source-only diagnostic snapshot from the existing StreamVault IPTV project, including React Native Live TV/player code, Android/VLC integration, transition/layout code, lifecycle/channel logic, Gradle files, patches, and tests. APKs, generated output, caches, signing keys, credentials, API keys, and secrets are excluded."
