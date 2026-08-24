@@ -420,10 +420,6 @@ export default function LiveTVScreen() {
     x: 0,
     y: 0,
   });
-  const nativeVlcAspectRatio = nativeOwnerBounds.width > 0
-    && nativeOwnerBounds.height > 0
-    ? `${Math.round(nativeOwnerBounds.width)}:${Math.round(nativeOwnerBounds.height)}`
-    : undefined;
   const measureNativeSurfaceOwner = useCallback(() => {
     if (!USES_NATIVE_VLC || nativeSurfaceMode !== 'mini') return;
     const owner = miniPlayerRef.current;
@@ -1756,6 +1752,9 @@ export default function LiveTVScreen() {
           vlcReloadKey={vlcReloadKey}
           isPlaybackActive={isLivePreviewActive}
           nativeSurfaceFullscreen={nativeSurfaceFullscreen}
+           onNativeSurfaceLayout={(bounds) => {
+             commitNativeSurfaceLayout(nativeSurfaceMode, bounds);
+           }}
           isBuffering={isBuffering}
           hasError={hasError}
           onVlcPlaying={handlePersistentVlcPlaying}
@@ -2309,7 +2308,6 @@ export default function LiveTVScreen() {
               player={player}
               style={StyleSheet.absoluteFill}
               resizeMode={nativeSurfaceFullscreen ? 'cover' : 'contain'}
-              videoAspectRatio={nativeVlcAspectRatio}
               reloadKey={vlcReloadKey}
               onPlaying={handlePersistentVlcPlaying}
               onBuffering={handlePersistentVlcBuffering}
@@ -2535,7 +2533,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#000',
   },
   nativeSurfacePresentationLayer: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     zIndex: 50,
     elevation: 50,
     pointerEvents: 'none',

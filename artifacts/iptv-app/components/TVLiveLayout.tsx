@@ -93,6 +93,8 @@ export interface TVLiveLayoutProps {
   isPlaybackActive: boolean;
   /** Expands the preview container while the same VLC child stays inside it. */
   nativeSurfaceFullscreen?: boolean;
+  /** Reports the actual VLC owner's final bounds for a shared handoff. */
+  onNativeSurfaceLayout?: (bounds: { width: number; height: number; x: number; y: number }) => void;
   isBuffering: boolean;
   hasError: boolean;
   onVlcPlaying?: () => void;
@@ -170,6 +172,7 @@ export function TVLiveLayout({
   vlcReloadKey,
   isPlaybackActive,
   nativeSurfaceFullscreen = false,
+  onNativeSurfaceLayout,
   isBuffering,
   hasError,
   onVlcPlaying,
@@ -1273,6 +1276,7 @@ export function TVLiveLayout({
                   y,
                   fullscreen: nativeSurfaceFullscreen,
                 });
+                onNativeSurfaceLayout?.({ width, height, x, y });
               }}
             >
               {/* The real VLC TextureView belongs to the actual focusable
