@@ -433,6 +433,9 @@ export default function TabLayout() {
       )}
       screenOptions={{
         headerShown: false,
+        // The fullscreen controls route is transparent; the selected tab stays
+        // visible underneath it and must accept the native owner’s layout update.
+        freezeOnBlur: false,
         sceneStyle: { marginLeft: nativeSurfaceFullscreen ? 0 : SIDEBAR_W },
       }}
     >

@@ -412,6 +412,32 @@ export default function LiveTVScreen() {
   // layout; the video surface itself never receives screen coordinates.
   const nativeSurfaceFullscreen = nativeSurfaceMode === 'fullscreen';
 
+  // Keep a device-side record of the *actual* React Native content window and
+  // owner bounds. This is deliberately diagnostic only: the TextureView remains
+  // an ordinary absolute-fill child, with no measured-coordinate reparenting or
+  // transforms. It lets phone and TV traces distinguish an inset/window problem
+  // from a decoder or surface-lifecycle problem.
+  useEffect(() => {
+    if (!USES_NATIVE_VLC) return;
+    console.log(VLC_TRACE, 'react-window-bounds', {
+      width: screenWidth,
+      height: screenHeight,
+      insetTop: insets.top,
+      insetRight: insets.right,
+      insetBottom: insets.bottom,
+      insetLeft: insets.left,
+      fullscreen: nativeSurfaceFullscreen,
+    });
+  }, [
+    insets.bottom,
+    insets.left,
+    insets.right,
+    insets.top,
+    nativeSurfaceFullscreen,
+    screenHeight,
+    screenWidth,
+  ]);
+
   useEffect(() => {
     if (!USES_NATIVE_VLC) return;
     setNativeSurfaceUrl(playingChannel?.streamUrl ?? selectedChannel?.streamUrl ?? '');
@@ -1964,10 +1990,6 @@ export default function LiveTVScreen() {
             )}
             {USES_NATIVE_VLC && (
               <>
-                <Animated.View
-                  pointerEvents="none"
-                  style={[StyleSheet.absoluteFill, styles.flashOverlay, { opacity: flashOverlayOpacity }]}
-                />
                 {isBuffering && !hasError && nativeSurfaceMode === 'mini' && (
                   <View pointerEvents="none" style={styles.videoOverlay}>
                     <ActivityIndicator color="#fff" size="large" />
