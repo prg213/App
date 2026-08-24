@@ -34,7 +34,7 @@
      private String src;
      private String _subtitleUri;
      private boolean netStrTag;
-@@ -104,13 +110,20 @@
+@@ -104,32 +110,51 @@
      @Override
      protected void onAttachedToWindow() {
          super.onAttachedToWindow();
@@ -56,7 +56,45 @@
      }
  
      // LifecycleEventListener implementation
-@@ -157,6 +170,53 @@
+ 
+     @Override
+     public void onHostResume() {
+-        if (mMediaPlayer != null && isSurfaceViewDestory && isHostPaused) {
++        if (hasRetainablePlayer() && isHostPaused) {
+             IVLCVout vlcOut = mMediaPlayer.getVLCVout();
+             if (!vlcOut.areViewsAttached()) {
+-                // vlcOut.setVideoSurface(this.getHolder().getSurface(), this.getHolder());
+-                vlcOut.attachViews(onNewVideoLayoutListener);
+-                isSurfaceViewDestory = false;
+-                isPaused = false;
+-                // this.getHolder().setKeepScreenOn(true);
+-                mMediaPlayer.play();
++                isForegroundSurfaceRecoveryPending = true;
+             }
++            syncVlcOutputToView("host-resume");
++            recoverVlcOutputIfReady("host-resume");
++            resumeHostPausedPlayerIfReady("host-resume");
+         }
+     }
+ 
++    private void resumeHostPausedPlayerIfReady(String reason) {
++        if (!hasRetainablePlayer() || !isHostPaused) return;
++        IVLCVout vlcOut = mMediaPlayer.getVLCVout();
++        if (!vlcOut.areViewsAttached()) {
++            Log.i(tag, "surface-output-resume-waiting reason=" + reason);
++            return;
++        }
++        isSurfaceViewDestory = false;
++        isPaused = false;
++        isHostPaused = false;
++        Log.i(tag, "surface-output-resume reason=" + reason);
++        mMediaPlayer.play();
++    }
++
+ 
+     @Override
+     public void onHostPause() {
+@@ -157,6 +182,54 @@
      public void onAudioFocusChange(int focusChange) {
      }
  
@@ -64,16 +102,17 @@
 +        return !isTerminalCleanup && libvlc != null && mMediaPlayer != null;
 +    }
 +
-+    private int[] resolveOutputWindowSize() {
-+        View root = getRootView();
-+        int rootWidth = root == null ? 0 : root.getWidth();
-+        int rootHeight = root == null ? 0 : root.getHeight();
-+        int outputWidth = rootWidth > 0 ? rootWidth : (screenWidth > 0 ? screenWidth : mVideoWidth);
-+        int outputHeight = rootHeight > 0 ? rootHeight : (screenHeight > 0 ? screenHeight : mVideoHeight);
-+        Log.i(tag, "output-window root=" + rootWidth + "x" + rootHeight
-+                + " display=" + screenWidth + "x" + screenHeight
++    private boolean syncVlcOutputToView(String reason) {
++        if (!hasRetainablePlayer()) return false;
++        int outputWidth = getWidth();
++        int outputHeight = getHeight();
++        if (outputWidth <= 0 || outputHeight <= 0) return false;
++
++        IVLCVout vlcOut = mMediaPlayer.getVLCVout();
++        vlcOut.setWindowSize(outputWidth, outputHeight);
++        Log.i(tag, "surface-output-size reason=" + reason
 +                + " output=" + outputWidth + "x" + outputHeight);
-+        return new int[] { outputWidth, outputHeight };
++        return true;
 +    }
 +
 +    private void detachVlcOutputForSurfaceLoss(String reason) {
@@ -93,14 +132,14 @@
 +                || getSurfaceTexture() == null) return;
 +        IVLCVout vlcOut = mMediaPlayer.getVLCVout();
 +        if (vlcOut.areViewsAttached()) {
++            syncVlcOutputToView("already-attached-" + reason);
 +            isSurfaceViewDestory = false;
 +            isForegroundSurfaceRecoveryPending = false;
 +            return;
 +        }
-+        int[] outputSize = resolveOutputWindowSize();
++        if (!syncVlcOutputToView("reattach-" + reason)) return;
 +        Log.i(tag, "surface-output-reattach reason=" + reason
-+                + " output=" + outputSize[0] + "x" + outputSize[1]);
-+        vlcOut.setWindowSize(outputSize[0], outputSize[1]);
++                + " output=" + getWidth() + "x" + getHeight());
 +        vlcOut.setVideoSurface(getSurfaceTexture());
 +        vlcOut.attachViews(onNewVideoLayoutListener);
 +        isSurfaceViewDestory = false;
@@ -110,7 +149,7 @@
      private void setProgressUpdateRunnable() {
          if (mMediaPlayer != null && mProgressUpdateInterval > 0){
              new Thread() {
-@@ -204,15 +264,10 @@
+@@ -204,15 +277,12 @@
          @Override
          public void onLayoutChange(View view, int i, int i1, int i2, int i3, int i4, int i5, int i6, int i7) {
              if (view.getWidth() > 0 && view.getHeight() > 0) {
@@ -123,14 +162,16 @@
 -                        mMediaPlayer.setAspectRatio(mVideoWidth + ":" + mVideoHeight);
 -                    }
 -                }
-+                // Parent-only mini/fullscreen layouts must not recreate or
-+                // re-aspect an already playing libVLC output.
 +                mVideoWidth = view.getWidth();
 +                mVideoHeight = view.getHeight();
++                // A presentation-only layout change must resize the already
++                // attached Vout, never recreate the MediaPlayer or its source.
++                syncVlcOutputToView("layout");
++                recoverVlcOutputIfReady("layout");
              }
          }
      };
-@@ -335,6 +390,7 @@
+@@ -335,6 +405,7 @@
  
  
      private void stopPlayback() {
@@ -138,7 +179,7 @@
          onStopPlayback();
          releasePlayer();
      }
-@@ -414,10 +470,12 @@
+@@ -414,10 +485,10 @@
              //this.getHolder().setKeepScreenOn(true);
              IVLCVout vlcOut = mMediaPlayer.getVLCVout();
              if (mVideoWidth > 0 && mVideoHeight > 0) {
@@ -146,16 +187,14 @@
 -                if (autoAspectRatio) {
 -                    mMediaPlayer.setAspectRatio(mVideoWidth + ":" + mVideoHeight);
 -                }
-+                // Use the actual Android content window, not physical display
-+                // metrics or the mini-player's current bounds. Keep the source
-+                // aspect ratio so fullscreen cannot be constrained by stale
-+                // portrait/landscape dimensions.
-+                int[] outputSize = resolveOutputWindowSize();
-+                vlcOut.setWindowSize(outputSize[0], outputSize[1]);
++                // Bind initial output to this actual TextureView. React Native
++                // owns the host bounds; root/display metrics can be stale after
++                // the mini/fullscreen presentation changes.
++                syncVlcOutputToView("player-create");
                  //mMediaPlayer.setAspectRatio(mVideoWidth+":"+mVideoHeight);
              }
              DisplayMetrics dm = getResources().getDisplayMetrics();
-@@ -763,7 +821,12 @@
+@@ -763,16 +834,27 @@
          mVideoWidth = width;
          mVideoHeight = height;
          surfaceVideo = new Surface(surface);
@@ -163,13 +202,20 @@
 +        isSurfaceTextureAvailable = true;
 +        if (hasRetainablePlayer()) {
 +            recoverVlcOutputIfReady("surface-available");
++            resumeHostPausedPlayerIfReady("surface-available");
 +        } else if (!isTerminalCleanup && srcMap != null) {
 +            createPlayer(true, false);
 +        }
      }
  
      @Override
-@@ -773,6 +836,8 @@
+     public void onSurfaceTextureSizeChanged(SurfaceTexture surface, int width, int height) {
+-
++        mVideoWidth = width;
++        mVideoHeight = height;
++        syncVlcOutputToView("surface-size");
++        recoverVlcOutputIfReady("surface-size");
+     }
  
      @Override
      public boolean onSurfaceTextureDestroyed(SurfaceTexture surface) {
