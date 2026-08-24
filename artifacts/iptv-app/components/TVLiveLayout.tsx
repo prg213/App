@@ -1296,7 +1296,12 @@ export function TVLiveLayout({
                     source={streamUrl}
                     player={player}
                     style={StyleSheet.absoluteFill}
-                    resizeMode="contain"
+                    // Mini-player preserves the stream aspect ratio. Fullscreen
+                    // uses cover so the native VLC output fills the actual phone
+                    // viewport instead of inheriting the mini-player's 16:9 box.
+                    // This changes only presentation; the same VLC session remains
+                    // attached so playback/audio never restarts.
+                    resizeMode={nativeSurfaceFullscreen ? 'cover' : 'contain'}
                     reloadKey={Platform.OS === 'android' ? vlcReloadKey : `${videoKey}:${vlcReloadKey ?? 0}`}
                     onPlaying={onVlcPlaying}
                     onBuffering={onVlcBuffering}
@@ -1682,9 +1687,17 @@ const styles = StyleSheet.create({
     borderColor: FOCUS_BORDER,
   },
   fullscreenVideoContainer: {
+    // Fullscreen must own the entire Android viewport. Do not retain the
+    // mini-player's 16:9 constraint: the phone may have a much wider/shorter
+    // landscape viewport. Keeping aspectRatio here causes React Native to
+    // recalculate the box after the initial fullscreen layout and snap the
+    // video back to a narrower 16:9 rectangle with black side bars.
     width: '100%',
-    aspectRatio: 16 / 9,
+    height: '100%',
+    aspectRatio: undefined,
+    maxWidth: '100%',
     maxHeight: '100%',
+    flex: 1,
     flexShrink: 1,
     borderRadius: 0,
     borderWidth: 0,
