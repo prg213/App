@@ -20,9 +20,56 @@
      maven {
 --- a/android/src/main/java/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView.java
 +++ b/android/src/main/java/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView.java
-@@ -157,2 +157,13 @@ class ReactVlcPlayerView extends TextureView implements
+@@ -41,13 +41,19 @@ class ReactVlcPlayerView extends TextureView implements
+         AudioManager.OnAudioFocusChangeListener {
+ 
+     private static final String TAG = "ReactVlcPlayerView";
+     private final String tag = "ReactVlcPlayerView";
+ 
+     private final VideoEventEmitter eventEmitter;
+     private LibVLC libvlc;
+     private MediaPlayer mMediaPlayer = null;
+     private boolean mMuted = false;
+     private boolean isSurfaceViewDestory;
++    // React Navigation can temporarily detach a TextureView while the visible
++    // live session stays active. Surface lifetime must not end the decoder.
++    private boolean isSurfaceTextureAvailable = false;
++    private boolean isViewAttachedToWindow = false;
++    private boolean isForegroundSurfaceRecoveryPending = false;
++    private boolean isTerminalCleanup = false;
+     private String src;
+     private String _subtitleUri;
+     private boolean netStrTag;
+@@ -104,14 +109,21 @@ class ReactVlcPlayerView extends TextureView implements
+     @Override
+     protected void onAttachedToWindow() {
+         super.onAttachedToWindow();
++        isViewAttachedToWindow = true;
++        recoverVlcOutputIfReady("view-attached");
+         //createPlayer();
+     }
+ 
+     @Override
+     protected void onDetachedFromWindow() {
++        isViewAttachedToWindow = false;
++        // A navigation/window detach can retain the same TextureView surface.
++        // Do not manufacture a Vout teardown unless Android actually removed it.
++        if (!isSurfaceTextureAvailable) {
++            detachVlcOutputForSurfaceLoss("view-detached-without-surface");
++        }
+         super.onDetachedFromWindow();
+-        stopPlayback();
+     }
+ 
+     // LifecycleEventListener implementation
+ 
+@@ -157,2 +162,48 @@ class ReactVlcPlayerView extends TextureView implements
      public void onAudioFocusChange(int focusChange) {
      }
++    private boolean hasRetainablePlayer() {
++        return !isTerminalCleanup && libvlc != null && mMediaPlayer != null;
++    }
++
 +    private int[] resolveOutputWindowSize() {
 +        View root = getRootView();
 +        int rootWidth = root == null ? 0 : root.getWidth();
@@ -34,6 +81,43 @@
 +                + " output=" + outputWidth + "x" + outputHeight);
 +        return new int[] { outputWidth, outputHeight };
 +    }
++
++    private void detachVlcOutputForSurfaceLoss(String reason) {
++        if (!hasRetainablePlayer()) return;
++        isForegroundSurfaceRecoveryPending = true;
++        isSurfaceViewDestory = true;
++        IVLCVout vlcOut = mMediaPlayer.getVLCVout();
++        if (vlcOut.areViewsAttached()) {
++            Log.i(tag, "surface-output-detach reason=" + reason);
++            vlcOut.detachViews();
++        }
++    }
++
++    private void recoverVlcOutputIfReady(String reason) {
++        if (!isForegroundSurfaceRecoveryPending || !hasRetainablePlayer()
++                || !isViewAttachedToWindow || !isSurfaceTextureAvailable
++                || getSurfaceTexture() == null) return;
++        IVLCVout vlcOut = mMediaPlayer.getVLCVout();
++        if (vlcOut.areViewsAttached()) {
++            isSurfaceViewDestory = false;
++            isForegroundSurfaceRecoveryPending = false;
++            return;
++        }
++        int[] outputSize = resolveOutputWindowSize();
++        Log.i(tag, "surface-output-reattach reason=" + reason
++                + " output=" + outputSize[0] + "x" + outputSize[1]);
++        vlcOut.setWindowSize(outputSize[0], outputSize[1]);
++        vlcOut.setVideoSurface(getSurfaceTexture());
++        vlcOut.attachViews(onNewVideoLayoutListener);
++        isSurfaceViewDestory = false;
++        isForegroundSurfaceRecoveryPending = false;
++    }
+@@ -335,4 +386,5 @@ class ReactVlcPlayerView extends TextureView implements
+     private void stopPlayback() {
++        isTerminalCleanup = true;
+         onStopPlayback();
+         releasePlayer();
+     }
 @@ -204,13 +204,8 @@ class ReactVlcPlayerView extends TextureView implements
          @Override
          public void onLayoutChange(View view, int i, int i1, int i2, int i3, int i4, int i5, int i6, int i7) {
@@ -69,4 +153,31 @@
                  //mMediaPlayer.setAspectRatio(mVideoWidth+":"+mVideoHeight);
              }
              DisplayMetrics dm = getResources().getDisplayMetrics();
+@@ -760,18 +811,25 @@ class ReactVlcPlayerView extends TextureView implements
+ 
+     @Override
+     public void onSurfaceTextureAvailable(SurfaceTexture surface, int width, int height) {
+         mVideoWidth = width;
+         mVideoHeight = height;
+         surfaceVideo = new Surface(surface);
+-        createPlayer(true, false);
++        isSurfaceTextureAvailable = true;
++        if (hasRetainablePlayer()) {
++            recoverVlcOutputIfReady("surface-available");
++        } else if (!isTerminalCleanup && srcMap != null) {
++            createPlayer(true, false);
++        }
+     }
+ 
+     @Override
+     public void onSurfaceTextureSizeChanged(SurfaceTexture surface, int width, int height) {
+ 
+     }
+ 
+     @Override
+     public boolean onSurfaceTextureDestroyed(SurfaceTexture surface) {
++        isSurfaceTextureAvailable = false;
++        detachVlcOutputForSurfaceLoss("surface-destroyed");
+         return true;
+     }
 \ No newline at end of file

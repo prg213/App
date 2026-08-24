@@ -20,6 +20,13 @@ export interface NativeSurfaceHandoff {
   url: string;
 }
 
+export interface NativeSurfaceBounds {
+  width: number;
+  height: number;
+  x: number;
+  y: number;
+}
+
 interface LivePlayerContextValue {
   player: VideoPlayer;
   /** Always points to the URL currently loaded in the shared Expo player. */
@@ -37,10 +44,12 @@ interface LivePlayerContextValue {
   updateNativeSurfaceHandoffUrl: (id: string, url: string) => void;
   endNativeSurfaceHandoff: (id: string) => void;
   /**
-   * Commits the container-owned layout state, then waits one layout frame
-   * before navigation changes the transparent controls route.
+   * Commits the container-owned layout state. Navigation waits for the real
+   * owner to report its measured target bounds, not for an arbitrary timer.
    */
   transitionNativeSurface: (mode: NativeSurfaceMode, onComplete?: () => void) => void;
+  /** Called by the single React Native owner after its target layout commits. */
+  commitNativeSurfaceLayout: (mode: NativeSurfaceMode, bounds: NativeSurfaceBounds) => void;
   /** The real focusable mini-player container, not a native surface proxy. */
   miniPlayerRef: React.RefObject<View | null>;
   /**
@@ -73,6 +82,10 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
   const [nativeSurfaceUrl, setNativeSurfaceUrl] = useState('');
   const [nativeSurfaceHandoff, setNativeSurfaceHandoff] = useState<NativeSurfaceHandoff | null>(null);
   const nextNativeSurfaceHandoffIdRef = useRef(0);
+  const pendingNativeSurfaceTransitionRef = useRef<{
+    mode: NativeSurfaceMode;
+    onComplete: () => void;
+  } | null>(null);
 
   const beginNativeSurfaceHandoff = useCallback((url: string) => {
     const id = String(++nextNativeSurfaceHandoffIdRef.current);
@@ -100,20 +113,37 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
       mode,
       animated: false,
     });
+    pendingNativeSurfaceTransitionRef.current = { mode, onComplete };
     setNativeSurfaceMode(mode);
-    // A TextureView can stop producing frames while LayoutAnimation repeatedly
-    // changes its bounds. Commit the owner to its final bounds in one layout
-    // pass instead: the VLC child stays mounted and its decoder/output are not
-    // touched, while the transparent controls route waits for that commit.
+    // Hidden has no visible owner that can report a layout acknowledgement.
     if (mode === 'hidden') {
+      pendingNativeSurfaceTransitionRef.current = null;
       console.log(VLC_TRACE, 'surface-transition-complete', { mode });
       onComplete();
-      return;
     }
-    requestAnimationFrame(() => {
-      console.log(VLC_TRACE, 'surface-transition-complete', { mode });
-      onComplete();
+  }, []);
+
+  const commitNativeSurfaceLayout = useCallback((
+    mode: NativeSurfaceMode,
+    bounds: NativeSurfaceBounds,
+  ) => {
+    const pending = pendingNativeSurfaceTransitionRef.current;
+    if (
+      !pending
+      || pending.mode !== mode
+      || bounds.width <= 0
+      || bounds.height <= 0
+    ) return;
+
+    pendingNativeSurfaceTransitionRef.current = null;
+    console.log(VLC_TRACE, 'surface-transition-layout-ack', {
+      mode,
+      width: bounds.width,
+      height: bounds.height,
+      x: bounds.x,
+      y: bounds.y,
     });
+    pending.onComplete();
   }, []);
 
   // Expo-video uses these entry points too. They never measure or move a
@@ -151,6 +181,7 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
         updateNativeSurfaceHandoffUrl,
         endNativeSurfaceHandoff,
         transitionNativeSurface,
+        commitNativeSurfaceLayout,
         miniPlayerRef,
         triggerExpand,
         triggerExpandFromRef,

@@ -23,6 +23,7 @@ function NativeStreamPlayerAndroid({
   paused = false,
   repeat = false,
   resizeMode = 'contain',
+  videoAspectRatio,
   style,
   reloadKey,
   seekPosition,
@@ -74,6 +75,8 @@ function NativeStreamPlayerAndroid({
   useKeepAwake();
 
   return (
+    // libVLC accepts a dynamic "width:height" value; the package .d.ts only
+    // lists presets, so keep that library-specific cast at this boundary.
     <VLCPlayer
       key={`${source}:${reloadKey ?? 0}`}
       style={style}
@@ -85,6 +88,7 @@ function NativeStreamPlayerAndroid({
       volume={100}
       muted={false}
       resizeMode={resizeMode}
+      videoAspectRatio={videoAspectRatio as any}
       onPlaying={onPlaying}
       onBuffering={(event) => {
         const bufferRate = (event as { bufferRate?: number }).bufferRate;
@@ -139,6 +143,7 @@ function areVlcPlaybackInputsEqual(
     && previous.paused === next.paused
     && previous.repeat === next.repeat
     && previous.resizeMode === next.resizeMode
+    && previous.videoAspectRatio === next.videoAspectRatio
     && previous.seekPosition === next.seekPosition
     && previous.onPlaying === next.onPlaying
     && previous.onBuffering === next.onBuffering

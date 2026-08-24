@@ -402,6 +402,7 @@ export default function LiveTVScreen() {
     nativeSurfaceMode,
     setNativeSurfaceUrl,
     beginNativeSurfaceHandoff,
+    commitNativeSurfaceLayout,
     transitionNativeSurface,
     triggerExpand,
     triggerExpandFromRef,
@@ -411,6 +412,15 @@ export default function LiveTVScreen() {
   // FocusablePressable container. Fullscreen changes the container's parent
   // layout; the video surface itself never receives screen coordinates.
   const nativeSurfaceFullscreen = nativeSurfaceMode === 'fullscreen';
+  const [nativeOwnerBounds, setNativeOwnerBounds] = useState({
+    width: 0,
+    height: 0,
+  });
+  const fullscreenVlcAspectRatio = nativeSurfaceFullscreen
+    && nativeOwnerBounds.width > 0
+    && nativeOwnerBounds.height > 0
+    ? `${Math.round(nativeOwnerBounds.width)}:${Math.round(nativeOwnerBounds.height)}`
+    : undefined;
 
   // Keep a device-side record of the *actual* React Native content window and
   // owner bounds. This is deliberately diagnostic only: the TextureView remains
@@ -1945,6 +1955,11 @@ export default function LiveTVScreen() {
             onBlur={() => setMiniPlayerFocused(false)}
               onLayout={(event) => {
                 const { width, height, x, y } = event.nativeEvent.layout;
+                setNativeOwnerBounds((current) => (
+                  current.width === width && current.height === height
+                    ? current
+                    : { width, height }
+                ));
                 console.log(VLC_TRACE, 'react-owner-layout', {
                   width,
                   height,
@@ -1952,6 +1967,7 @@ export default function LiveTVScreen() {
                   y,
                   fullscreen: nativeSurfaceFullscreen,
                 });
+                commitNativeSurfaceLayout(nativeSurfaceMode, { width, height, x, y });
               }}
             focusedStyle={{}}
             style={(focused) => [
@@ -1980,7 +1996,8 @@ export default function LiveTVScreen() {
                   source={playingChannel?.streamUrl ?? selectedChannel?.streamUrl ?? ''}
                   player={player}
                   style={StyleSheet.absoluteFill}
-                  resizeMode="contain"
+                  resizeMode={nativeSurfaceFullscreen ? 'cover' : 'contain'}
+                  videoAspectRatio={fullscreenVlcAspectRatio}
                   reloadKey={vlcReloadKey}
                   onPlaying={handlePersistentVlcPlaying}
                   onBuffering={handlePersistentVlcBuffering}
