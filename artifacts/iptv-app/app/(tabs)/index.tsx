@@ -414,48 +414,104 @@ export default function LiveTVScreen() {
   // the measured mini viewport; it never reparents or unmounts the native view.
   const nativeSurfaceFullscreen = nativeSurfaceMode === 'fullscreen';
   const nativeSurfaceRootRef = useRef<View>(null);
+  const nativeSurfaceModeRef = useRef(nativeSurfaceMode);
+  const previousNativeSurfaceModeRef = useRef(nativeSurfaceMode);
+  const nativePreviewPanelBoundsRef = useRef({
+    width: 0,
+    height: 0,
+    x: 0,
+    y: 0,
+  });
+  const nativeMiniOwnerLayoutRef = useRef({
+    width: 0,
+    height: 0,
+    x: 0,
+    y: 0,
+  });
+  // A fullscreen handoff must wait for the Live TV root to report the viewport
+  // after the tab shell has released its sidebar. This rejects an old mini
+  // frame that can otherwise acknowledge the handoff before the parent grows.
+  const nativeFullscreenViewportRef = useRef<{ width: number; height: number } | null>(null);
   const [nativeOwnerBounds, setNativeOwnerBounds] = useState({
     width: 0,
     height: 0,
     x: 0,
     y: 0,
   });
-  const measureNativeSurfaceOwner = useCallback(() => {
-    if (!USES_NATIVE_VLC || nativeSurfaceMode !== 'mini') return;
-    const owner = miniPlayerRef.current;
-    const root = nativeSurfaceRootRef.current;
-    if (!owner || !root) return;
+  const [nativeSurfaceViewport, setNativeSurfaceViewport] = useState({
+    width: 0,
+    height: 0,
+  });
 
-    owner.measureLayout(
-      root,
-      (x, y, width, height) => {
-        if (width <= 0 || height <= 0) return;
-        setNativeOwnerBounds((current) => (
-          current.x === x
-          && current.y === y
-          && current.width === width
-          && current.height === height
-            ? current
-            : { x, y, width, height }
-        ));
-      },
-      () => {},
-    );
-  }, [miniPlayerRef, nativeSurfaceMode]);
+  // Layout events are already delivered after React Native has committed the
+  // relevant view. Combine the direct-child preview panel with its mini-player
+  // child's local frame instead of asking Android to resolve a relative native
+  // measurement while that first child is being attached. The latter is the
+  // race that made the first selected channel invisible until a fullscreen trip.
+  const publishNativeMiniOwnerBounds = useCallback(() => {
+    if (!USES_NATIVE_VLC || nativeSurfaceModeRef.current !== 'mini') return;
+    const panel = nativePreviewPanelBoundsRef.current;
+    const owner = nativeMiniOwnerLayoutRef.current;
+    if (
+      panel.width <= 0
+      || panel.height <= 0
+      || owner.width <= 0
+      || owner.height <= 0
+    ) return;
 
-  // The first channel can make the mini-player visible in the same React
-  // commit that creates its layout node. On Android, measureLayout can then
-  // run before the native hierarchy has settled and return no bounds. Retry
-  // after the next few layout frames so the persistent VLC presentation host
-  // is mounted immediately on first channel selection instead of only after
-  // a fullscreen round-trip. This is layout-only; it never touches VLC.
+    const next = {
+      x: panel.x + owner.x,
+      y: panel.y + owner.y,
+      width: owner.width,
+      height: owner.height,
+    };
+    setNativeOwnerBounds((current) => (
+      current.x === next.x
+      && current.y === next.y
+      && current.width === next.width
+      && current.height === next.height
+        ? current
+        : next
+    ));
+  }, []);
+
+  const handleNativeRootLayout = useCallback((event: any) => {
+    const { width, height } = event.nativeEvent.layout;
+    if (width <= 0 || height <= 0) return;
+    setNativeSurfaceViewport((current) => (
+      current.width === width && current.height === height
+        ? current
+        : { width, height }
+    ));
+    if (nativeSurfaceModeRef.current === 'fullscreen') {
+      nativeFullscreenViewportRef.current = { width, height };
+    }
+    publishNativeMiniOwnerBounds();
+  }, [publishNativeMiniOwnerBounds]);
+
+  const handleNativePreviewPanelLayout = useCallback((event: any) => {
+    nativePreviewPanelBoundsRef.current = event.nativeEvent.layout;
+    publishNativeMiniOwnerBounds();
+  }, [publishNativeMiniOwnerBounds]);
+
+  const handleNativeMiniOwnerLayout = useCallback((event: any) => {
+    nativeMiniOwnerLayoutRef.current = event.nativeEvent.layout;
+    publishNativeMiniOwnerBounds();
+  }, [publishNativeMiniOwnerBounds]);
+
+  if (previousNativeSurfaceModeRef.current !== nativeSurfaceMode) {
+    previousNativeSurfaceModeRef.current = nativeSurfaceMode;
+    if (nativeSurfaceMode === 'fullscreen') {
+      nativeFullscreenViewportRef.current = null;
+    }
+  }
+  nativeSurfaceModeRef.current = nativeSurfaceMode;
+
+  // Returning from fullscreen can reuse the already-committed mini frame. No
+  // timer or measurement retry is needed, and no VLC playback prop is touched.
   useEffect(() => {
-    if (!USES_NATIVE_VLC || nativeSurfaceMode !== 'mini' || !playingChannel) return;
-    const timers = [0, 16, 64, 200].map((delay) => setTimeout(() => {
-      measureNativeSurfaceOwner();
-    }, delay));
-    return () => timers.forEach((timer) => clearTimeout(timer));
-  }, [measureNativeSurfaceOwner, nativeSurfaceMode, playingChannel?.id]);
+    if (nativeSurfaceMode === 'mini') publishNativeMiniOwnerBounds();
+  }, [nativeSurfaceMode, publishNativeMiniOwnerBounds]);
 
   const activeNativeSurfaceUrl = nativeSurfaceUrl
     || playingChannel?.streamUrl
@@ -1807,7 +1863,7 @@ export default function LiveTVScreen() {
     <View
       ref={nativeSurfaceRootRef}
       collapsable={false}
-      onLayout={measureNativeSurfaceOwner}
+      onLayout={handleNativeRootLayout}
       style={[styles.root, { backgroundColor: colors.background }]}
     >
 
@@ -1987,7 +2043,10 @@ export default function LiveTVScreen() {
       <View style={[
         styles.previewPanel,
         { paddingTop: insets.top + 4, paddingRight: insets.right + 8 },
-      ]}>
+      ]}
+      collapsable={false}
+      onLayout={handleNativePreviewPanelLayout}
+      >
 
         {!isWeb && (
           /* collapsable={false} ensures the native view is created immediately
@@ -2000,10 +2059,7 @@ export default function LiveTVScreen() {
             onPress={handleMiniPlayerPress}
             onFocus={() => setMiniPlayerFocused(true)}
             onBlur={() => setMiniPlayerFocused(false)}
-            onLayout={() => {
-              measureNativeSurfaceOwner();
-              requestAnimationFrame(measureNativeSurfaceOwner);
-            }}
+            onLayout={handleNativeMiniOwnerLayout}
             focusedStyle={{}}
             style={(focused) => [
               styles.videoWrap,
@@ -2288,7 +2344,11 @@ export default function LiveTVScreen() {
         && isLivePreviewActive
         && nativeSurfaceMode !== 'hidden'
         && activeNativeSurfaceUrl
-        && (nativeSurfaceFullscreen || (nativeOwnerBounds.width > 0 && nativeOwnerBounds.height > 0)) && (
+        && (
+          nativeSurfaceFullscreen
+            ? nativeSurfaceViewport.width > 0 && nativeSurfaceViewport.height > 0
+            : nativeOwnerBounds.width > 0 && nativeOwnerBounds.height > 0
+        ) && (
         <View
           collapsable={false}
           pointerEvents="none"
@@ -2307,12 +2367,33 @@ export default function LiveTVScreen() {
                 y,
                 fullscreen: nativeSurfaceFullscreen,
               });
+              const fullscreenViewport = nativeFullscreenViewportRef.current;
+              if (
+                nativeSurfaceFullscreen
+                && (
+                  !fullscreenViewport
+                  || width !== fullscreenViewport.width
+                  || height !== fullscreenViewport.height
+                )
+              ) {
+                console.log(VLC_TRACE, 'surface-layout-waiting-for-fullscreen-viewport', {
+                  width,
+                  height,
+                  viewport: fullscreenViewport,
+                });
+                return;
+              }
               commitNativeSurfaceLayout(nativeSurfaceMode, { width, height, x, y });
             }}
             style={[
               styles.nativeSurfacePresentationFrame,
               nativeSurfaceFullscreen
-                ? StyleSheet.absoluteFill
+                ? {
+                    left: 0,
+                    top: 0,
+                    width: nativeSurfaceViewport.width,
+                    height: nativeSurfaceViewport.height,
+                  }
                 : {
                     left: nativeOwnerBounds.x,
                     top: nativeOwnerBounds.y,
