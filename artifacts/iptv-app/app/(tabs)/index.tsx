@@ -2024,7 +2024,7 @@ export default function LiveTVScreen() {
         )}
 
         {/* Channel info bar — logo + name + now-playing EPG title + progress bar below the mini-player */}
-        {playingChannel && (
+        {!nativeSurfaceFullscreen && playingChannel && (
           <View style={[styles.chInfoBar, { borderBottomColor: colors.border }]}>
             <View style={[styles.chInfoLogo, { backgroundColor: colors.secondary }]}>
               {playingChannel.logo ? (
@@ -2077,7 +2077,7 @@ export default function LiveTVScreen() {
           </View>
         )}
 
-        {selectedChannel ? (
+        {!nativeSurfaceFullscreen && (selectedChannel ? (
           <>
             {/* ── EPG header row with optional Catch-up button ── */}
             <View style={styles.epgHeaderRow}>
@@ -2200,7 +2200,7 @@ export default function LiveTVScreen() {
               Choose a category, then pick a channel to preview it here. Press OK to watch fullscreen.
             </Text>
           </View>
-        )}
+        ))}
       </View>{/* end previewPanel */}
 
       {/* ── Catch-up sheet ── */}
@@ -2406,6 +2406,8 @@ const styles = StyleSheet.create({
     flex: 1,
     width: '100%',
     height: '100%',
+    alignSelf: 'stretch',
+    aspectRatio: undefined,
     marginBottom: 0,
     borderRadius: 0,
     borderWidth: 0,

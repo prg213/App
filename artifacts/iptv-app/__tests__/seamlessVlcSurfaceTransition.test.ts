@@ -178,13 +178,24 @@ describe('Android live VLC container ownership', () => {
     expect(tvLayout).toContain("backgroundColor: '#000'");
   });
 
-  it('releases the Fire TV tab shell so the persistent parent can fill the physical viewport', () => {
+  it('releases the Android tab shell so the persistent parent can fill the viewport', () => {
     expect(tabLayout).toContain('const { nativeSurfaceMode } = useLivePlayer()');
     expect(tabLayout).toContain(
-      "const nativeSurfaceFullscreen = Platform.isTV && nativeSurfaceMode === 'fullscreen'",
+      "const nativeSurfaceFullscreen = Platform.OS === 'android' && nativeSurfaceMode === 'fullscreen'",
     );
     expect(tabLayout).toContain('nativeSurfaceFullscreen ? null : <Sidebar {...props} />');
     expect(tabLayout).toContain('marginLeft: nativeSurfaceFullscreen ? 0 : SIDEBAR_W');
+  });
+
+  it('removes the phone mini-player chrome so Android fullscreen contains only the video', () => {
+    expect(liveTab).toContain('!nativeSurfaceFullscreen && playingChannel && (');
+    expect(liveTab).toContain('!nativeSurfaceFullscreen && (selectedChannel ? (');
+
+    const ruleStart = liveTab.indexOf('fullscreenVideoContainer:');
+    const ruleBody = liveTab.slice(ruleStart, liveTab.indexOf('},', ruleStart));
+    expect(ruleBody).toContain('flex: 1');
+    expect(ruleBody).toContain("height: '100%'");
+    expect(ruleBody).toContain("aspectRatio: undefined");
   });
 
   it('keeps the libVLC output buffer stable while the React Native parent expands', () => {

@@ -399,10 +399,10 @@ function Sidebar({ state, descriptors, navigation }: SidebarProps) {
 export default function TabLayout() {
   const router = useRouter();
   const { nativeSurfaceMode } = useLivePlayer();
-  // The persistent Fire TV VLC owner lives inside the tab scene. Its fullscreen
-  // parent can only fill the physical window when the tab shell also releases
-  // its reserved sidebar width.
-  const nativeSurfaceFullscreen = Platform.isTV && nativeSurfaceMode === 'fullscreen';
+  // The persistent Android VLC owner lives inside the tab scene. Its fullscreen
+  // parent can only fill the available window when the tab shell also releases
+  // its reserved sidebar width. This applies to phones as well as Fire TV.
+  const nativeSurfaceFullscreen = Platform.OS === 'android' && nativeSurfaceMode === 'fullscreen';
 
   // Global catch-all: if no screen BackHandler consumed the press, move focus
   // to the sidebar instead of letting Android exit the app.
