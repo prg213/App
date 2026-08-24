@@ -58,3 +58,10 @@ uri = "file://StreamVault-267-universal.apk"
 type = "unspecified"
 title = "StreamVault Android APK 267"
 description = "Universal internal APK built from the final Android VLC presentation and delayed foreground-recovery changes. Install this on the physical Android phone for acceptance testing."
+
+[[outputs]]
+id = "hc1xhaN4uVKTnNMzvTd95"
+uri = "file://StreamVault-LiveTV-VLC-diagnostic.zip"
+type = "unspecified"
+title = "StreamVault Live TV VLC diagnostic source"
+description = "Read-only diagnostic archive containing the current Live TV/player source, VLC integration and native Vout bridge snapshot, custom patch, Android configuration, transition/channel-switch tests, and sanitized build configuration. No app files were modified."
