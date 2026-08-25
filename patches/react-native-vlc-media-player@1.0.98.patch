@@ -21,7 +21,7 @@
          url "https://mvnrepository.com/artifact/org.videolan.android"
 --- a/android/src/main/java/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView.java
 +++ b/android/src/main/java/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView.java
-@@ -48,6 +48,12 @@
+@@ -48,6 +48,15 @@
      private MediaPlayer mMediaPlayer = null;
      private boolean mMuted = false;
      private boolean isSurfaceViewDestory;
@@ -31,6 +31,9 @@
 +    private boolean isViewAttachedToWindow = false;
 +    private boolean isForegroundSurfaceRecoveryPending = false;
 +    private boolean isTerminalCleanup = false;
++    // Initial autoplay waits for a real, attached output. This is independent
++    // from surface-loss recovery so moving mini/fullscreen never restarts it.
++    private boolean isPlaybackStartPending = false;
      private String src;
      private String _subtitleUri;
      private boolean netStrTag;
@@ -100,12 +103,34 @@
      }
  
  
-@@ -157,6 +183,97 @@
+@@ -157,6 +183,125 @@
      public void onAudioFocusChange(int focusChange) {
      }
  
 +    private boolean hasRetainablePlayer() {
 +        return !isTerminalCleanup && libvlc != null && mMediaPlayer != null;
++    }
++
++    private boolean hasValidSource() {
++        if (src != null && !src.isEmpty()) return true;
++        if (srcMap == null || !srcMap.hasKey("uri") || srcMap.isNull("uri")) return false;
++        String uri = srcMap.getString("uri");
++        return uri != null && !uri.isEmpty();
++    }
++
++    private boolean isVlcOutputReadyForPlayback() {
++        if (!hasRetainablePlayer() || !hasValidSource() || !isViewAttachedToWindow
++                || !isSurfaceTextureAvailable || getSurfaceTexture() == null
++                || getWidth() <= 0 || getHeight() <= 0) return false;
++        return mMediaPlayer.getVLCVout().areViewsAttached();
++    }
++
++    private void startPlaybackIfOutputReady(String reason) {
++        if (!isPlaybackStartPending || isHostPaused || !isVlcOutputReadyForPlayback()) return;
++        isPlaybackStartPending = false;
++        isPaused = false;
++        Log.i(tag, "surface-output-start reason=" + reason);
++        mMediaPlayer.play();
 +    }
 +
 +    private boolean syncVlcOutputToView(String reason) {
@@ -117,14 +142,9 @@
 +        IVLCVout vlcOut = mMediaPlayer.getVLCVout();
 +        vlcOut.setWindowSize(outputWidth, outputHeight);
 +        applyResizeMode();
-+        // libVLC's Vout must be explicitly told that its output frame changed.
-+        // This updates the existing surface in-place; it does not recreate the
-+        // MediaPlayer or reload the stream.
-+        try {
-+            vlcOut.updateVideoSurfaces();
-+        } catch (Exception e) {
-+            Log.w(tag, "surface-output-update failed reason=" + reason, e);
-+        }
++        // setWindowSize updates this attached Vout in libVLC 3.6. Calling the
++        // removed updateVideoSurfaces API is neither necessary nor compatible.
++        // This remains a presentation-only change: the player and stream stay put.
 +        Log.i(tag, "surface-output-size reason=" + reason
 +                + " output=" + outputWidth + "x" + outputHeight
 +                + " resizeMode=" + resizeMode);
@@ -137,6 +157,20 @@
 +            if ("cover".equals(resizeMode)) {
 +                mMediaPlayer.setVideoScale(MediaPlayer.ScaleType.SURFACE_FIT_SCREEN);
 +            } else if ("fill".equals(resizeMode)) {
++                // Force libVLC's output aspect to the actual TextureView bounds.
++                // SURFACE_FILL is intended to occupy the complete display, but
++                // explicitly setting the presentation aspect here prevents a
++                // stale 16:9 stream aspect from being re-applied after a native
++                // layout/Vout update. setScale(0) keeps VLC's automatic pixel
++                // scaling while the aspect ratio is supplied by the viewport.
++                int outputWidth = getWidth();
++                int outputHeight = getHeight();
++                if (outputWidth > 0 && outputHeight > 0) {
++                    mMediaPlayer.setAspectRatio(outputWidth + ":" + outputHeight);
++                } else {
++                    mMediaPlayer.setAspectRatio(null);
++                }
++                mMediaPlayer.setScale(0);
 +                mMediaPlayer.setVideoScale(MediaPlayer.ScaleType.SURFACE_FILL);
 +            } else {
 +                mMediaPlayer.setVideoScale(MediaPlayer.ScaleType.SURFACE_BEST_FIT);
@@ -154,11 +188,6 @@
 +        resizeMode = mode;
 +        if (mMediaPlayer != null) {
 +            applyResizeMode();
-+            try {
-+                mMediaPlayer.getVLCVout().updateVideoSurfaces();
-+            } catch (Exception e) {
-+                Log.w(tag, "resize-mode surface update failed", e);
-+            }
 +        }
 +    }
 +
@@ -182,6 +211,7 @@
 +            syncVlcOutputToView("already-attached-" + reason);
 +            isSurfaceViewDestory = false;
 +            isForegroundSurfaceRecoveryPending = false;
++            startPlaybackIfOutputReady("already-attached-" + reason);
 +            resumeHostPausedPlayerIfReady("already-attached-" + reason);
 +            return;
 +        }
@@ -192,13 +222,14 @@
 +        vlcOut.attachViews(onNewVideoLayoutListener);
 +        isSurfaceViewDestory = false;
 +        isForegroundSurfaceRecoveryPending = false;
++        startPlaybackIfOutputReady("reattached-" + reason);
 +        resumeHostPausedPlayerIfReady("reattached-" + reason);
 +    }
 +
      private void setProgressUpdateRunnable() {
          if (mMediaPlayer != null && mProgressUpdateInterval > 0){
              new Thread() {
-@@ -204,15 +321,12 @@
+@@ -204,15 +326,12 @@
          @Override
          public void onLayoutChange(View view, int i, int i1, int i2, int i3, int i4, int i5, int i6, int i7) {
              if (view.getWidth() > 0 && view.getHeight() > 0) {
@@ -220,7 +251,7 @@
              }
          }
      };
-@@ -335,6 +449,7 @@
+@@ -335,6 +454,7 @@
  
  
      private void stopPlayback() {
@@ -228,7 +259,7 @@
          onStopPlayback();
          releasePlayer();
      }
-@@ -414,10 +529,11 @@
+@@ -414,10 +534,11 @@
              //this.getHolder().setKeepScreenOn(true);
              IVLCVout vlcOut = mMediaPlayer.getVLCVout();
              if (mVideoWidth > 0 && mVideoHeight > 0) {
@@ -244,16 +275,73 @@
                  //mMediaPlayer.setAspectRatio(mVideoWidth+":"+mVideoHeight);
              }
              DisplayMetrics dm = getResources().getDisplayMetrics();
-@@ -464,6 +580,8 @@
-                 //vlcOut.attachViews(onNewVideoLayoutListener);
-                 vlcOut.setVideoSurface(this.getSurfaceTexture());
-                 vlcOut.attachViews(onNewVideoLayoutListener);
-+                applyResizeMode();
-+                try { vlcOut.updateVideoSurfaces(); } catch (Exception ignored) {}
-                 // vlcOut.attachSurfaceSlave(surfaceVideo,null,onNewVideoLayoutListener);
-                 //vlcOut.setVideoView(this);
-                 //vlcOut.attachViews(onNewVideoLayoutListener);
-@@ -763,16 +881,27 @@
+@@ -451,31 +572,24 @@
+             mVideoInfo = null;
+             mVideoInfoHash = null;
+             mMediaPlayer.setMedia(m);
+             m.release();
+             mMediaPlayer.setScale(0);
+             if (_subtitleUri != null) {
+                 mMediaPlayer.addSlave(Media.Slave.Type.Subtitle, _subtitleUri, true);
+             }
+ 
++            isPlaybackStartPending = isResume ? autoplayResume : autoplay;
+             if (!vlcOut.areViewsAttached()) {
+-                vlcOut.addCallback(callback);
+-                // vlcOut.setVideoSurface(this.getSurfaceTexture());
+-                //vlcOut.setVideoSurface(this.getHolder().getSurface(), this.getHolder());
+-                //vlcOut.attachViews(onNewVideoLayoutListener);
+-                vlcOut.setVideoSurface(this.getSurfaceTexture());
+-                vlcOut.attachViews(onNewVideoLayoutListener);
+-                // vlcOut.attachSurfaceSlave(surfaceVideo,null,onNewVideoLayoutListener);
+-                //vlcOut.setVideoView(this);
+-                //vlcOut.attachViews(onNewVideoLayoutListener);
++                // The source can arrive before React Native gives this TextureView
++                // a real size. Queue attachment instead of binding a zero-sized
++                // output; recoverVlcOutputIfReady sets the window size before
++                // attaching and starts the pending session only afterwards.
++                isForegroundSurfaceRecoveryPending = true;
++                recoverVlcOutputIfReady("player-create");
+             }
+             if (isResume) {
+-                if (autoplayResume) {
+-                    mMediaPlayer.play();
+-                }
++                startPlaybackIfOutputReady("player-create-resume");
+             } else {
+-                if (autoplay) {
+-                    isPaused = false;
+-                    mMediaPlayer.play();
+-                }
++                startPlaybackIfOutputReady("player-create");
+             }
+             eventEmitter.loadStart();
+@@ -594,16 +715,23 @@
+     public void setPausedModifier(boolean paused) {
+         Log.i("paused:", "" + paused + ":" + mMediaPlayer);
+         if (mMediaPlayer != null) {
+             if (paused) {
+                 isPaused = true;
++                isPlaybackStartPending = false;
+                 mMediaPlayer.pause();
+             } else {
+                 isPaused = false;
+-                mMediaPlayer.play();
++                isPlaybackStartPending = true;
++                if (!isVlcOutputReadyForPlayback()) {
++                    isForegroundSurfaceRecoveryPending = true;
++                    recoverVlcOutputIfReady("pause-prop");
++                    return;
++                }
++                startPlaybackIfOutputReady("pause-prop");
+                 Log.i("do play:", true + "");
+             }
+         } else {
+             createPlayer(!paused, false);
+         }
+     }
+ 
+@@ -763,16 +885,27 @@
          mVideoWidth = width;
          mVideoHeight = height;
          surfaceVideo = new Surface(surface);
@@ -297,7 +385,7 @@
          videoView.doResume(autoPlay);
      }
  
-+    @ReactProp(name = PROP_RESIZE_MODE, defaultString = "contain")
++    @ReactProp(name = PROP_RESIZE_MODE)
 +    public void setResizeMode(final ReactVlcPlayerView videoView, final String resizeMode) {
 +        videoView.setResizeMode(resizeMode);
 +    }
