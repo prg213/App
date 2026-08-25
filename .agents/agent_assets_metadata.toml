@@ -142,3 +142,10 @@ uri = "file://artifacts/iptv-app/builds/StreamVault-273.apk"
 type = "unspecified"
 title = "StreamVault Android APK 273"
 description = "Universal Android APK built by EAS from the exact ZIP source with the non-zero mini-player bounds condition. SHA-256: 607ef5baa530c2c86c50d1991bb6623dd70f784ebfb5a8af90b1f82f2790b2fa"
+
+[[outputs]]
+id = "i0uRccE1sywVHrx_jsYTt"
+uri = "file://artifacts/iptv-app/StreamVault-release-33.apk"
+type = "unspecified"
+title = "StreamVault IPTV Android APK — build 33"
+description = "Signed universal Android APK built by GitHub Actions from the corrected main branch. Install this on the Android phone and Fire TV for first-channel mini-player and fullscreen continuity testing. SHA-256: cecd9f8cf83d839e1056c233fdfe29c8debf61886e4a5cd406a4cb622b6dcdaf"
