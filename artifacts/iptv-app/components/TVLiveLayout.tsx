@@ -87,6 +87,11 @@ export interface TVLiveLayoutProps {
   nativeSurfaceFullscreen?: boolean;
   /** Reports the actual VLC owner's final bounds for a shared handoff. */
   onNativeSurfaceLayout?: (bounds: { width: number; height: number; x: number; y: number }) => void;
+  /**
+   * Parent-owned VLC presentation. This component only places the persistent
+   * host in its measured preview coordinate space and never creates a renderer.
+   */
+  nativePresentationHost?: React.ReactNode;
   isBuffering: boolean;
   hasError: boolean;
   /**
@@ -157,6 +162,7 @@ export function TVLiveLayout({
   focusPlayingChannelRef,
   nativeSurfaceFullscreen = false,
   onNativeSurfaceLayout,
+  nativePresentationHost,
   isBuffering,
   hasError,
   miniPlayerRef,
@@ -1252,10 +1258,10 @@ export function TVLiveLayout({
                 onNativeSurfaceLayout?.({ width, height, x, y });
               }}
             >
-              {/* The root presentation host owns the only Android VLC
-                  TextureView. This focusable container only reports the
-                  mini-player bounds so mini/fullscreen changes stay
-                  presentation-only and never create a second decoder. */}
+              {/* The parent owns the only Android VLC TextureView. This slot
+                  gives it this preview's coordinate space while the TV layout
+                  retains focus, chrome, and layout ownership. */}
+              {nativePresentationHost}
 
               {/* Surface reattachment can briefly report buffering when moving
                   between fullscreen and this mini-player. On TV that overlay

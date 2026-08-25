@@ -77,13 +77,15 @@ describe('Android live VLC container ownership', () => {
     expect(tvLayout).not.toContain('!!streamUrl');
     expect(tvLayout).toContain('onPress={onWatchFullscreen}');
     expect(tvLayout).toContain('onNativeSurfaceLayout?.({ width, height, x, y });');
-    expect(tvLayout).toContain('root presentation host owns the only Android VLC');
+    expect(tvLayout).toContain('nativePresentationHost?: React.ReactNode;');
+    expect(tvLayout).toContain('{nativePresentationHost}');
+    expect(tvLayout).toContain('never creates a renderer');
   });
 
   it('acknowledges final owner layout on both phone and Fire TV before continuing a handoff', () => {
     expect(liveTab).toContain('commitNativeSurfaceLayout(nativeSurfaceMode, {');
-    expect(liveTab).toContain('onNativeSurfaceLayout={(bounds) => {');
-    expect(liveTab).toContain('commitNativeSurfaceLayout(nativeSurfaceMode, bounds);');
+    expect(liveTab).toContain('onNativeSurfaceLayout={() => {');
+    expect(liveTab).toContain('measureNativeMiniOwnerInWindow();');
     expect(tvLayout).toContain('onNativeSurfaceLayout?: (bounds: { width: number; height: number; x: number; y: number }) => void;');
     expect(tvLayout).toContain('onNativeSurfaceLayout?.({ width, height, x, y });');
   });
@@ -425,8 +427,8 @@ describe('Android live VLC container ownership', () => {
     );
     expect(liveTab).toContain('width: nativeSurfaceFullscreen ? screenWidth : width');
     expect(liveTab).toContain('height: nativeSurfaceFullscreen ? screenHeight : height');
-    expect(liveTab).toContain('x: nativeSurfaceFullscreen ? 0 : x');
-    expect(liveTab).toContain('y: nativeSurfaceFullscreen ? 0 : y');
+    expect(liveTab).toContain('x: nativeSurfaceFullscreen ? 0 : nativeOwnerBounds.x');
+    expect(liveTab).toContain('y: nativeSurfaceFullscreen ? 0 : nativeOwnerBounds.y');
     expect(liveTab).toContain('width: screenWidth');
     expect(liveTab).toContain('height: screenHeight');
     expect(tabLayout).toContain(
@@ -587,7 +589,11 @@ describe('Android live VLC container ownership', () => {
     expect(rootHost).toContain(
       'nativeOwnerBounds.width > 0 && nativeOwnerBounds.height > 0',
     );
-    expect(tvBranch).toContain('{nativeVlcPresentationHost}');
+    expect(rootHost).toContain('Platform.isTV && { zIndex: 0, elevation: 0 }');
+    expect(rootHost).toContain('Platform.isTV');
+    expect(rootHost).toContain('StyleSheet.absoluteFill');
+    expect(tvBranch).toContain('ref={nativeSurfaceRootRef}');
+    expect(tvBranch).toContain('nativePresentationHost={nativeVlcPresentationHost}');
     expect(tvLayout).not.toContain('<NativeStreamPlayer');
     expect(vlcAndroidPatch).toContain('isPlaybackStartPending');
     expect(vlcAndroidPatch).toContain('startPlaybackIfOutputReady');

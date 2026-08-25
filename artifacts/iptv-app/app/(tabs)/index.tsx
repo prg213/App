@@ -1902,7 +1902,10 @@ export default function LiveTVScreen() {
         pointerEvents="none"
         accessible={false}
         importantForAccessibility="no-hide-descendants"
-        style={styles.nativeSurfacePresentationLayer}
+        style={[
+          styles.nativeSurfacePresentationLayer,
+          Platform.isTV && { zIndex: 0, elevation: 0 },
+        ]}
       >
         <View
           collapsable={false}
@@ -1922,13 +1925,15 @@ export default function LiveTVScreen() {
             commitNativeSurfaceLayout(nativeSurfaceMode, {
               width: nativeSurfaceFullscreen ? screenWidth : width,
               height: nativeSurfaceFullscreen ? screenHeight : height,
-              x: nativeSurfaceFullscreen ? 0 : x,
-              y: nativeSurfaceFullscreen ? 0 : y,
+              x: nativeSurfaceFullscreen ? 0 : nativeOwnerBounds.x,
+              y: nativeSurfaceFullscreen ? 0 : nativeOwnerBounds.y,
             });
           }}
           style={[
             styles.nativeSurfacePresentationFrame,
-            nativeSurfaceFullscreen
+            Platform.isTV
+              ? StyleSheet.absoluteFill
+              : nativeSurfaceFullscreen
               ? {
                   left: 0,
                   top: 0,
@@ -1967,7 +1972,12 @@ export default function LiveTVScreen() {
   // On Fire TV / Android TV use the 3-panel D-pad layout.
   if (Platform.isTV) {
     return (
-      <View style={{ flex: 1, backgroundColor: colors.background }}>
+      <View
+        ref={nativeSurfaceRootRef}
+        collapsable={false}
+        onLayout={handleNativeRootLayout}
+        style={{ flex: 1, backgroundColor: colors.background }}
+      >
         <TVLiveLayout
           allCategories={allCategories}
           selectedCatId={selectedCatId}
@@ -1985,9 +1995,10 @@ export default function LiveTVScreen() {
           colors={colors}
           insets={insets}
           nativeSurfaceFullscreen={nativeSurfaceFullscreen}
-           onNativeSurfaceLayout={(bounds) => {
-             commitNativeSurfaceLayout(nativeSurfaceMode, bounds);
-           }}
+          onNativeSurfaceLayout={() => {
+            measureNativeMiniOwnerInWindow();
+          }}
+          nativePresentationHost={nativeVlcPresentationHost}
           isBuffering={isBuffering}
           hasError={hasError}
           miniPlayerRef={miniPlayerRef}
@@ -2001,7 +2012,6 @@ export default function LiveTVScreen() {
           focusHighlightedChCategoryRef={focusHighlightedChCategoryRef}
           focusPlayingChannelRef={focusPlayingChannelRef}
         />
-        {nativeVlcPresentationHost}
         {showCatchup && selectedChannel && creds && (
           <CatchupSheet
             key={selectedChannel.id}
