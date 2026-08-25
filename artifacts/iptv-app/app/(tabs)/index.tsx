@@ -1497,21 +1497,6 @@ export default function LiveTVScreen() {
 
   const handleSelectChannel = useCallback((ch: Channel) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-
-    // First native VLC selection: force the persistent mini-player surface to
-    // bind immediately. On a cold Live TV launch the native view can already be
-    // mounted with an empty source, so relying only on the selected-channel
-    // effect can leave the first stream invisible until fullscreen causes a
-    // later native layout/rebind. Only do this when there is no active VLC URL,
-    // so normal channel changes never restart the working continuous stream.
-    if (USES_NATIVE_VLC && !liveUrlRef.current) {
-      liveUrlRef.current = ch.streamUrl;
-      setNativeSurfaceUrl(ch.streamUrl);
-      setVlcReloadKey((key) => key + 1);
-      setIsBuffering(true);
-      setHasError(false);
-    }
-
     setSelectedChannel(ch);
     setPlayingChannel(ch);
     // Record in recently-watched (fire-and-forget — never blocks the UI)
@@ -2454,7 +2439,7 @@ export default function LiveTVScreen() {
         && (
           nativeSurfaceFullscreen
             ? nativeSurfaceViewport.width > 0 && nativeSurfaceViewport.height > 0
-            : true
+            : nativeOwnerBounds.width > 0 && nativeOwnerBounds.height > 0
         ) && (
         <View
           collapsable={false}
