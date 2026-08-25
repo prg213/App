@@ -34,9 +34,7 @@ import {
   View,
   type ListRenderItem,
 } from 'react-native';
-import { type VideoPlayer } from 'expo-video';
 import { FocusablePressable } from '@/components/FocusablePressable';
-import { NativeStreamPlayer } from '@/components/NativeStreamPlayer';
 import { useFocusRestore } from '@/hooks/useFocusRestore';
 import { useTVRemote } from '@/hooks/useTVRemote';
 import type { Category, Channel, EpgProgram } from '@/types';
@@ -85,21 +83,12 @@ export interface TVLiveLayoutProps {
   nowPlayingMap: Map<string, string>;
   colors: any;
   insets: { top: number; bottom: number; left: number; right: number };
-  player: VideoPlayer;
-  videoKey: number;
-  streamUrl: string;
-  vlcReloadKey?: number;
-  /** True while the persistent mini-player owns live playback. */
-  isPlaybackActive: boolean;
-  /** Expands the preview container while the same VLC child stays inside it. */
+  /** Expands the preview container while the root VLC owner stays mounted. */
   nativeSurfaceFullscreen?: boolean;
   /** Reports the actual VLC owner's final bounds for a shared handoff. */
   onNativeSurfaceLayout?: (bounds: { width: number; height: number; x: number; y: number }) => void;
   isBuffering: boolean;
   hasError: boolean;
-  onVlcPlaying?: () => void;
-  onVlcBuffering?: () => void;
-  onVlcError?: () => void;
   /**
    * Ref to the real video preview container for focus restoration.
    */
@@ -166,33 +155,17 @@ export function TVLiveLayout({
   entryResetCallbackRef,
   focusHighlightedChCategoryRef,
   focusPlayingChannelRef,
-  player,
-  videoKey,
-  streamUrl,
-  vlcReloadKey,
-  isPlaybackActive,
   nativeSurfaceFullscreen = false,
   onNativeSurfaceLayout,
   isBuffering,
   hasError,
-  onVlcPlaying,
-  onVlcBuffering,
-  onVlcError,
   miniPlayerRef,
 }: TVLiveLayoutProps) {
-  // Fullscreen Android playback keeps the VLC surface mounted in this layout
-  // while the player route supplies its controls. Hide the surrounding Live TV
-  // chrome without hiding its parent, otherwise the native surface is covered
-  // by the category and channel panels on Fire TV.
+  // Fullscreen Android playback keeps the root-owned VLC surface mounted while
+  // this layout supplies its controls. Hide the surrounding Live TV chrome
+  // without hiding the measured mini-player owner, otherwise the native
+  // surface can be covered by the category and channel panels on Fire TV.
   const hideLiveChromeForFullscreen = nativeSurfaceFullscreen && Platform.OS === 'android';
-
-  useEffect(() => {
-    console.log(VLC_TRACE, 'live-layout-surface-mode', {
-      fullscreen: nativeSurfaceFullscreen,
-      streamPresent: !!streamUrl,
-      playbackActive: isPlaybackActive,
-    });
-  }, [isPlaybackActive, nativeSurfaceFullscreen, streamUrl]);
 
   const catListRef = useRef<FlatList<Category>>(null);
   const chListRef  = useRef<FlatList<Channel>>(null);
@@ -1249,7 +1222,7 @@ export function TVLiveLayout({
               accessible
               accessibilityRole="button"
               accessibilityLabel="Watch fullscreen — press OK"
-              focusable={Platform.isTV ? isPlaybackActive && !!streamUrl : true}
+              focusable={Platform.isTV ? !!selectedChannel : true}
               style={[
                 styles.videoWrap,
                 nativeSurfaceFullscreen && styles.fullscreenVideoContainer,
@@ -1279,34 +1252,10 @@ export function TVLiveLayout({
                 onNativeSurfaceLayout?.({ width, height, x, y });
               }}
             >
-              {/* The real VLC TextureView belongs to the actual focusable
-                  mini-player container. The parent changes only its bounds;
-                  libVLC keeps one display-sized output buffer throughout the
-                  mini-player/fullscreen handoff. */}
-              {isPlaybackActive && !!streamUrl && (
-                <View
-                  collapsable={false}
-                  pointerEvents="none"
-                  focusable={false}
-                  accessible={false}
-                  importantForAccessibility="no-hide-descendants"
-                  style={[styles.nativeSurfaceHost, StyleSheet.absoluteFill]}
-                >
-                  <NativeStreamPlayer
-                    source={streamUrl}
-                    player={player}
-                    style={StyleSheet.absoluteFill}
-                    // Keep this native playback prop fixed through the container
-                    // resize. The same VLC session begins in fill mode, then only
-                    // the owner bounds change when fullscreen is entered.
-                    resizeMode="fill"
-                    reloadKey={Platform.OS === 'android' ? vlcReloadKey : `${videoKey}:${vlcReloadKey ?? 0}`}
-                    onPlaying={onVlcPlaying}
-                    onBuffering={onVlcBuffering}
-                    onError={onVlcError}
-                  />
-                </View>
-              )}
+              {/* The root presentation host owns the only Android VLC
+                  TextureView. This focusable container only reports the
+                  mini-player bounds so mini/fullscreen changes stay
+                  presentation-only and never create a second decoder. */}
 
               {/* Surface reattachment can briefly report buffering when moving
                   between fullscreen and this mini-player. On TV that overlay

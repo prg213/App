@@ -21,7 +21,7 @@
          url "https://mvnrepository.com/artifact/org.videolan.android"
 --- a/android/src/main/java/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView.java
 +++ b/android/src/main/java/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView.java
-@@ -48,6 +48,12 @@
+@@ -48,6 +48,15 @@
      private MediaPlayer mMediaPlayer = null;
      private boolean mMuted = false;
      private boolean isSurfaceViewDestory;
@@ -31,6 +31,9 @@
 +    private boolean isViewAttachedToWindow = false;
 +    private boolean isForegroundSurfaceRecoveryPending = false;
 +    private boolean isTerminalCleanup = false;
++    // Initial autoplay waits for a real, attached output. This is independent
++    // from surface-loss recovery so moving mini/fullscreen never restarts it.
++    private boolean isPlaybackStartPending = false;
      private String src;
      private String _subtitleUri;
      private boolean netStrTag;
@@ -100,12 +103,34 @@
      }
  
  
-@@ -157,6 +183,101 @@
+@@ -157,6 +183,125 @@
      public void onAudioFocusChange(int focusChange) {
      }
  
 +    private boolean hasRetainablePlayer() {
 +        return !isTerminalCleanup && libvlc != null && mMediaPlayer != null;
++    }
++
++    private boolean hasValidSource() {
++        if (src != null && !src.isEmpty()) return true;
++        if (srcMap == null || !srcMap.hasKey("uri") || srcMap.isNull("uri")) return false;
++        String uri = srcMap.getString("uri");
++        return uri != null && !uri.isEmpty();
++    }
++
++    private boolean isVlcOutputReadyForPlayback() {
++        if (!hasRetainablePlayer() || !hasValidSource() || !isViewAttachedToWindow
++                || !isSurfaceTextureAvailable || getSurfaceTexture() == null
++                || getWidth() <= 0 || getHeight() <= 0) return false;
++        return mMediaPlayer.getVLCVout().areViewsAttached();
++    }
++
++    private void startPlaybackIfOutputReady(String reason) {
++        if (!isPlaybackStartPending || isHostPaused || !isVlcOutputReadyForPlayback()) return;
++        isPlaybackStartPending = false;
++        isPaused = false;
++        Log.i(tag, "surface-output-start reason=" + reason);
++        mMediaPlayer.play();
 +    }
 +
 +    private boolean syncVlcOutputToView(String reason) {
@@ -186,6 +211,7 @@
 +            syncVlcOutputToView("already-attached-" + reason);
 +            isSurfaceViewDestory = false;
 +            isForegroundSurfaceRecoveryPending = false;
++            startPlaybackIfOutputReady("already-attached-" + reason);
 +            resumeHostPausedPlayerIfReady("already-attached-" + reason);
 +            return;
 +        }
@@ -196,6 +222,7 @@
 +        vlcOut.attachViews(onNewVideoLayoutListener);
 +        isSurfaceViewDestory = false;
 +        isForegroundSurfaceRecoveryPending = false;
++        startPlaybackIfOutputReady("reattached-" + reason);
 +        resumeHostPausedPlayerIfReady("reattached-" + reason);
 +    }
 +
@@ -248,14 +275,72 @@
                  //mMediaPlayer.setAspectRatio(mVideoWidth+":"+mVideoHeight);
              }
              DisplayMetrics dm = getResources().getDisplayMetrics();
-@@ -464,6 +585,7 @@
-                 //vlcOut.attachViews(onNewVideoLayoutListener);
-                 vlcOut.setVideoSurface(this.getSurfaceTexture());
-                 vlcOut.attachViews(onNewVideoLayoutListener);
-+                applyResizeMode();
-                 // vlcOut.attachSurfaceSlave(surfaceVideo,null,onNewVideoLayoutListener);
-                 //vlcOut.setVideoView(this);
-                 //vlcOut.attachViews(onNewVideoLayoutListener);
+@@ -451,31 +572,24 @@
+             mVideoInfo = null;
+             mVideoInfoHash = null;
+             mMediaPlayer.setMedia(m);
+             m.release();
+             mMediaPlayer.setScale(0);
+             if (_subtitleUri != null) {
+                 mMediaPlayer.addSlave(Media.Slave.Type.Subtitle, _subtitleUri, true);
+             }
+ 
++            isPlaybackStartPending = isResume ? autoplayResume : autoplay;
+             if (!vlcOut.areViewsAttached()) {
+-                vlcOut.addCallback(callback);
+-                // vlcOut.setVideoSurface(this.getSurfaceTexture());
+-                //vlcOut.setVideoSurface(this.getHolder().getSurface(), this.getHolder());
+-                //vlcOut.attachViews(onNewVideoLayoutListener);
+-                vlcOut.setVideoSurface(this.getSurfaceTexture());
+-                vlcOut.attachViews(onNewVideoLayoutListener);
+-                // vlcOut.attachSurfaceSlave(surfaceVideo,null,onNewVideoLayoutListener);
+-                //vlcOut.setVideoView(this);
+-                //vlcOut.attachViews(onNewVideoLayoutListener);
++                // The source can arrive before React Native gives this TextureView
++                // a real size. Queue attachment instead of binding a zero-sized
++                // output; recoverVlcOutputIfReady sets the window size before
++                // attaching and starts the pending session only afterwards.
++                isForegroundSurfaceRecoveryPending = true;
++                recoverVlcOutputIfReady("player-create");
+             }
+             if (isResume) {
+-                if (autoplayResume) {
+-                    mMediaPlayer.play();
+-                }
++                startPlaybackIfOutputReady("player-create-resume");
+             } else {
+-                if (autoplay) {
+-                    isPaused = false;
+-                    mMediaPlayer.play();
+-                }
++                startPlaybackIfOutputReady("player-create");
+             }
+             eventEmitter.loadStart();
+@@ -594,16 +715,23 @@
+     public void setPausedModifier(boolean paused) {
+         Log.i("paused:", "" + paused + ":" + mMediaPlayer);
+         if (mMediaPlayer != null) {
+             if (paused) {
+                 isPaused = true;
++                isPlaybackStartPending = false;
+                 mMediaPlayer.pause();
+             } else {
+                 isPaused = false;
+-                mMediaPlayer.play();
++                isPlaybackStartPending = true;
++                if (!isVlcOutputReadyForPlayback()) {
++                    isForegroundSurfaceRecoveryPending = true;
++                    recoverVlcOutputIfReady("pause-prop");
++                    return;
++                }
++                startPlaybackIfOutputReady("pause-prop");
+                 Log.i("do play:", true + "");
+             }
+         } else {
+             createPlayer(!paused, false);
+         }
+     }
+ 
 @@ -763,16 +885,27 @@
          mVideoWidth = width;
          mVideoHeight = height;

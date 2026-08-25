@@ -45,13 +45,13 @@ describe('Android live VLC container ownership', () => {
       controlStart,
       liveTab.indexOf('</FocusablePressable>', controlStart),
     );
-    const presentationStart = liveTab.indexOf('Android VLC presentation host');
-    const presentationHost = liveTab.slice(presentationStart, presentationStart + 2600);
+    const hostStart = liveTab.indexOf('const nativeVlcPresentationHost =');
+    const presentationHost = liveTab.slice(hostStart, liveTab.indexOf('// ── Render', hostStart));
 
     expect(controlStart).toBeGreaterThan(-1);
     expect(phoneOwner).toContain('onLayout={handleNativeMiniOwnerLayout}');
     expect(phoneOwner).toContain('{!USES_NATIVE_VLC && isLivePreviewActive && (');
-    expect(presentationStart).toBeGreaterThan(controlStart);
+    expect(hostStart).toBeGreaterThan(-1);
     expect(presentationHost).toContain('styles.nativeSurfacePresentationLayer');
     expect(presentationHost).toContain('styles.nativeSurfacePresentationFrame');
     expect(presentationHost).toContain('<NativeStreamPlayer');
@@ -68,14 +68,16 @@ describe('Android live VLC container ownership', () => {
     expect(liveTab.match(/<NativeStreamPlayer/g)).toHaveLength(2); // Android + non-Android branch
   });
 
-  it('mounts the Fire TV VLC child inside its real focusable preview control', () => {
+  it('keeps the Fire TV preview control focused while the root host owns VLC', () => {
     const tvVlcMounts = tvLayout.match(/<NativeStreamPlayer/g) ?? [];
-    expect(tvVlcMounts).toHaveLength(1);
+    expect(tvVlcMounts).toHaveLength(0);
     expect(tvLayout).toContain('ref={miniPlayerRef as any}');
-    expect(tvLayout).toContain('focusable={Platform.isTV ? isPlaybackActive && !!streamUrl : true}');
+    expect(tvLayout).toContain('focusable={Platform.isTV ? !!selectedChannel : true}');
+    expect(tvLayout).not.toContain('isPlaybackActive');
+    expect(tvLayout).not.toContain('!!streamUrl');
     expect(tvLayout).toContain('onPress={onWatchFullscreen}');
-    expect(tvLayout).toContain('style={[styles.nativeSurfaceHost, StyleSheet.absoluteFill]}');
-    expect(tvLayout).toContain('pointerEvents="none"');
+    expect(tvLayout).toContain('onNativeSurfaceLayout?.({ width, height, x, y });');
+    expect(tvLayout).toContain('root presentation host owns the only Android VLC');
   });
 
   it('acknowledges final owner layout on both phone and Fire TV before continuing a handoff', () => {
@@ -453,7 +455,8 @@ describe('Android live VLC container ownership', () => {
     expect(liveTab).not.toContain('nativeVlcAspectRatio');
     expect(liveTab).not.toContain('videoAspectRatio=');
     expect(liveTab).toContain('resizeMode="fill"');
-    expect(tvLayout).toContain('resizeMode="fill"');
+    expect(tvLayout).not.toContain('resizeMode="fill"');
+    expect(liveTab).toContain('const nativeVlcPresentationHost =');
     expect(liveTab).not.toContain('resizeMode={nativeSurfaceFullscreen');
     expect(tvLayout).not.toContain('resizeMode={nativeSurfaceFullscreen');
     expect(androidNativePlayer).not.toContain('videoAspectRatio={videoAspectRatio as any}');
@@ -567,6 +570,27 @@ describe('Android live VLC container ownership', () => {
     expect(listener).toContain('setSelectedChannel(activeChannel)');
     expect(listener).toContain('setPlayingChannel(activeChannel)');
     expect(liveTab).toContain("console.log(VLC_TRACE, 'react-owner-layout'");
+  });
+
+  it('uses one root-owned Android VLC renderer for TV mini and fullscreen', () => {
+    const hostStart = liveTab.indexOf('const nativeVlcPresentationHost =');
+    const hostEnd = liveTab.indexOf('// ── Render', hostStart);
+    const rootHost = liveTab.slice(hostStart, hostEnd);
+    const tvStart = liveTab.indexOf('if (Platform.isTV)', hostEnd);
+    const tvBranch = liveTab.slice(tvStart, tvStart + 7000);
+
+    expect(hostStart).toBeGreaterThan(-1);
+    expect(rootHost.match(/<NativeStreamPlayer/g) ?? []).toHaveLength(1);
+    expect(rootHost).toContain(
+      'nativeSurfaceViewport.width > 0 && nativeSurfaceViewport.height > 0',
+    );
+    expect(rootHost).toContain(
+      'nativeOwnerBounds.width > 0 && nativeOwnerBounds.height > 0',
+    );
+    expect(tvBranch).toContain('{nativeVlcPresentationHost}');
+    expect(tvLayout).not.toContain('<NativeStreamPlayer');
+    expect(vlcAndroidPatch).toContain('isPlaybackStartPending');
+    expect(vlcAndroidPatch).toContain('startPlaybackIfOutputReady');
   });
 
   it('returns the zapped entry URL with its matching metadata on BACK', () => {

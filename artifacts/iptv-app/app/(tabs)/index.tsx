@@ -1887,6 +1887,81 @@ export default function LiveTVScreen() {
     }
   }, [transitionNativeSurface]);
 
+  const nativeVlcPresentationHost = USES_NATIVE_VLC
+    && isLivePreviewActive
+    && nativeSurfaceMode !== 'hidden'
+    && activeNativeSurfaceUrl
+    && (
+      nativeSurfaceFullscreen
+        ? nativeSurfaceViewport.width > 0 && nativeSurfaceViewport.height > 0
+        : nativeOwnerBounds.width > 0 && nativeOwnerBounds.height > 0
+    )
+    ? (
+      <View
+        collapsable={false}
+        pointerEvents="none"
+        accessible={false}
+        importantForAccessibility="no-hide-descendants"
+        style={styles.nativeSurfacePresentationLayer}
+      >
+        <View
+          collapsable={false}
+          onLayout={(event) => {
+            const { width, height, x, y } = event.nativeEvent.layout;
+            console.log(VLC_TRACE, 'react-owner-layout', {
+              width,
+              height,
+              x,
+              y,
+              fullscreen: nativeSurfaceFullscreen,
+            });
+            // The fullscreen presentation frame is explicitly sized from
+            // the Android window dimensions. Do not reject the layout ack just
+            // because an intermediate React Navigation container reports an
+            // older preview width.
+            commitNativeSurfaceLayout(nativeSurfaceMode, {
+              width: nativeSurfaceFullscreen ? screenWidth : width,
+              height: nativeSurfaceFullscreen ? screenHeight : height,
+              x: nativeSurfaceFullscreen ? 0 : x,
+              y: nativeSurfaceFullscreen ? 0 : y,
+            });
+          }}
+          style={[
+            styles.nativeSurfacePresentationFrame,
+            nativeSurfaceFullscreen
+              ? {
+                  left: 0,
+                  top: 0,
+                  width: screenWidth,
+                  height: screenHeight,
+                }
+              : {
+                  left: nativeOwnerBounds.x,
+                  top: nativeOwnerBounds.y,
+                  width: nativeOwnerBounds.width,
+                  height: nativeOwnerBounds.height,
+                },
+          ]}
+        >
+          <NativeStreamPlayer
+            source={activeNativeSurfaceUrl}
+            player={player}
+            style={StyleSheet.absoluteFill}
+            // Keep this native playback prop invariant across the mini/fullscreen
+            // handoff. The owner frame alone changes size; libVLC starts in fill
+            // mode so the same decoder can occupy the full Android viewport
+            // without receiving a playback-prop update during the transition.
+            resizeMode="fill"
+            reloadKey={vlcReloadKey}
+            onPlaying={handlePersistentVlcPlaying}
+            onBuffering={handlePersistentVlcBuffering}
+            onError={handlePersistentVlcError}
+          />
+        </View>
+      </View>
+    )
+    : null;
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   // On Fire TV / Android TV use the 3-panel D-pad layout.
@@ -1909,20 +1984,12 @@ export default function LiveTVScreen() {
           nowPlayingMap={nowPlayingMap}
           colors={colors}
           insets={insets}
-          player={player}
-          videoKey={videoKey}
-          streamUrl={selectedChannel?.streamUrl ?? ''}
-          vlcReloadKey={vlcReloadKey}
-          isPlaybackActive={isLivePreviewActive}
           nativeSurfaceFullscreen={nativeSurfaceFullscreen}
            onNativeSurfaceLayout={(bounds) => {
              commitNativeSurfaceLayout(nativeSurfaceMode, bounds);
            }}
           isBuffering={isBuffering}
           hasError={hasError}
-          onVlcPlaying={handlePersistentVlcPlaying}
-          onVlcBuffering={handlePersistentVlcBuffering}
-          onVlcError={handlePersistentVlcError}
           miniPlayerRef={miniPlayerRef}
           onPreviewFocusChange={handlePreviewFocusChange}
           onCatchupFocusChange={handleCatchupFocusChange}
@@ -1934,6 +2001,7 @@ export default function LiveTVScreen() {
           focusHighlightedChCategoryRef={focusHighlightedChCategoryRef}
           focusPlayingChannelRef={focusPlayingChannelRef}
         />
+        {nativeVlcPresentationHost}
         {showCatchup && selectedChannel && creds && (
           <CatchupSheet
             key={selectedChannel.id}
@@ -2432,78 +2500,7 @@ export default function LiveTVScreen() {
           TV root for both mini and fullscreen. The mini control above only
           reports its real bounds; fullscreen fills this root after the tab
           shell releases its sidebar margin. */}
-      {USES_NATIVE_VLC
-        && isLivePreviewActive
-        && nativeSurfaceMode !== 'hidden'
-        && activeNativeSurfaceUrl
-        && (
-          nativeSurfaceFullscreen
-            ? nativeSurfaceViewport.width > 0 && nativeSurfaceViewport.height > 0
-            : nativeOwnerBounds.width > 0 && nativeOwnerBounds.height > 0
-        ) && (
-        <View
-          collapsable={false}
-          pointerEvents="none"
-          accessible={false}
-          importantForAccessibility="no-hide-descendants"
-          style={styles.nativeSurfacePresentationLayer}
-        >
-          <View
-            collapsable={false}
-            onLayout={(event) => {
-              const { width, height, x, y } = event.nativeEvent.layout;
-              console.log(VLC_TRACE, 'react-owner-layout', {
-                width,
-                height,
-                x,
-                y,
-                fullscreen: nativeSurfaceFullscreen,
-              });
-              // The fullscreen presentation frame is explicitly sized from
-              // the Android window dimensions. Do not reject the layout ack just
-              // because an intermediate React Navigation container reports an
-              // older preview width.
-              commitNativeSurfaceLayout(nativeSurfaceMode, {
-                width: nativeSurfaceFullscreen ? screenWidth : width,
-                height: nativeSurfaceFullscreen ? screenHeight : height,
-                x: nativeSurfaceFullscreen ? 0 : x,
-                y: nativeSurfaceFullscreen ? 0 : y,
-              });
-            }}
-            style={[
-              styles.nativeSurfacePresentationFrame,
-              nativeSurfaceFullscreen
-                ? {
-                    left: 0,
-                    top: 0,
-                    width: screenWidth,
-                    height: screenHeight,
-                  }
-                : {
-                    left: nativeOwnerBounds.x,
-                    top: nativeOwnerBounds.y,
-                    width: nativeOwnerBounds.width,
-                    height: nativeOwnerBounds.height,
-                  },
-            ]}
-          >
-            <NativeStreamPlayer
-              source={activeNativeSurfaceUrl}
-              player={player}
-              style={StyleSheet.absoluteFill}
-              // Keep this native playback prop invariant across the mini/fullscreen
-              // handoff. The owner frame alone changes size; libVLC starts in fill
-              // mode so the same decoder can occupy the full Android viewport
-              // without receiving a playback-prop update during the transition.
-              resizeMode="fill"
-              reloadKey={vlcReloadKey}
-              onPlaying={handlePersistentVlcPlaying}
-              onBuffering={handlePersistentVlcBuffering}
-              onError={handlePersistentVlcError}
-            />
-          </View>
-        </View>
-      )}
+      {nativeVlcPresentationHost}
 
       {/* ── Catch-up sheet ── */}
       {showCatchup && selectedChannel && creds && (
