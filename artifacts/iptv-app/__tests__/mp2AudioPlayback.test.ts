@@ -58,6 +58,9 @@ describe('MP2 audio playback compatibility', () => {
     expect(media3Plugin).toContain('media3-ui:1.9.2');
     expect(media3Plugin).toContain('media3-decoder-ffmpeg-1.9.2.aar');
     expect(media3Plugin).toContain('implementation(files("libs/${FFMPEG_AAR_NAME}"))');
+    expect(media3Plugin).toContain("metadata.androidxMediaTag === '1.9.2'");
+    expect(media3Plugin).toContain("metadata.ffmpegRef === 'release/6.0'");
+    expect(media3Plugin).toContain("metadata.enabledDecoders.includes('mp2')");
     expect(appConfig.expo.plugins).toContain('./plugins/withMedia3LivePlayer');
   });
 

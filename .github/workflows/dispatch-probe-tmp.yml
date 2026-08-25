@@ -59,10 +59,17 @@ jobs:
       - run: bash artifacts/iptv-app/scripts/check-inmemory-not-persisted.sh
       - run: pnpm --filter @workspace/iptv-app run typecheck
       - run: pnpm --filter @workspace/iptv-app run typecheck:tests
-      - name: Android packaging and VLC MP2 regressions
+      - name: Android packaging and Media3 MP2 regressions
         run: pnpm --filter @workspace/iptv-app exec jest __tests__/androidReleasePackaging.test.ts __tests__/mp2AudioPlayback.test.ts --runInBand
       - name: Full IPTV test suite
         run: pnpm --filter @workspace/iptv-app exec jest --runInBand
+      - name: Install Android NDK and CMake
+        run: echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "ndk;27.1.12297006" "cmake;3.22.1" --sdk_root=$ANDROID_HOME
+      - name: Build official Media3 1.9.2 FFmpeg extension
+        working-directory: artifacts/iptv-app
+        run: bash scripts/build-media3-ffmpeg.sh
+        env:
+          ANDROID_NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/27.1.12297006
       - name: Expo prebuild
         working-directory: artifacts/iptv-app
         run: npx expo prebuild --platform android --no-install --clean
@@ -71,8 +78,6 @@ jobs:
           EXPO_PUBLIC_DOMAIN: streamvault.rip
           EXPO_PUBLIC_TMDB_API_KEY: 312ee14dd7f250471da1174324be2bda
           EXPO_PUBLIC_BUILD_NUMBER: ${{ steps.build_identity.outputs.release_build }}
-      - name: Install NDK
-        run: echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "ndk;27.1.12297006" "cmake;3.22.1" --sdk_root=$ANDROID_HOME
       - name: Restore signing keystore
         working-directory: artifacts/iptv-app/android
         run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > release.keystore

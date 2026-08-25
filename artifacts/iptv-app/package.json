@@ -10,7 +10,8 @@
     "lint": "node scripts/runLint.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "typecheck:tests": "tsc -p tsconfig.typecheck.json --noEmit",
-    "test": "jest"
+    "test": "jest",
+    "eas-build-pre-install": "bash scripts/build-media3-ffmpeg.sh"
   },
   "jest": {
     "testEnvironment": "node",

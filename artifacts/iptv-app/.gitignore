@@ -39,3 +39,8 @@ yarn-error.*
 .vercel
 
 .env
+
+# Built only in the EAS Android pre-install hook from official AndroidX source.
+native/media3/media3-decoder-ffmpeg-*.aar
+native/media3/media3-decoder-ffmpeg-*.json
+.eas-build/

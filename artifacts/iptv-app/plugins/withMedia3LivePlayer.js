@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const {
   createRunOncePlugin,
   withAppBuildGradle,
@@ -10,6 +11,8 @@ const {
 const PLUGIN_NAME = 'withStreamVaultMedia3LivePlayer';
 const JAVA_PACKAGE = 'com.prg213.streamvault.media3';
 const FFMPEG_AAR_NAME = 'media3-decoder-ffmpeg-1.9.2.aar';
+const FFMPEG_METADATA_NAME = 'media3-decoder-ffmpeg-1.9.2.json';
+const REQUIRED_FFMPEG_ABIS = ['armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64'];
 
 function copyBridgeSources(projectRoot) {
   const sourceRoot = path.join(projectRoot, 'native', 'media3');
@@ -41,10 +44,37 @@ function copyBridgeSources(projectRoot) {
   }
 }
 
-function copyOptionalFfmpegExtension(projectRoot, platformProjectRoot) {
+function verifyOfficialFfmpegExtension(projectRoot) {
   const source = path.join(projectRoot, 'native', 'media3', FFMPEG_AAR_NAME);
-  if (!fs.existsSync(source)) return false;
+  if (!fs.existsSync(source)) return null;
+  const metadataPath = path.join(projectRoot, 'native', 'media3', FFMPEG_METADATA_NAME);
+  if (!fs.existsSync(metadataPath)) {
+    throw new Error(`${PLUGIN_NAME}: refusing an unverified FFmpeg AAR. Run the official AndroidX 1.9.2 build hook.`);
+  }
+  const metadata = JSON.parse(fs.readFileSync(metadataPath, 'utf8'));
+  const valid = metadata.media3Version === '1.9.2'
+    && metadata.androidxMediaRepository === 'https://github.com/androidx/media.git'
+    && metadata.androidxMediaTag === '1.9.2'
+    && metadata.ffmpegRepository === 'https://git.ffmpeg.org/ffmpeg.git'
+    && metadata.ffmpegRef === 'release/6.0'
+    && metadata.minimumAndroidApi === 21
+    && typeof metadata.sha256 === 'string'
+    && Array.isArray(metadata.enabledDecoders)
+    && metadata.enabledDecoders.includes('mp2')
+    && REQUIRED_FFMPEG_ABIS.every((abi) => metadata.abis?.includes(abi));
+  if (!valid) {
+    throw new Error(`${PLUGIN_NAME}: FFmpeg metadata is not the official ABI-complete Media3 1.9.2 MP2 build.`);
+  }
+  const fileHash = crypto.createHash('sha256').update(fs.readFileSync(source)).digest('hex');
+  if (fileHash !== metadata.sha256) {
+    throw new Error(`${PLUGIN_NAME}: FFmpeg AAR checksum does not match its official build metadata.`);
+  }
+  return source;
+}
 
+function copyOptionalFfmpegExtension(projectRoot, platformProjectRoot) {
+  const source = verifyOfficialFfmpegExtension(projectRoot);
+  if (!source) return false;
   const destination = path.join(platformProjectRoot, 'app', 'libs', FFMPEG_AAR_NAME);
   fs.mkdirSync(path.dirname(destination), { recursive: true });
   fs.copyFileSync(source, destination);
@@ -92,13 +122,7 @@ function withMedia3LivePlayer(config) {
 
   return withAppBuildGradle(config, (config) => {
     if (config.modResults.contents.includes(PLUGIN_NAME)) return config;
-    const ffmpegAar = path.join(
-      config.modRequest.projectRoot,
-      'native',
-      'media3',
-      FFMPEG_AAR_NAME,
-    );
-    const ffmpegDependency = fs.existsSync(ffmpegAar)
+    const ffmpegDependency = verifyOfficialFfmpegExtension(config.modRequest.projectRoot)
       ? `\n    implementation(files("libs/${FFMPEG_AAR_NAME}"))`
       : '';
     config.modResults.contents = `${config.modResults.contents.trimEnd()}

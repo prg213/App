@@ -34,7 +34,10 @@ describe('Android release packaging', () => {
     expect(workflow).toContain('EXPO_PUBLIC_BUILD_NUMBER: ${{ steps.build_identity.outputs.release_build }}');
     expect(workflow).toContain('test "$VERSION_CODE" = "${{ steps.build_identity.outputs.release_build }}"');
     expect(workflow).toContain('test "$CANDIDATE_CERT_SHA256" = "$INSTALLED_CERT_SHA256"');
-    expect(workflow).toContain('Android packaging and VLC MP2 regressions');
+    expect(workflow).toContain('Android packaging and Media3 MP2 regressions');
+    expect(workflow).toContain('Build official Media3 1.9.2 FFmpeg extension');
+    expect(workflow).toContain('bash scripts/build-media3-ffmpeg.sh');
+    expect(workflow).toContain('Install Android NDK and CMake');
     expect(workflow).toContain('Full IPTV test suite');
   });
 
