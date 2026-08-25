@@ -75,7 +75,8 @@ describe('MP2 audio playback', () => {
     expect(nativeVlcSource).toContain('duration / 1000');
     expect(playerSource).toContain('setVlcSeekPosition(Math.max(0, Math.min(1, resumeAt / reportedDuration)))');
     expect(liveTabSource).toContain('setIsLivePreviewActive(false)');
-    expect(liveTabSource).toContain('isPlaybackActive={isLivePreviewActive}');
+    expect(liveTabSource).toContain('const nativeVlcPresentationHost =');
+    expect(liveTabSource).toContain('{nativeVlcPresentationHost}');
     expect(playerSource).toContain('const handleNativeVlcError = useCallback');
     expect(playerSource).toContain('reloadNativeVlc(urls[1])');
     expect(playerSource).toContain('didResolveStaleUrlRef.current = false');
