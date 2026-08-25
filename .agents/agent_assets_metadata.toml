@@ -128,3 +128,10 @@ uri = "file://artifacts/iptv-app/builds/StreamVault-271.apk"
 type = "unspecified"
 title = "StreamVault APK 271 — first channel mini-player fix"
 description = "Universal Android APK built by EAS from the corrected ZIP-applied Live TV implementation. The first-channel mini-player regression test and TypeScript checks passed. Fullscreen sizing, native fullscreen surface behavior, VLC transition handling, continuous playback, and audio behavior were left unchanged."
+
+[[outputs]]
+id = "lwv0G9sQxkR9zAFqMmsIp"
+uri = "file://artifacts/iptv-app/builds/StreamVault-272.apk"
+type = "unspecified"
+title = "StreamVault Android APK 272"
+description = "Universal Android APK built by EAS from the ZIP-matched non-zero mini-player bounds source. SHA-256: 64e668fb2546beabefdd151541d6eadfc919ee73ad0bf53625ec1b0f40db975d"
