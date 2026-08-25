@@ -2,16 +2,18 @@
  * Module-level singleton that lets the Sidebar and per-screen BackHandlers
  * coordinate D-pad focus without prop-drilling or a React context.
  *
- * Usage:
- *   import { sidebarNav } from '@/lib/sidebarNav';
- *
- *   // In Sidebar (on mount):
- *   sidebarNav.focus = () => firstNavRef.current?.focus?.();
- *
- *   // In a screen BackHandler (when nothing left to pop):
- *   sidebarNav.focus(); return true;
+ * The native focus behaviour remains backward-compatible, but every active
+ * sidebar/content target is now also published to the global Fire TV focus
+ * registry so there is one source of truth for focus ownership.
  */
 import { findNodeHandle } from 'react-native';
+import {
+  registerLegacyTvFocus,
+  setLegacyTvFocus,
+  unregisterLegacyTvFocus,
+} from '@/lib/fireTvNavigationCompat';
+
+const SIDEBAR_FOCUS_ID = 'global:sidebar:first';
 
 export const sidebarNav = {
   /**
@@ -19,25 +21,37 @@ export const sidebarNav = {
    * Overwritten by the Sidebar component on mount.
    */
   focus: (() => {}) as () => void,
-  /**
-   * Native node handle of the first sidebar nav item (TV only).
-   * Set by the Sidebar on mount; rails pass it as `nextFocusLeft` on their
-   * first card so pressing D-pad LEFT jumps straight to the nav menu.
-   */
+
+  /** Native node handle of the first sidebar nav item (TV only). */
   handle: null as number | null,
-  /**
-   * Route name currently holding native focus. Content screens clear this
-   * while focused so they can distinguish a category → sidebar exit from a
-   * category → channel move.
-   */
+
+  /** Route name currently holding native focus. */
   focusedRoute: null as string | null,
-  /**
-   * The Home dashboard's RIGHT target candidates. They are registered by the
-   * rails as their first cards mount and resolved in visual priority order.
-   */
+
+  /** Home dashboard RIGHT target candidates. */
   homeRightCandidates: new Map<string, any>(),
   activeRoute: null as string | null,
   activeNode: null as any,
+
+  /** Register the global sidebar focus target. */
+  setHandle(node: any | null) {
+    this.handle = node ? findNodeHandle(node) : null;
+    if (this.handle != null) {
+      registerLegacyTvFocus(SIDEBAR_FOCUS_ID, 'sidebar', this.handle);
+    } else {
+      unregisterLegacyTvFocus(SIDEBAR_FOCUS_ID);
+    }
+  },
+
+  /**
+   * Moves focus to the sidebar and records that ownership globally.
+   * Existing Sidebar components can continue to overwrite `focus`; this
+   * wrapper makes the global focus state update automatic when it is called.
+   */
+  focusAndTrack() {
+    this.focus();
+    if (this.handle != null) setLegacyTvFocus(SIDEBAR_FOCUS_ID);
+  },
 
   applyHomeRightTarget() {
     if (this.activeRoute !== 'home' || !this.activeNode) return;
@@ -51,8 +65,6 @@ export const sidebarNav = {
       const targetHandle = target ? findNodeHandle(target) : null;
       if (selfHandle != null) {
         this.activeNode.setNativeProps({
-          // With no content mounted yet, keep RIGHT on Home rather than
-          // allowing Fire OS to choose an unrelated sidebar/content view.
           nextFocusRight: targetHandle ?? selfHandle,
         });
       }
@@ -60,8 +72,21 @@ export const sidebarNav = {
   },
 
   setActiveRoute(route: string | null, node: any | null) {
+    if (this.activeRoute && this.activeNode) {
+      const previousId = `legacy:${this.activeRoute}:active`;
+      unregisterLegacyTvFocus(previousId);
+    }
+
     this.activeRoute = route;
     this.activeNode = node;
+
+    if (route && node) {
+      const nodeHandle = findNodeHandle(node);
+      if (nodeHandle != null) {
+        registerLegacyTvFocus(`legacy:${route}:active`, 'content', nodeHandle);
+      }
+    }
+
     this.applyHomeRightTarget();
   },
 
