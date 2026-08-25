@@ -121,3 +121,10 @@ uri = "file://artifacts/iptv-app/deliverables/StreamVault-source-eas-270-working
 type = "unspecified"
 title = "StreamVault exact source for working-fullscreen APK 270"
 description = "Source-only ZIP from the exact EAS build-270 source commit a9d53f317596a70927dad4b13ea42e360a029ec5. Fullscreen code is unchanged. Includes Live TV/player source, mini-player initialization and first-channel logic, VLC/libVLC patch and integration, preserved native Android/VLC/video surface/Vout code, Gradle configuration, and relevant tests. Verified tracked hashes and native file copies; prohibited binaries, dependencies, caches, generated output, keys, credentials, API keys, and secrets are excluded."
+
+[[outputs]]
+id = "Jb_eUQdZRnl9a4iudFaqU"
+uri = "file://artifacts/iptv-app/builds/StreamVault-271.apk"
+type = "unspecified"
+title = "StreamVault APK 271 — first channel mini-player fix"
+description = "Universal Android APK built by EAS from the corrected ZIP-applied Live TV implementation. The first-channel mini-player regression test and TypeScript checks passed. Fullscreen sizing, native fullscreen surface behavior, VLC transition handling, continuous playback, and audio behavior were left unchanged."

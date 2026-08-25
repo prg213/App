@@ -37,3 +37,4 @@
 - [Fullscreen sizing constraint](fullscreen-sizing-constraint.md) — Fullscreen React Native containers must not inherit the mini-player's 16:9 aspect ratio; use viewport fill plus cover presentation.
 - [Unified patch validation](unified-patch-validation.md) — native patched-dependency diffs need exact hunks, clean EOF handling, and a clean-install check.
 - [pnpm patched dependency refresh](pnpm-patched-dependency-refresh.md) — after editing a pnpm patch, refresh its lockfile hash before validating the installed module.
+- [GitHub connector large-file publishing](github-connector-large-file-publishing.md) — use durable file reads with connector uploads; shell callback output can truncate large Base64 payloads.
