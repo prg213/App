@@ -64,34 +64,45 @@ export const FocusablePressable = forwardRef<View, FocusablePressableProps>(
     const innerRef = useRef<View | null>(null);
 
     // Fire OS reliability: declarative nextFocus* props on Pressable are not
-    // always honoured by the native focus engine (same quirk as the player
-    // scrubber, which had to wire its seek targets imperatively).  Re-apply
-    // any provided handles via setNativeProps after mount/update so the
-    // native view definitely carries them.
+    // always honoured by the native focus engine. Re-apply them imperatively.
+    // We patch twice: once on the first frame and once after layout has settled.
+    // This is important for virtualised FlatList rows, where the old single
+    // 100ms-only patch could arrive after a D-pad transition had already fallen
+    // back to Fire OS spatial navigation.
     const { nextFocusUp, nextFocusDown, nextFocusLeft, nextFocusRight } = props;
     useEffect(() => {
       if (!Platform.isTV) return;
       const patch: Record<string, number> = {};
-      if (typeof nextFocusUp === 'number')    patch.nextFocusUp    = nextFocusUp;
-      if (typeof nextFocusDown === 'number')  patch.nextFocusDown  = nextFocusDown;
-      if (typeof nextFocusLeft === 'number')  patch.nextFocusLeft  = nextFocusLeft;
+      if (typeof nextFocusUp === 'number') patch.nextFocusUp = nextFocusUp;
+      if (typeof nextFocusDown === 'number') patch.nextFocusDown = nextFocusDown;
+      if (typeof nextFocusLeft === 'number') patch.nextFocusLeft = nextFocusLeft;
       if (typeof nextFocusRight === 'number') patch.nextFocusRight = nextFocusRight;
       if (Object.keys(patch).length === 0) return;
-      // Small delay so the native view is attached before patching.
-      const t = setTimeout(() => {
-        (innerRef.current as any)?.setNativeProps?.(patch);
-      }, 100);
-      return () => clearTimeout(t);
+
+      let cancelled = false;
+      const apply = () => {
+        if (cancelled) return;
+        try {
+          (innerRef.current as any)?.setNativeProps?.(patch);
+        } catch {}
+      };
+
+      // The first pass covers already-mounted native views. The delayed pass
+      // covers Fire OS/FlatList rows whose native focus node is attached a
+      // moment after React commits the row.
+      const frame = requestAnimationFrame(apply);
+      const timer = setTimeout(apply, 100);
+      return () => {
+        cancelled = true;
+        cancelAnimationFrame(frame);
+        clearTimeout(timer);
+      };
     }, [nextFocusUp, nextFocusDown, nextFocusLeft, nextFocusRight]);
 
     // Keep the forwarded ref in a ref so setRefs can be a stable useCallback
-    // that never changes identity between renders.  Without this, React treats
-    // the ref prop as "changed" on EVERY re-render (because `setRefs` would be
-    // a new inline function each time), calls the old one with null and the new
-    // one with the node on every render cycle.  When many FocusablePressables
-    // re-render together (day pills, programme rows, channel list) this ref-
-    // churn cascade exceeds React's 50-nested-update limit and throws
-    // "Maximum update depth exceeded".
+    // that never changes identity between renders. Without this, React treats
+    // the ref prop as "changed" on EVERY re-render, causing ref churn in large
+    // virtualised lists and potentially hitting React's nested-update limit.
     const forwardedRef = useRef(ref);
     forwardedRef.current = ref;
 
@@ -101,7 +112,7 @@ export const FocusablePressable = forwardRef<View, FocusablePressableProps>(
       if (typeof fwd === 'function') fwd(node);
       else if (fwd) (fwd as React.MutableRefObject<View | null>).current = node;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []); // stable — never recreated after mount
+    }, []);
 
     const resolvedStyle: StyleProp<ViewStyle> = typeof style === 'function'
       ? style(focused)
