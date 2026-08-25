@@ -1,84 +1,71 @@
 /**
  * Regression guards for Android IPTV streams carrying MPEG audio layer II.
  *
- * Standard Expo/ExoPlayer does not bundle the MPEG Layer II decoder required
- * by some IPTV transport streams. Android and Fire TV must use libVLC instead
- * of forcing an ExoPlayer track selection that can stop video playback.
+ * Media3's FFmpeg extension is not published as a Maven artifact. The Android
+ * bridge must therefore report whether a vetted, ABI-complete extension AAR is
+ * present instead of silently treating a platform MPEG decoder as MP2 support.
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
 
-const playerSource = fs.readFileSync(path.resolve(__dirname, '../app/player.tsx'), 'utf8');
-const liveContextSource = fs.readFileSync(path.resolve(__dirname, '../context/LivePlayerContext.tsx'), 'utf8');
-const nativeVlcSource = fs.readFileSync(path.resolve(__dirname, '../components/NativeStreamPlayer.android.tsx'), 'utf8');
-const liveTabSource = fs.readFileSync(path.resolve(__dirname, '../app/(tabs)/index.tsx'), 'utf8');
-const vlcAndroidPluginSource = fs.readFileSync(path.resolve(__dirname, '../plugins/withVlcAndroid.js'), 'utf8');
-const vlcGradlePatchSource = fs.readFileSync(
-  path.resolve(__dirname, '../../../patches/react-native-vlc-media-player@1.0.98.patch'),
+const appRoot = path.resolve(__dirname, '..');
+const media3Session = fs.readFileSync(
+  path.resolve(appRoot, 'native/media3/StreamVaultMedia3Session.java'),
   'utf8',
 );
+const media3Plugin = fs.readFileSync(
+  path.resolve(appRoot, 'plugins/withMedia3LivePlayer.js'),
+  'utf8',
+);
+const media3Player = fs.readFileSync(
+  path.resolve(appRoot, 'components/Media3LivePlayer.android.tsx'),
+  'utf8',
+);
+const liveTab = fs.readFileSync(path.resolve(appRoot, 'app/(tabs)/index.tsx'), 'utf8');
 const appConfig = JSON.parse(
-  fs.readFileSync(path.resolve(__dirname, '../app.json'), 'utf8'),
-) as { expo: { plugins: Array<string | [string, Record<string, any>]> } };
+  fs.readFileSync(path.resolve(appRoot, 'app.json'), 'utf8'),
+) as { expo: { plugins: Array<string | [string, Record<string, unknown>]> } };
 
-describe('MP2 audio playback', () => {
-  it('uses the VLC renderer on Android rather than forcing an ExoPlayer track', () => {
-    expect(playerSource).toContain("const USES_NATIVE_VLC = Platform.OS === 'android'");
-    expect(nativeVlcSource).toContain("from 'react-native-vlc-media-player'");
-    expect(nativeVlcSource).toContain('<VLCPlayer');
-    expect(playerSource).not.toContain('fallbackAudioTrack');
-    expect(playerSource).not.toContain('tracks.find((track) => track.isDefault)');
+describe('MP2 audio playback compatibility', () => {
+  it('uses Media3 for Android Live TV while retaining VLC for non-Live playback', () => {
+    expect(liveTab).toContain("const USES_NATIVE_MEDIA3_LIVE = Platform.OS === 'android'");
+    expect(liveTab).toContain("from '@/components/Media3LivePlayer'");
+    expect(liveTab).toContain('<Media3LivePlayer');
+    expect(liveTab).not.toContain('const nativeVlcPresentationHost =');
   });
 
-  it('does not reintroduce the audio-mixing workaround that broke video startup', () => {
-    expect(playerSource).not.toContain("p.audioMixingMode = 'doNotMix'");
-    expect(liveContextSource).not.toContain("p.audioMixingMode = 'doNotMix'");
+  it('prefers the FFmpeg renderer when a vetted Media3 decoder extension is bundled', () => {
+    expect(media3Session).toContain('EXTENSION_RENDERER_MODE_PREFER');
+    expect(media3Session).toContain('androidx.media3.decoder.ffmpeg.FfmpegLibrary');
+    expect(media3Session).toContain('ffmpegAudioExtension');
+    expect(media3Session).toContain('m2AudioSupported');
+    expect(media3Session).toContain('media3-ffmpeg-extension');
   });
 
-  it('keeps VLC unmuted with IPTV network buffering configured', () => {
-    expect(nativeVlcSource).toContain('muted={false}');
-    expect(nativeVlcSource).toContain("'--network-caching=1200'");
+  it('never treats an unavailable FFmpeg extension as confirmed MP2 support', () => {
+    const capabilityStart = media3Session.indexOf('WritableMap capabilities()');
+    const capabilityBlock = media3Session.slice(capabilityStart, capabilityStart + 900);
+    expect(capabilityBlock).toContain('isFfmpegAvailable()');
+    expect(capabilityBlock).toContain('platform-codecs-only');
+    expect(capabilityBlock).not.toContain('putBoolean("m2AudioSupported", true)');
   });
 
-  it('uses VLC playback progress to recover the first fullscreen start signal', () => {
-    // The native Playing event can arrive before the first fullscreen React
-    // listener is attached. Progress includes isPlaying at runtime, so it
-    // provides a second path to clear the Connecting overlay.
-    expect(nativeVlcSource).toContain('isPlaying?: boolean');
-    expect(nativeVlcSource).toContain('isPlaying) onPlaying?.()');
+  it('includes the Media3 demuxers required by the current IPTV input matrix', () => {
+    expect(media3Plugin).toContain('media3-exoplayer:1.9.2');
+    expect(media3Plugin).toContain('media3-exoplayer-hls:1.9.2');
+    expect(media3Plugin).toContain('media3-exoplayer-rtsp:1.9.2');
+    expect(media3Plugin).toContain('media3-ui:1.9.2');
+    expect(media3Plugin).toContain('media3-decoder-ffmpeg-1.9.2.aar');
+    expect(media3Plugin).toContain('implementation(files("libs/${FFMPEG_AAR_NAME}"))');
+    expect(appConfig.expo.plugins).toContain('./plugins/withMedia3LivePlayer');
   });
 
-  it('does not mistake VLC’s terminal 100% buffering notification for a stall', () => {
-    expect(nativeVlcSource).toContain('bufferRate < 100');
-  });
-
-  it('configures the Android build for the VLC native dependency', () => {
-    const plugins = appConfig.expo.plugins;
-    const buildProperties = plugins.find(
-      (plugin): plugin is [string, Record<string, any>] =>
-        Array.isArray(plugin) && plugin[0] === 'expo-build-properties',
-    );
-
-    expect(buildProperties?.[1].android?.minSdkVersion).toBe(26);
-    expect(plugins).toContain('./plugins/withVlcAndroid');
-    expect(vlcAndroidPluginSource).toContain("require('expo/config-plugins')");
-    expect(vlcAndroidPluginSource).toContain('jetified-react-android');
-    expect(vlcAndroidPluginSource).toContain('libc++_shared.so');
-    expect(vlcGradlePatchSource).toContain(
-      '-        classpath("com.android.tools.build:gradle:4.0.2")',
-    );
-  });
-
-  it('uses seconds for VLC progress and gives fullscreen exclusive ownership', () => {
-    expect(nativeVlcSource).toContain('currentTime / 1000');
-    expect(nativeVlcSource).toContain('duration / 1000');
-    expect(playerSource).toContain('setVlcSeekPosition(Math.max(0, Math.min(1, resumeAt / reportedDuration)))');
-    expect(liveTabSource).toContain('setIsLivePreviewActive(false)');
-    expect(liveTabSource).toContain('const nativeVlcPresentationHost =');
-    expect(liveTabSource).toContain('{nativeVlcPresentationHost}');
-    expect(playerSource).toContain('const handleNativeVlcError = useCallback');
-    expect(playerSource).toContain('reloadNativeVlc(urls[1])');
-    expect(playerSource).toContain('didResolveStaleUrlRef.current = false');
+  it('surfaces native readiness, buffering, failure, and progress events to React', () => {
+    expect(media3Player).toContain("'streamvault:media3-event'");
+    expect(media3Player).toContain("event.state === 'buffering'");
+    expect(media3Player).toContain("event.state === 'playing'");
+    expect(media3Player).toContain("event.type === 'error'");
+    expect(media3Player).toContain("event.type === 'progress'");
   });
 });

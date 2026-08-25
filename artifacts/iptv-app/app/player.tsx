@@ -46,6 +46,7 @@ import { setPendingLivePlayerReturn } from '@/lib/livePlayerHandoff';
 import CastButton from '@/components/CastButton';
 import { useBackHandler } from '@/hooks/useBackHandler';
 import { NativeStreamPlayer } from '@/components/NativeStreamPlayer';
+import { Media3LivePlayer } from '@/components/Media3LivePlayer';
 
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2] as const;
 const FITS = [
@@ -325,6 +326,7 @@ export default function PlayerScreen() {
   const isWeb = Platform.OS === 'web';
   const isLive = params.type === 'live';
   const isCatchup = params.type === 'catchup';
+  const usesNativeMedia3Live = Platform.OS === 'android' && isLive;
   // This route param is synchronous. It is the only safe first-render signal
   // that Live TV has already mounted the Android VLC TextureView and is handing
   // it to this controls-only route. Do not wait for context state/effects before
@@ -334,7 +336,7 @@ export default function PlayerScreen() {
     ? params.nativeSurfaceHandoffId
     : null;
   const hasPersistentNativeSurfaceHandoff =
-    USES_NATIVE_VLC
+    usesNativeMedia3Live
     && isLive
     && nativeSurfaceHandoffId !== null;
   const startAtSecs = params.startAt ? parseFloat(params.startAt) : 0;
@@ -908,6 +910,7 @@ export default function PlayerScreen() {
     player: sharedPlayer,
     activeUrlRef: liveUrlRef,
     setNativeSurfaceUrl,
+    reloadNativeSurface,
     nativeSurfaceHandoff,
     updateNativeSurfaceHandoffUrl,
     endNativeSurfaceHandoff,
@@ -960,12 +963,28 @@ export default function PlayerScreen() {
 
   // The player this screen actually uses:
   const player = isLive ? sharedPlayer : localPlayer;
+  // Android Live TV uses the workspace-owned Media3 bridge. Android VOD and
+  // catch-up continue through their existing VLC component until they have a
+  // separately validated replacement path.
+  const PlaybackRenderer: React.ComponentType<any> = usesNativeMedia3Live
+    ? Media3LivePlayer
+    : NativeStreamPlayer;
 
   // Ensure the correct URL is loaded in the shared player when opening fullscreen.
   // If liveUrlRef matches params.url the stream is already running — don't restart.
   useEffect(() => {
     if (!isLive || isWeb) return;
-    if (USES_NATIVE_VLC) {
+    if (usesNativeMedia3Live) {
+      if (isLive) {
+        liveUrlRef.current = entry.url;
+        setNativeSurfaceUrl(entry.url);
+        if (nativeSurfaceHandoffId) {
+          updateNativeSurfaceHandoffUrl(nativeSurfaceHandoffId, entry.url);
+        }
+      }
+      setActiveUrl(entry.url);
+      setVlcReloadKey((key) => key + 1);
+    } else if (USES_NATIVE_VLC) {
       liveUrlRef.current = params.url;
       cancelRemindersForActiveChannel({ channelId: params.channelId, epgId: params.epgId });
       return;
@@ -2545,7 +2564,15 @@ export default function PlayerScreen() {
               setErrorMsg('');
               setIsBuffering(true);
               const currentEntry = channelIdx >= 0 && channelList[channelIdx];
-              if (USES_NATIVE_VLC) {
+              if (usesNativeMedia3Live) {
+                const retryUrl = currentEntry ? currentEntry.url : params.url;
+                setActiveUrl(retryUrl);
+                if (usesPersistentNativeSurface) {
+                  reloadNativeSurface();
+                } else {
+                  setVlcReloadKey((key) => key + 1);
+                }
+              } else if (USES_NATIVE_VLC) {
                 setActiveUrl(currentEntry ? currentEntry.url : params.url);
                 setVlcReloadKey((key) => key + 1);
               } else {
@@ -2593,7 +2620,7 @@ export default function PlayerScreen() {
           )}
         </View>
       ) : videoMounted && !usesPersistentNativeSurface ? (
-        <NativeStreamPlayer
+        <PlaybackRenderer
           source={activeUrl}
           player={player}
           style={StyleSheet.absoluteFill}

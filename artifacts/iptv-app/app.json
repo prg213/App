@@ -40,6 +40,7 @@
         }
       ],
       "./plugins/withVlcAndroid",
+      "./plugins/withMedia3LivePlayer",
       "./plugins/withReleaseAbis",
       [
         "expo-router",

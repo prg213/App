@@ -1,7 +1,7 @@
 /**
  * Shared live-TV player state.
  *
- * Android and Fire TV keep one libVLC view mounted in the Live TV layout. The
+ * Android and Fire TV keep one Media3 view mounted in the Live TV layout. The
  * fullscreen route borrows that existing surface and renders controls only;
  * changing `nativeSurfaceMode` changes the owning container's layout, never
  * the native view's coordinates or decoder.
@@ -38,6 +38,9 @@ interface LivePlayerContextValue {
   nativeSurfaceMode: NativeSurfaceMode;
   nativeSurfaceUrl: string;
   setNativeSurfaceUrl: (url: string) => void;
+  /** Re-prepares the current Media3 source without replacing its presentation view. */
+  nativeSurfaceReloadKey: number;
+  reloadNativeSurface: () => void;
   /** A route-scoped lease for the fullscreen controls-only handoff. */
   nativeSurfaceHandoff: NativeSurfaceHandoff | null;
   beginNativeSurfaceHandoff: (url: string) => string;
@@ -80,6 +83,7 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
   const miniPlayerRef = useRef<View>(null);
   const [nativeSurfaceMode, setNativeSurfaceMode] = useState<NativeSurfaceMode>('mini');
   const [nativeSurfaceUrl, setNativeSurfaceUrl] = useState('');
+  const [nativeSurfaceReloadKey, setNativeSurfaceReloadKey] = useState(0);
   const [nativeSurfaceHandoff, setNativeSurfaceHandoff] = useState<NativeSurfaceHandoff | null>(null);
   const nextNativeSurfaceHandoffIdRef = useRef(0);
   const pendingNativeSurfaceTransitionRef = useRef<{
@@ -103,6 +107,10 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
     setNativeSurfaceHandoff((current) => (
       current?.id === id ? null : current
     ));
+  }, []);
+
+  const reloadNativeSurface = useCallback(() => {
+    setNativeSurfaceReloadKey((key) => key + 1);
   }, []);
 
   const transitionNativeSurface = useCallback((
@@ -176,6 +184,8 @@ export function LivePlayerProvider({ children }: { children: React.ReactNode }) 
         nativeSurfaceMode,
         nativeSurfaceUrl,
         setNativeSurfaceUrl,
+        nativeSurfaceReloadKey,
+        reloadNativeSurface,
         nativeSurfaceHandoff,
         beginNativeSurfaceHandoff,
         updateNativeSurfaceHandoffUrl,

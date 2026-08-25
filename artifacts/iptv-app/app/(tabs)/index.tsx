@@ -39,6 +39,7 @@ import {
 import { DraggableFavList } from '@/components/DraggableFavList';
 import { useLivePlayer } from '@/context/LivePlayerContext';
 import { NativeStreamPlayer } from '@/components/NativeStreamPlayer';
+import { Media3LivePlayer } from '@/components/Media3LivePlayer';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter, useFocusEffect } from 'expo-router';
 import * as Haptics from 'expo-haptics';
@@ -70,8 +71,8 @@ import {
 
 const FAVS_CAT_ID = '__favs';
 const ALL_CAT_ID = '__all';
-const USES_NATIVE_VLC = Platform.OS === 'android';
-const VLC_TRACE = '[SV-VLC-TRACE]';
+const USES_NATIVE_MEDIA3_LIVE = Platform.OS === 'android';
+const MEDIA3_TRACE = '[SV-MEDIA3-TRACE]';
 
 function buildCreds(c: ReturnType<typeof useAppContext>['credentials']) {
   return { host: c!.host!, username: c!.username!, password: c!.password! };
@@ -316,8 +317,8 @@ export default function LiveTVScreen() {
   const [favorites, setFavorites] = useState<FavoriteChannel[]>([]);
   const [isBuffering, setIsBuffering] = useState(false);
   const [hasError, setHasError] = useState(false);
-  // Forces a fresh VLC instance for an explicit retry of the same URL.
-  const [vlcReloadKey, setVlcReloadKey] = useState(0);
+  // Explicit retries prepare a new MediaItem on the persistent Media3 session.
+  const [media3ReloadKey, setMedia3ReloadKey] = useState(0);
   // The Live TV route stays mounted below the fullscreen route. Keep a single
   // VLC owner by unmounting its preview renderer whenever this route blurs.
   const [isLivePreviewActive, setIsLivePreviewActive] = useState(true);
@@ -402,6 +403,7 @@ export default function LiveTVScreen() {
     nativeSurfaceMode,
     nativeSurfaceUrl,
     setNativeSurfaceUrl,
+    nativeSurfaceReloadKey,
     beginNativeSurfaceHandoff,
     commitNativeSurfaceLayout,
     transitionNativeSurface,
@@ -409,7 +411,7 @@ export default function LiveTVScreen() {
     triggerExpandFromRef,
   } = useLivePlayer();
 
-  // Android owns one VLC TextureView in a stable direct child of this Live TV
+  // Android owns one Media3 PlayerView in a stable direct child of this Live TV
   // root. The focusable mini control remains a real control, but only provides
   // the measured mini viewport; it never reparents or unmounts the native view.
   const nativeSurfaceFullscreen = nativeSurfaceMode === 'fullscreen';
@@ -450,7 +452,7 @@ export default function LiveTVScreen() {
   // measurement while that first child is being attached. The latter is the
   // race that made the first selected channel invisible until a fullscreen trip.
   const publishNativeMiniOwnerBounds = useCallback(() => {
-    if (!USES_NATIVE_VLC || nativeSurfaceModeRef.current !== 'mini') return;
+    if (!USES_NATIVE_MEDIA3_LIVE || nativeSurfaceModeRef.current !== 'mini') return;
     const panel = nativePreviewPanelBoundsRef.current;
     const owner = nativeMiniOwnerLayoutRef.current;
     if (
@@ -486,7 +488,7 @@ export default function LiveTVScreen() {
       nativeSurfaceModeRef.current === 'fullscreen'
       && !isExpectedFullscreenViewport
     ) {
-      console.log(VLC_TRACE, 'surface-root-layout-ignored-before-fullscreen-viewport', {
+        console.log(MEDIA3_TRACE, 'surface-root-layout-ignored-before-fullscreen-viewport', {
         width,
         height,
         expectedWidth: screenWidth,
@@ -543,7 +545,7 @@ export default function LiveTVScreen() {
   // few frames after the first channel selection so the persistent VLC surface
   // gets a real mini-player frame without requiring a fullscreen round-trip.
   const measureNativeMiniOwnerInWindow = useCallback(() => {
-    if (!USES_NATIVE_VLC || nativeSurfaceModeRef.current !== 'mini') return;
+    if (!USES_NATIVE_MEDIA3_LIVE || nativeSurfaceModeRef.current !== 'mini') return;
     const owner = miniPlayerRef.current;
     const root = nativeSurfaceRootRef.current;
     if (!owner || !root || !playingChannel) return;
@@ -570,7 +572,7 @@ export default function LiveTVScreen() {
   }, [miniPlayerRef, nativeSurfaceMode, playingChannel?.id]);
 
   useEffect(() => {
-    if (!USES_NATIVE_VLC || nativeSurfaceMode !== 'mini' || !playingChannel) return;
+    if (!USES_NATIVE_MEDIA3_LIVE || nativeSurfaceMode !== 'mini' || !playingChannel) return;
     const timers = [0, 16, 64, 200, 400].map((delay) =>
       setTimeout(measureNativeMiniOwnerInWindow, delay)
     );
@@ -582,7 +584,7 @@ export default function LiveTVScreen() {
   // frame from snapping back to the old 16:9 mini-player width after entering
   // fullscreen.
   useEffect(() => {
-    if (!USES_NATIVE_VLC || !nativeSurfaceFullscreen) return;
+    if (!USES_NATIVE_MEDIA3_LIVE || !nativeSurfaceFullscreen) return;
     setNativeSurfaceViewport((current) => (
       current.width === screenWidth && current.height === screenHeight
         ? current
@@ -616,8 +618,8 @@ export default function LiveTVScreen() {
   // transforms. It lets phone and TV traces distinguish an inset/window problem
   // from a decoder or surface-lifecycle problem.
   useEffect(() => {
-    if (!USES_NATIVE_VLC) return;
-    console.log(VLC_TRACE, 'react-window-bounds', {
+    if (!USES_NATIVE_MEDIA3_LIVE) return;
+    console.log(MEDIA3_TRACE, 'react-window-bounds', {
       width: screenWidth,
       height: screenHeight,
       insetTop: insets.top,
@@ -637,7 +639,7 @@ export default function LiveTVScreen() {
   ]);
 
   useEffect(() => {
-    if (!USES_NATIVE_VLC) return;
+    if (!USES_NATIVE_MEDIA3_LIVE) return;
     setNativeSurfaceUrl(playingChannel?.streamUrl ?? selectedChannel?.streamUrl ?? '');
   }, [playingChannel?.streamUrl, selectedChannel?.streamUrl, setNativeSurfaceUrl]);
 
@@ -653,11 +655,11 @@ export default function LiveTVScreen() {
   // Incrementing this key forces VideoView to remount, re-binding the Surface.
   // The flash overlay hides any single-frame black during the remount.
   const [videoKey, setVideoKey] = useState(0);
-  // These callbacks are intentionally stable so the memoized Android VLC
+  // These callbacks are intentionally stable so the Android Media3
   // surface receives no prop update when nativeSurfaceMode changes. A
   // mini/fullscreen transition must adjust only its parent's bounds — never
   // reapply a source, volume, mute, pause, or seek value to libVLC.
-  const handlePersistentVlcPlaying = useCallback(() => {
+  const handlePersistentMedia3Playing = useCallback(() => {
     setIsBuffering(false);
     setHasError(false);
     Animated.timing(flashOverlayOpacity, {
@@ -666,10 +668,10 @@ export default function LiveTVScreen() {
       useNativeDriver: true,
     }).start();
   }, [flashOverlayOpacity]);
-  const handlePersistentVlcBuffering = useCallback(() => {
+  const handlePersistentMedia3Buffering = useCallback(() => {
     setIsBuffering(true);
   }, []);
-  const handlePersistentVlcError = useCallback(() => {
+  const handlePersistentMedia3Error = useCallback(() => {
     setIsBuffering(false);
     setHasError(true);
     Animated.timing(flashOverlayOpacity, {
@@ -710,7 +712,7 @@ export default function LiveTVScreen() {
         StorageService.setPrefLiveCat(returnedChannel.groupTitle).catch(() => {});
       }
       requestAnimationFrame(() => {
-        if (!USES_NATIVE_VLC) setVideoKey((key) => key + 1);
+        if (!USES_NATIVE_MEDIA3_LIVE) setVideoKey((key) => key + 1);
         if (Platform.isTV) {
           setTimeout(() => {
             if (!focusPlayingChannelRef.current?.()) {
@@ -733,9 +735,9 @@ export default function LiveTVScreen() {
         setIsBuffering(true);
         setHasError(false);
         flashOverlayOpacity.setValue(1);
-        if (USES_NATIVE_VLC) {
+        if (USES_NATIVE_MEDIA3_LIVE) {
           liveUrlRef.current = catchupPreviewToRestore.streamUrl;
-          setVlcReloadKey((key) => key + 1);
+          setMedia3ReloadKey((key) => key + 1);
         } else try {
           liveUrlRef.current = catchupPreviewToRestore.streamUrl;
           player.replace(catchupPreviewToRestore.streamUrl);
@@ -748,12 +750,12 @@ export default function LiveTVScreen() {
           }).start();
         }
         // Re-bind the shared player to the returning mini-player surface.
-        if (!USES_NATIVE_VLC) {
+        if (!USES_NATIVE_MEDIA3_LIVE) {
           requestAnimationFrame(() => setVideoKey((key) => key + 1));
         }
         return;
       }
-    if (USES_NATIVE_VLC) {
+    if (USES_NATIVE_MEDIA3_LIVE) {
       // The fullscreen route restores this container before it closes. This is
       // only a safety net for interrupted navigation, never a native resize.
       // Changing nativeSurfaceMode to "fullscreen" re-runs this focus callback
@@ -813,10 +815,10 @@ export default function LiveTVScreen() {
   useEffect(() => {
     if (isWeb || !selectedChannel?.streamUrl) return;
     const url = selectedChannel.streamUrl;
-    // Android/Fire TV renders IPTV with VLC. Do not load the same source into
+    // Android/Fire TV renders Live TV with Media3. Do not load the same source into
     // Expo's ExoPlayer as well: competing decoders can steal audio focus and
     // leave one of the native surfaces black.
-    if (USES_NATIVE_VLC) {
+    if (USES_NATIVE_MEDIA3_LIVE) {
       if (retryTimerRef.current) { clearTimeout(retryTimerRef.current); retryTimerRef.current = null; }
       liveUrlRef.current = url;
       setIsBuffering(true);
@@ -858,7 +860,7 @@ export default function LiveTVScreen() {
   }, [selectedChannel?.streamUrl]);
 
   useEffect(() => {
-    if (isWeb || USES_NATIVE_VLC || !player) return;
+    if (isWeb || USES_NATIVE_MEDIA3_LIVE || !player) return;
     const subs = [
       player.addListener('statusChange', ({ status, error }: any) => {
         if (status === 'readyToPlay') {
@@ -1047,8 +1049,8 @@ export default function LiveTVScreen() {
             setIsBuffering(true);
             setHasError(false);
             flashOverlayOpacity.setValue(1);
-            if (USES_NATIVE_VLC) {
-              setVlcReloadKey((key) => key + 1);
+            if (USES_NATIVE_MEDIA3_LIVE) {
+              setMedia3ReloadKey((key) => key + 1);
             } else try {
               player.replace(curCh.streamUrl);
               player.play();
@@ -1063,7 +1065,7 @@ export default function LiveTVScreen() {
                 useNativeDriver: true,
               }).start();
             }
-          } else if (!USES_NATIVE_VLC) {
+          } else if (!USES_NATIVE_MEDIA3_LIVE) {
             try { player.play(); } catch {}
           }
         } else if (lastUrl) {
@@ -1082,7 +1084,7 @@ export default function LiveTVScreen() {
         // decoders from opening the same IPTV URL during route transitions.
         // Android keeps its one VLC view mounted while the fullscreen route is
         // open. The route renders a transparent controls layer above it.
-        if (!USES_NATIVE_VLC) setIsLivePreviewActive(false);
+        if (!USES_NATIVE_MEDIA3_LIVE) setIsLivePreviewActive(false);
         if (goingToPlayerRef.current) {
           goingToPlayerRef.current = false;
           // Null out tabBlurredAtRef so returning from the fullscreen player
@@ -1093,12 +1095,12 @@ export default function LiveTVScreen() {
         }
         // Record when the tab was blurred so we can decide on return whether
         // the preview is stale enough to warrant a live-edge reload.
-        if (USES_NATIVE_VLC) {
+        if (USES_NATIVE_MEDIA3_LIVE) {
           transitionNativeSurface('hidden');
           setIsLivePreviewActive(false);
         }
         tabBlurredAtRef.current = Date.now();
-        if (!isWeb && !USES_NATIVE_VLC && player) {
+        if (!isWeb && !USES_NATIVE_MEDIA3_LIVE && player) {
           try { player.pause(); } catch {}
         }
         setSelectedChannel(null);
@@ -1579,7 +1581,7 @@ export default function LiveTVScreen() {
 
     // Android/Fire TV keeps the mini-player's VLC view mounted and grows that
     // exact native surface before showing the fullscreen controls route.
-    if (USES_NATIVE_VLC) {
+    if (USES_NATIVE_MEDIA3_LIVE) {
       // Do not rely on the selected-channel effect to publish this value: a
       // remote press can enter fullscreen before that effect has committed.
       // The controls route uses this as its proof that the mini-player already
@@ -1602,8 +1604,8 @@ export default function LiveTVScreen() {
     if (hasError && selectedChannel) {
       setHasError(false);
       setIsBuffering(true);
-      if (USES_NATIVE_VLC) {
-        setVlcReloadKey((key) => key + 1);
+      if (USES_NATIVE_MEDIA3_LIVE) {
+        setMedia3ReloadKey((key) => key + 1);
       } else {
         try {
           player.replace(selectedChannel.streamUrl);
@@ -1662,7 +1664,7 @@ export default function LiveTVScreen() {
 
     // The VLC path expands the real playback container, never the tapped card.
     // The generic Expo-video route keeps its existing navigation hooks.
-    if (USES_NATIVE_VLC) {
+    if (USES_NATIVE_MEDIA3_LIVE) {
       // The Live TV mini-player becomes visible on this render. Give it one
       // layout pass before measuring and expanding its persistent VLC surface.
       setNativeSurfaceUrl(ch.streamUrl);
@@ -1820,7 +1822,7 @@ export default function LiveTVScreen() {
         nativeSurfaceHandoffId,
       },
     });
-    if (USES_NATIVE_VLC) {
+    if (USES_NATIVE_MEDIA3_LIVE) {
       // Publish ownership before navigation so player.tsx stays a controls-only
       // route even when Fire OS commits the route faster than effects run.
       setNativeSurfaceUrl(activeChannel.streamUrl);
@@ -1881,15 +1883,13 @@ export default function LiveTVScreen() {
     // Catch-up deliberately replaces the live source. Unlike a live
     // mini/fullscreen handoff, it must unmount the shared VLC view so live
     // audio cannot continue underneath the catch-up player.
-    if (USES_NATIVE_VLC) {
+    if (USES_NATIVE_MEDIA3_LIVE) {
       setIsLivePreviewActive(false);
       transitionNativeSurface('hidden');
     }
   }, [transitionNativeSurface]);
 
-  const nativeVlcPresentationHost = USES_NATIVE_VLC
-    && isLivePreviewActive
-    && nativeSurfaceMode !== 'hidden'
+  const nativeMedia3PresentationHost = USES_NATIVE_MEDIA3_LIVE
     && activeNativeSurfaceUrl
     && (
       nativeSurfaceFullscreen
@@ -1904,6 +1904,7 @@ export default function LiveTVScreen() {
         importantForAccessibility="no-hide-descendants"
         style={[
           styles.nativeSurfacePresentationLayer,
+          nativeSurfaceMode === 'hidden' && styles.nativeSurfacePresentationSuspended,
           Platform.isTV && { zIndex: 0, elevation: 0 },
         ]}
       >
@@ -1911,7 +1912,7 @@ export default function LiveTVScreen() {
           collapsable={false}
           onLayout={(event) => {
             const { width, height, x, y } = event.nativeEvent.layout;
-            console.log(VLC_TRACE, 'react-owner-layout', {
+            console.log(MEDIA3_TRACE, 'react-owner-layout', {
               width,
               height,
               x,
@@ -1948,19 +1949,19 @@ export default function LiveTVScreen() {
                 },
           ]}
         >
-          <NativeStreamPlayer
+          <Media3LivePlayer
             source={activeNativeSurfaceUrl}
-            player={player}
             style={StyleSheet.absoluteFill}
+            paused={nativeSurfaceMode === 'hidden'}
             // Keep this native playback prop invariant across the mini/fullscreen
-            // handoff. The owner frame alone changes size; libVLC starts in fill
+            // handoff. The owner frame alone changes size; Media3 starts in fill
             // mode so the same decoder can occupy the full Android viewport
             // without receiving a playback-prop update during the transition.
             resizeMode="fill"
-            reloadKey={vlcReloadKey}
-            onPlaying={handlePersistentVlcPlaying}
-            onBuffering={handlePersistentVlcBuffering}
-            onError={handlePersistentVlcError}
+            reloadKey={`${media3ReloadKey}:${nativeSurfaceReloadKey}`}
+            onPlaying={handlePersistentMedia3Playing}
+            onBuffering={handlePersistentMedia3Buffering}
+            onError={handlePersistentMedia3Error}
           />
         </View>
       </View>
@@ -1998,7 +1999,7 @@ export default function LiveTVScreen() {
           onNativeSurfaceLayout={() => {
             measureNativeMiniOwnerInWindow();
           }}
-          nativePresentationHost={nativeVlcPresentationHost}
+          nativePresentationHost={nativeMedia3PresentationHost}
           isBuffering={isBuffering}
           hasError={hasError}
           miniPlayerRef={miniPlayerRef}
@@ -2237,7 +2238,7 @@ export default function LiveTVScreen() {
               focused && styles.videoWrapFocused,
             ]}
           >
-            {USES_NATIVE_VLC && (
+            {USES_NATIVE_MEDIA3_LIVE && (
               <>
                 {isBuffering && !hasError && nativeSurfaceMode === 'mini' && (
                   <View pointerEvents="none" style={styles.videoOverlay}>
@@ -2264,7 +2265,7 @@ export default function LiveTVScreen() {
               </>
             )}
             {/* ── Non-Android path: stream player + all overlays live inside ── */}
-            {!USES_NATIVE_VLC && isLivePreviewActive && (
+            {!USES_NATIVE_MEDIA3_LIVE && isLivePreviewActive && (
               <Animated.View
                 pointerEvents="none"
                 style={StyleSheet.absoluteFill}
@@ -2275,7 +2276,7 @@ export default function LiveTVScreen() {
                   style={StyleSheet.absoluteFill}
                   resizeMode="contain"
                   // videoKey is the Expo VideoView surface-rebind workaround.
-                  reloadKey={`${videoKey}:${vlcReloadKey}`}
+                  reloadKey={`${videoKey}:${media3ReloadKey}`}
                   onPlaying={() => {
                     setIsBuffering(false);
                     setHasError(false);
@@ -2294,7 +2295,7 @@ export default function LiveTVScreen() {
                 />
               </Animated.View>
             )}
-            {!USES_NATIVE_VLC && (
+            {!USES_NATIVE_MEDIA3_LIVE && (
               <>
                 {/* Flash-prevention overlay */}
                 <Animated.View
@@ -2510,7 +2511,7 @@ export default function LiveTVScreen() {
           TV root for both mini and fullscreen. The mini control above only
           reports its real bounds; fullscreen fills this root after the tab
           shell releases its sidebar margin. */}
-      {nativeVlcPresentationHost}
+      {nativeMedia3PresentationHost}
 
       {/* ── Catch-up sheet ── */}
       {showCatchup && selectedChannel && creds && (
@@ -2732,6 +2733,13 @@ const styles = StyleSheet.create({
     zIndex: 50,
     elevation: 50,
     pointerEvents: 'none',
+  },
+  nativeSurfacePresentationSuspended: {
+    opacity: 0,
+    width: 1,
+    height: 1,
+    left: -1,
+    top: -1,
   },
   nativeSurfacePresentationFrame: {
     position: 'absolute',

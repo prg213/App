@@ -44,7 +44,7 @@ describe('live fullscreen return ownership', () => {
     expect(returnStart).toBeGreaterThan(-1);
     expect(returnBlock).toContain('setPlayingChannel(returnedChannel)');
     expect(returnBlock).toContain('setSelectedChannel(returnedChannel)');
-    expect(returnBlock).toContain('if (!USES_NATIVE_VLC) setVideoKey');
+    expect(returnBlock).toContain('if (!USES_NATIVE_MEDIA3_LIVE) setVideoKey');
     expect(returnBlock).toContain('focusPlayingChannelRef.current?.()');
     expect(returnBlock).toContain('requestTvFocus(miniPlayerRef.current)');
   });
