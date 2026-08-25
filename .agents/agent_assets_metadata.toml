@@ -107,3 +107,10 @@ uri = "file://artifacts/iptv-app/deliverables/StreamVault-latest-source-build-26
 type = "unspecified"
 title = "StreamVault exact source for APK build 269"
 description = "Source-only archive verified against Git commit fa2687075f03c78e8e16f8bd8a846c87a1568b24 and EAS build cc7a7271-0e77-4fc2-bbea-cda9cd979351. Includes React Native Live TV/player code, fullscreen and mini-player layout/measurement, VLC patch, preserved native Android/VLC project source, Gradle configuration, lifecycle, channel switching, and build metadata. APKs, dependencies, caches, generated output, signing keys, env files, secrets, and credentials were excluded."
+
+[[outputs]]
+id = "u91_o2IeNIEfFlUMFOOn0"
+uri = "file://artifacts/iptv-app/builds/StreamVault-270.apk"
+type = "unspecified"
+title = "StreamVault Android APK 270"
+description = "New Android APK built after applying the uploaded ChatGPT ZIP fix. EAS build 1d9d76a5-7b6a-4a3f-8c50-c0eef7a92c31, Android build number 270, source checkpoint a9d53f317596a70927dad4b13ea42e360a029ec5. Includes the ZIP first-channel provisional mini-player bounds and native VLC fullscreen TextureView aspect/scale fix while preserving the single continuous player session."
