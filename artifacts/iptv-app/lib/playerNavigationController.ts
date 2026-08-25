@@ -23,10 +23,10 @@ export type PlayerNavigationResult = {
 /**
  * Pure state machine for Fire TV player controls.
  *
- * It deliberately contains no React state, timers, native focus calls, or
- * playback APIs. The player screen remains responsible for rendering and
- * executing the returned action. This keeps remote routing deterministic and
- * preserves the existing touch/mobile implementation.
+ * The player screen remains responsible for rendering and executing actions.
+ * This controller is deliberately independent from React, timers, native
+ * focus APIs and playback engines so the existing mobile/touch path remains
+ * unchanged while Fire TV navigation is migrated.
  */
 export class PlayerNavigationController {
   private mode: PlayerNavigationMode = 'hidden';
@@ -35,15 +35,22 @@ export class PlayerNavigationController {
     return this.mode;
   }
 
-  setMode(mode: PlayerNavigationMode): PlayerNavigationMode {
+  /** Synchronise the controller with an already-visible player layer. */
+  syncMode(mode: PlayerNavigationMode): PlayerNavigationMode {
     this.mode = mode;
     return mode;
   }
 
+  setMode(mode: PlayerNavigationMode): PlayerNavigationMode {
+    return this.syncMode(mode);
+  }
+
+  is(mode: PlayerNavigationMode): boolean {
+    return this.mode === mode;
+  }
+
   handle(action: PlayerNavigationAction): PlayerNavigationResult {
-    if (action === 'back') {
-      return this.handleBack();
-    }
+    if (action === 'back') return this.handleBack();
 
     if (this.mode === 'hidden') {
       if (action === 'ok') {
@@ -68,8 +75,6 @@ export class PlayerNavigationController {
     }
 
     if (action === 'ok') {
-      // Selection is intentionally left to the focused UI control. The
-      // controller only owns which modal/interaction layer is active.
       return { mode: this.mode, action: 'move' };
     }
 
@@ -82,8 +87,6 @@ export class PlayerNavigationController {
       case 'subtitles':
       case 'settings':
       case 'channelMenu':
-        this.mode = 'controls';
-        return { mode: this.mode, action: 'close' };
       case 'scrubber':
         this.mode = 'controls';
         return { mode: this.mode, action: 'close' };
