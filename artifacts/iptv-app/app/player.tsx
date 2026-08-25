@@ -976,13 +976,13 @@ export default function PlayerScreen() {
     if (!isLive || isWeb) return;
     if (usesNativeMedia3Live) {
       if (isLive) {
-        liveUrlRef.current = entry.url;
-        setNativeSurfaceUrl(entry.url);
+        liveUrlRef.current = params.url;
+        setNativeSurfaceUrl(params.url);
         if (nativeSurfaceHandoffId) {
-          updateNativeSurfaceHandoffUrl(nativeSurfaceHandoffId, entry.url);
+          updateNativeSurfaceHandoffUrl(nativeSurfaceHandoffId, params.url);
         }
       }
-      setActiveUrl(entry.url);
+      setActiveUrl(params.url);
       setVlcReloadKey((key) => key + 1);
     } else if (USES_NATIVE_VLC) {
       liveUrlRef.current = params.url;
@@ -2656,7 +2656,7 @@ export default function PlayerScreen() {
               setHasError(true);
             }
           }}
-          onProgress={(time, reportedDuration) => {
+          onProgress={(time: number, reportedDuration: number) => {
             if (isCatchup) return;
             setCurrentTime(time);
             if (reportedDuration > 0 && isFinite(reportedDuration)) {
