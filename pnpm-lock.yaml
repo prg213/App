@@ -155,7 +155,7 @@ overrides:
 
 patchedDependencies:
   react-native-vlc-media-player@1.0.98:
-    hash: 7415ef6ea63683e4f4a1c0b433c664c7537679ea68641982434c6298589a8830
+    hash: 3a7cfa21b9434c4e53c3d63c241110996a7e2a7408c00e37220bea562ef656af
     path: patches/react-native-vlc-media-player@1.0.98.patch
 
 importers:
@@ -280,7 +280,7 @@ importers:
         version: 4.9.1(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(react@19.2.3))(react@19.2.3)
       react-native-vlc-media-player:
         specifier: 1.0.98
-        version: 1.0.98(patch_hash=7415ef6ea63683e4f4a1c0b433c664c7537679ea68641982434c6298589a8830)
+        version: 1.0.98(patch_hash=3a7cfa21b9434c4e53c3d63c241110996a7e2a7408c00e37220bea562ef656af)
       react-native-webview:
         specifier: 13.16.1
         version: 13.16.1(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(react@19.2.3))(react@19.2.3)
@@ -13117,7 +13117,7 @@ snapshots:
       prop-types: 15.8.1
       yargs: 16.2.2
 
-  react-native-vlc-media-player@1.0.98(patch_hash=7415ef6ea63683e4f4a1c0b433c664c7537679ea68641982434c6298589a8830):
+  react-native-vlc-media-player@1.0.98(patch_hash=3a7cfa21b9434c4e53c3d63c241110996a7e2a7408c00e37220bea562ef656af):
     dependencies:
       react-native-slider: 0.11.0
       react-native-vector-icons: 9.2.0

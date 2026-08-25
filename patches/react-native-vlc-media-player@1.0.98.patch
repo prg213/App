@@ -100,7 +100,7 @@
      }
  
  
-@@ -157,6 +183,87 @@
+@@ -157,6 +183,101 @@
      public void onAudioFocusChange(int focusChange) {
      }
  
@@ -202,7 +202,7 @@
      private void setProgressUpdateRunnable() {
          if (mMediaPlayer != null && mProgressUpdateInterval > 0){
              new Thread() {
-@@ -204,15 +312,12 @@
+@@ -204,15 +326,12 @@
          @Override
          public void onLayoutChange(View view, int i, int i1, int i2, int i3, int i4, int i5, int i6, int i7) {
              if (view.getWidth() > 0 && view.getHeight() > 0) {
@@ -224,7 +224,7 @@
              }
          }
      };
-@@ -335,6 +440,7 @@
+@@ -335,6 +454,7 @@
  
  
      private void stopPlayback() {
@@ -232,7 +232,7 @@
          onStopPlayback();
          releasePlayer();
      }
-@@ -414,10 +520,11 @@
+@@ -414,10 +534,11 @@
              //this.getHolder().setKeepScreenOn(true);
              IVLCVout vlcOut = mMediaPlayer.getVLCVout();
              if (mVideoWidth > 0 && mVideoHeight > 0) {
@@ -248,7 +248,7 @@
                  //mMediaPlayer.setAspectRatio(mVideoWidth+":"+mVideoHeight);
              }
              DisplayMetrics dm = getResources().getDisplayMetrics();
-@@ -464,6 +571,7 @@
+@@ -464,6 +585,7 @@
                  //vlcOut.attachViews(onNewVideoLayoutListener);
                  vlcOut.setVideoSurface(this.getSurfaceTexture());
                  vlcOut.attachViews(onNewVideoLayoutListener);
@@ -256,7 +256,7 @@
                  // vlcOut.attachSurfaceSlave(surfaceVideo,null,onNewVideoLayoutListener);
                  //vlcOut.setVideoView(this);
                  //vlcOut.attachViews(onNewVideoLayoutListener);
-@@ -763,16 +871,27 @@
+@@ -763,16 +885,27 @@
          mVideoWidth = width;
          mVideoHeight = height;
          surfaceVideo = new Surface(surface);

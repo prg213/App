@@ -315,7 +315,10 @@ describe('Android live VLC container ownership', () => {
     expect(nativeVlcChange).toContain('vlcOut.setWindowSize(outputWidth, outputHeight)');
     expect(nativeVlcChange).toContain('syncVlcOutputToView("layout")');
     expect(nativeVlcChange).toMatch(/-\s+vlcOut\.setWindowSize\(mVideoWidth, mVideoHeight\)/);
-    expect(nativeVlcChange).not.toContain('+                    mMediaPlayer.setAspectRatio');
+    expect(nativeVlcChange).toContain('} else if ("fill".equals(resizeMode)) {');
+    expect(nativeVlcChange).toContain('mMediaPlayer.setAspectRatio(outputWidth + ":" + outputHeight)');
+    expect(nativeVlcChange).toContain('mMediaPlayer.setScale(0)');
+    expect(nativeVlcChange).toContain('mMediaPlayer.setVideoScale(MediaPlayer.ScaleType.SURFACE_FILL)');
     expect(nativeVlcChange).not.toContain('updateVideoSurfaces(');
     expect(vlcAndroidPatch).toContain('@ReactProp(name = PROP_RESIZE_MODE)');
     expect(vlcAndroidPatch).not.toContain('defaultString =');
