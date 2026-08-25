@@ -11,3 +11,4 @@ artifacts/iptv-app/builds/StreamVault-269.apk filter=lfs diff=lfs merge=lfs -tex
 artifacts/iptv-app/builds/StreamVault-270.apk filter=lfs diff=lfs merge=lfs -text
 artifacts/iptv-app/builds/StreamVault-271.apk filter=lfs diff=lfs merge=lfs -text
 artifacts/iptv-app/builds/StreamVault-272.apk filter=lfs diff=lfs merge=lfs -text
+artifacts/iptv-app/builds/StreamVault-273.apk filter=lfs diff=lfs merge=lfs -text

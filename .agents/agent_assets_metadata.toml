@@ -135,3 +135,10 @@ uri = "file://artifacts/iptv-app/builds/StreamVault-272.apk"
 type = "unspecified"
 title = "StreamVault Android APK 272"
 description = "Universal Android APK built by EAS from the ZIP-matched non-zero mini-player bounds source. SHA-256: 64e668fb2546beabefdd151541d6eadfc919ee73ad0bf53625ec1b0f40db975d"
+
+[[outputs]]
+id = "itSfM02jGwj6bP8ZdoCAI"
+uri = "file://artifacts/iptv-app/builds/StreamVault-273.apk"
+type = "unspecified"
+title = "StreamVault Android APK 273"
+description = "Universal Android APK built by EAS from the exact ZIP source with the non-zero mini-player bounds condition. SHA-256: 607ef5baa530c2c86c50d1991bb6623dd70f784ebfb5a8af90b1f82f2790b2fa"
