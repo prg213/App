@@ -23,6 +23,7 @@ final class StreamVaultMedia3View extends FrameLayout {
   private String source = "";
   private String reloadKey;
   private boolean paused;
+  private boolean attachedToWindow;
 
   StreamVaultMedia3View(
       @NonNull Context context,
@@ -53,7 +54,13 @@ final class StreamVaultMedia3View extends FrameLayout {
     String normalised = nextSource == null ? "" : nextSource.trim();
     if (normalised.equals(source)) return;
     source = normalised;
-    if (!source.isEmpty()) {
+
+    // React Native can deliver props before this native view has been attached
+    // to the Android window. Keep the source until the PlayerView is the active
+    // presentation target; otherwise Media3 can prepare the first stream with
+    // no video surface and the stream may only become visible after fullscreen
+    // attaches another target.
+    if (attachedToWindow && !source.isEmpty()) {
       session.setSource(source, false);
     }
   }
@@ -65,13 +72,13 @@ final class StreamVaultMedia3View extends FrameLayout {
     }
     if (java.util.Objects.equals(reloadKey, nextReloadKey)) return;
     reloadKey = nextReloadKey;
-    if (!source.isEmpty()) session.setSource(source, true);
+    if (attachedToWindow && !source.isEmpty()) session.setSource(source, true);
   }
 
   void setPaused(boolean nextPaused) {
     if (paused == nextPaused) return;
     paused = nextPaused;
-    session.setPaused(paused);
+    if (attachedToWindow) session.setPaused(paused);
   }
 
   void setResizeMode(String resizeMode) {
@@ -85,17 +92,26 @@ final class StreamVaultMedia3View extends FrameLayout {
   @Override
   protected void onAttachedToWindow() {
     super.onAttachedToWindow();
+    attachedToWindow = true;
+
+    // Presentation target first, media preparation second. This ordering is
+    // critical for the first Live TV channel on a fresh app launch.
     session.attach(playerView);
+    if (!source.isEmpty()) {
+      session.setSource(source, false);
+    }
     session.setPaused(paused);
   }
 
   @Override
   protected void onDetachedFromWindow() {
+    attachedToWindow = false;
     session.detach(playerView);
     super.onDetachedFromWindow();
   }
 
   void disposePresentation() {
+    attachedToWindow = false;
     session.unregisterView(this);
     session.detach(playerView);
   }
